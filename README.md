@@ -27,7 +27,7 @@ to aid in the development of computational linguistics summarization systems.
 
 ### Contents
 
-    ./README_CLSharedTask.txt
+    ./README.md
  
 This file.
 
