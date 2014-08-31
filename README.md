@@ -16,9 +16,8 @@ The Computational Linguistics Shared Task is under the Biomedical Summarization 
 
 Given: A topic consisting of a Reference Paper (RP) and upto 10 Citing Papers (CPs) that all contain citations to the RP. In each CP, the text spans (i.e., citances) have been identified that pertain to a particular citation to the RP.
 
-Task 1a: For each citance, identify the spans of text (cited text spans) in the RP that most accurately reflect the citance. These are of the granularity of a sentence fragment, a full sentence, or several consecutive sentences (no more than 5).
-
-Task 1b: For each cited text span, identify what facet of the paper it belongs to, from a predefined set of facets.
+* Task 1a: For each citance, identify the spans of text (cited text spans) in the RP that most accurately reflect the citance. These are of the granularity  of a sentence fragment, a full sentence, or several consecutive sentences (no more than 5).
+* Task 1b: For each cited text span, identify what facet of the paper it belongs to, from a predefined set of facets.
 
 For more information about the project, please refer to the details hosted at 
 http://www.nist.gov/tac/2014/BiomedSumm/
@@ -28,59 +27,52 @@ to aid in the development of computational linguistics summarization systems.
 
 ### Contents
 
-  ./README_CLSharedTask.txt
+    ./README_CLSharedTask.txt
  
-  This file.
+This file.
 
-  ./docs/corpusconstruction.txt
+    ./docs/corpusconstruction.txt
  
-  A readme detailing the rules and steps followed to create the document
-  corpus by randomly sampling 10 documents from the ACL Anthology corpus
-  and selecting their citing papers.
+A readme detailing the rules and steps followed to create the document
+corpus by randomly sampling 10 documents from the ACL Anthology corpus
+and selecting their citing papers.
   
-  ./docs/annotation_naming_convention.txt
-  Describes the naming convention followed to identify annotation files 
-  for each training topic in ./data/???-????_TRAIN/Annotation/
+    ./docs/annotation_naming_convention.txt
 
-  ./docs/annotation_rules.txt
+Describes the naming convention followed to identify annotation files 
+for each training topic in ./data/???-????_TRAIN/Annotation/
+
+    ./docs/annotation_rules.txt
   
-  Rules followed to resolve difficult cases in annotation. It can serve as a synopsis of the larger annotation guidelines. For the detailed annotation guidelines, please refer to the details hosted at http://www.nist.gov/tac/2014/BiomedSumm/
+Rules followed to resolve difficult cases in annotation. It can serve as a synopsis of the larger annotation guidelines. For the detailed annotation guidelines, please refer to the details hosted at http://www.nist.gov/tac/2014/BiomedSumm/
 
-./docs/sources/*.csv
+    ./docs/sources/*.csv
 
-  References for each of the papers for each of the topics, one file
-  per topic.
+References for each of the papers for each of the topics, one file
+per topic.
+
+    ./data/???-????_TRAIN
   
-./data/???-????_TRAIN
-  
-  Directories containing the Documents, Summaries, and Annotations for
-  each topic, one directory per Topic ID.
+Directories containing the Documents, Summaries, and Annotations for
+each topic, one directory per Topic ID.
 
-./data/???-????_TRAIN/Documents_PDF/
-  
-  This directory contains the 10 source documents for the topic (1 RP
-  and upto 10 CPs), one file per paper, in the original pdf format.
+    ./data/???-????_TRAIN/Documents_PDF/
 
-./data/???-????_TRAIN/Documents_TXT/
+This directory contains the 10 source documents for the topic (1 RP
+and upto 10 CPs), one file per paper, in the original pdf format.
 
-  This directory contains the 10 source documents for the topic in
-  UTF-8 text format, where each file corresponds to the similarly
-  named pdf file above.  All annotations and offsets for the topic are
-  with respect to the text files in this directory.  Most text files
-  were created from the pdf file using Adobe Acrobat. The remaining were
-  converted using the GATE 8.0 open source software. 
-  However, there were OCR errors in reading several of the files, and the
-  annotators often had to manually edit the converted txt files.
-  Research groups using are free to use alternative 
-  parsing tools on the pdfs provided, if they are found to perform better.
+    ./data/???-????_TRAIN/Documents_TXT/
 
-./data/???-????_TRAIN/Annotation/
+This directory contains the 10 source documents for the topic in UTF-8 text format, where each file corresponds to the similarly named pdf file above.  All annotations and offsets for the topic are with respect to the text files in this directory.  Most text files
+were created from the pdf file using Adobe Acrobat. The remaining were
+converted using the GATE 8.0 open source software. 
+However, there were OCR errors in reading several of the files, and the
+annotators often had to manually edit the converted txt files.
+Research groups using are free to use alternative parsing tools on the pdfs provided, if they are found to perform better.
 
-  This directory contains the annotation files for the topic, from 3
-  different annotators.  The annotation files are named with the
-  following convention: <TopicID>.<AnnotatorID>.ann.txt The naming convention
-  is explained in ./docs/annotation_naming_convention.txt.
+    ./data/???-????_TRAIN/Annotation/
 
+This directory contains the annotation files for the topic, from 3 different annotators.  The annotation files are named with the following convention: <TopicID>.<AnnotatorID>.ann.txt The naming convention is explained in ./docs/annotation\_naming\_convention.txt.
 
 ### Annotation
 
