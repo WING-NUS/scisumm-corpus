@@ -10,7 +10,7 @@ Please see README_CLSharedTask.txt for details on the TAC 2014 Computational Lin
 
 Please see ./docs/corpusconstruction.txt for details. 
 
-1. Overview
+### Overview
 
 The Computational Linguistics Shared Task is under the Biomedical Summarization Track of the Text Analysis Conference. It follows the basic  structure and guidelines of the Biomedical Summarization Track and adapts them for annotating and creating a corpus of training topics from computational linguistics research papers.  The task is defined as follows:
 
@@ -26,7 +26,7 @@ http://www.nist.gov/tac/2014/BiomedSumm/
 This package contains an initial (partial) release of training topics
 to aid in the development of computational linguistics summarization systems.
 
-2. Contents
+### Contents
 
   ./README_CLSharedTask.txt
  
@@ -82,7 +82,7 @@ to aid in the development of computational linguistics summarization systems.
   is explained in ./docs/annotation_naming_convention.txt.
 
 
-3. Annotation
+### Annotation
 
 Given a reference paper (RP) and upto 10 citing papers (CPs), annotators from 
 National University of Singapore and Nanyang Technological University
@@ -91,7 +91,7 @@ in SciSumm-annotation-guidelines.pdf to mark the Citation Text,
 Citation Marker, Reference Text, and Discourse Facet for each citation
 of the RP found in the CP.  
 
-4. Contact Information
+### Contact Information
 
 For further information about this data release, contact the following
 members of the BiomedSumm Organizing Committee:
