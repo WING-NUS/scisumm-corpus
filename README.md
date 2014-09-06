@@ -6,7 +6,7 @@ August 27, 2014
 
 This is the open repository for the Scientific Document Summarization Corpus and Annotations contributed to the public by the Web IR / NLP Group at @ the National University of Singapore (WING-NUS).
 
-Please see README_CLSharedTask.txt for details on the TAC 2014 Computational Linguistics Shared Task.
+Please read further for details on the TAC 2014 Computational Linguistics Shared Task.
 
 Please see ./docs/corpusconstruction.txt for details. 
 
@@ -27,7 +27,7 @@ to aid in the development of computational linguistics summarization systems.
 
 ### Contents
 
-    ./README_CLSharedTask.txt
+    ./README.md
  
 This file.
 
@@ -90,7 +90,7 @@ members of the BiomedSumm Organizing Committee:
 
 * Kokil Jaidka (Nanyang Technological University) <koki0001@e.ntu.edu.sg>
 * Min-Yen Kan (Dept. of Computer Science, School of Computing, National University of Singapore) <kanmy@comp.nus.edu.sg>
-* Muthu Kumar Chandrasekaran (Dept. of Computer Science, School of Computing, National University of Singapore) <muthu.chandra@cop.nus.edu.sg>
+* Muthu Kumar Chandrasekaran (Dept. of Computer Science, School of Computing, National University of Singapore) <muthu.chandra@comp.nus.edu.sg>
 * Ankur Khanna (Web,IR/NLP group, National University of Singapore) <khanna89ankur@gmail.com>
   
 --------------------------------------------------------------------------
