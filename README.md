@@ -8,6 +8,8 @@ This is the open repository for the Scientific Document Summarization Corpus and
 
 Please read further for details on the TAC 2014 Computational Linguistics Shared Task.
 
+To participate in the shared task, please register you team details at, https://docs.google.com/forms/d/1NBNDgpjXfSZL1iowPCwDzUBjKRhyHtBOKy_83y94E04/viewform​
+
 Please see ./docs/corpusconstruction.txt for details. 
 
 ### Overview
