@@ -48,7 +48,7 @@ annotation format from the previous edition.
 
     ./README2014.md
  
-REAMDME file for the previous edition of the shared task hosted at TAC2014.
+README file for the previous edition of the shared task hosted at TAC2014.
 
     ./docs/corpusconstruction.txt
  
