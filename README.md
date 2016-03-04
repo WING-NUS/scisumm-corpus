@@ -38,11 +38,11 @@ computational linguistics summarization systems.
 
 ### Contents
 
-    ./README2016.md
+    ./README.md
  
 This file.
 
-	./FAQ2016
+    ./FAQ2016
 	
 Frequently asked questions on the 2016 shared task including updates to the corpus, 
 annotation format from the previous edition.
