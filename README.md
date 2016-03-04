@@ -100,10 +100,7 @@ UTF-8 character encoding. Each file corresponds to the similarly named pdf file 
     ./data/???-????_TRAIN/Annotation/
 
 This directory contains the annotation files for the topic, from 3 different annotators.  
-The annotation files are named with the following convention: <TopicID>.<AnnotatorID>.ann3.txt 
-The naming convention is explained in ./docs/annotation\_naming\_convention.txt.
-Please DO NOT use older annotations from <TopicID>.<AnnotatorID>.ann.txt and 
-<TopicID>.<AnnotatorID>.ann2.txt for the 2016 Shared Task.
+Please DO NOT use older annotations; only use <TopicID>.annv3.txt for the 2016 Shared Task.
 
 ### Annotation
 
