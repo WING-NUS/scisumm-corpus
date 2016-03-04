@@ -4,14 +4,13 @@
 
 February 29, 2016
 
-This is the open repository for the Scientific Document Summarization Corpus and Annotations contributed to the public by the Web IR / NLP Group at @ the National University of Singapore (WING-NUS) 
-with generous support from Microsoft Research Asia.
+This package contains an release of training topics to aid in the development of computational linguistics summarization systems.
 
 Please read further for details on the Computational Linguistics Shared Task run as part of BIRNDL 2016 workshop collocated with JCDL 2016 - official website hosted at: wing.comp.nus.edu.sg/cl-scisumm2016/
 
 To participate in the 2016 shared task, please register your team details at: https://easychair.org/conferences/?conf=birndl2016
 
-Please see ./docs/corpusconstruction.txt for details. 
+To know how this corpus was constructed, please see ./docs/corpusconstruction.txt
 
 ### Overview
 
@@ -27,15 +26,12 @@ Given: A topic consisting of a Reference Paper (RP) and upto 10 Citing Papers (C
 * Task 1a: For each citance, identify the spans of text (cited text spans) in the RP that most accurately reflect the citance. These are of the granularity  of a sentence fragment, a full sentence, or several consecutive sentences (no more than 5).
 * Task 1b: For each cited text span, identify what facet of the paper it belongs to, from a predefined set of facets.
 
-For more information about the project, please refer to the details hosted at 
-http://wing.comp.nus.edu.sg/cl-scisumm2016/
-
-BIRNDL Workshop home page: http://wing.comp.nus.edu.sg/cl-scisumm2016
-
-This package contains an release of training topics to aid in the development of 
-computational linguistics summarization systems.
 
 ### Contents
+
+This is the open repository for the Scientific Document Summarization Corpus and Annotations contributed to the public by the Web IR / NLP Group at @ the National University of Singapore (WING-NUS) 
+with generous support from Microsoft Research Asia.
+
 
     ./README.md
  
