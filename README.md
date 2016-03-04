@@ -9,8 +9,7 @@ with generous support from Microsoft Research Asia.
 
 Please read further for details on the Computational Linguistics Shared Task run as part of BIRNDL 2016 workshop collocated with JCDL 2016.
 
-To participate in the shared task, please register your team details at:
-https://docs.google.com/forms/d/1NBNDgpjXfSZL1iowPCwDzUBjKRhyHtBOKy_83y94E04/viewform
+To participate in the 2016 shared task, please register your team details at: https://easychair.org/conferences/?conf=birndl2016
 
 Please see ./docs/corpusconstruction.txt for details. 
 
