@@ -6,7 +6,7 @@ February 29, 2016
 
 This package contains a release of training topics to aid in the development of computational linguistics summarization systems.
 
-Please read further for details on the Computational Linguistics Shared Task run as part of BIRNDL 2016 workshop collocated with JCDL 2016 - official website hosted at: wing.comp.nus.edu.sg/cl-scisumm2016/
+Please read further for details on the Computational Linguistics Shared Task run as part of BIRNDL 2016 workshop collocated with JCDL 2016 - official website hosted at: http://wing.comp.nus.edu.sg/cl-scisumm2016/
 
 To participate in the 2016 shared task, please register your team details at: https://easychair.org/conferences/?conf=birndl2016
 
