@@ -4,7 +4,7 @@
 
 February 29, 2016
 
-This package contains an release of training topics to aid in the development of computational linguistics summarization systems.
+This package contains a release of training topics to aid in the development of computational linguistics summarization systems.
 
 Please read further for details on the Computational Linguistics Shared Task run as part of BIRNDL 2016 workshop collocated with JCDL 2016 - official website hosted at: wing.comp.nus.edu.sg/cl-scisumm2016/
 
