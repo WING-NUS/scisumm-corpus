@@ -117,7 +117,7 @@ of the RP found in the CP.
 ### Contact Information
 
 For further information about this data release, contact the following
-members of the BRNDL Organizing Committee:
+members of the BRNDL workshop Organizing Committee responsible for this shared task:
 
 * Kokil Jaidka (Nanyang Technological University) <koki0001@e.ntu.edu.sg>
 * Min-Yen Kan (Dept. of Computer Science, School of Computing, National University of Singapore) <kanmy@comp.nus.edu.sg>
