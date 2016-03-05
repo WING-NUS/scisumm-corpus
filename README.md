@@ -98,6 +98,13 @@ UTF-8 character encoding. Each file corresponds to the similarly named pdf file 
 This directory contains the annotation files for the topic, from 3 different annotators.  
 Please DO NOT use older annotations; only use <TopicID>.annv3.txt for the 2016 Shared Task.
 
+    ./data/???-????_TRAIN/summary/
+The summary task (Task 2) is an optional, "bonus" task which participants may want to attempt.
+This directory contains the two kinds of summaries - i. the abstract, and ii.the reference spans 
+(not citances but the information they referenced in the source paper). Both are extractive summaries. 
+For the developemnt sets we will release in April, we will include a third type of summary - hand-written a
+nnotator summaries. These would be abstractive.
+
 ### Annotation
 
 Given a reference paper (RP) and upto 10 citing papers (CPs), annotators from 
@@ -110,13 +117,11 @@ of the RP found in the CP.
 ### Contact Information
 
 For further information about this data release, contact the following
-members of the BiomedSumm Organizing Committee:
+members of the BRNDL Organizing Committee:
 
 * Kokil Jaidka (Nanyang Technological University) <koki0001@e.ntu.edu.sg>
 * Min-Yen Kan (Dept. of Computer Science, School of Computing, National University of Singapore) <kanmy@comp.nus.edu.sg>
 * Muthu Kumar Chandrasekaran (Dept. of Computer Science, School of Computing, National University of Singapore) <muthu.chandra@comp.nus.edu.sg>
-* Ankur Khanna (Web,IR/NLP group, National University of Singapore) <khanna89ankur@gmail.com>
-  
 --------------------------------------------------------------------------
 
 This README was updated from README2014 by Muthu Kumar Chandrasekaran in Feb, 2016.  For revision information, check source code control logs.
