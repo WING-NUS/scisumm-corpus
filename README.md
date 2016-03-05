@@ -116,12 +116,12 @@ of the RP found in the CP.
 
 ### Contact Information
 
-For further information about this data release, contact the following
-members of the BRNDL workshop Organizing Committee responsible for this shared task:
+For further information about this data release, contact the following members of the BRNDL workshop organising committee:
 
-* Kokil Jaidka (Nanyang Technological University) <koki0001@e.ntu.edu.sg>
-* Min-Yen Kan (Dept. of Computer Science, School of Computing, National University of Singapore) <kanmy@comp.nus.edu.sg>
-* Muthu Kumar Chandrasekaran (Dept. of Computer Science, School of Computing, National University of Singapore) <muthu.chandra@comp.nus.edu.sg>
+* Kokil Jaidka (Nanyang Technological University) koki0001@e.ntu.edu.sg
+* Min-Yen Kan (Dept. of Computer Science, School of Computing, National University of Singapore) kanmy@comp.nus.edu.sg
+* Muthu Kumar Chandrasekaran (Dept. of Computer Science, School of Computing, National University of Singapore) muthu.chandra@comp.nus.edu.sg
+
 --------------------------------------------------------------------------
 
 This README was updated from README2014 by Muthu Kumar Chandrasekaran in Feb, 2016.  For revision information, check source code control logs.
