@@ -25,7 +25,9 @@ Given: A topic consisting of a Reference Paper (RP) and upto 10 Citing Papers (C
 
 * Task 1a: For each citance, identify the spans of text (cited text spans) in the RP that most accurately reflect the citance. These are of the granularity  of a sentence fragment, a full sentence, or several consecutive sentences (no more than 5).
 * Task 1b: For each cited text span, identify what facet of the paper it belongs to, from a predefined set of facets.
+* Task 2 (optional bonus task): Finally, generate a structured summary of the RP from the cited text spans of the RP. The length of the summary should not exceed 250 words.
 
+Evaluation: Task 1 will be scored by overlap of text spans measured by number of sentences in the system output vs gold standard. Task 2 will be scored using the ROUGE family of metrics between i) the system output and the gold standard summary fromt the reference spans ii) the system output and the asbtract of the reference paper. Again, Task 2 is optional. 
 
 ### Contents
 
