@@ -1,0 +1,762 @@
+<PAPER>
+	<ABSTRACT>
+		<S sid ="1" ssid = "1">Multiword expressions lie at the syntax/semantics interface and have motivated alternative theories of syntax like Construction Grammar.</S>
+		<S sid ="2" ssid = "2">Until now, however, syntactic analysis and multiword expression identification have been modeled separately in natural language processing.</S>
+		<S sid ="3" ssid = "3">We develop two structured prediction models for joint parsing and multiword expression identification.</S>
+		<S sid ="4" ssid = "4">The first is based on context-free grammars and the second uses tree substitution grammars, a formalism that can store larger syntactic fragments.</S>
+		<S sid ="5" ssid = "5">Our experiments show that both models can identify multiword expressions with much higher accuracy than a state-of-the- art system based on word co-occurrence statistics.We experiment with Arabic and French, which both have pervasive multiword expressions.</S>
+		<S sid ="6" ssid = "6">Relative to English, they also have richer morphology, which induces lexical sparsity in finite corpora.</S>
+		<S sid ="7" ssid = "7">To combat this sparsity, we develop a simple factored lexical representation for the context-free parsing model.</S>
+		<S sid ="8" ssid = "8">Morphological analyses are automatically transformed into rich feature tags that are scored jointly with lexical items.</S>
+		<S sid ="9" ssid = "9">This technique, which we call a factored lexicon, improves both standard parsing and multiword expression identification accuracy.</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number = "1">
+			<S sid ="10" ssid = "10">Multiword expressions are groups of words which, taken together, can have unpredictable semantics.</S>
+			<S sid ="11" ssid = "11">For example, the expression part of speech refers not to some aspect of speaking, but to the syntactic category of a word.</S>
+			<S sid ="12" ssid = "12">If the expression is altered in some ways—part of speeches, part of speaking, type of speech—then the idiomatic meaning is lost.</S>
+			<S sid ="13" ssid = "13">Other modifications, however, are permitted, as in the plural parts of speech.</S>
+			<S sid ="14" ssid = "14">These characteristics make multiword expressions (MWEs) difficult to identify and classify.</S>
+			<S sid ="15" ssid = "15">But if they can be identified, then the incorporation of MWE knowledge has been shown to improve task accuracy for a range of NLP applications ∗ Department of Computer Science.</S>
+			<S sid ="16" ssid = "16">Email: spenceg@stanford.edu.</S>
+			<S sid ="17" ssid = "17">∗∗ Department of Linguistics.</S>
+			<S sid ="18" ssid = "18">Email: mcdm@stanford.edu.</S>
+			<S sid ="19" ssid = "19">† Departments of Computer Science and Linguistics.</S>
+			<S sid ="20" ssid = "20">Email: manning@stanford.edu.</S>
+			<S sid ="21" ssid = "21">Submission received: October 1, 2011; revised submission received: June 9, 2012; accepted for publication: August 3, 2012.</S>
+			<S sid ="22" ssid = "22">No rights reserved.</S>
+			<S sid ="23" ssid = "23">This work was authored as part of the Contributor ’s official duties as an Employee of the United States Government and is therefore a work of the United States Government.</S>
+			<S sid ="24" ssid = "24">In accordance with 17 U.S.C. 105, no copyright protection is available for such works under U.S. law.</S>
+			<S sid ="25" ssid = "25">including dependency parsing (Nivre and Nilsson 2004), supertagging (Blunsom and Baldwin 2006), sentence generation (Hogan et al. 2007), machine translation (Carpuat and Diab 2010), and shallow parsing (Korkontzelos and Manandhar 2010).</S>
+			<S sid ="26" ssid = "26">The standard approach to MWE identification is n-gram classification.</S>
+			<S sid ="27" ssid = "27">This technique is simple.</S>
+			<S sid ="28" ssid = "28">Given a corpus, all n-grams are extracted, filtered using heuristics, and assigned feature vectors.</S>
+			<S sid ="29" ssid = "29">Each coordinate in the feature vector is a real-valued quantity such as log likelihood or pointwise mutual information.</S>
+			<S sid ="30" ssid = "30">A binary classifier is then trained to render a MWE/non-MWE decision.</S>
+			<S sid ="31" ssid = "31">All entries into the 2008 MWE Shared Task (Evert 2008) utilized variants of this technique.Broadly speaking, n-gram classification methods measure word co-occurrence.</S>
+			<S sid ="32" ssid = "32">Sup pose that a corpus contains more occurrences of part of speech than parts of speech.</S>
+			<S sid ="33" ssid = "33">Surface statistics may erroneously predict that only the former is an MWE and the latter is not.</S>
+			<S sid ="34" ssid = "34">More worrisome is that the statistics for the two n-grams are separate, thus missing an obvious generalization.</S>
+			<S sid ="35" ssid = "35">In this article, we show that statistical parsing models generalize more effectively over arbitrary-length multiword expressions.</S>
+			<S sid ="36" ssid = "36">This approach has not been previously demonstrated.</S>
+			<S sid ="37" ssid = "37">To show its effectiveness, we build two parsing models for MWE identification.</S>
+			<S sid ="38" ssid = "38">The first model is based on a context-free grammar (CFG) with manual rule refinements (Klein and Manning 2003).</S>
+			<S sid ="39" ssid = "39">This parser also includes a novel lexical model—the factored lexicon—that incorporates morphological features.</S>
+			<S sid ="40" ssid = "40">The second model is based on tree substitution grammar (TSG), a formalism with greater strong generative capacity that can store larger structural tree fragments, some of which are lexicalized.</S>
+			<S sid ="41" ssid = "41">We apply the models to Modern Standard Arabic (henceforth MSA, or simply “Arabic”) and French, two morphologically rich languages (MRLs).</S>
+			<S sid ="42" ssid = "42">The lexical sparsity (in finite corpora) induced by rich morphology poses a particular challenge for n-gram classification.</S>
+			<S sid ="43" ssid = "43">Relative to English, French has a richer array of morphological features— such as grammatical gender and verbal conjugation for aspect and voice.</S>
+			<S sid ="44" ssid = "44">Arabic also has richer morphology including gender and dual number.</S>
+			<S sid ="45" ssid = "45">It has pervasive verb- initial matrix clauses, although preposed subjects are also possible.</S>
+			<S sid ="46" ssid = "46">For languages like these it is well known that constituency parsing models designed for English often do not generalize well.</S>
+			<S sid ="47" ssid = "47">Therefore, we focus on the interplay among language, annotation choices, and parsing model design for each language (Levy and Manning 2003; Kübler 2005, inter alia), although our methods are ultimately very general.</S>
+			<S sid ="48" ssid = "48">Our modeling strategy for MWEs is simple: We mark them with flat bracketings in phrase structure trees.</S>
+			<S sid ="49" ssid = "49">This representation implicitly assumes a locality constraint on idioms, an assumption with a precedent in linguistics (Marantz 1997, inter alia).</S>
+			<S sid ="50" ssid = "50">Of course, it is easy to find non-local idioms that do not correspond to surface constituents or even contiguous strings (O’Grady 1998).</S>
+			<S sid ="51" ssid = "51">Utterances such as All hell seemed to break loose and The cat got Mary’s tongue are clearly idiomatic, yet the idiomatic elements are discontiguous.</S>
+			<S sid ="52" ssid = "52">Our models cannot identify these MWEs, but then again, neither can n-gram classification.</S>
+			<S sid ="53" ssid = "53">Nonetheless, many common MWE types like nominal compounds are contiguous and often correspond to constituent boundaries.</S>
+			<S sid ="54" ssid = "54">Consider again the phrasal compound part of speech,1 which is non-compositional: The idiomatic meaning “syntactic category” does not derive from any of the component 1 It is common to hyphenate some nominal compounds, e.g., part-of-speech.</S>
+			<S sid ="55" ssid = "55">This practice invites a. words-with-spaces treatment of idioms.</S>
+			<S sid ="56" ssid = "56">However, hyphens are inconsistently used in English.</S>
+			<S sid ="57" ssid = "57">Hyphenation is more common in French, but totally absent in Arabic.</S>
+			<S sid ="58" ssid = "58">words.</S>
+			<S sid ="59" ssid = "59">This non-compositionality affects the syntactic environment of the compound as shown by the addition of an attributive adjective: (1) a. Noun is a part of speech.</S>
+			<S sid ="60" ssid = "60">b. *Noun is a big part of speech.</S>
+			<S sid ="61" ssid = "61">(2) c. a. *Noun is a big part.</S>
+			<S sid ="62" ssid = "62">Liquidity is a part of growth.</S>
+			<S sid ="63" ssid = "63">b. Liquidity is a big part of growth.</S>
+			<S sid ="64" ssid = "64">c. Liquidity is a big part.</S>
+			<S sid ="65" ssid = "65">In Example (1a) the copula predicate part of speech as a whole describes Noun.</S>
+			<S sid ="66" ssid = "66">In Examples (1b) and (1c) big clearly modifies only part and the idiomatic meaning is lost.</S>
+			<S sid ="67" ssid = "67">The attributive adjective cannot probe arbitrarily into the non-compositional compound.</S>
+			<S sid ="68" ssid = "68">In contrast, Example (2) contains parallel data without idiomatic semantics.</S>
+			<S sid ="69" ssid = "69">The conventional syntactic analysis of Example (2a) is identical to that of Example (1a) except for the lexical items, yet part of growth is not idiomatic.</S>
+			<S sid ="70" ssid = "70">Consequently, many pre- modifiers are appropriate for part, which is semantically vacuous.</S>
+			<S sid ="71" ssid = "71">In Example (2b), big clearly modifies part, and of growth is just an optional PP complement, as shown by Example (2c), which is still grammatical.</S>
+			<S sid ="72" ssid = "72">This article proposes different phrase structures for examples such as (1a) and (2a).</S>
+			<S sid ="73" ssid = "73">Figure 1a shows a Penn Treebank (PTB) (Marcus, Marcinkiewicz, and Santorini 1993) parse of Example (1a), and Figure 1b shows the parse of a paraphrase.</S>
+			<S sid ="74" ssid = "74">The phrasal compound part of speech functions syntactically like a single-word nominal like category, and indeed Noun is a big category is grammatical.</S>
+			<S sid ="75" ssid = "75">Single-word paraphrasability is a common, though not mandatory, characteristic of MWEs (Baldwin and Kim 2010).</S>
+			<S sid ="76" ssid = "76">Starting from the paraphrase parse, we create a representation like Figure (1c).</S>
+			<S sid ="77" ssid = "77">The MWE is indicated by a label in the predicted structure, which is flat.</S>
+			<S sid ="78" ssid = "78">This representation explicitly models the idiomatic semantics of the compound and is context-free, so we can build efficient parsers for it.</S>
+			<S sid ="79" ssid = "79">Crucially, MWE identification becomes a byproduct of parsing as we can trivially extract MWE spans from full parses.</S>
+			<S sid ="80" ssid = "80">We convert existing Arabic and French syntactic treebanks to the new MWE representation.</S>
+			<S sid ="81" ssid = "81">With this representation, the TSG model yields the best MWE identification results for Arabic (81.9% F1) and competitive results for French (71.3%), even though its parsing results lag state-of-the-art probabilistic CFG (PCFG)-based parsers.</S>
+			<S sid ="82" ssid = "82">The TSG model also learns human-interpretable MWE rules.</S>
+			<S sid ="83" ssid = "83">The factored lexicon model with gold morphological annotations achieves the best MWE results for French (87.3% F1) and competitive results for Arabic (78.2% F1).</S>
+			<S sid ="84" ssid = "84">For both languages the factored lexicon model also approaches state-of-the-art basic parsing accuracy.</S>
+			<S sid ="85" ssid = "85">The remainder of this article begins with linguistic background on common MWE types in Arabic and French (Section 2).</S>
+			<S sid ="86" ssid = "86">We then describe two constituency parsing models that are tuned for MWE identification (Sections 3 and 4).</S>
+			<S sid ="87" ssid = "87">These models are supervised and can be trained on existing linguistic resources (Section 5).</S>
+			<S sid ="88" ssid = "88">We evaluate the models for both basic parsing and MWE identification (Section 6).</S>
+			<S sid ="89" ssid = "89">Finally, we compare our results with a state-of-the-art n-gram classification system (Section 7) and to prior work (Section 8).</S>
+	</SECTION>
+	<SECTION title="Multiword Expressions in Arabic and French. " number = "2">
+			<S sid ="90" ssid = "1">In this section we provide a general definition and taxonomy of MWEs.</S>
+			<S sid ="91" ssid = "2">Then we discuss types of MWEs in Arabic and French.</S>
+			<S sid ="92" ssid = "3">2.1 Definition of Multiword Expressions.</S>
+			<S sid ="93" ssid = "4">MWEs, a known nuisance for both linguistics and NLP, blur the lines between syntax and semantics.</S>
+			<S sid ="94" ssid = "5">Jackendoff (1997, page 156) comments that MWEs “are hardly a marginal part of our use of language,” and estimates that a native speaker knows at least as many MWEs as single words.</S>
+			<S sid ="95" ssid = "6">A linguistically adequate representation for MWEs remains an active area of research, however.</S>
+			<S sid ="96" ssid = "7">Baldwin and Kim (2010) define MWEs as follows: Definition 1 Multiword expressions are lexical items that: (a) can be decomposed into multiple lexemes; and (b) display lexical, syntactic, semantic, pragmatic, and/or statistical idiomaticity.</S>
+			<S sid ="97" ssid = "8">S NP VP NN Noun V B Z i s DT a NP NN part P P IN NP of NN NP NN Noun S VBZ is VP N P DT NN speech a category (a) Standard analysis of Example (1a) (b) Standard analysis of a paraphrase S NP VP NN Noun VBZ is DT NP MWN a NN IN NN part of speech Figure 1 (c) MWE analysis used in this article (a) A standard PTB parse of Example (1a).</S>
+			<S sid ="98" ssid = "9">(b) The MWE part of speech functions syntactically like the ordinary nominal category, as shown by this paraphrase.</S>
+			<S sid ="99" ssid = "10">(c) We incorporate the presence of the MWE into the syntactic analysis by flattening the tree dominating part of speech and introducing a new non-terminal label multiword noun (MWN) for the resulting span.</S>
+			<S sid ="100" ssid = "11">The new representation classifies an MWE according to a global syntactic type and assigns a POS to each of the internal tokens.</S>
+			<S sid ="101" ssid = "12">It makes no commitment to the internal syntactic structure of the MWE, however.</S>
+			<S sid ="102" ssid = "13">Table 1 Semi-fixed MWEs in French and English.</S>
+			<S sid ="103" ssid = "14">The French adverb à terme (‘in the end’) can be modified by a small set of adjectives, and in turn some of these adjectives can be modified by an adverb such as très (‘very’).</S>
+			<S sid ="104" ssid = "15">Similar restrictions appear in English.</S>
+			<S sid ="105" ssid = "16">French English à ter me in t h e ne ar ter m à co urt ter me in t h e sh ort ter m à trè s co urt ter me in t h e ver y sh ort ter m à mo ye n ter me in t h e me diu m ter m à lon g ter me in t h e lon g ter m à trè s lon g ter me in t h e ver y lon g ter m MWEs fall into four broad categories (Sag et al. 2002): 1.</S>
+			<S sid ="106" ssid = "17">Fixed—do not allow morphosyntactic variation or internal modification (in short,.</S>
+			<S sid ="107" ssid = "18">by and large).</S>
+			<S sid ="108" ssid = "19">2.</S>
+			<S sid ="109" ssid = "20">Semi-fixed—can be inflected or undergo internal modification (Table 1)..</S>
+			<S sid ="110" ssid = "21">3.</S>
+			<S sid ="111" ssid = "22">Syntactically flexible—undergo syntactic variation such as inflection (e.g.,.</S>
+			<S sid ="112" ssid = "23">phrasal verbs such as look up and write down).</S>
+			<S sid ="113" ssid = "24">4.</S>
+			<S sid ="114" ssid = "25">Institutionalized phrases—fully compositional phrases that are statistically.</S>
+			<S sid ="115" ssid = "26">idiosyncratic (traffic light, Secretary of State).</S>
+			<S sid ="116" ssid = "27">Statistical parsers are well-suited for coping with lexical, syntactic, and statistical idiomaticity across all four MWE classes.</S>
+			<S sid ="117" ssid = "28">However, to our knowledge, we are the first to explicitly tune parsers for MWE identification.</S>
+			<S sid ="118" ssid = "29">2.2 Arabic MWEs.</S>
+			<S sid ="119" ssid = "30">The most recent and most relevant work on Arabic MWEs was by Ashraf (2012), who analyzed an 83-million-word Arabic corpus.</S>
+			<S sid ="120" ssid = "31">He developed an empirical taxonomy of six MWE types, which correspond to syntactic classes.</S>
+			<S sid ="121" ssid = "32">The syntactic class is defined by the projection of the purported syntactic head of the MWE.</S>
+			<S sid ="122" ssid = "33">MWEs are further subcategorized by observed POS sequences.</S>
+			<S sid ="123" ssid = "34">For some of these classes, the syntactic distinctions are debatable.</S>
+			<S sid ="124" ssid = "35">For example, in the verb-object idiom &quot;� &gt;&apos; . ·y&quot;r- �• � &quot;.</S>
+			<S sid ="125" ssid = "36">Daraba c Sfuurayn biHajar (‘he killed two birds with one stone’)2 the composition of . ·y&quot;r- �• (‘two birds’) with &quot;&gt; ;.</S>
+			<S sid ="126" ssid = "37">(‘stone’) is at least as important as composition with the verb � &quot;.</S>
+			<S sid ="127" ssid = "38">(‘he killed’), yet Ashraf (2012) classifies the phrase as a verbal idiom.</S>
+			<S sid ="128" ssid = "39">The corpus in our experiments only marks three of the six Arabic MWE classes: Nominal idioms (MWN) consist of proper nouns (Example 3a), noun compounds (Example 3b), and construct NPs (Example 3c).</S>
+			<S sid ="129" ssid = "40">MWNs typically correspond to NP bracketings: (3) a. N N: _·., !.</S>
+			<S sid ="130" ssid = "41">ry l abuu Dabii (‘Abu Dhabi’) 2 For each Arabic example in this work, we provide native script, transliterations in italics according to the.</S>
+			<S sid ="131" ssid = "42">phonetic scheme in Ryding (2005), and English translations in single quotes.</S>
+			<S sid ="132" ssid = "43">b. D+N D+N: ...-.y, -Jl ...·y ....Jl al-c naaya alfaaOqa (‘intensive care unit’) c. N D+N: i.,-.Jl ..&quot; kura alqudum (‘soccer ’) Prepositional idioms (MWP) include PPs that are commonly used as discourse connectives (Example 4a), function like adverbials in English (Example 4b), or have been institutionalized (Example 4c).</S>
+			<S sid ="133" ssid = "44">These MWEs are distinguished by a prepositional syntactic head:(4) a. P D+N: u _.,.;.</S>
+			<S sid ="134" ssid = "45">Hataa alaan (‘until now’) b. P+N: &apos;--....y bicnf (‘violently’) c. P+D+N D+N: _·,l�J l .._. .·,.r..J y bial-twqiit almaHalii (‘local time’) Adjectival idioms (MWA) are typically the so-called “false” iDaafa constructs in which the first term is an adjective that acts as a modifier of some other noun.</S>
+			<S sid ="135" ssid = "46">These constructs often correspond to a hyphenated modifier in English such as Examples (5a) and (5b).</S>
+			<S sid ="136" ssid = "47">Less frequent are coordinated adjectives that have been institutionalized such as Examples (5c) and (5d): (5) a. A D+N: i.Sr..-J l .......·,&quot; rafiic a almustuuaa (‘high-level’) b. A D+N: e.�Jl ...·..y .·,r� swfiiaatiia alSanac (‘Soviet-made’) c. D+A C+D+A: ...-.·y.,�Jl_ d. D+A C+D+A: ...·y&quot;�.Jl_ ...-.·.-.-� Jl alshaqiiqa w-al-Sadiiqa (‘neighborly’) ...·y&quot;&lt;Jl albariia w-al-baHariia (‘land and sea’) These idiom types usually do not cross constituent boundaries, so constituency parsers are well suited for modeling them.</S>
+			<S sid ="137" ssid = "48">The other three classes of Ashraf (2012)—verb- subject, verbal, and adverbial—tend to cross constituent boundaries, so they are difficult to represent in a PTB-style treebank.</S>
+			<S sid ="138" ssid = "49">Dependency representations may be more appropriate for these idiom classes.</S>
+			<S sid ="139" ssid = "50">2.3 French MWEs.</S>
+			<S sid ="140" ssid = "51">In French, there is a lexicographic tradition of compiling MWE lists.</S>
+			<S sid ="141" ssid = "52">For example, Gross (1986) shows that whereas French dictionaries contain about 1,500 single-word adverbs there are over 5,000 multiword adverbs.</S>
+			<S sid ="142" ssid = "53">MWEs occur in every part of speech (POS) category (e.g., noun trousse de secours (‘first-aid kit’); verb faire main-basse [do hand-low] (‘seize’); adverb comme dans du beurre [as in butter] (‘easily’); adjective à part entière (‘wholly’)).</S>
+			<S sid ="143" ssid = "54">Motivated by the prevalence of MWEs in French, Gross (1984) developed a linguistic theory known as Lexicon-Grammar.</S>
+			<S sid ="144" ssid = "55">In this theory, MWEs are classified according to their global POS tags (noun, verb, adverb, adjective), and described in terms of the sequence of the POS tags of the words that constitute the MWE (e.g., “N de N” garde d’enfant [guard of child] (‘daycare’), pied de guerre [foot of war] (‘at the ready’)) (Gross 1986).</S>
+			<S sid ="145" ssid = "56">In other words, MWEs are represented by a flat structure.</S>
+			<S sid ="146" ssid = "57">The Lexicon-Grammar distinguishes between units that are fixed and have to appear as is (en tout et pour tout [in all and for all] (‘in total’)) and units that accept some syntactic variation such as admitting the insertion of an adverb or adjective, or the variation of one of the words in the expression (e.g., a possessive as in from the top of one’s hat).</S>
+			<S sid ="147" ssid = "58">It also notes whether the MWE displays some selectional preferences (e.g., it has to be preceded by a verb or by an adjective).</S>
+			<S sid ="148" ssid = "59">We discuss three of the French MWE categories here, and list the rest in Appendix A. Nominal idioms (MWN) consist of proper nouns (Example (6a)), foreign common nouns (6b), and common nouns.</S>
+			<S sid ="149" ssid = "60">The common nouns appear in several syntactically regular sequences of POS tags (Example (7)).</S>
+			<S sid ="150" ssid = "61">Multiword nouns allow inflection (singular vs. plural) but no insertion: (6) a. b. Lo nd on Su nd ay Ti me s, Lo s An ge les we eken d, me a cul pa, joi ntve nt ure (7) a. N A: cor ps mé dic al (‘ me dic al sta ff’ ), det te pu bli qu e (‘p ubl ic de bt’ ) b. N P N: mo de d’e mp loi (‘i nst ru cti on m an ua l’) c. N N: nu mé ro de ux (‘n u m be r tw o’) , ma iso n mè re [h ou se m ot he r] (‘h ea dq ua r- ter s’) , grè ve sur pri se (‘s ud de n str ike ’) d. N P D N: im pô t su r le rev en u (‘i nc om e tax ’), mi nis tre de l’éc on om ie (‘f ina nc e mi nis ter ’) Adjectival idioms (MWA) appear with different POS sequences (Example (8)).</S>
+			<S sid ="151" ssid = "62">They include numbers like vingt et unième (‘21st’).</S>
+			<S sid ="152" ssid = "63">Some MWAs allow internal variation.</S>
+			<S sid ="153" ssid = "64">For example, some adverbs or adjectives can be added to both examples in (8b) (à très haut risque, de toute dernière minute): (8) a. P N: d’a nt an [fr om bef ore ] (‘o ld’ ), en qu est ion (‘u nd er di sc us sio n’) b. P A N: à ha ut ris qu e (‘h igh ris k’) , de de rni ère mi nu te [fr o m the las t mi nu te] (‘a t the el ev en th ho ur ’) c. A C A: pu r et si mp le [p ure an d si m ple ] (‘s tra ig htf or wa rd’ ), no ir et bla nc (‘b lac k an d w hit e’) Verbal idioms (MWV) allow number and tense inflections (Example (9)).</S>
+			<S sid ="154" ssid = "65">Some MWVs containing a noun or an adjective allow the insertion of a modifier (e.g., donner grande satisfication (‘give great satisfaction’)), whereas others do not.</S>
+			<S sid ="155" ssid = "66">When an adverb intervenes between the main verb and its complement, the two parts of the MWV may be marked discontinuously (e.g., [MWV [V prennent]] [ADV déjà] [MWV [P en] [N cause]] (‘already take into account’)): (9) a. V N: av oir lie u (‘t ak e pla ce’ ), do nn er sat isf act ion (‘g ive sat isf act io n’) b. V P N: m ett re en pla ce (‘p ut in pla ce’ ), ent rer en vig ue ur (‘t o co me int o eff ect ’) c. V P A D V: m ett re à m al [p ut at ba d] (‘h ar m’ ), êtr e à mê me [be at sa me ] (‘b e abl e’) d. V D N P N: tir er la so nn ett e d’a lar me (‘ri ng the ala rm bel l’), av oir le ve nt en po up e (‘t o ha ve the wi nd ast er n’) Both Gross (1986) and Ashraf (2012) classify MWEs according to global syntactic role and internal POS sequence.</S>
+			<S sid ="156" ssid = "67">In a constituency tree, these two features can be modeled Table 2 French grammar development.</S>
+			<S sid ="157" ssid = "68">Incremental effects on grammar size and labeled F1 for each of the manual grammar features (development set, sentences ≤ 40 words).</S>
+			<S sid ="158" ssid = "69">The baseline is a parent-annotated grammar.</S>
+			<S sid ="159" ssid = "70">The features tradeoff between maximizing two objectives: overall parsing F1 and MWE F1.</S>
+			<S sid ="160" ssid = "71">Fea ture St ate s Ta gs Pa rse F1 Δ F1 M W E F1 – 4, 12 8 3 2 7 7 . 3 6 0 . 7 tagP A 4, 36 0 26 4 7 8 . 4 +1 .1 7 1 . 4 spli tPU NC 4, 76 2 26 8 7 8 . 8 +0 .4 7 1 . 1 mar kDe 4, 88 2 28 4 7 9 . 8 +1 .0 7 1 . 6 mar kP 4, 88 4 28 6 7 9 . 9 +0 .1 7 1 . 5 MW AD Vty pe1 4, 91 9 28 6 7 9 . 9 +0 .0 7 1 . 8 MW AD Vty pe2 4, 97 0 28 6 7 9 . 9 +0 .0 7 1 . 7 M WN type 1 5, 04 2 28 6 8 0 . 0 +0 .1 7 1 . 9 M WN type 2 5, 09 8 28 6 7 9 . 9 −0 .1 7 1 . 9 by a span over the MWE composed of a phrasal label indicating the MWE type and pre-terminal labels indicating the internal POS sequence.</S>
+			<S sid ="161" ssid = "72">MWE identification then becomes a trivial process of extracting such subtrees from full parses.</S>
+	</SECTION>
+	<SECTION title="Context-Free Parsing Model: Stanford Parser. " number = "3">
+			<S sid ="162" ssid = "1">In this section and Section 4, we describe constituency parsing models that will be tuned for MWE identification.</S>
+			<S sid ="163" ssid = "2">The algorithmic details of the parsing models may seem removed from multiword expressions, but this is by design.</S>
+			<S sid ="164" ssid = "3">MWEs are encoded in the syntactic representation, allowing the model designer to focus on learning that representation rather than trying to model semantic phenomena directly.</S>
+			<S sid ="165" ssid = "4">The Stanford parser (Klein and Manning 2003) is a product model that combines the outputs of a manually refined PCFG with an arc-factored dependency parser.</S>
+			<S sid ="166" ssid = "5">Adapting the Stanford parser to a new language requires: (1) feature engineering for the PCFG grammar, (2) specification of head-finding rules for extracting dependencies, and (3) development of an unknown word model.3 After adapting the basic parser, we develop a novel lexical model, which we call a factored lexicon.</S>
+			<S sid ="167" ssid = "6">The factored lexicon incorporates morphological information that is predicted by a separate morphological analyzer.</S>
+			<S sid ="168" ssid = "7">3.1 Grammar Development.</S>
+			<S sid ="169" ssid = "8">Grammar features consist of manual splits of labels in the training data (e.g., marking base NPs with the rich label “NP-base”).</S>
+			<S sid ="170" ssid = "9">These features were tuned on a development set.</S>
+			<S sid ="171" ssid = "10">Some of them have linguistic interpretations, whereas others (e.g., punctuation splitting) have only empirical justification.</S>
+			<S sid ="172" ssid = "11">French Grammar Features.</S>
+			<S sid ="173" ssid = "12">Table 2 lists the category splits used in our grammar.</S>
+			<S sid ="174" ssid = "13">Most of the features are POS splits as many phrasal tag splits did not improve accuracy.</S>
+			<S sid ="175" ssid = "14">This result may be due to the flat annotation scheme of the FTB.</S>
+			<S sid ="176" ssid = "15">3 The Stanford parser code, head-finding rules, and trained models are available at.</S>
+			<S sid ="177" ssid = "16">http://nlp.stanford.edu/software/lex-parser.shtml.</S>
+			<S sid ="178" ssid = "17">Parent annotation of POS tags captures information about the external context.</S>
+			<S sid ="179" ssid = "18">For example, prepositions (P) can introduce a prepositional phrase (PP) or an infinitival complement (VPinf), but some prepositions will uniquely appear in one context and not the other (e.g., sur (‘on’) will only occur in a PP environment).</S>
+			<S sid ="180" ssid = "19">The tagPA provides this kind of distribution.</S>
+			<S sid ="181" ssid = "20">We also split punctuation tags (splitPUNC) into equivalence classes similar to those present in the PTB.</S>
+			<S sid ="182" ssid = "21">We tried different features to mark the context of prepositions.</S>
+			<S sid ="183" ssid = "22">markP identifies prepositions which introduce PPs modifying a noun (NP).</S>
+			<S sid ="184" ssid = "23">Marking other kinds of prepositional modifiers (e.g., verb) did not help.</S>
+			<S sid ="185" ssid = "24">The feature markDe the preposition de and its variants (du, des, d’), which are very frequent and appear in many contexts.</S>
+			<S sid ="186" ssid = "25">The features that help MWE F1 depend on idiom frequency.</S>
+			<S sid ="187" ssid = "26">We mark MWADVs under S nodes (MWADVtype1), and those with POS sequences that occur more than 500 times (“P N” – en jeu, à peine, or “PD N” dans l’immédiat, à l’inverse) (MWADVtype2).</S>
+			<S sid ="188" ssid = "27">Similarly, we mark MWNs that occur more than 600 times (e.g., “N P N” and “N N”) (MWNtype1 and MWNtype2).</S>
+			<S sid ="189" ssid = "28">Arabic Grammar Features.</S>
+			<S sid ="190" ssid = "29">The Arabic grammar features come from Green and Manning (2010), which contains an ablation study similar to Table 2.</S>
+			<S sid ="191" ssid = "30">We added one additional feature, markMWEPOS, which marks POS tags dominated by MWE phrasal categories.</S>
+			<S sid ="192" ssid = "31">3.2 Head-Finding Rules.</S>
+			<S sid ="193" ssid = "32">For Arabic, we use the head-finding rules from Green and Manning (2010).</S>
+			<S sid ="194" ssid = "33">For French, we use the head-finding rules of DybroJohansen (2004), which yielded an approximately 1% development set improvement over those of Arun (2004).</S>
+			<S sid ="195" ssid = "34">3.3 Unknown Word Models.</S>
+			<S sid ="196" ssid = "35">For both languages, we create simple unknown word models that substitute word signatures for rare and unseen word types.</S>
+			<S sid ="197" ssid = "36">The signatures are generated according to the features in Table 3.</S>
+			<S sid ="198" ssid = "37">For tag t and signature s, the signature parameters p(t|s) are estimated after collecting counts for 50% of the training data.</S>
+			<S sid ="199" ssid = "38">Then p(s|t) is computed via Bayes rule with a flat Dirichlet prior.</S>
+			<S sid ="200" ssid = "39">Table 3 Unknown word model features for Arabic and French.</S>
+			<S sid ="201" ssid = "40">Arabic Lexical Features French Lexical Features r&gt; Presence of the determiner Jl al r&gt; Nominal, adjectival, verbal, adverbial, and plural suffixes r&gt; Contains digits or punctuation r&gt; Contains digits or punctuation r&gt; Ends with the feminine affix ..</S>
+			<S sid ="202" ssid = "41">ah r&gt; Is capitalized (except the first word in a sentence), or consists entirely of capital letters r&gt; Various verbal (e.g., �.</S>
+			<S sid ="203" ssid = "42">t, l_ waa, u_ uun) and r&gt; If none of the above, deterministically adjectival suffixes (e.g., ...·y iiah, i.S· ii) extract one- and two-character suffixes 3.4 Factored Lexicon with Morphological Features.</S>
+			<S sid ="204" ssid = "43">We will apply our models to Arabic and French, yet we have not dealt with the lexical sparsity induced by rich morphology (see Table 5 for a comparison to English).</S>
+			<S sid ="205" ssid = "44">One way to combat sparsity is to parse a factored representation of the terminals, where factors might be the word form, the lemma, or grammatical features such as gender, number, and person (φ features) (Bilmes and Kirchoff 2003; Koehn and Hoang 2007, inter alia).</S>
+			<S sid ="206" ssid = "45">The basic parser lexicon estimates the generative probability of a word given a tag p(w|t) from word/tag pairs observed in the training set.</S>
+			<S sid ="207" ssid = "46">Additionally, the lexicon includes parameter estimates p(t|s) for unknown word signatures s produced by the unknown word models (see Section 3.3).</S>
+			<S sid ="208" ssid = "47">At parsing time, the lexicon scores each input word type w according to its observed count in the training set c(w).</S>
+			<S sid ="209" ssid = "48">We define the unsmoothed and smoothed parameter estimates: p(t|w) = c(t, w) c(w) (1) psmooth (t|w) = c(t, w) + αp(t|s) c(w) + α (2 ) We then compute the desired parameter p(w|t) as ⎧ p(t|w)p(w) ⎪ p(t) p(w|t) = ⎨ psmooth (t|w)p(w) p(t) (3) p(t|s)p(s) p(t) We found that α = 1.0 and β = 100 worked well on both development sets.</S>
+			<S sid ="210" ssid = "49">In the factored lexicon, each token has an associated morphological analysis m, which is a string describing various grammatical features (e.g., tense, voice, definiteness).</S>
+			<S sid ="211" ssid = "50">Instead of generating terminals alone, we generate the word and morphological analysis using a simple product: p(w, m|t) = p(w|t)p(m|t) (4) where p(m|t) is estimated using exactly the same procedure as the lexical insertion probability p(w|t).</S>
+			<S sid ="212" ssid = "51">Because there are only a few hundred unique (t, m) tuples in the training data for each language, we tend to get sharper parameter estimates, namely, we usually estimate p(t|m) directly as in Equation (1).</S>
+			<S sid ="213" ssid = "52">Moreover, at test time, even if the word type w is unknown, the associated morphological analysis m is almost always known, providing additional evidence for tagging.</S>
+			<S sid ="214" ssid = "53">We also experimented with an additional lemma factor, but found that it did not improve accuracy.</S>
+			<S sid ="215" ssid = "54">We thus excluded the lemma factor from our experiments.</S>
+			<S sid ="216" ssid = "55">For words that have been observed with only one tagging, the factored lexicon is clearly redundant.</S>
+			<S sid ="217" ssid = "56">Consider, however, the case of the Arabic triliteral J..,.</S>
+			<S sid ="218" ssid = "57">qtl which, in unvocalized text, can be either a verb meaning “he killed” or a nominal meaning “murder, killing.” If J..,.</S>
+			<S sid ="219" ssid = "58">appears as a verb, and we include the tense feature in the morphological analysis, then all associated nominal tags (e.g., NN) will be assigned zero probability because nominals never carry tense in the training data.</S>
+	</SECTION>
+	<SECTION title="Fragment Parsing Model: Dirichlet Process Tree Substitution Grammars. " number = "4">
+			<S sid ="220" ssid = "1">For our task, a shortcoming of CFG-based grammars is that they do not explicitly capture idiomatic usage.</S>
+			<S sid ="221" ssid = "2">For example, consider the two utterances: (10) a. He kicked the bucket.</S>
+			<S sid ="222" ssid = "3">b. He kicked the pail.</S>
+			<S sid ="223" ssid = "4">Unless horizontal markovization is applied, PCFGs generate words independently.</S>
+			<S sid ="224" ssid = "5">Consequently, no phrasal rule parameter in the model differentiates between Examples (10a) and (10b).</S>
+			<S sid ="225" ssid = "6">Recall, however, that in our representation, Example (10a) should receive a flat analysis as MWV, whereas Example (10b) should have a conventional analysis of the transitive verb kicked and its two arguments.</S>
+			<S sid ="226" ssid = "7">TSGs are weakly equivalent to CFGs, but with greater strong generative capacity (Joshi and Schabes 1997).</S>
+			<S sid ="227" ssid = "8">TSGs can store lexicalized tree fragments as rules.</S>
+			<S sid ="228" ssid = "9">Consequently, if we have seen [MWV kicked the bucket] several times before, we can store that whole lexicalized fragment in the grammar.</S>
+			<S sid ="229" ssid = "10">We consider the non-parametric probabilistic TSG (PTSG) model of Cohn, Goldwater, and Blunsom (2009) in which tree fragments are drawn from a Dirichlet process (DP) prior.4 The DPTSG can be viewed as a data-oriented parsing (DOP) model (Scha 1990; Bod 1992) with Bayesian parameter estimation.</S>
+			<S sid ="230" ssid = "11">A PTSG is a 5tuple (V, Σ, R, ♦, θ) where c ∈ V are non-terminals; t ∈ Σ are terminals; e ∈ R are elementary trees;5 ♦∈ V is a unique start symbol; and θc,e ∈ θ are parameters for each tree fragment.</S>
+			<S sid ="231" ssid = "12">A PTSG derivation is created by successively applying the substitution operator to the leftmost frontier node (denoted by c+ ).</S>
+			<S sid ="232" ssid = "13">All other nodes are internal (denoted by c−).</S>
+			<S sid ="233" ssid = "14">In the supervised setting, DPTSG grammar extraction reduces to a segmentation problem.</S>
+			<S sid ="234" ssid = "15">We have a treebank T that we segment into the set R, a process that is modeled with Bayes’ rule: p(R | T) ∝ p(T | R) p(R) (5) Because the tree fragments completely specify each tree, p(T | R) is either 0 or 1, so all work is performed by the prior over the set of elementary trees.</S>
+			<S sid ="235" ssid = "16">The DPTSG contains a DP prior for each c ∈ V and generates a tree fragment e rooted at non-terminal c according to: θc |c, αc , P0 (·|c) ∼ DP(αc , P0 ) e|θc ∼ θc 4 Similar models were developed independently by O’Donnell, Tenenbaum, and Goodman (2009) and Post.</S>
+			<S sid ="236" ssid = "17">and Gildea (2009).</S>
+			<S sid ="237" ssid = "18">Table 4 DPTSG notation.</S>
+			<S sid ="238" ssid = "19">For consistency, we largely follow the notation of Liang, Jordan, and Klein (2010).</S>
+			<S sid ="239" ssid = "20">αc DP concentration parameter for each non-terminal type c ∈ V P0 (e|c) CFG base distribution x Set of all non-terminal nodes in the treebank S Set of sampling sites (one for each x ∈ x) S A block of sampling sites, where S ⊆ S b = {bs }s∈S Binary variables to be sampled (bs = 1 for frontier nodes) z Latent state of the segmented treebank m Number of sites s ∈ S s.t. bs = 1 n = {nc,e } Sufficient statistics of z ΔnS:m Change in counts by setting m sites in S Table 4 defines notation.</S>
+			<S sid ="240" ssid = "21">The data likelihood is given by the latent state z and the parameters θ: p(z|θ) = IT θnc,e (z) . Integrating out the parameters, we have: p(z) = n ITe (αc P0 (e|c)) (6) c∈V nc,· (z) c where xn = x(x + 1) ...</S>
+			<S sid ="241" ssid = "22">(x + n − 1) is the rising factorial.</S>
+			<S sid ="242" ssid = "23">Base Distribution.</S>
+			<S sid ="243" ssid = "24">The base distribution P0 is the same maximum likelihood PCFG used in the Stanford parser.6 After applying the manual grammar features, we perform simple right binarization, collapse unary rules, and replace rare words with their signatures (Petrov et al. 2006).</S>
+			<S sid ="244" ssid = "25">For each non-terminal type c, we learn a stop probability qc ∼ Beta(1, 1).</S>
+			<S sid ="245" ssid = "26">UnderP0 , the probability of generating a tree fragment A+ → B− C+ composed of non terminals is P0 (A+ → B− C+ ) = pMLE (A → B C)qB (1 − qC ) (7) Unlike Cohn, Goldwater, and Blunsom (2009), we penalize lexical insertion: P0 (c → t) = pMLE (c → t)p(t) (8) where p(t) is equal to the MLE unigram probability of t in the treebank.</S>
+			<S sid ="246" ssid = "27">Lexicalizing a rule makes it very specific, so we generally want to avoid lexicalization with rare words.</S>
+			<S sid ="247" ssid = "28">Empirically, we found that this penalty reduces overfitting.</S>
+			<S sid ="248" ssid = "29">Type-Based Inference Algorithm.</S>
+			<S sid ="249" ssid = "30">To learn the parameters θ we use the collapsed, block Gibbs sampler of Liang, Jordan, and Klein (2010).</S>
+			<S sid ="250" ssid = "31">We sample binary variables bs associated with each sampling site s in the treebank.</S>
+			<S sid ="251" ssid = "32">The key idea is to select a block 6 The Stanford parser is a product model which scores parses with both a dependency grammar and a. PCFG.</S>
+			<S sid ="252" ssid = "33">We extract the TSG from the manually split PCFG only.</S>
+			<S sid ="253" ssid = "34">Bansal and Klein (2010) also experimented with manual grammar features in an all-fragments (parametric) TSG for English.</S>
+			<S sid ="254" ssid = "35">NP+ PUNC−(1) N+ N− PUNC+ (2) “ Figure 2 Jacques Chirac “ Example of two conflicting sites of the same type in a training tree.</S>
+			<S sid ="255" ssid = "36">Define the type of a site t(z, s) d=ef (Δns:0 , Δns:1 ).</S>
+			<S sid ="256" ssid = "37">Sites (1) and (2) have the same type because t(z, s ) = t(z, s ).</S>
+			<S sid ="257" ssid = "38">The two 1 2 sites conflict, however, because the probabilities of setting bs1 and bs2 both depend on counts for the tree fragment rooted at NP.</S>
+			<S sid ="258" ssid = "39">Consequently, sites (1) and (2) are not exchangeable: The probabilities of their assignments depend on the order in which they are sampled.</S>
+			<S sid ="259" ssid = "40">of exchangeable sites S of the same type that do not conflict (Figure 2).</S>
+			<S sid ="260" ssid = "41">Because the sites in S are exchangeable, we can set bS randomly if we know m, the number of sites with bs = 1.</S>
+			<S sid ="261" ssid = "42">This algorithm is not a contribution of this article, so we refer the interested reader to Liang, Jordan, and Klein (2010) for further details.</S>
+			<S sid ="262" ssid = "43">After each Gibbs iteration, we sample each stop probability qc directly using binomial-Beta conjugacy.</S>
+			<S sid ="263" ssid = "44">We also infer the DP concentration parameters αc with the auxiliary variable procedure of West (1995).</S>
+			<S sid ="264" ssid = "45">Decoding.</S>
+			<S sid ="265" ssid = "46">To decode, we first create a maximum a posterior (MAP) grammar in which tree fragments have fixed estimates according to a single sample from the DPTSG: θc,e = nc,e (z) + αc P0 (e|c) nc, (z) + αc (9) This MAP grammar has an infinite rule set, however, because elementary trees with zero count in n have some residual probability under P0 . We discard all zero-count trees except for the zero-count CFG rules in P0 . Scores for these rules follow from Equation (9) with nc,e (z) = 0.</S>
+			<S sid ="266" ssid = "47">This grammar represents most of the probability mass and permits inference using dynamic programming (Cohn, Goldwater, and Blunsom 2009).</S>
+			<S sid ="267" ssid = "48">Because the derivations of a TSG are context-free (VijayShanker and Weir 1993), we can form a CFG of the derivation sequences and use a synchronous CFG to translate the most probable CFG parse to its TSG derivation.</S>
+			<S sid ="268" ssid = "49">Consider a unique tree fragment ei rooted at cj with frontier γ, which is a sequence of terminals and non-terminals.</S>
+			<S sid ="269" ssid = "50">We encode this fragment as an SCFG rule of the form [cj → γ , cj → i, ck , cl , ...</S>
+			<S sid ="270" ssid = "51">] (10) where ck , cl , ... is a finite-length sequence of the non-terminal frontier nodes in γ.7 The SCFG translates the input string to a sequence of tree fragment indices.</S>
+			<S sid ="271" ssid = "52">Because the TSG substitution operator applies to the leftmost frontier node, the best TSG parse can be deterministically recovered from the sequence of indices.</S>
+			<S sid ="272" ssid = "53">7 This formulation is due to Chris Dyer..</S>
+			<S sid ="273" ssid = "54">Table 5 Gross corpus statistics for the pre-processed corpora used to train and evaluate our models.</S>
+			<S sid ="274" ssid = "55">We compare to the WSJ section of the PTB: train (Sections 02–21); dev.</S>
+			<S sid ="275" ssid = "56">(Section 22); test (Section 23).</S>
+			<S sid ="276" ssid = "57">Due to its flat annotation style, the FTB sentences have fewer constituents per sentence.</S>
+			<S sid ="277" ssid = "58">In the ATB, morphological variation accounts for the high proportion of word types to sentences.</S>
+			<S sid ="278" ssid = "59">Train Dev.</S>
+			<S sid ="279" ssid = "60">Test The SCFG formulation has a practical benefit: We can take advantage of the heavily optimized SCFG decoders for machine translation.</S>
+			<S sid ="280" ssid = "61">We use cdec (Dyer et al. 2010) to find the Viterbi derivation for each input string.</S>
+	</SECTION>
+	<SECTION title="Training Data and Morphological Analyzers. " number = "5">
+			<S sid ="281" ssid = "1">We have described two supervised parsing models for Arabic and French.</S>
+			<S sid ="282" ssid = "2">Now we show how to construct MWE-aware training resources for them.</S>
+			<S sid ="283" ssid = "3">The corpora used in our experiments are the Penn Arabic Treebank (ATB) (Maamouri et al. 2004) and the French Treebank (FTB) (Abeillé, Clément, and Kinyon 2003).</S>
+			<S sid ="284" ssid = "4">Prior to parsing, both treebanks require significant pre-processing, which we perform automatically.8 Because parsing evaluation metrics are sensitive to the terminal/non-terminal ratio (Rehbein and van Genabith 2007), we only remove non terminal labels in the case of unary rewrites of the same category (e.g., NP → NP) (Johnson 1998).</S>
+			<S sid ="285" ssid = "5">Table 5 compares the pre-processed corpora with the WSJ section of the PTB.</S>
+			<S sid ="286" ssid = "6">Appendix C compares the annotation consistency of the ATB, FTB, and WSJ.</S>
+			<S sid ="287" ssid = "7">5.1 Arabic Treebank.</S>
+			<S sid ="288" ssid = "8">We work with parts 1–3 (newswire) of the ATB,9 which contain documents from three different news agencies.</S>
+			<S sid ="289" ssid = "9">In addition to phrase structure markers, each syntactic tree also contains per-token morphological analyses.</S>
+			<S sid ="290" ssid = "10">8 Tree manipulation is automated with Tregex/Tsurgeon (Levy and Andrew 2006).</S>
+			<S sid ="291" ssid = "11">Our pre-processing.</S>
+			<S sid ="292" ssid = "12">package is available at http://nlp.stanford.edu/software/lex-parser.shtml.</S>
+			<S sid ="293" ssid = "13">9 LDC catalog numbers: LDC2008E61, LDC2008E62, and LDC2008E22..</S>
+			<S sid ="294" ssid = "14">Table 6 Frequency distribution of the MWE types in the ATB and FTB training sets.</S>
+			<S sid ="295" ssid = "15">Categories ATB FTB M W N no un 6,9 75 91 .6 % 9,6 80 49.</S>
+			<S sid ="296" ssid = "16">7 % M WP pr ep.</S>
+			<S sid ="297" ssid = "17">62 3 8.</S>
+			<S sid ="298" ssid = "18">1 8 % 3,5 26 18.</S>
+			<S sid ="299" ssid = "19">1 % M WA ad j. 18 0.</S>
+			<S sid ="300" ssid = "20">2 4 % 32 4 1.</S>
+			<S sid ="301" ssid = "21">6 6 % M WP RO pr on . – – 26 6 1.</S>
+			<S sid ="302" ssid = "22">3 7 % M WC co nj.</S>
+			<S sid ="303" ssid = "23">– – 81 4 4.</S>
+			<S sid ="304" ssid = "24">1 8 % M WA DV ad ve rb – – 3,8 52 19.</S>
+			<S sid ="305" ssid = "25">8 % M W V ve rb – – 58 5 3.</S>
+			<S sid ="306" ssid = "26">0 1 % M W D de t. – – 32 8 1.</S>
+			<S sid ="307" ssid = "27">6 9 % M WC L clit ic – – 59 0.</S>
+			<S sid ="308" ssid = "28">3 0 % M WE T for eig n – – 24 0.</S>
+			<S sid ="309" ssid = "29">1 2 % M WI int erj . – – 4 0.</S>
+			<S sid ="310" ssid = "30">0 2 % Tot al 7,6 16 19, 46 2 Tokenization/Segmentation.</S>
+			<S sid ="311" ssid = "31">We retained the default ATB clitic segmentation scheme.</S>
+			<S sid ="312" ssid = "32">Morphological Analysis.</S>
+			<S sid ="313" ssid = "33">The ATB contains gold per-token morphological analyses, but no lemmas.</S>
+			<S sid ="314" ssid = "34">Tag Sets.</S>
+			<S sid ="315" ssid = "35">We used the POS tag set described by Kulick, Gabbard, and Marcus (2006).</S>
+			<S sid ="316" ssid = "36">We previously showed that the “Kulick” tag set is very effective for basic Arabic parsing (Green and Manning 2010).</S>
+			<S sid ="317" ssid = "37">MWE Tagging.</S>
+			<S sid ="318" ssid = "38">The ATB does not mark MWEs.</S>
+			<S sid ="319" ssid = "39">Therefore, we merged an existing Arabic MWE list (Attia et al. 2010b) with the constituency trees.10 For each string from the MWE list that was bracketed in the treebank, we flattened the structure over the MWE span and added a non-terminal label according to the MWE type (Table 6).</S>
+			<S sid ="320" ssid = "40">We ignored MWE strings that crossed constituent boundaries.</S>
+			<S sid ="321" ssid = "41">Orthographic Normalization.</S>
+			<S sid ="322" ssid = "42">Orthographic normalization has a significant impact on parsing accuracy.</S>
+			<S sid ="323" ssid = "43">We remove all diacritics, instances of taTwiil,11 and pro-drop markers.</S>
+			<S sid ="324" ssid = "44">We also applied alif normalization12 and mapped punctuation and numbers to their Latin equivalents.</S>
+			<S sid ="325" ssid = "45">Corpus Split.</S>
+			<S sid ="326" ssid = "46">We divided the ATB into training/development/test sections according to the split prepared by Mona Diab for the 2005 Johns Hopkins workshop on parsing Arabic dialects (Rambow et al. 2005).13 10 The list of 30,277 distinct MWEs is available at: http://sourceforge.net/projects/arabicmwes/..</S>
+			<S sid ="327" ssid = "47">11 taTwiil ( _) is an elongation character for justifying text.</S>
+			<S sid ="328" ssid = "48">It has no morphosyntactic function or phonetic realization.</S>
+			<S sid ="329" ssid = "49">12 Variants of alif [ l,,,,l,-] are inconsistent in Arabic text..</S>
+			<S sid ="330" ssid = "50">l l 13 The corpus split is available at: http://nlp.stanford.edu/projects/arabic.shtml..</S>
+			<S sid ="331" ssid = "51">5.2 French Treebank.</S>
+			<S sid ="332" ssid = "52">The FTB14 contains phrase structure trees with morphological analyses and lemmas.</S>
+			<S sid ="333" ssid = "53">In addition, the FTB explicitly annotates MWEs.</S>
+			<S sid ="334" ssid = "54">POS tags for MWEs are given not only at the MWE level, but also internally: Most tokens that constitute an MWE also have a POS tag.</S>
+			<S sid ="335" ssid = "55">Our FTB pre-processing is largely consistent with Lexicon-Grammar, which defines MWE categories based on the global POS.</S>
+			<S sid ="336" ssid = "56">Tokenization/Segmentation.</S>
+			<S sid ="337" ssid = "57">We changed the default tokenization for numbers by fusing adjacent digit tokens.</S>
+			<S sid ="338" ssid = "58">For example, 500 000 is tagged as an MWE composed of two words 500 and 000.</S>
+			<S sid ="339" ssid = "59">We made this 500000 and removed the MWE POS.</S>
+			<S sid ="340" ssid = "60">We also merged numbers like “17,9”.</S>
+			<S sid ="341" ssid = "61">Morphological Analysis.</S>
+			<S sid ="342" ssid = "62">The FTB provides both gold morphological analyses and lemmas for 86.6% of the tokens.</S>
+			<S sid ="343" ssid = "63">The remaining tokens lack morphological analyses, and in many cases basic parts of speech.</S>
+			<S sid ="344" ssid = "64">We restored the basic parts of speech by assigning each token its most frequent POS tag elsewhere in the treebank.15 This technique was too coarse for missing morphological analyses, which we left empty.</S>
+			<S sid ="345" ssid = "65">Tag Sets.</S>
+			<S sid ="346" ssid = "66">We transformed the raw POS tags to the CC tag set (Crabbé and Candito 2008), which is now the standard tag set in the French parsing literature.</S>
+			<S sid ="347" ssid = "67">The CC tag set includes WH markers and verbal mood information.</S>
+			<S sid ="348" ssid = "68">MWE Tagging.</S>
+			<S sid ="349" ssid = "69">We added the 11 MWE labels shown in Table 6.</S>
+			<S sid ="350" ssid = "70">We mark MWEs with a flat bracketing in which the phrasal label is the MWE-level POS tag with an MW prefix, and the preterminals are the internal POS tags for each terminal.</S>
+			<S sid ="351" ssid = "71">The resulting POS sequences are not always unique to MWEs: They appear in abundance elsewhere in the corpus.</S>
+			<S sid ="352" ssid = "72">Some MWEs contain normally ungrammatical POS sequences, however (e.g., adverb à la va vite (‘in a hurry’): P D V ADV [at the goes quick]), and some words appear only as part of an MWE, such as insu in à l’insu de (‘to the ignorance of’).</S>
+			<S sid ="353" ssid = "73">We also found that 36 MWE spans still lacked a global POS.</S>
+			<S sid ="354" ssid = "74">To restore these labels, we assigned the most frequent label for that internal POS sequence elsewhere in the corpus.</S>
+			<S sid ="355" ssid = "75">Corpus Split.</S>
+			<S sid ="356" ssid = "76">We used the 80/10/10 split described by Crabbé and Candito (2008).</S>
+			<S sid ="357" ssid = "77">They used a previous release of the treebank with 12,531 trees.</S>
+			<S sid ="358" ssid = "78">Subsequently, 3,391 trees were added to the FTB.</S>
+			<S sid ="359" ssid = "79">We appended these extra trees to the training set, thus preserving the original development and test sets.</S>
+			<S sid ="360" ssid = "80">5.3 Morphological Analysis for Arabic and French.</S>
+			<S sid ="361" ssid = "81">The factored lexicon requires predicted per-token morphological analyses at test time.</S>
+			<S sid ="362" ssid = "82">We used separately trained, language-specific tools to obtain these analyses (Table 7).</S>
+			<S sid ="363" ssid = "83">14 Version from June 2010.</S>
+			<S sid ="364" ssid = "84">We used the subset of the FTB with functional annotations, not for those.</S>
+			<S sid ="365" ssid = "85">annotations but because this subset is known to be more consistently annotated.</S>
+			<S sid ="366" ssid = "86">Appendix B compares our pre-processed version of the FTB to other versions in prior work.</S>
+			<S sid ="367" ssid = "87">15 Seventy-three of the unlabeled word types did not appear elsewhere in the treebank.</S>
+			<S sid ="368" ssid = "88">All but 11 of these.</S>
+			<S sid ="369" ssid = "89">were nouns.</S>
+			<S sid ="370" ssid = "90">We manually assigned the correct tags, but we would not expect a negative effect by deterministically labeling all of them as nouns.</S>
+			<S sid ="371" ssid = "91">Table 7 Linguistic resources required by the factored lexicon.</S>
+			<S sid ="372" ssid = "92">Equivalent resources for Arabic and French do not presently exist.</S>
+			<S sid ="373" ssid = "93">The ATB lacks gold lemmas and a French morphological ranker equivalent to MADA—which can produce the full set of morphosyntactic features specified in the ATB—has not been developed.</S>
+			<S sid ="374" ssid = "94">Morfette is effectively a discriminative classifier that treats analyses as atomic labels, whereas MADA utilizes a morphological generator.</S>
+			<S sid ="375" ssid = "95">Arabic (ATB) French (FTB) Gold Morphological Features Gender, Number, Tense, Person, Mood, Voice, Definiteness Gender, Number, Tense, Person Gold Lemmas × ./ Morphological Analyzer ./ (SAMA) × Morphological Ranker ./ (MADA) ./ (Morfette) Lemmatizer ./ (MADA) ./ (Morfette) Arabic.</S>
+			<S sid ="376" ssid = "96">The morphological analyses in the ATB are human-selected outputs of the Standard Arabic Morphological Analyzer (SAMA),16 a deterministic system that relies on manually compiled linguistic dictionaries.</S>
+			<S sid ="377" ssid = "97">The latest version of SAMA has complete lexical coverage of the ATB, thus it does not encounter unseen word types at test time.</S>
+			<S sid ="378" ssid = "98">To rank the output of SAMA, we use MADA (Habash and Rambow 2005),17 which makes predictions based on an ensemble of support vector machine (SVM) classifiers.</S>
+			<S sid ="379" ssid = "99">French.</S>
+			<S sid ="380" ssid = "100">The FTB includes morphological analyses for gender, number, person, tense, type of pronouns (relative, reflexive, interrogative), type of adverbs (relative or interrogative), and type of nouns (proper vs. common noun).</S>
+			<S sid ="381" ssid = "101">Morfette (Chrupala, Dinu, and van Genabith 2008) has been used in previous FTB parsing experiments (Candito and Seddah 2010; Seddah et al. 2010) to predict these features in addition to lemmas.</S>
+			<S sid ="382" ssid = "102">Morfette is a discriminative sequence classifier that relies on lexical and greedy left context features.</S>
+			<S sid ="383" ssid = "103">Because Morfette lacks a morphological generator like SAMA, however, it is effectively a tagger that must predict a very large tag set.</S>
+			<S sid ="384" ssid = "104">We trained Morfette on our split of the FTB and evaluated accuracy on the development set: 88.3% (full morphological tagging); 95.0% (lemmatization); and 86.5% (full tagging and lemmatization).18</S>
+	</SECTION>
+	<SECTION title="Experiments. " number = "6">
+			<S sid ="385" ssid = "1">For each language, we ran two experiments: standard parsing and MWE identification.</S>
+			<S sid ="386" ssid = "2">The evaluation included the Stanford, Stanford+factored lexicon, and DPTSG models.</S>
+			<S sid ="387" ssid = "3">All experiments used gold tokenization/segmentation.</S>
+			<S sid ="388" ssid = "4">Unlike the ATB, the FTB does not contain the raw source documents, so we could not start from raw text for both 16 LDC catalog number LDC2010L01..</S>
+			<S sid ="389" ssid = "5">17 We used version 3.1.</S>
+			<S sid ="390" ssid = "6">According to the user manual, the training set for the distributed models overlaps.</S>
+			<S sid ="391" ssid = "7">with our ATB development and test sets.</S>
+			<S sid ="392" ssid = "8">Training scripts/procedures are not distributed with MADA, however.</S>
+			<S sid ="393" ssid = "9">18 Morfette training settings: 10 tag and 3 lemma training iterations.</S>
+			<S sid ="394" ssid = "10">We excluded punctuation tokens from.</S>
+			<S sid ="395" ssid = "11">the morphological tagging evaluation because our parsers split punctuation deterministically.</S>
+			<S sid ="396" ssid = "12">languages.</S>
+			<S sid ="397" ssid = "13">We previously showed that segmentation errors decrease Arabic parsing accuracy by about 2.0% F1 (Green and Manning 2010).</S>
+			<S sid ="398" ssid = "14">Morphological analysis accuracy was another experimental resource asymmetry between the two languages.</S>
+			<S sid ="399" ssid = "15">The morphological analyses were obtained with significantly different tools: in Arabic, we had a morphological generator/ranker (MADA), whereas for French we had only a discriminative classifier (Morfette).</S>
+			<S sid ="400" ssid = "16">Consequently, French analysis quality was lower (Section 5.3).</S>
+			<S sid ="401" ssid = "17">6.1 Standard Parsing Experiments.</S>
+			<S sid ="402" ssid = "18">Baselines.</S>
+			<S sid ="403" ssid = "19">We included two parsing baselines: a parent-annotated PCFG (PAPCFG) and a PCFG with the grammar features in the Stanford parser (SplitPCFG).</S>
+			<S sid ="404" ssid = "20">The PAPCFG is the standard baseline for TSG models (Cohn, Goldwater, and Blunsom 2009).</S>
+			<S sid ="405" ssid = "21">Berkeley Parser.</S>
+			<S sid ="406" ssid = "22">We previously showed optimal Berkeley parser (Petrov et al. 2006) pa- rameterizations for both the Arabic (Green and Manning 2010) and French (Green et al. 2011) data sets.19 For Arabic, our pre-processing and parameter settings significantly increased the best-published Berkeley ATB baseline.</S>
+			<S sid ="407" ssid = "23">Others had used the Berkeley parser for French, but on an older revision of the FTB.</S>
+			<S sid ="408" ssid = "24">To our knowledge, we are the first to use the Berkeley parser for MWE identification.</S>
+			<S sid ="409" ssid = "25">Factored Lexicon Features.</S>
+			<S sid ="410" ssid = "26">We selected features for the factored lexicon on the development sets.</S>
+			<S sid ="411" ssid = "27">For Arabic, we used gender, number, tense, mood, and definiteness.</S>
+			<S sid ="412" ssid = "28">For French, we used the grammatical and syntactic features in the CC tag set in addition to grammatical number.</S>
+			<S sid ="413" ssid = "29">For the experiments in which we evaluated with predicted morphological analyses, we also trained the parser on predicted analyses.</S>
+			<S sid ="414" ssid = "30">Evaluation Metrics.</S>
+			<S sid ="415" ssid = "31">We report three evaluation metrics.</S>
+			<S sid ="416" ssid = "32">Evalb is the standard labeled precision/recall metric.20 Leaf Ancestor measures the cost of transforming guess trees to the reference (Sampson and Babarczy 2003), and is less biased against flat tree- banks like the FTB (Rehbein and van Genabith 2007).</S>
+			<S sid ="417" ssid = "33">The Leaf Ancestor score ranges from 0 to 1 (higher is better).</S>
+			<S sid ="418" ssid = "34">We report micro-averaged (Corpus) and macro-averaged (Sent.)</S>
+			<S sid ="419" ssid = "35">scores.</S>
+			<S sid ="420" ssid = "36">Finally, EX% is the percentage of perfectly parsed sentences according to Evalb.</S>
+			<S sid ="421" ssid = "37">Sentence Lengths.</S>
+			<S sid ="422" ssid = "38">We report results for sentences of lengths ≤ 40 words.</S>
+			<S sid ="423" ssid = "39">This cutoff accounts for similar proportions of the ATB and FTB.</S>
+			<S sid ="424" ssid = "40">The DPTSG grammar extractor produces very large grammars for Arabic,21 and we found that the grammar constant was too large for parsing all sentences.</S>
+			<S sid ="425" ssid = "41">For example, the ATB development set contains a sentence that is 268 tokens long.</S>
+			<S sid ="426" ssid = "42">19 Berkeley training settings: right binarization, no parent annotation, and six split-merge cycles.</S>
+			<S sid ="427" ssid = "43">Results are.</S>
+			<S sid ="428" ssid = "44">the average of three runs in which the random number generator was seeded with the system time.</S>
+			<S sid ="429" ssid = "45">20 Available at http://nlp.cs.nyu.edu/evalb/ (v.20080701).</S>
+			<S sid ="430" ssid = "46">We used a Java re-implementation included.</S>
+			<S sid ="431" ssid = "47">in the Stanford parser distribution that is compatible with the reference implementation.</S>
+			<S sid ="432" ssid = "48">21 Average DPTSG grammar sizes: Arabic, 89,003 rules; French, 46,515 rules..</S>
+			<S sid ="433" ssid = "49">Table 8 Arabic standard parsing experiments (test set, sentences ≤ 40 words).</S>
+			<S sid ="434" ssid = "50">SplitPCFG is the same grammar used in the Stanford parser, but without the dependency model.</S>
+			<S sid ="435" ssid = "51">FactLex uses basic POS tags predicted by the parser and morphological analyses from MADA.</S>
+			<S sid ="436" ssid = "52">FactLex* uses gold morphological analyses.</S>
+			<S sid ="437" ssid = "53">Berkeley and DPTSG results are the average of three independent runs.</S>
+			<S sid ="438" ssid = "54">Arabic Leaf Ancestor Evalb S e nt . C or p us L P L R F 1 E X % PAP CF G 0.</S>
+			<S sid ="439" ssid = "55">77 7 0 . 7 4 5 6 9 . 5 64 .6 66 .9 1 2.</S>
+			<S sid ="440" ssid = "56">9 Spli tPC FG 0.</S>
+			<S sid ="441" ssid = "57">82 1 0 . 7 9 7 7 5 . 6 73 .4 74 .5 1 7.</S>
+			<S sid ="442" ssid = "58">8 Ber kele y 0.</S>
+			<S sid ="443" ssid = "59">86 5 0 . 8 5 3 8 3 . 3 82 .7 83 .0 2 4.</S>
+			<S sid ="444" ssid = "60">0DP TS G 0.</S>
+			<S sid ="445" ssid = "61">82 2 0 . 8 0 0 7 5 . 5 75 .4 75 .4 1 7.</S>
+			<S sid ="446" ssid = "62">7 Sta nfor d 0.</S>
+			<S sid ="447" ssid = "63">85 1 0 . 8 3 5 8 1 . 3 80 .7 81 .0 2 3.</S>
+			<S sid ="448" ssid = "64">5 Sta nfor d+ Fact Lex 0.</S>
+			<S sid ="449" ssid = "65">84 9 0 . 8 3 5 8 1 . 2 80 .8 81 .0 2 2.</S>
+			<S sid ="450" ssid = "66">8 Sta nfor d+ Fact Lex * 0.</S>
+			<S sid ="451" ssid = "67">85 2 0 . 8 3 7 8 1 . 8 81 .3 81 .5 2 4.</S>
+			<S sid ="452" ssid = "68">0 Results.</S>
+			<S sid ="453" ssid = "69">Tables 8 and 9 show Arabic and French parsing results, respectively.</S>
+			<S sid ="454" ssid = "70">For both languages, the Berkeley parser produces the best results in terms of Evalb F1.</S>
+			<S sid ="455" ssid = "71">The gold factored lexicon setting compares favorably in terms of exact match.</S>
+			<S sid ="456" ssid = "72">6.2 MWE Identification Experiments.</S>
+			<S sid ="457" ssid = "73">The predominant approach to MWE identification is the combination of lexical association measures (surface statistics) with a binary classifier (Pecina 2010).</S>
+			<S sid ="458" ssid = "74">A state-of-the-art, language-independent package that implements this approach for higher order n-grams is mwetoolkit (Ramisch, Villavicencio, and Boitet 2010).</S>
+			<S sid ="459" ssid = "75">mwetoolkit Baseline.</S>
+			<S sid ="460" ssid = "76">We configured mwetoolkit with the four standard lexical features: the maximum likelihood estimator, Dice’s coefficient, pointwise mutual information, and Student’s t-score.</S>
+			<S sid ="461" ssid = "77">We also included POS tags predicted by the Stanford tagger (Toutanova et al. 2003).</S>
+			<S sid ="462" ssid = "78">We filtered the training instances by removing unigrams and Table 9 French standard parsing experiments (test set, sentences ≤ 40 words).</S>
+			<S sid ="463" ssid = "79">FactLex uses basic POS tags predicted by the parser and morphological analyses from Morfette.</S>
+			<S sid ="464" ssid = "80">FactLex* uses gold morphological analyses.</S>
+			<S sid ="465" ssid = "81">French Leaf Ancestor Evalb S e nt . C or p us L P L R F 1 E X % PAP CF G 0.</S>
+			<S sid ="466" ssid = "82">85 7 0 . 8 4 0 7 3 . 5 72 .8 73 .1 1 4.</S>
+			<S sid ="467" ssid = "83">5 Spli tPC FG 0.</S>
+			<S sid ="468" ssid = "84">87 0 0 . 8 5 3 7 7 . 9 77 .1 77 .5 1 6.</S>
+			<S sid ="469" ssid = "85">0 Ber kele y 0.</S>
+			<S sid ="470" ssid = "86">90 5 0 . 8 9 4 8 3 . 9 83 .4 83 .6 2 4.</S>
+			<S sid ="471" ssid = "87">0DP TS G 0.</S>
+			<S sid ="472" ssid = "88">85 8 0 . 8 4 1 7 7 . 1 76 .8 76 .9 1 6.</S>
+			<S sid ="473" ssid = "89">0 Sta nfor d 0.</S>
+			<S sid ="474" ssid = "90">86 9 0 . 8 5 3 7 8 . 5 79 .6 79 .0 1 7.</S>
+			<S sid ="475" ssid = "91">6 Sta nfor d+ Fact Lex 0.</S>
+			<S sid ="476" ssid = "92">87 7 0 . 8 6 0 7 9 . 0 79 .6 79 .3 1 9.</S>
+			<S sid ="477" ssid = "93">6 Sta nfor d+ Fact Lex * 0.</S>
+			<S sid ="478" ssid = "94">89 0 0 . 8 7 4 8 2 . 8 84 .0 83 .4 2 7.</S>
+			<S sid ="479" ssid = "95">4 Table 10 Arabic MWE identification per category and overall results (test set, sentences ≤ 40 words).</S>
+			<S sid ="480" ssid = "96">#g old PA PC FG Spli tPC FG Be rke leyDP TS G Sta nfo rd Fac tLe x Fac tLe x* MW A 1 0 . 0 0 . 0 0 . 0 0 . 0 0 . 0 0 . 0 0 . 0 M WP 3 4 3 6 . 9 7 6 . 9 8 1 . 2 9 1 . 8 8 8 . 2 8 8 . 2 8 6 . 6 M WN 46 5 9 . 8 6 6 . 7 7 4 . 6 8 1 . 1 7 6 . 6 7 7 . 0 7 7 . 5 Tota l: 50 0 1 3 . 2 6 7 . 4 7 4 . 8 8 1 . 9 7 7 . 5 7 7 . 9 7 8 . 2 non-MWE n-grams that occurred only once.</S>
+			<S sid ="481" ssid = "97">For each resulting n-gram, we created real- valued feature vectors and trained a binary SVM classifier with Weka (Hall et al. 2009) with an RBF kernel.</S>
+			<S sid ="482" ssid = "98">See Appendix D for further configuration details.</S>
+			<S sid ="483" ssid = "99">Results.</S>
+			<S sid ="484" ssid = "100">Because our parsers mark MWEs as labeled spans, MWE identification is a byproduct of parsing.</S>
+			<S sid ="485" ssid = "101">Our evaluation metric is category-level Evalb for the MWE non- terminal categories.</S>
+			<S sid ="486" ssid = "102">We report both the per-category scores (Tables 10 and 11), and a weighted average for all categories.</S>
+			<S sid ="487" ssid = "103">Table 12 shows aggregate MWE identification results.</S>
+			<S sid ="488" ssid = "104">All parsing models—even the baselines—exceed mwetoolkit by a wide margin.</S>
+	</SECTION>
+	<SECTION title="Discussion. " number = "7">
+			<S sid ="489" ssid = "1">7.1 MWE Identification Results.</S>
+			<S sid ="490" ssid = "2">The main contribution of this article is Table 12, which summarizes MWE identification results.</S>
+			<S sid ="491" ssid = "3">For both languages, our parsing models yield substantial improvements over the n-gram classification method represented by mwetoolkit.</S>
+			<S sid ="492" ssid = "4">The best improvements come from different models: The DPTSG model achieves 66.9% F1 absolute improvement for Arabic and the Stanford+FactLex* achieves 50.0% F1 absolute improvement for French.</S>
+			<S sid ="493" ssid = "5">Differences in how the training resources were constructed may account for differences in the ordering of the models.</S>
+			<S sid ="494" ssid = "6">The Arabic MWE list consists mainly of named entities and nominal compounds, hence the high concentration of MWN types in the Table 11 French MWE identification per category and overall results (test set, sentences ≤ 40 words).</S>
+			<S sid ="495" ssid = "7">MWI and MWCL do not occur in the test set.</S>
+			<S sid ="496" ssid = "8">#g old PA PC FG Spli tPC FG Be rke leyDP TS G Sta nfo rd Fac tLe x Fac tLe x* MW ET 3 0 . 0 0 . 0 0 . 0 0 . 0 0 . 0 0 . 0 0 . 0 M WV 2 6 6 . 1 5 6 . 1 5 4 . 3 5 6 . 2 5 7 . 1 4 4 . 9 8 3 . 3 MW A 8 4 2 . 9 2 9 . 6 3 6 . 7 3 6 . 0 2 6 . 1 2 5 . 0 3 3 . 3 M WN 45 7 4 1 . 1 5 6 . 0 6 7 . 4 6 5 . 7 6 4 . 8 6 4 . 9 8 6 . 3 M WD 1 5 6 0 . 0 7 0 . 3 7 4 . 4 6 5 . 1 6 8 . 4 6 4 . 9 7 0 . 3 M WP RO 1 7 8 3 . 9 7 0 . 3 8 7 . 6 7 5 . 3 7 2 . 2 7 2 . 2 8 1 . 3 MW AD V 22 0 4 6 . 8 6 8 . 0 7 2 . 5 7 7 . 2 7 5 . 0 7 6 . 0 8 7 . 9 M WP 16 2 4 9 . 0 7 8 . 9 8 1 . 4 7 9 . 5 8 1 . 2 8 1 . 9 9 2 . 9 M WC 4 7 7 4 . 2 8 0 . 7 8 3 . 7 8 5 . 8 8 6 . 3 8 8 . 2 9 7 . 9 Tota l: 95 5 4 6 . 0 6 4 . 2 7 1 . 4 7 1 . 3 7 0 . 5 7 0 . 5 8 7 . 3 Table 12 MWE identification F1 of the parsing models vs. the mwetoolkit baseline (test set, sentences ≤ 40 words).</S>
+			<S sid ="497" ssid = "9">FactLex∗ uses gold morphological analyses at test time.</S>
+			<S sid ="498" ssid = "10">Mo del Ar abi c F1 Fr enc h F1 mw eto olki t (bas elin e) 1 5 . 0 3 7 . 3 PAP CF G 1 3 . 2 4 6 . 0 Spli tPC FG 6 7 . 4 6 4 . 2 Ber kele y 7 4 . 8 7 1 . 4DP TS G 8 1 . 9 7 1 . 3 Sta nfor d 7 7 . 5 7 0 . 5 Sta nfor d+ Fact Lex 7 7 . 8 7 0 . 5 Sta nfor d+ Fact Lex * 7 8 . 2 8 7 . 3 pre-processed ATB (Table 10).</S>
+			<S sid ="499" ssid = "11">Consequently, this particular Arabic MWE identification experiment is similar to joint parsing and named entity recognition (NER) (Finkel and Manning 2009).</S>
+			<S sid ="500" ssid = "12">The DPTSG is effective at memorizing the entities and reusing them at test time.</S>
+			<S sid ="501" ssid = "13">It would be instructive to compare the DPTSG to the discriminative model of Finkel and Manning (2009), which currently represents the state-of-the-art for joint parsing and NER.</S>
+			<S sid ="502" ssid = "14">The Berkeley and DPTSG models are equally effective at learning French MWE rules.</S>
+			<S sid ="503" ssid = "15">One explanation for this result could be the CC tag set, which was explicitly tuned for the Berkeley parser.</S>
+			<S sid ="504" ssid = "16">The CC tag set improved Berkeley MWE identification accuracy by 1.8% F1 and basic parsing accuracy by 1.2% F1 over the previous version of our work (Green et al. 2011), in which we used the basic FTB tag set.</S>
+			<S sid ="505" ssid = "17">However, this tag set yielded only 0.2% F1 and 1.1% F1 improvements, respectively, for the DPTSG.</S>
+			<S sid ="506" ssid = "18">Interpretation of the factored lexicon results should account for resource asymmetries.</S>
+			<S sid ="507" ssid = "19">For French, the extraordinary result with gold analyses (Stanford+FactLex*) is partly due to annotation errors.</S>
+			<S sid ="508" ssid = "20">Gold morphological analyses are missing for many of the MWE tokens in the FTB.</S>
+			<S sid ="509" ssid = "21">The factored lexicon thus learns that when a token has no morphology, it is usually part of an MWE.</S>
+			<S sid ="510" ssid = "22">In the automatic setting (Stanford+FactLex), however, Morfette tends to assign morphology to the MWE tokens because it has no semantic knowledge.</S>
+			<S sid ="511" ssid = "23">Consequently, the morphological predictions are less consistent, and the parsing model falls back to the baseline Stanford result.</S>
+			<S sid ="512" ssid = "24">Certainly more consistent FTB annotations would help Morfette, which we found to be significantly less accurate on our version of the FTB than MADA on the ATB (see Habash and Rambow 2005).</S>
+			<S sid ="513" ssid = "25">Another remedy would be to incorporate MWE knowledge into the lexical analyzer, a strategy that Constant, Sigogne, and Watrin (2012) recently found to be very effective.</S>
+			<S sid ="514" ssid = "26">The Arabic factored lexicon results are more realistic.</S>
+			<S sid ="515" ssid = "27">Stanford+FactLex* achieves a 0.7% F1 improvement over Stanford along with a significant improvement in exact match (EX%).</S>
+			<S sid ="516" ssid = "28">In the automatic setting, a 0.3% F1 improvement is maintained for MWE identification.</S>
+			<S sid ="517" ssid = "29">One direction for improvement might be the POS tag set.</S>
+			<S sid ="518" ssid = "30">The “Kulick” tag set encodes some morphological information (e.g., number, definiteness), so the factored lexicon can be redundant.</S>
+			<S sid ="519" ssid = "31">Eliminating this overlap might improve accuracy.</S>
+			<S sid ="520" ssid = "32">Table 13 Sample of human-interpretable Arabic TSG rules.</S>
+			<S sid ="521" ssid = "33">Recursive rules like MWA→A MWA result from memoryless binarization of nary rules.</S>
+			<S sid ="522" ssid = "34">This pre-processing step not only increases parsing accuracy, but also allows the generation of previously unseen MWEs of a given type.</S>
+			<S sid ="523" ssid = "35">MWN MWP MWA ...-&apos;·1&gt;&apos; l ...J ‘Los Angeles’ MWP � ‘with MWP’ i.Sr..-J l .......·,&quot; ‘high-level’ l&quot;&quot;rJl ...-&apos;·y,&quot; ‘Prime Minister ’ u _.,.;.</S>
+			<S sid ="524" ssid = "36">‘until now’ e.�Jl ....·.y .·,r� ‘Soviet-made’ i.S· &quot;s-• N ‘military N’ _·,l�J l .._. ·.,.r..J y ‘local time’ A MWA ...J_.,Jl N ...1&gt;..</S>
+			<S sid ="525" ssid = "37">‘national N council’ i.S&quot;;.l ...·.;.</S>
+			<S sid ="526" ssid = "38">y ... ‘on the other hand’ 7.2 Interpretability of DPTSG MWE Rules.</S>
+			<S sid ="527" ssid = "39">Arabic.</S>
+			<S sid ="528" ssid = "40">Table 13 lists a sample of the TSG rules learned by the DPTSG model.</S>
+			<S sid ="529" ssid = "41">Fixed expressions such as names (Los Angeles) and titles (Prime Minister) are cached in the grammar.</S>
+			<S sid ="530" ssid = "42">The model also generalizes over nominal compounds with rules like military N, which captures military coup, military council, and so forth.</S>
+			<S sid ="531" ssid = "43">For multiword adjectives, the model caches several instances of false iDafa in full (high- level, Soviet-made).</S>
+			<S sid ="532" ssid = "44">Memoryless binarization permits the grammar to capture rules likeMWA → A MWA, which permits generation of a previously unseen multiword ad jectives.</S>
+			<S sid ="533" ssid = "45">Some of these recursive rules are lexicalized, as in the multiword preposition rule MWP → � MWP.</S>
+			<S sid ="534" ssid = "46">French.</S>
+			<S sid ="535" ssid = "47">We find that the DPTSG model also learns useful generalizations over French MWEs.</S>
+			<S sid ="536" ssid = "48">A sample of the rules is given in Table 14.</S>
+			<S sid ="537" ssid = "49">Some specific sequences like “[MWN [coup de N]]” are part of the grammar: such rules can indeed generate quite a few MWEs, for example, coup de pied (‘kick’), coup de coeur, coup de foudre (‘love at first sight’), coup de main (‘help’), coup d’état, coup de grâce.</S>
+			<S sid ="538" ssid = "50">Certain of these MWEs are unseen in the training data.</S>
+			<S sid ="539" ssid = "51">For MWV, the grammar contains “V de N” as in avoir de cesse (‘give no peace’), perdre de vue [lose from sight] (‘forget’), prendre de vitesse [take from speed] (‘outpace’).</S>
+			<S sid ="540" ssid = "52">For prepositions, the grammar stores full subtrees of MWPs, but also generalizes over very frequent sequences: “en N de” occurs in many multiword prepositions (e.g., en compagnie de, en face de, en matière de, en terme de, en cours de, en faveur de, en raison de, en fonction de).</S>
+			<S sid ="541" ssid = "53">The TSG grammar thus provides a categorization of MWEs consistent with the Lexicon-Grammar.</S>
+			<S sid ="542" ssid = "54">It also learns verbal phrases which contain discontiguous MWVs due to the insertion of an adverb or negation such as “[VN [MWV va] [MWADV d’ailleurs] [MWV bon train]]” [go indeed well], “[VN [MWV a] [ADV jamais] [MWV été question d’]]” [has never been in question].</S>
+			<S sid ="543" ssid = "55">Table 14 Sample of human-interpretable French TSG rules.</S>
+			<S sid ="544" ssid = "56">MWN MWV MWP soci étés de N s o u s - V d e l’ o r d re d e chef de N m is e n N y c o m p ri s cou p de N V D E T N a u N d e N d’ét at V d e N e n N d e N de N V e n N A D V d e Nà N 7.3 Basic Parsing Results.</S>
+			<S sid ="545" ssid = "57">The relative rankings of the different models are the same for Arabic and French (Berkeley &gt; Stanford parser &gt; DPTSG &gt; PAPCFG), and these rankings correspond to those observed for English (Cohn, Blunsom, and Goldwater 2010).</S>
+			<S sid ="546" ssid = "58">Although statistical statements cannot be made about the difficulty of parsing the two languages by comparing raw evaluation figures, we can compare the differences between PAPCFG and the best model for each language.</S>
+			<S sid ="547" ssid = "59">From this perspective, manual rule splitting in the Stanford parser is apparently more effective for the ATB than for the FTB.</S>
+			<S sid ="548" ssid = "60">Differences in annotation styles may account for this discrepancy.</S>
+			<S sid ="549" ssid = "61">Consider the unbinarized treebanks.</S>
+			<S sid ="550" ssid = "62">The ATB training set has 8,937 unique non-unary rule types with mean branching factor M = 2.41 and sample standard deviation SD = 0.984.</S>
+			<S sid ="551" ssid = "63">The FTB has a flat annotation style, which leads to more rule types (16,159) with a higher branching factor (M = 2.87, SD = 1.51).</S>
+			<S sid ="552" ssid = "64">A high branching factor can lead to more brittle grammars, an empirical observation that motivated memoryless binarization in both the Berkeley parser (Petrov et al. 2006, page 434) and the DPTSG.</S>
+			<S sid ="553" ssid = "65">The Berkeley parser results also seem to support the observation that rule refinement is less effective for the FTB.</S>
+			<S sid ="554" ssid = "66">Automatic rule refinement results in a 16.1% F1 absolute improvement over PAPCFG for Arabic, but only 10.0% F1 for French.</S>
+			<S sid ="555" ssid = "67">Of course, the FTB contains 28.5% fewer sentences than the ATB, so the FTB rule counts are also sparser.</S>
+			<S sid ="556" ssid = "68">In addition, we found that the FTB has lower inner-annotator agreement (IAA) than the ATB (Appendix C), which also negatively affects supervised models.</S>
+			<S sid ="557" ssid = "69">Finally, Evalb penalizes flat treebanks like the FTB (Rehbein and van Genabith 2007).</S>
+			<S sid ="558" ssid = "70">To counteract that bias, we also included a Leaf Ancestor evaluation.</S>
+			<S sid ="559" ssid = "71">Nonetheless, even Leaf Ancestor showed that, with respect to PAPCFG, the best Arabic model improved nearly twice as much as the best French model.</S>
+			<S sid ="560" ssid = "72">The DPTSG improves over PAPCFG, but does not exceed the Berkeley parser.</S>
+			<S sid ="561" ssid = "73">One crucial difference between the two models is the decoding objective.</S>
+			<S sid ="562" ssid = "74">The Berkeley parser maximizes the expected rule count (max-rule-sum) (Petrov and Klein 2007), an objective that Cohn, Blunsom, and Goldwater (2010) demonstrated could improve the DPTSG by 2.0% F1 over Viterbi for English with no changes to the grammar.</S>
+			<S sid ="563" ssid = "75">We decoded with Viterbi, so our results are likely a lower bound relative to what could be achieved with objectives that correlate with labeled recall.</S>
+			<S sid ="564" ssid = "76">Because MWE identification is a byproduct of parsing, we expect that MWE identification accuracy would also improve.</S>
+			<S sid ="565" ssid = "77">Because the DPTSG and PAPCFG have the same weak generative capacity, the improvement must come from relaxing independencies in the grammar rules (by saving larger tree fragments).</S>
+			<S sid ="566" ssid = "78">This is the same justification for manual rule refinement for PCFGs (Johnson 1998, page 614).</S>
+			<S sid ="567" ssid = "79">We observe an 8.5% F1 absolute improvement for Arabic, but just 3.8% F1 for French.</S>
+			<S sid ="568" ssid = "80">Nonetheless, we chose this model precisely for its greater strong generative capacity, which we hypothesized would improve MWE identification accuracy.</S>
+			<S sid ="569" ssid = "81">The MWE identification results seem to bear out this hypothesis.</S>
+	</SECTION>
+	<SECTION title="Related Work. " number = "8">
+			<S sid ="570" ssid = "1">This section contains three parts.</S>
+			<S sid ="571" ssid = "2">First, we review work on MWEs in linguistics and relate it to parallel developments in NLP.</S>
+			<S sid ="572" ssid = "3">Second, we describe other syntax-based MWE identification methods.</S>
+			<S sid ="573" ssid = "4">Finally, we enumerate related experiments on Arabic and French.</S>
+			<S sid ="574" ssid = "5">8.1 Analysis of MWEs in Linguistics and NLP.</S>
+			<S sid ="575" ssid = "6">An underlying assumption of mainline generative grammatical theory is that words are the basic units of syntax (Chomsky 1957).</S>
+			<S sid ="576" ssid = "7">Lexical insertion is the process by which words enter into phrase structure, thus lexical insertion rules have the form [N → dog, car, apple], and so on.</S>
+			<S sid ="577" ssid = "8">This assumption, however, was questioned not long after it was proposed, as early work on idiomatic constructions like kick the bucket—which functions like a multiword verb in syntax—seemed to indicate a conflict (Katz and Postal 1963; Chafe 1968).</S>
+			<S sid ="578" ssid = "9">Chomsky (1981) briefly engaged kick the bucket in a footnote, but idioms remained a peripheral issue in mainline generative theory.</S>
+			<S sid ="579" ssid = "10">To others, the marginal status of idioms and fixed expressions seemed inappropriate given their pervasiveness cross-linguistically.</S>
+			<S sid ="580" ssid = "11">In their classic work on the English construction let alone, Fillmore, Kay, and O’Connor (1988) argued that the basic units of grammar are not Chomskyan rules but constructions, or triples of phonological, syntactic, and conceptual structures.</S>
+			<S sid ="581" ssid = "12">The subsequent development of Construction Grammar (Fillmore, Kay, and O’Connor 1988; Goldberg 1995) maintained the central role of idioms.</S>
+			<S sid ="582" ssid = "13">Jackendoff (1997) has advanced a linguistic theory, the Parallel Architecture, which includes multiword expressions in the lexicon.</S>
+			<S sid ="583" ssid = "14">In NLP, concurrent with the development of Construction Grammar, Scha (1990) conceptualized an alternate model of parsing in which new utterances are built from previously observed language fragments.</S>
+			<S sid ="584" ssid = "15">In his model, which became known as data- oriented parsing (DOP) (Bod 1992), “idiomaticity is the rule rather than the exception” (Scha 1990, page 13).</S>
+			<S sid ="585" ssid = "16">Most DOP work, however, has focused on parameter estimation issues with a view to improving overall parsing performance rather than explicit modeling of idioms.</S>
+			<S sid ="586" ssid = "17">Given developments in linguistics, and to a lesser degree DOP, in modeling MWEs, it is curious that most NLP work on MWE identification has not utilized syntax.</S>
+			<S sid ="587" ssid = "18">Moreover, the words-with-spaces idea, which Sag et al.</S>
+			<S sid ="588" ssid = "19">(2002) dismissed as unattractive on both theoretical and computational grounds,22 has continued to appear in NLP evaluations such as dependency parsing (Nivre and Nilsson 2004), constituency parsing (Arun and Keller 2005), and shallow parsing (Korkontzelos and Manandhar 2010).</S>
+			<S sid ="589" ssid = "20">In all cases, the conclusion was drawn that pre-grouping MWEs improves task accuracy.</S>
+			<S sid ="590" ssid = "21">Because the yields (and thus the labelings) of the evaluation sentences were modified, however, the experiments were not strictly comparable.</S>
+			<S sid ="591" ssid = "22">Moreover, gold pre-grouping was usually assumed, as was the case in most FTB parsing evaluations after Arun and Keller (2005).</S>
+			<S sid ="592" ssid = "23">The words-with-spaces strategy is especially unattractive for MRLs because (1) it intensifies the sparsity problem in the lexicon; and (2) it is not robust to morphological and syntactic processes such as inflection and phrasal expansion.</S>
+			<S sid ="593" ssid = "24">8.2 Syntactic Methods for MWE Identification.</S>
+			<S sid ="594" ssid = "25">There is a voluminous literature on MWE identification, so we focus on syntax- based methods.</S>
+			<S sid ="595" ssid = "26">The classic statistical approach to MWE identification, Xtract (Smadja 1993), used an incremental parser in the third stage of its pipeline to identify predicate-argument relationships.</S>
+			<S sid ="596" ssid = "27">Lin (1999) applied information-theoretic measures to automatically extracted dependency relationships to find MWEs.</S>
+			<S sid ="597" ssid = "28">To our knowledge, 22 Sag et al.</S>
+			<S sid ="598" ssid = "29">(2002) showed how to integrate MWE information into a non-probabilistic head-driven phrase.</S>
+			<S sid ="599" ssid = "30">structure grammar for English.</S>
+			<S sid ="600" ssid = "31">Wehrli (2000) was the first to propose the use of a syntactic parser for multiword expression identification.</S>
+			<S sid ="601" ssid = "32">No empirical results were provided, however, and the MWE- augmented scoring function for the output of his symbolic parser was left to future research.</S>
+			<S sid ="602" ssid = "33">Recently, Seretan (2011) used a symbolic parser for collocation extraction.</S>
+			<S sid ="603" ssid = "34">Collocations are two-word MWEs.</S>
+			<S sid ="604" ssid = "35">In contrast, our models handle arbitrary length MWEs.</S>
+			<S sid ="605" ssid = "36">To our knowledge, only two previous studies considered MWEs in the context of statistical parsing.</S>
+			<S sid ="606" ssid = "37">Nivre and Nilsson (2004) converted a Swedish corpus into two versions: one in which MWEs were left as tokens, and one in which they were grouped (words-with-spaces).</S>
+			<S sid ="607" ssid = "38">They parsed both versions with a transition-based parser, showing that the words-with-spaces version gave an improvement over the baseline.</S>
+			<S sid ="608" ssid = "39">Cafferkey (2008) also investigated the words-with-spaces idea along with imposing chart constraints for pre-bracketed spans.</S>
+			<S sid ="609" ssid = "40">He annotated the PTB using external MWE lists and an NER system, but his technique did not improve two different constituency models.</S>
+			<S sid ="610" ssid = "41">At issue in both of these studies is the comparison to the baseline.</S>
+			<S sid ="611" ssid = "42">MWE pre-grouping changes the number of evaluation units (dependency arcs or bracketed spans), thus the results are not strictly comparable.</S>
+			<S sid ="612" ssid = "43">From an application perspective, pre-grouping assumes high accuracy identification, which may not be available for all languages.</S>
+			<S sid ="613" ssid = "44">Our goal differs considerably from these two studies, which attempt to improve parsing via MWE information.</S>
+			<S sid ="614" ssid = "45">In contrast, we tune statistical parsers for MWE identification.</S>
+			<S sid ="615" ssid = "46">8.3 Related Experiments on Arabic and French.</S>
+			<S sid ="616" ssid = "47">Arabic Statistical Constituency Parsing.</S>
+			<S sid ="617" ssid = "48">Kulick, Gabbard, and Marcus (2006) were the first to parse the sections of the ATB used in this article.</S>
+			<S sid ="618" ssid = "49">They adapted the Bikel parser (Bikel 2004) and improved accuracy primarily through punctuation equivalence classing and the Kulick tag set.</S>
+			<S sid ="619" ssid = "50">The ATB was subsequently revised (Maamouri, Bies, and Kulick 2008), and Maamouri, Bies, and Kulick (2009) produced the first results on the revision for our split of the revised corpus.</S>
+			<S sid ="620" ssid = "51">They only reported development set results with gold POS tags, however.</S>
+			<S sid ="621" ssid = "52">Petrov (2009) adapted the Berkeley parser to the ATB, and we later provided a parameterization that dramatically improved his baseline (Green and Manning 2010).</S>
+			<S sid ="622" ssid = "53">We also adapted the Stanford parser to the ATB, and provided the first results for non-gold tokenization.</S>
+			<S sid ="623" ssid = "54">Attia et al.</S>
+			<S sid ="624" ssid = "55">(2010a) developed an Arabic unknown word model for the Berkeley parser based on signatures, much like those in Table 3.</S>
+			<S sid ="625" ssid = "56">More recently, Huang and Harper (2011) presented a discriminative lexical model for Arabic that can encode arbitrary local lexical features.</S>
+			<S sid ="626" ssid = "57">Arabic MWE Identification.</S>
+			<S sid ="627" ssid = "58">Very little prior work exists on Arabic MWE identification.</S>
+			<S sid ="628" ssid = "59">Attia (2006) demonstrated a method for integrating MWE knowledge into a lexical-functional grammar, but gave no experimental results.</S>
+			<S sid ="629" ssid = "60">Siham Boulaknadel and Aboutajdine (2008) evaluated several lexical association measures in isolation for MWE identification in newswire.</S>
+			<S sid ="630" ssid = "61">More recently, Attia et al.</S>
+			<S sid ="631" ssid = "62">(2010b) compared cross- lingual projection methods (using Wikipedia and English Wordnet) with standard n-gram classification methods.</S>
+			<S sid ="632" ssid = "63">French Statistical Constituency Parsing.</S>
+			<S sid ="633" ssid = "64">Abeillé (1988) and Abeillé and Schabes (1989) identified the linguistic and computational attractiveness of lexicalized grammars for modeling non-compositional constructions in French well before DOP.</S>
+			<S sid ="634" ssid = "65">They developed a small tree adjoining grammar (TAG) of 1,200 elementary trees and 4,000 lexical items that included MWEs.</S>
+			<S sid ="635" ssid = "66">Recent statistical parsing work on French has included stochastic tree insertion grammars (STIG), which are related to TAGs, but with a restricted adjunction operation.23 Both Seddah, Candito, and Crabbé (2009) and Seddah (2010) showed that STIGs underperform CFG-based parsers on the FTB.</S>
+			<S sid ="636" ssid = "67">In their experiments, MWEs were grouped.</S>
+			<S sid ="637" ssid = "68">Appendix B describes additional prior work on CFG-based FTB parsing.</S>
+			<S sid ="638" ssid = "69">French MWE Identification.</S>
+			<S sid ="639" ssid = "70">Statistical French MWE identification has only been investigated recently.</S>
+			<S sid ="640" ssid = "71">We previously reported the first results on the FTB using a parser for MWE identification (Green et al. 2011).</S>
+			<S sid ="641" ssid = "72">Contemporaneously, Watrin and Francois (2011) applied n-gram methods to a French corpus of multiword adverbs (Laporte, Nakamura, and Voyatzi 2008).</S>
+			<S sid ="642" ssid = "73">Constant and Tellier (2012) used a linear chain conditional random fields model (CRF) for joint POS tagging and MWE identification.</S>
+			<S sid ="643" ssid = "74">They incorporated external linguistic resources as features, but reported results for a much older version of the FTB.</S>
+			<S sid ="644" ssid = "75">Subsequently, Constant, Sigogne, and Watrin (2012) integrated the CRF model into the Berkeley parser and evaluated on the pre-processed FTB used in this article.</S>
+			<S sid ="645" ssid = "76">Their best model (with external lexicon features) achieved 77.8% F1.</S>
+	</SECTION>
+	<SECTION title="Conclusion. " number = "9">
+			<S sid ="646" ssid = "1">In this article, we showed that parsing models are very effective for identifying arbitrary-length, contiguous MWEs.</S>
+			<S sid ="647" ssid = "2">We achieved a 66.9% F1 absolute improvement for Arabic, and a 50.0% F1 absolute improvement for French over n-gram classification methods.</S>
+			<S sid ="648" ssid = "3">All parsing models discussed in the paper improve MWE identification over n-gram methods, but the best improvements come from different models.</S>
+			<S sid ="649" ssid = "4">Unlike n-gram classification methods, parsers provide syntactic subcategorization and do not require heuristic pre-filtering of the training data.</S>
+			<S sid ="650" ssid = "5">Our techniques can be applied to any language for which the following linguistic resources exist: a syntactic treebank, an MWE list, and a morphological analyzer.</S>
+			<S sid ="651" ssid = "6">More fundamentally, we exploited a connection between syntax and idiomatic semantics.</S>
+			<S sid ="652" ssid = "7">This connection has been debated in linguistics, yet overlooked in statistical NLP until now.</S>
+			<S sid ="653" ssid = "8">Although empirical task evaluations do not always reinforce linguistic theories, our results suggest that syntactic context can help identify idiomatic language, as posited by some modern grammar theories.</S>
+			<S sid ="654" ssid = "9">We introduced the factored lexicon for the Stanford parser, a simple extension to the lexical insertion model that helps combat lexical sparsity in morphologically rich languages.</S>
+			<S sid ="655" ssid = "10">In the gold setting, the factored lexicon yielded improvements over the basic lexicon for both standard parsing and MWE identification.</S>
+			<S sid ="656" ssid = "11">Results were lower in the automatic setting, suggesting that it might be helpful to optimize the morphological analyzers for specific features included in downstream tasks like parsing.</S>
+			<S sid ="657" ssid = "12">We evaluated on in-domain data, but we expect that the factored lexicon would be even more useful on out-of-domain text with higher out-of-vocabulary rates.</S>
+			<S sid ="658" ssid = "13">We have also provided empirical evidence that TSGs can capture idiomatic usage as well as or better than a state-of-the-art CFG-based parser.</S>
+			<S sid ="659" ssid = "14">The suitability of TSGs for idioms has been discussed since the earliest days of DOP (Scha 1990), but it has never been demonstrated with experiments like ours.</S>
+			<S sid ="660" ssid = "15">Although the DPTSG, which is a relatively new parsing model, still lags other parsers in terms of overall labeling 23 Unlike TAG and TIG, TSG does not include an adjunction operator..</S>
+			<S sid ="661" ssid = "16">accuracy, we have shown that it is already very effective for tasks like MWE identification.</S>
+			<S sid ="662" ssid = "17">Because we modified the syntactic representation rather than the model formulation, general improvements to this parsing model should yield improvements in MWE identification accuracy.</S>
+			<S sid ="663" ssid = "18">Appendix A: Additional French MWEs This appendix describes the other French MWE categories annotated in the FTB.</S>
+			<S sid ="664" ssid = "19">Adverbial idioms (MWADV) often start with a preposition (Example (11)) but can have very different part-of-speech sequences: (11) a. P N: du co up (‘s o’) , sa ns do ute (‘d ou btl ess ’) b. P D A N: ave c un bel en se mb le [w ith a nic e en se m bl e] (‘i n ha rm on y’) c. P A D V P A D V: de plu s en plu s (‘ mo re an d m or e’) d. V V: peut êtr e [ca n be] (‘ ma yb e’) e. A D V A: bie n sû r [ve ry cer tai n] (‘o f co urs e’) f . ET ET : a pri ori , gro sso m od o Foreign words (MWET) include English nominal idioms, such as cash flow and success story, which are less integrated in French than words such as T-shirt.</S>
+			<S sid ="665" ssid = "20">Expressions such as Just do it or struggle for life also fall in this category.</S>
+			<S sid ="666" ssid = "21">Prepositional idioms (MWP) are mostly fixed (Example (12)), but some permit minimal variation such as de vs. des or à vs. au: (12) a. b. P N P: en dé pit de (‘d es pit e’) , à ha ute ur de (‘a t the hei ght of’ ) P D N P: da ns le ca dre de (‘i n the fra m ew or k of’ ), à l’ex ce pti on de (‘a t th e ex ce pti on of’ ) c. P P: afi n de (‘t o’) , jus qu’ à (‘a s far as’ ) d. A D V P: aut our de (‘a ro un d’) , qu ant à (‘a s for ’) e. N V P: co mp te te nu de (‘t aki ng int o ac co unt ’), ex ce pti on fai te de [e xc ep tio n ma de of] (‘a t the ex ce pti on of’ ) Pronominal idioms (MWPRO) consist of demonstrative pronouns (celuici ‘this one’, celui-là ‘that one’) and reflexive pronouns (lui-même ‘himself’), which vary in gender and number, as well as a few indefinite pronouns which allow gender inflection (d’aucuns ‘no-one’, quelque chose ‘something’, qui que ce soit ‘who ever it is’, n’importe qui ‘anyone’) and some which are fixed (d’autres ‘others’, la plupart ‘most’, tout un chacun ‘everyone’, tout le monde ‘everybody’).</S>
+			<S sid ="667" ssid = "22">Multiword determiners (MWD) consist of expressions such as bien des (‘a lot of’) and tout le (‘all the’), which display minimal variation in terms of inflection (e.g., la plupart de vs. la plupart des ‘most of’).</S>
+			<S sid ="668" ssid = "23">Numbers which act as determiners in the sentence (classées en vingthuit catégories ‘categorized in twenty-eight categories’) are also classified as MWD.</S>
+			<S sid ="669" ssid = "24">Multiword conjunctions (MWC) are a fixed class: (13) a. C C: par ce qu e (‘b ec au se’ ) b. A D V C: mê me si (‘e ve n so’ ) c. V C: po urv u qu e (‘s o lon g as’ ) d. D N C: au mo me nt où (‘a t the ti me wh en ’) e. CL V A C: il est vr ai qu e (‘it ’s tru e tha t’) f . A D V C A D V A D V C: ta nt et si bie n qu e (‘t o suc h an ext ent tha t’) Multiword interjections (MWI) are a small category with expressions such as mille sabords (‘blistering barnacles’) and au secours (‘help’).</S>
+			<S sid ="670" ssid = "25">Appendix B: Comparison to Prior FTB Pre-Processing Our FTB pre-processing is automatic, unlike all previous methods.</S>
+			<S sid ="671" ssid = "26">ARUNCONT and ARUNEXP.</S>
+			<S sid ="672" ssid = "27">(Arun and Keller 2005) Two versions of the full 20,000- sentence treebank that differed principally in their treatment of MWEs: (1) CONT, in which MWE tokens were grouped (en moyenne → en_moyenne); and (2) EXP, in which MWEs were marked with a flat structure.</S>
+			<S sid ="673" ssid = "28">For both representations, they also gave results in which coordinated phrase structures were flattened.</S>
+			<S sid ="674" ssid = "29">In the published experiments, they mistakenly removed half of the corpus, believing that the multi-terminal (per POS tag) annotations of MWEs were XML errors (Schluter and van Genabith 2007).</S>
+			<S sid ="675" ssid = "30">MFT.</S>
+			<S sid ="676" ssid = "31">(Schluter and van Genabith 2007) Manual revision to 3,800 sentences.</S>
+			<S sid ="677" ssid = "32">Major changes included coordination raising, an expanded POS tag set, and the correction of annotation errors.</S>
+			<S sid ="678" ssid = "33">Like ARUNCONT, MFT contains concatenated MWEs.</S>
+			<S sid ="679" ssid = "34">FTBUC.</S>
+			<S sid ="680" ssid = "35">(Candito and Crabbé 2009) A version of the functionally annotated section that makes a distinction between MWEs that are “syntactically regular ” and those that are not.</S>
+			<S sid ="681" ssid = "36">Syntactically regular MWEs were given internal structure, whereas all other MWEs were grouped.</S>
+			<S sid ="682" ssid = "37">For example, nouns followed by adjectives, such as loi agraire (‘land law’) or Union monétaire et économique (‘monetary and economic Union’) were considered syntactically regular.</S>
+			<S sid ="683" ssid = "38">They are MWEs because the choice of adjective is arbitrary (loi agraire and not ∗loi agricole, similarly to (‘coal black’) but not (∗‘crow black’), for example), but their syntactic structure is not intrinsic to MWEs.</S>
+			<S sid ="684" ssid = "39">In such cases, FTBUC gives the MWE a conventional analysis of an NP with internal structure.</S>
+			<S sid ="685" ssid = "40">Such analysis is indeed sufficient to recover the meaning of these semantically compositional MWEs that are extremely productive.</S>
+			<S sid ="686" ssid = "41">FTBUC loses information about MWEs with non-compositional semantics, however.</S>
+			<S sid ="687" ssid = "42">Almost all work on the FTB has followed ARUNCONT and used gold MWE pre- grouping.</S>
+			<S sid ="688" ssid = "43">Candito, Crabbé, and Denis (2010) were the first to acknowledge and address this issue, but they still used FTBUC (with some pre-grouped MWEs).</S>
+			<S sid ="689" ssid = "44">Because the syntax and definition of MWEs is a contentious issue, we take a more agnostic view— which is consistent with that of the FTB annotators—and leave them ungrouped.</S>
+			<S sid ="690" ssid = "45">This permits a data-oriented approach to MWE identification that is more robust to changes to the status of specific MWE instances.</S>
+			<S sid ="691" ssid = "46">Although our FTB basic parsing results are lower than those of Seddah (2010), the experiments are not comparable: The data split and pre-processing were different, and he grouped MWEs.</S>
+			<S sid ="692" ssid = "47">Appendix C: Annotation Consistency of Treebanks Differences in annotation quality among corpora complicate cross-lingual experimental comparisons.</S>
+			<S sid ="693" ssid = "48">To control for this variable, we performed an annotation consistency evaluation on the PTB, ATB, and FTB.</S>
+			<S sid ="694" ssid = "49">The conventional wisdom has it that the PTB has comparatively high inter-annotator agreement (IAA).</S>
+			<S sid ="695" ssid = "50">In the initial release of the ATB, IAA was inferior to other LDC treebanks, although in subsequent revisions, IAA was quantifiably improved (Maamouri, Bies, and Kulick 2008).</S>
+			<S sid ="696" ssid = "51">The FTB also had significant annotation errors upon release (Arun and Keller 2005), but it, too, has been revised.</S>
+			<S sid ="697" ssid = "52">To quantify IAA, we extend the variation nucleus method of Dickinson (2005) to compare annotation error rates.</S>
+			<S sid ="698" ssid = "53">Let C be a set of tuples (s, l, i), where s is a substring at corpus position i with label l. We consider all substrings in the corpus.</S>
+			<S sid ="699" ssid = "54">If s is bracketed at position i, then its label is its non-terminal category.</S>
+			<S sid ="700" ssid = "55">Otherwise, s has label l = NIL.</S>
+			<S sid ="701" ssid = "56">To locate variation nuclei, define Ls as the set of all labels associated with each unique s. If |Ls | &gt; 1, then s is a variation nucleus.24Variation nuclei can result from either annotation errors or linguistic ambiguity.</S>
+			<S sid ="702" ssid = "57">Hu man evaluation is one way to distinguish between the two cases.</S>
+			<S sid ="703" ssid = "58">Following Dickinson (2005), we sampled 100 variation nuclei from each corpus and evaluated each sample for the presence of an annotation error.</S>
+			<S sid ="704" ssid = "59">To control for the number of corpus positions included in each treebank sample, we used frequency-matched stratified sampling with bin sizes of 2, 3, 4, 10, 50, and 500.</S>
+			<S sid ="705" ssid = "60">The human evaluators were a non-native, fluent Arabic speaker for the ATB (the first author), a native French speaker for the FTB (the second author), and a native English speaker for the WSJ (the third author).25 Table C.1 shows the results of the evaluation, which supports the anecdotal consistency ranking of the three treebanks.26 The FTB averages more than one variation nucleus per sentence and has twice the token- level error rate of the other two treebanks.</S>
+			<S sid ="706" ssid = "61">Appendix D: mwetoolkit Configuration We configured mwetoolkit27 with the four standard lexical features: the maximum likelihood estimator, Dice’s coefficient, pointwise mutual information, and Student’s t-score.</S>
+			<S sid ="707" ssid = "62">We added the POS sequence for each n-gram as a single feature.</S>
+			<S sid ="708" ssid = "63">We removed the Web counts features since the parsers do not use auxiliary data.</S>
+			<S sid ="709" ssid = "64">Because MWE n-grams only account for a small fraction of the n-grams in the corpus, we filtered the training and test sets by removing all n-grams that occurred once.</S>
+			<S sid ="710" ssid = "65">To further balance the proportion of MWEs, we trained on all valid MWEs plus 10x randomly selected non-MWE n-grams.</S>
+			<S sid ="711" ssid = "66">This proportion matches the fraction 24 Kulick, Bies, and Mott (2011) extended our method with TAGs to account for nested bracketing errors..</S>
+			<S sid ="712" ssid = "67">25 Unlike Dickinson (2005), we stripped traces and only considered POS tags when pre-terminals were the.</S>
+			<S sid ="713" ssid = "68">only intervening nodes between the nucleus and its bracketing (e.g., unaries, base NPs).</S>
+			<S sid ="714" ssid = "69">Because our objective was to compare distributions of bracketing discrepancies, we did not prune the set of nuclei.</S>
+			<S sid ="715" ssid = "70">26 The total variation nuclei in each corpus were: 22,521 (WSJ), 15,629 (ATB), and 14,803 (FTB)..</S>
+			<S sid ="716" ssid = "71">27 We re-implemented mwetoolkit in Java for compatibility with Weka and our pre-processing routines..</S>
+			<S sid ="717" ssid = "72">Table C.1 Evaluation of 100 randomly sampled variation nuclei for training splits of the WSJ, ATB, and FTB.</S>
+			<S sid ="718" ssid = "73">Corpus positions indicates the number of corpus positions in the sample (a variation nucleus by definition appears in at least two corpus positions).</S>
+			<S sid ="719" ssid = "74">Nuclei per tree is the average nuclei per syntactic tree in the corpus, a statistic that gives a rough estimate of variability across the corpus.</S>
+			<S sid ="720" ssid = "75">The type-level error rate indicates the number of variation nuclei for which at least one error existed.</S>
+			<S sid ="721" ssid = "76">The token-level error rate indicates the ratio of errors to corpus positions.</S>
+			<S sid ="722" ssid = "77">We computed 95% confidence intervals for the type-level error rate.</S>
+			<S sid ="723" ssid = "78">Corpus Nuclei Error % Type 95% Po siti on s Pe r Tr ee Ty pe To ke n Co nfi de nce Int er val PTB (2 21) 7 5 0 0 . 5 6 5 16.</S>
+			<S sid ="724" ssid = "79">0% 4.1 0 % [ 8 . 8 0 % , 2 3 . 2 % ] AT B (trai n) 6 5 8 0 . 8 3 0 26.</S>
+			<S sid ="725" ssid = "80">0% 4.0 0 % [ 1 7 . 4 % , 3 4 . 6 % ] FTB (trai n) 6 6 8 1 . 1 0 28.</S>
+			<S sid ="726" ssid = "81">0% 9.1 3 % [ 1 9 . 2 % , 3 6 . 8 % ] of MWE/non-MWE tokens in the FTB.</S>
+			<S sid ="727" ssid = "82">As we generated a random training set, we reported the average of three independent training runs.</S>
+			<S sid ="728" ssid = "83">We created feature vectors for the training n-grams and trained a binary SVM classifier with Weka (Hall et al. 2009).</S>
+			<S sid ="729" ssid = "84">Although mwetoolkit defaults to a linear kernel, we achieved higher accuracy on the development set with an RBF kernel.</S>
+			<S sid ="730" ssid = "85">The FTB is sufficiently large for the corpus-based methods implemented in mwetoolkit.</S>
+			<S sid ="731" ssid = "86">Ramisch, Villavicencio, and Boitet (2010) experimented with the Genia corpus, which contains 18k English sentences and 490k tokens, similar to the FTB.</S>
+			<S sid ="732" ssid = "87">Their test set had 895 sentences, fewer than ours.</S>
+			<S sid ="733" ssid = "88">They reported 30.6% F1 for their task against an Xtract baseline, which only obtained 7.3% F1.</S>
+			<S sid ="734" ssid = "89">Their best result compares favorably (in magnitude) to our mwetoolkit baselines for French and Arabic.</S>
+	</SECTION>
+	<SECTION title="Acknowledgments">
+			<S sid ="735" ssid = "90">We thank John Bauer for material contributions to the MWE identification experiments, and Claude Reichard for help with editing this article.</S>
+			<S sid ="736" ssid = "91">We also thank Marie Candito, Markus Dickinson, Chris Dyer, Ali Farghaly, Dan Flickinger, Nizar Habash, Seth Kulick, Beth Levin, Percy Liang, David McClosky, Carlos Ramisch, Ryan Roth, Djamé Seddah, Valentin Spitkovsky, and Reut Tsarfaty for insightful comments on previous versions of this work.</S>
+			<S sid ="737" ssid = "92">The first author was supported by a National Science Foundation Graduate Research Fellowship.</S>
+			<S sid ="738" ssid = "93">The second author was supported by a Stanford Interdisciplinary Graduate Fellowship.</S>
+	</SECTION>
+</PAPER>
