@@ -1,0 +1,262 @@
+<PAPER>
+	<ABSTRACT>
+		<S sid ="1" ssid = "1">Training higher-order conditional random fields is prohibitive for huge tag sets.</S>
+		<S sid ="2" ssid = "2">We present an approximated conditional random field using coarse-to-fine decoding and early updating.</S>
+		<S sid ="3" ssid = "3">We show that our implementation yields fast and accurate morphological taggers across six languages with different morphological properties and that across languages higher-order models give significant improvements over 1st -order models.</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number = "1">
+			<S sid ="4" ssid = "4">Conditional Random Fields (CRFs) (Lafferty et al., 2001) are arguably one of the best performing sequence prediction models for many Natural Language Processing (NLP) tasks.</S>
+			<S sid ="5" ssid = "5">During CRF training forward-backward computations, a form of dynamic programming, dominate the asymptotic run- time.</S>
+			<S sid ="6" ssid = "6">The training and also decoding times thus depend polynomially on the size of the tagset and exponentially on the order of the CRF.</S>
+			<S sid ="7" ssid = "7">This probably explains why CRFs, despite their outstanding accuracy, normally only are applied to tasks with small tagsets such as Named Entity Recognition and Chunking; if they are applied to tasks with bigger tagsets – e.g., to part-of-speech (POS) tagging for English – then they generally are used as 1st-order models.</S>
+			<S sid ="8" ssid = "8">In this paper, we demonstrate that fast and accurate CRF training and tagging is possible for large tagsets of even thousands of tags by approximating the CRF objective function using coarse-to-fine decoding (Charniak and Johnson, 2005; Rush and Petrov, 2012).</S>
+			<S sid ="9" ssid = "9">Our pruned CRF (PCRF) model has much smaller runtime than higher-order CRF models and may thus lead to an even broader application of CRFs across NLP tagging tasks.</S>
+			<S sid ="10" ssid = "10">We use POS tagging and combined POS and morphological (POS+MORPH) tagging to demonstrate the properties and benefits of our approach.</S>
+			<S sid ="11" ssid = "11">POS+MORPH disambiguation is an important pre- processing step for syntactic parsing.</S>
+			<S sid ="12" ssid = "12">It is usually tackled by applying sequence prediction.</S>
+			<S sid ="13" ssid = "13">POS+MORPH tagging is also a good example of a task where CRFs are rarely applied as the tagsets are often so big that even 1st-order dynamic programming is too expensive.</S>
+			<S sid ="14" ssid = "14">A workaround is to restrict the possible tag candidates per position by using either morphological analyzers (MAs), dictionaries or heuristics (Hajicˇ, 2000).</S>
+			<S sid ="15" ssid = "15">In this paper, however we show that when using pruning (i.e., PCRFs), CRFs can be trained in reasonable time, which makes hard constraints unnecessary.</S>
+			<S sid ="16" ssid = "16">In this paper, we run successful experiments on six languages with different morphological properties; we interpret this as evidence that our approach is a general solution to the problem of POS+MORPH tagging.</S>
+			<S sid ="17" ssid = "17">The tagsets in our experiments range from small sizes of 12 to large sizes of up to 1811.</S>
+			<S sid ="18" ssid = "18">We will see that even for the smallest tagset, PCRFs need only 40% of the training time of standard CRFs.</S>
+			<S sid ="19" ssid = "19">For the bigger tagset sizes we can reduce training times from several days to several hours.</S>
+			<S sid ="20" ssid = "20">We will also show that training higher-order PCRF models takes only several minutes longer than training 1st-order models and – depending on the language – may lead to substantial accuracy im 322 Proceedings of the 2013 Conference on Empirical Methods in Natural Language Processing, pages 322–332, Seattle, Washington, USA, 1821 October 2013.</S>
+			<S sid ="21" ssid = "21">Qc 2013 Association for Computational Linguistics Language Sentences Tokens POS Tags MORPH Tags POS+MORPH Tags OOV Rate ar (Arabic) cs (Czech) en (English) es (Spanish) de (German) hu (Hungarian) 15,760 38,727 38,219 14,329 40,472 61,034 614,050 652,544 912,344 427,442 719,530 1,116,722 38 12 45 12 54 57 516 1,811 264 255 1,028 516 1,811 45 303 681 1,071 4.58% 8.58% 3.34% 6.47% 7.64% 10.71% Table 1: Training set statistics.</S>
+			<S sid ="22" ssid = "22">Out-Of-Vocabulary (OOV) rate is regarding the development sets.</S>
+			<S sid ="23" ssid = "23">provements.</S>
+			<S sid ="24" ssid = "24">For example in German POS+MORPH tagging, a 1st-order model (trained in 32 minutes) achieves an accuracy of 88.96 while a 3rd-order model (trained in 35 minutes) achieves an accuracy llD ( λ) = (&quot;&quot;x,&quot;&quot;y)∈D log p( y| x, λ) of 90.60.</S>
+			<S sid ="25" ssid = "25">The remainder of the paper is structured as follows: Section 2 describes our CRF implementation1 and the feature set used.</S>
+			<S sid ="26" ssid = "26">Section 3 summarizes related work on tagging with CRFs, efficient CRF tagging and coarse-to-fine decoding.</S>
+			<S sid ="27" ssid = "27">Section 4 describes experiments on POS tagging and POS+MORPH tagging and Section 5 summarizes the main contributions of the paper.</S>
+	</SECTION>
+	<SECTION title="Methodology. " number = "2">
+			<S sid ="28" ssid = "1">2.1 Standard CRF Training.</S>
+			<S sid ="29" ssid = "2">In a standard CRF we model our sentences using a globally normalized log-linear model.</S>
+			<S sid ="30" ssid = "3">The probability of a tag sequence y given a sentence x is then given as: exp t,i λi · φi( y, x, t) p( y x) = Z ( λ, x) Z ( λ, x) = exp λi · φi( y, x, t) In order to use numerical optimization we have to calculate the gradient of the log-likelihood, which is a vector of partial derivatives ∂llD ( λ)/∂λi. For a training sentence x, y and a token index t the derivative wrt feature i is given by: φi( y, x, t) − φi( y , x, t) p( y | x, λ) &quot;&quot;y This is the difference between the empirical feature count in the training data and the estimated count in the current model λ.</S>
+			<S sid ="31" ssid = "4">For a 1st-order model, we can replace the expensive sum over all possible tag sequences y by a sum over all pairs of tags: φi(yt, yt+1, x, t) − φi(y, y , x, t) p(y, y | x, λ) y,y The probability of a tag pair p(y, y | x, λ) can then be calculated efficiently using the forward-backward algorithm.</S>
+			<S sid ="32" ssid = "5">If we further reduce the complexity of themodel to a 0-order model, we obtain simple maxi &quot;&quot;y t,i mum entropy model updates: Where t and i are token and feature indexes, φi is a feature function, λi is a feature weight and Z is a normalization constant.</S>
+			<S sid ="33" ssid = "6">During training the feature weights λ are set to maximize the conditional log- likelihood of the training data D: 1 Our java implementation MarMoT is available at https://code.google.com/p/cistern/ φi(yt, x, t) − φi(y, x, t) p(y| x, λ) y 2.2 Pruned CRF Training.</S>
+			<S sid ="34" ssid = "7">As we discussed in the introduction, we want to decode sentences by applying a variant of coarse-to- fine tagging.</S>
+			<S sid ="35" ssid = "8">Naively, to later tag with nth-order accuracy we would train a series of n CRFs of increasing order.</S>
+			<S sid ="36" ssid = "9">We would then use the CRF of order n − 1 to restrict the input of the CRF of order n. In this paper we approximate this approach, but do so while training only one integrated model.</S>
+			<S sid ="37" ssid = "10">This way we can save both memory (by sharing feature weights between different models) and training time (by saving lower-order updates).</S>
+			<S sid ="38" ssid = "11">The main idea of our approach is to create increasingly complex lattices and to filter candidate states at every step to prevent a polynomial increase in lattice size.</S>
+			<S sid ="39" ssid = "12">The first step is to create a 0-order lattice, which as discussed above, is identical to a series of independent local maximum entropy models p(y|x, t).</S>
+			<S sid ="40" ssid = "13">The models base their prediction on the current word xt and the immediate lexical context.</S>
+			<S sid ="41" ssid = "14">We then calculate the posterior probabilities and remove states y with p(y|x, t) &lt; τ0 from the lattice, where τ0 is a parameter.</S>
+			<S sid ="42" ssid = "15">The resulting reduced lattice is similar to what we would obtain using candidate selection based on an MA.</S>
+			<S sid ="43" ssid = "16">We can now create a first order lattice by adding transitions to the pruned lattice and pruning with threshold τ1.</S>
+			<S sid ="44" ssid = "17">The only difference to 0-order pruning is that we now have to run forward-backward to calculate the probabilities p(y|x, t).</S>
+			<S sid ="45" ssid = "18">Note that in theory we could also apply the pruning to transition probabilities of the form p(y, y |x, t); however, this does not seem to yield more accurate models and is less efficient than state pruning.</S>
+			<S sid ="46" ssid = "19">For higher-order lattices we merge pairs of states into new states, add transitions and prune with threshold τi.We train the model using l1-regularized Stochas tic Gradient Descent (SGD) (Tsuruoka et al., 2009).</S>
+			<S sid ="47" ssid = "20">We would like to create a cascade of increasingly complex lattices and update the weight vector with the gradient of the last lattice.</S>
+			<S sid ="48" ssid = "21">The updates, however, are undefined if the gold sequence is pruned from the lattice.</S>
+			<S sid ="49" ssid = "22">A solution would be to simply reinsert the gold sequence, but this yields poor results as the model never learns to keep the gold sequence in the lower-order lattices.</S>
+			<S sid ="50" ssid = "23">As an alternative we perform the gradient update with the highest lattice still containing the gold sequence.</S>
+			<S sid ="51" ssid = "24">This approach is similar to “early updating” (Collins and Roark, 2004) in perceptron learning, where during beam search an update with the highest scoring partial hypothe 1: function GETSUMLATTICE(sentence, __τ ) 2: gold-tags ← getTags(sentence) 3: candidates ← getAllCandidates(sentence) 4: lattice ← ZeroOrderLattice(candidates) 5: for i = 1 → n do 6: candidates ← lattice.</S>
+			<S sid ="52" ssid = "25">prune(τi−1 ) 7: if gold-tags /∈ candidates then 8: return lattice 9: end if 10: if i &gt; 1 then 11: candidates ← mergeStates(candidates) 12: end if 13: candidates ← addTransitions(candidates) 14: lattice ← SequenceLattice(candidates, i) 15: end for 16: return lattice 17: end function Figure 1: Lattice generation during training sis is performed whenever the gold candidate falls out of the beam.</S>
+			<S sid ="53" ssid = "26">Intuitively, we are trying to optimize an nth-order CRF objective function, but apply small lower-order corrections to the weight vector when necessary to keep the gold candidate in the lattice.</S>
+			<S sid ="54" ssid = "27">Figure 1 illustrates the lattice generation process.</S>
+			<S sid ="55" ssid = "28">The lattice generation during decoding is identical, except that we always return a lattice of the highest order n. The savings in training time of this integrated approach are large; e.g., training a maximum entropy model over a tagset of roughly 1800 tags and more than half a million instances is slow as we have to apply 1800 weight vector updates for every token in the training set and every SGD iteration.</S>
+			<S sid ="56" ssid = "29">In the integrated model we only have to apply 1800 updates when we lose the gold sequence during filtering.</S>
+			<S sid ="57" ssid = "30">Thus, in our implementation training a 0- order model for Czech takes roughly twice as long as training a 1st-order model.</S>
+			<S sid ="58" ssid = "31">2.3 Threshold Estimation.</S>
+			<S sid ="59" ssid = "32">Our approach would not work if we were to set the parameters τi to fixed predetermined values; e.g., the τi depend on the size of the tagset and should be adapted during training as we start the training with a uniform model that becomes more specific.</S>
+			<S sid ="60" ssid = "33">We therefore set the τi by specifying µi, the average number of tags per position that should remain in the lattice after pruning.</S>
+			<S sid ="61" ssid = "34">This also guarantees stable lattice sizes and thus stable training times.</S>
+			<S sid ="62" ssid = "35">We achieve stable average number of tags per position by setting the τi dynamically during training: we measure the real average number of candidates per position µˆi and apply corrections after processing a certain fraction of the sentences of the training set.</S>
+			<S sid ="63" ssid = "36">The updates are of the form: 0.2 0.15 0.1 train dev τi = (+0.1 · τi if µˆi &lt; µi −0.1 · τi if µˆi &gt; µi 0.05 0 0 1 2 3 4 5 6 7 8 9 10 E p o c h sFigure 2 shows an example training run for Ger man with µ0 = 4.</S>
+			<S sid ="64" ssid = "37">Here the 0-order lattice reduces the number of tags per position from 681 to 4 losing roughly 15% of the gold sequences of the development set, which means that for 85% of the sentences the correct candidate is still in the lattice.</S>
+			<S sid ="65" ssid = "38">This corresponds to more than 99% of the tokens.</S>
+			<S sid ="66" ssid = "39">We can also see that after two iterations only a very small number of 0-order updates have to be performed.</S>
+			<S sid ="67" ssid = "40">2.4 Tag Decomposition.</S>
+			<S sid ="68" ssid = "41">As we discussed before for the very large POS+MORPH tagsets, most of the decoding time is spent on the 0-order level.</S>
+			<S sid ="69" ssid = "42">To decrease the number of tag candidates in the 0-order model, we decode in two steps by separating the fully specified tag into a coarse-grained part-of-speech (POS) tag and a fine- grained MORPH tag containing the morphological features.</S>
+			<S sid ="70" ssid = "43">We then first build a lattice over POS candidates and apply our pruning strategy.</S>
+			<S sid ="71" ssid = "44">In a second step we expand the remaining POS tags into all the combinations with MORPH tags that were seen in the training set.</S>
+			<S sid ="72" ssid = "45">We thus build a sequence of lattices of both increasing order and increasing tag complexity.</S>
+			<S sid ="73" ssid = "46">2.5 Feature Set.</S>
+			<S sid ="74" ssid = "47">We use the features of Ratnaparkhi (1996) and Manning (2011): the current, preceding and succeeding words as unigrams and bigrams and for rare words prefixes and suffixes up to length 10, and the occurrence of capital characters, digits and special characters.</S>
+			<S sid ="75" ssid = "48">We define a rare word as a wordwith training set frequency ≤ 10.</S>
+			<S sid ="76" ssid = "49">We concate nate every feature with the POS and MORPH tag and every morphological feature.</S>
+			<S sid ="77" ssid = "50">E.g., for the word “der”, the POS tag art (article) and the MORPH tag gen|sg|fem (genitive, singular, feminine) we Figure 2: Example training run of a pruned 1st -order model on German showing the fraction of pruned gold sequences (= sentences) during training for training (train) and development sets (dev).</S>
+			<S sid ="78" ssid = "51">get the following features for the current word template: der+art, der+gen|sg|fem, der+gen, der+sg and der+fem.</S>
+			<S sid ="79" ssid = "52">We also use an additional binary feature, which indicates whether the current word has been seen with the current tag or – if the word is rare – whether the tag is in a set of open tag classes.</S>
+			<S sid ="80" ssid = "53">The open tag classes are estimated by 10-fold cross validation on the training set: We first use the folds to estimate how often a tag is seen with an unknown word.</S>
+			<S sid ="81" ssid = "54">We then consider tags with a relative frequency ≥ 10−4 as open tag classes.</S>
+			<S sid ="82" ssid = "55">While this is a heuristic, it is safer to use a “soft” heuristic as a feature in the lattice than a hard constraint.</S>
+			<S sid ="83" ssid = "56">For some experiments we also use the output of a morphological analyzer (MA).</S>
+			<S sid ="84" ssid = "57">In that case we simply use every analysis of the MA as a simple nominal feature.</S>
+			<S sid ="85" ssid = "58">This approach is attractive because it does not require the output of the MA and the annotation of the treebank to be identical; in fact, it can even be used if treebank annotation and MA use completely different features.</S>
+			<S sid ="86" ssid = "59">Because the weight vector dimensionality is high for large tagsets and productive languages, we use a hash kernel (Shi et al., 2009) to keep the dimension- ality constant.</S>
+	</SECTION>
+	<SECTION title="Related Work. " number = "3">
+			<S sid ="87" ssid = "1">Smith et al.</S>
+			<S sid ="88" ssid = "2">(2005) use CRFs for POS+MORPH tagging, but use a morphological analyzer for candidate selection.</S>
+			<S sid ="89" ssid = "3">They report training times of several days and that they had to use simplified models for Czech.</S>
+			<S sid ="90" ssid = "4">Several methods have been proposed to reduce CRF training times.</S>
+			<S sid ="91" ssid = "5">Stochastic gradient descent can be applied to reduce the training time by a factor of 5 (Tsuruoka et al., 2009) and without drastic losses in accuracy.</S>
+			<S sid ="92" ssid = "6">Lavergne et al.</S>
+			<S sid ="93" ssid = "7">(2010) make use of feature sparsity to significantly speed up training for moderate tagset sizes (&lt; 100) and huge feature spaces.</S>
+			<S sid ="94" ssid = "8">It is unclear if their approach would also work for huge tag sets (&gt; 1000).</S>
+			<S sid ="95" ssid = "9">Coarse-to-fine decoding has been successfully applied to CYK parsing where full dynamic programming is often intractable when big grammars are used (Charniak and Johnson, 2005).</S>
+			<S sid ="96" ssid = "10">Weiss and Taskar (2010) develop cascades of models of increasing complexity in a framework based on per- ceptron learning and an explicit trade-off between accuracy and efficiency.</S>
+			<S sid ="97" ssid = "11">Kaji et al.</S>
+			<S sid ="98" ssid = "12">(2010) propose a modified Viterbi algorithm that is still optimal but depending on task and especially for big tag sets might be several orders of magnitude faster.</S>
+			<S sid ="99" ssid = "13">While their algorithm can be used to produce fast decoders, there is no such modification for the forward-backward algorithm used during CRF training.</S>
+	</SECTION>
+	<SECTION title="Experiments. " number = "4">
+			<S sid ="100" ssid = "1">We run POS+MORPH tagging experiments on Arabic (ar), Czech (cs), Spanish (es), German (de) and Hungarian (hu).</S>
+			<S sid ="101" ssid = "2">The following table shows the type- token (T/T) ratio, the average number of tags of every word form that occurs more than once in the training set (A) and the number of tags of the most ambiguous word form (Aˆ): the Penn Arabic Treebank.</S>
+			<S sid ="102" ssid = "3">Czech is a highly inflecting Slavic language with a large number of morphological features.</S>
+			<S sid ="103" ssid = "4">Spanish is a Romance language.</S>
+			<S sid ="104" ssid = "5">Based on the statistics above we can see that it has few POS+MORPH ambiguities.</S>
+			<S sid ="105" ssid = "6">It is also the language with the smallest tagset and the only language in our setup that – with a few exceptions – does not mark case.</S>
+			<S sid ="106" ssid = "7">German is a Germanic language and – based on the statistics above – the language with the most ambiguous morphology.</S>
+			<S sid ="107" ssid = "8">The reason is that it only has a small number of inflectional suffixes.</S>
+			<S sid ="108" ssid = "9">The total number of nominal inflectional suffixes for example is five.</S>
+			<S sid ="109" ssid = "10">A good example for a highly ambiguous suffix is “en”, which is a marker for infinitive verb forms, for the 1st and 3rd person plural and for the polite 2nd person singular.</S>
+			<S sid ="110" ssid = "11">Additionally, it marks plural nouns of all cases and singular nouns in genitive, dative and accusative case.</S>
+			<S sid ="111" ssid = "12">Hungarian is a FinnoUgric language with an agglutinative morphology; this results in a high type- token ratio, but also the lowest level of word form ambiguity among the selected languages.</S>
+			<S sid ="112" ssid = "13">POS tagging experiments are run on all the languages above and also on English.</S>
+			<S sid ="113" ssid = "14">4.1 Resources.</S>
+			<S sid ="114" ssid = "15">For Arabic we use the Penn Arabic Tree- bank (Maamouri et al., 2004), parts 1–3 in their latest versions (LDC2010T08, LDC2010T13, LDC2011T09).</S>
+			<S sid ="115" ssid = "16">As training set we use parts 1 and 2 and part 3 up to section ANN20020815.0083.</S>
+			<S sid ="116" ssid = "17">All consecutive sections up to ANN20021015.0096 are used as development set and the remainder as test set.</S>
+			<S sid ="117" ssid = "18">We use the unvocalized and pretokenized transliterations as input.</S>
+			<S sid ="118" ssid = "19">For Czech and Spanish, we use the CoNLL 2009 data sets (Hajicˇ et al., Arabic is a Semitic language with nonconcate- native morphology.</S>
+			<S sid ="119" ssid = "20">An additional difficulty is that vowels are often not written in Arabic script.</S>
+			<S sid ="120" ssid = "21">This introduces a high number of ambiguities; on the other hand it reduces the type-token ratio, which generally makes learning easier.</S>
+			<S sid ="121" ssid = "22">In this paper, we work with the transliteration of Arabic provided in 2009); for German, the TIGER treebank (Brants et al., 2002) with the split from Fraser et al.</S>
+			<S sid ="122" ssid = "23">(2013); for Hungarian, the Szeged treebank (Csendes et al., 2005) with the split from Farkas et al.</S>
+			<S sid ="123" ssid = "24">(2012).</S>
+			<S sid ="124" ssid = "25">For English we use the Penn Treebank (Marcus et al., 1993) with the split from Toutanova et al.</S>
+			<S sid ="125" ssid = "26">(2003).</S>
+			<S sid ="126" ssid = "27">We also compute the possible POS+MORPH tags for every word using MAs.</S>
+			<S sid ="127" ssid = "28">For Arabic we use the AraMorph reimplementation of Buckwalter (2002), for Czech the “free” morphology (Hajicˇ, 2001), for Spanish Freeling (Padro´ and Stanilovsky, 2012), for German DMOR (Schiller, 1995) and for Hungarian Magyarlanc 2.0 (Zsibrita et al., 2013).</S>
+			<S sid ="128" ssid = "29">4.2 Setup.</S>
+			<S sid ="129" ssid = "30">To compare the training and decoding times we run all experiments on the same test machine, which features two Hexa-Core Intel Xeon X5680 CPUs with 3,33 GHz and 6 cores each and 144 GB of memory.</S>
+			<S sid ="130" ssid = "31">The baseline tagger and our PCRF implementation are run single threaded.2 The taggers are implemented in different programming languages and with different degrees of optimization; still, the run times are indicative of comparative performance to be expected in practice.</S>
+			<S sid ="131" ssid = "32">Our Java implementation is always run with 10 SGD iterations and a regularization parameter of 0.1, which for German was the optimal value out of {0, 0.01, 0.1, 1.0}.</S>
+			<S sid ="132" ssid = "33">We follow Tsuruoka et al.</S>
+			<S sid ="133" ssid = "34">(2009)in our implementation of SGD and shuffle the train ing set between epochs.</S>
+			<S sid ="134" ssid = "35">All numbers shown are averages over 5 independent runs.</S>
+			<S sid ="135" ssid = "36">Where not noted otherwise, we use µ0 = 4, µ1 = 2 and µ2 = 1.5.</S>
+			<S sid ="136" ssid = "37">We found that higher values do not consistently increase performance on the development set, but result in much higher training times.</S>
+			<S sid ="137" ssid = "38">4.3 POS Experiments.</S>
+			<S sid ="138" ssid = "39">In a first experiment we evaluate the speed and accuracy of CRFs and PCRFs on the POS tagsets.</S>
+			<S sid ="139" ssid = "40">As shown in Table 1 the tagset sizes range from 12 for Czech and Spanish to 54 and 57 for German and Hungarian, with Arabic (38) and English (45) in between.</S>
+			<S sid ="140" ssid = "41">The results of our experiments are given in Table 2.</S>
+			<S sid ="141" ssid = "42">For the 1st-order models, we observe speedups in training time from 2.3 to 31 at no loss in accuracy.</S>
+			<S sid ="142" ssid = "43">For all languages, training pruned higher-order models is faster than training unpruned 1st-order models and yields more accurate models.</S>
+			<S sid ="143" ssid = "44">Accuracy improvements range from 0.08 for Hungarian to 0.25 for German.</S>
+			<S sid ="144" ssid = "45">We can conclude that for small and medium tagset sizes PCRFs give substantial improvements in both training and decoding speed3 and thus allow for higher-order tagging, which for all languages leads to significant4 accuracy improvements.</S>
+			<S sid ="145" ssid = "46">4.4 POS+MORPH Oracle Experiments.</S>
+			<S sid ="146" ssid = "47">Ideally, for the full POS+MORPH tagset we would also compare our results to an unpruned CRF, but our implementation turned out to be too slow to do the required number of experiments.</S>
+			<S sid ="147" ssid = "48">For German, the model processed ≈ 0.1 sentences per second during training; so running 10 SGD iterations on the 40,472 sentences would take more than a month.</S>
+			<S sid ="148" ssid = "49">We therefore compare our model against models that perform oracle pruning, which means we perform standard pruning, but always keep the gold candidate in the lattice.</S>
+			<S sid ="149" ssid = "50">The oracle pruning is applied during training and testing on the development set.</S>
+			<S sid ="150" ssid = "51">The oracle model performance is thus an upper bound for the performance of an unpruned CRF.</S>
+			<S sid ="151" ssid = "52">The most interesting pruning step happens at the 0-order level when we reduce from hundreds of candidates to just a couple.</S>
+			<S sid ="152" ssid = "53">Table 3 shows the results for 1st-order CRFs.</S>
+			<S sid ="153" ssid = "54">We can roughly group the five languages into three groups: for Spanish and Hungarian the damage is negligible, for Arabic we see a small decrease of 0.07 and only for Czech and German we observe considerable differences of 0.14 and 0.37.</S>
+			<S sid ="154" ssid = "55">Surprisingly, doubling the number of candidates per position does not lead to significant improvements.</S>
+			<S sid ="155" ssid = "56">We can conclude that except for Czech and German losses due to pruning are insignificant.</S>
+			<S sid ="156" ssid = "57">4.5 POS+MORPH Higher-Order Experiments.</S>
+			<S sid ="157" ssid = "58">One argument for PCRFs is that while they might be less accurate than standard CRFs they allow to train higher-order models, which in turn might be more accurate than their standard lower-order counterparts.</S>
+			<S sid ="158" ssid = "59">In this section, we investigate how big the improvements of higher-order models are.</S>
+			<S sid ="159" ssid = "60">The results are given in the following table: 2 Our tagger might actually use more than one core because the Java garbage collection is run in parallel.</S>
+			<S sid ="160" ssid = "61">3 Decoding speeds are provided in an appendix submitted.</S>
+			<S sid ="161" ssid = "62">separately.</S>
+			<S sid ="162" ssid = "63">4 Throughout the paper we establish significance by running approximate randomization tests on sentences (Yeh, 2000).</S>
+			<S sid ="163" ssid = "64">n a r T T A C C c s T T ACC e s T T ACC d e T T A C C h u T T A C C e n T T A C C C R F 1 P C R F 1 P C R F 2 P C R F 3 10 6 96.21 5 96.21 6 96.43* 6 96.43* 1 0 98.95 4 9 8 . 9 6 5 99.01* 6 99.03* 7 98.51 3 98.52 3 98.65* 4 98.66* 23 4 97.69 7 97.70 9 97.91* 9 97.94* 3 7 4 97.63 1 2 97.64 1 3 97.71* 1 4 97.69 15 4 97.05 5 97.07 6 97.21* 6 97.19* Table 2: POS tagging experiments with pruned and unpruned CRFs with different orders n. For every language the training time in minutes (TT) and the POS accuracy (ACC) are given.</S>
+			<S sid ="164" ssid = "65">* indicates models significantly better than CRF (first line).</S>
+			<S sid ="165" ssid = "66">ar cs es de hu 1 Oracle µ0 = 4.</S>
+			<S sid ="166" ssid = "67">2 Model µ0 = 4.</S>
+			<S sid ="167" ssid = "68">3 Model µ0 = 8.</S>
+			<S sid ="168" ssid = "69">90 .9 7 90 .9 0 90 .8 9 92 .5 9 92 .4 5* 92 .4 8* 97 .9 1 97 .9 5 97 .9 4 89 .3 3 88 .9 6* 88 .9 4* 96 .4 8 96 .4 7 96 .4 7 Table 3: Accuracies for models with and without oracle pruning.</S>
+			<S sid ="169" ssid = "70">* indicates models significantly worse than the oracle model.</S>
+			<S sid ="170" ssid = "71">We see that 2nd-order models give improvements for all languages.</S>
+			<S sid ="171" ssid = "72">For Spanish and Hungarian we see minor improvements ≤ 0.1.</S>
+			<S sid ="172" ssid = "73">For Czech we see a moderate improvement of 0.61 and for Arabic and German we observe substantial improvements of 0.96 and 1.31.</S>
+			<S sid ="173" ssid = "74">An analysis on the development set revealed that for all three languages, case is the morphological feature that benefits most from higher-order models.</S>
+			<S sid ="174" ssid = "75">A possible explanation is that case has a high correlation with syntactic relations and is thus affected by long-distance dependencies.</S>
+			<S sid ="175" ssid = "76">German is the only language where fourgram models give an additional improvement over trigram models.</S>
+			<S sid ="176" ssid = "77">The reason seem to be sentences with long- range dependencies, e.g., “Die Rebellen haben kein Lo¨ segeld verlangt” (The rebels have not demanded any ransom); “verlangt” (demanded) is a past particple that is separated from the auxilary verb “haben” (have).</S>
+			<S sid ="177" ssid = "78">The 2nd-order model does not consider enough context and misclassifies “verlangt” as a finite verb form, while the 3rd-order model tags it correctly.</S>
+			<S sid ="178" ssid = "79">We can also conclude that the improvements for higher-order models are always higher than the loss we estimated in the oracle experiments.</S>
+			<S sid ="179" ssid = "80">More precisely we see that if a language has a low number of word form ambiguities (e.g., Hungarian) we observe a small loss during 0-order pruning but we also have to expect less of an improvement when increasing the order of the model.</S>
+			<S sid ="180" ssid = "81">For languages with a high number of word form ambiguities (e.g., German) we must anticipate some loss during 0 order pruning, but we also see substantial benefits for higher-order models.</S>
+			<S sid ="181" ssid = "82">Surprisingly, we found that higher-order PCRF models can also avoid the pruning errors of lower- order models.</S>
+			<S sid ="182" ssid = "83">Here is an example from the German data.</S>
+			<S sid ="183" ssid = "84">The word “Januar” (January) is ambiguous: in the training set, it occurs 108 times as dative, 9 times as accusative and only 5 times as nominative.</S>
+			<S sid ="184" ssid = "85">The development set contains 48 nominative instances of “Januar” in datelines at the end of news articles, e.g., “TEL AVIV, 3.</S>
+			<S sid ="185" ssid = "86">Januar”.</S>
+			<S sid ="186" ssid = "87">For these 48 occurrences, (i) the oracle model in Table 3 selects the correct case nominative, (ii) the 1st-order PCRF model selects the incorrect case accusative, and (iii) the 2nd- and 3rd-order models select – unlike the 1st-order model – the correct case nominative.</S>
+			<S sid ="187" ssid = "88">Our interpretation is that the correct nominative reading is pruned from the 0-order lattice.</S>
+			<S sid ="188" ssid = "89">However, the higher-order models can put less weight on 0-order features as they have access to more context to disambiguate the sequence.</S>
+			<S sid ="189" ssid = "90">The lower weights of order-0 result in a more uniform posterior distribution and the nominative reading is not pruned from the lattice.</S>
+			<S sid ="190" ssid = "91">4.6 Experiments with Morph..</S>
+			<S sid ="191" ssid = "92">Analyzers In this section we compare the improvements of higher-order models when used with MAs.</S>
+			<S sid ="192" ssid = "93">The re a r T T A C C c s T T A C C e s T T ACC d e T T A C C h u T T A C C e n T T A C C S V M To ol M o rf e tt e C R F S ui te S t a n f o r d P C R F 1 P C RF 2 P C RF 3 1 7 8 96.39 9 9 5 . 9 1 4 9 6 . 2 0 2 9 95.98 5 96.21* 6 9 6 . 4 3 6 9 6 . 4 3 93</S>
+	</SECTION>
+	<SECTION title="98.94" number = "5">
+			<S sid ="193" ssid = "1">6 99.00 2 99.02 8 99.08 4 98.96* 5 99.01* 6 99.03 6 4 98.42 3 9 8 . 4 3 2 9 8 . 4 0 7 9 8 . 5 3 3 9 8 . 5 2 3 98.65* 4 98.66* 8 9 9 97.29 1 6 97.28 8 9 7 . 5 7 5 1 97.70 7 9 7 . 7 0 9 97.91* 9 97.94* 26 53 97.42 3 0 97.53 1 5 97.48 4 0 97.53 1 2 97.64* 1 3 97.71* 1 4 97.69* 2 5 3 97.09 1 7 96.85 8 9 6 . 8 0 6 5 97.24 5 97.07* 6 9 7 . 2 1 6 9 7 . 1 9 Table 4: Development results for POS tagging.</S>
+			<S sid ="194" ssid = "2">Given are training times in minutes (TT) and accuracies (ACC).</S>
+			<S sid ="195" ssid = "3">Best baseline results are underlined and the overall best results bold.</S>
+			<S sid ="196" ssid = "4">* indicates a significant difference (positive or negative) between the best baseline and a PCRF model.</S>
+			<S sid ="197" ssid = "5">ar cs es de hu en S V M To ol M o rf e tt e C R F S ui te S t a n f o r d P C R F 1 P C RF 2 P C RF 3 96 .1 9 95 .5 5 95 .9 7 95 .7 5 96 .0 3* 96 .1 1 96 .1 4 98 .8 2 98 .9 1 98 .9 1 98 .9 9 98 .8 3* 98 .8 8* 98 .8 7* 98 .4 4 98 .4 1 98 .4 0 98 .5 0 98 .4 6 98 .6 6* 98 .6 6* 96 .4 4 96 .6 8 96 .8 2 97 .0 9 97 .1 1 97 .3 6* 97 .4 4* 97 .3 2 97 .2 8 97 .3 2 97 .3 2 97 .4 4* 97 .5 0* 97 .4 9* 97 .1 2 96 .8 9 96 .9 4 97 .2 8 97 .0 9* 97 .2 3 97 .1 9* Table 5: Test results for POS tagging.</S>
+			<S sid ="198" ssid = "6">Best baseline results are underlined and the overall best results bold.</S>
+			<S sid ="199" ssid = "7">* indicates a significant difference between the best baseline and a PCRF model.</S>
+			<S sid ="200" ssid = "8">a r T T A C C c s T T A C C e s T T ACC d e T T A C C h u T T A C C S V M To ol R F T a g g er M o rf et te C R F S ui te P C R F 1 P C RF 2 P C RF 3 45 4 89.91 4 8 9 . 0 9 13 2 89.97 30 9 89.33 2 2 90.90* 2 6 91.86* 2 6 91.88* 2 4 5 4 89.91 3 9 0 . 3 8 5 3 9 90.37 9 2 7 4 91.10 3 0 1 92.45* 3 1 8 93.06* 3 1 8 92.97* 6 4 97.63 1 9 7 . 4 4 6 3 97.71 6 9 97.53 2 5 97.95* 3 2 98.01* 3 5 97.87* 1 6 4 9 85.98 5 8 7 . 1 0 2 8 6 85.90 1 2 9 5 87.78 3 2 88.96* 3 7 90.27* 3 7 90.60* 3 6 9 7 95.61 1 0 9 5 . 0 6 5 4 0 95.99 5 4 6 7 95.95 2 3 0 96.47* 2 4 2 96.57* 2 4 1 96.50* Table 6: Development results for POS+MORPH tagging.</S>
+			<S sid ="201" ssid = "9">Given are training times in minutes (TT) and accuracies (ACC).</S>
+			<S sid ="202" ssid = "10">Best baseline results are underlined and the overall best results bold.</S>
+			<S sid ="203" ssid = "11">* indicates a significant difference between the best baseline and a PCRF model.</S>
+			<S sid ="204" ssid = "12">ar cs es de hu S V M To ol R F T a g g er M o rf et te C R F S ui te P C R F 1 P C RF 2 P C RF 3 89 .5 8 88 .7 6 89 .6 2 89 .0 5 90 .3 2* 91 .2 9* 91 .2 2* 89 .6 2 90 .4 3 90 .0 1 90 .9 7 92 .3 1* 92 .9 4* 92 .9 9* 97 .5 6 97 .3 5 97 .5 8 97 .6 0 97 .8 2* 97 .9 3* 97 .8 2* 83 .4 2 84 .2 8 83 .4 8 85 .6 8 86 .9 2* 88 .4 8* 88 .5 8* 95 .5 7 94 .9 9 95 .7 9 95 .8 2 96 .2 2* 96 .3 4* 96 .2 9* Table 7: Test results for POS+MORPH tagging.</S>
+			<S sid ="205" ssid = "13">Best baseline results are underlined and the overall best results bold.</S>
+			<S sid ="206" ssid = "14">* indicates a significant difference between the best baseline and a PCRF model.</S>
+			<S sid ="207" ssid = "15">sults are given in the following table: n ar cs es de hu 1 90.90− 92.45− 97.95− 88.96− 96.47− 2 91.86+ 93.06 98.01− 90.27+ 96.57− 3 91.88+ 92.97− 97.87− 90.60+ 96.50− MA 1 91.22 93.21 98.27 89.82 97.28 MA 2 92.16+ 93.87+ 98.37+ 91.31+ 97.51+ MA 3 92.14+ 93.88+ 98.28 91.65+ 97.48+Plus and minus indicate models that are signif icantly better or worse than MA1.</S>
+			<S sid ="208" ssid = "16">We can see that the improvements due to higher-order models are orthogonal to the improvements due to MAs for all languages.</S>
+			<S sid ="209" ssid = "17">This was to be expected as MAs provide additional lexical knowledge while higher-order models provide additional information about the context.</S>
+			<S sid ="210" ssid = "18">For Arabic and German the improvements of higher-order models are bigger than the improvements due to MAs.</S>
+			<S sid ="211" ssid = "19">4.7 Comparison with Baselines.</S>
+			<S sid ="212" ssid = "20">We use the following baselines: SVMTool (Gime´nez and Ma`rquez, 2004), an SVM-based dis- criminative tagger; RFTagger (Schmid and Laws, 2008), an n-gram Hidden Markov Model (HMM) tagger developed for POS+MORPH tagging; Morfette (Chrupała et al., 2008), an averaged perceptron with beam search decoder; CRFSuite (Okazaki, 2007), a fast CRF implementation; and the Stanford Tagger (Toutanova et al., 2003), a bidirectional Maximum Entropy Markov Model.</S>
+			<S sid ="213" ssid = "21">For POS+MORPH tagging, all baselines are trained on the concatenation of POS tag and MORPH tag.</S>
+			<S sid ="214" ssid = "22">We run SVM- Tool with the standard feature set and the optimalc-values ∈ {0.1, 1, 10}.</S>
+			<S sid ="215" ssid = "23">Morfette is run with the de fault options.</S>
+			<S sid ="216" ssid = "24">For CRFSuite we use l2-regularized SGD training.</S>
+			<S sid ="217" ssid = "25">We use the optimal regularization parameter ∈ {0.01, 0.1, 1.0} and stop after 30 itera tions where we reach a relative improvement in regularized likelihood of at most 0.01 for all languages.</S>
+			<S sid ="218" ssid = "26">The feature set is identical to our model except for some restrictions: we only use concatenations with the full tag and we do not use the binary feature that indicates whether a word-tag combination has been observed.</S>
+			<S sid ="219" ssid = "27">We also had to restrict the combinations of tag and features to those observed in the training set5.</S>
+			<S sid ="220" ssid = "28">Otherwise the memory requirements would ex as a bidirectional 2nd-order model and trained using OWL-BFGS.</S>
+			<S sid ="221" ssid = "29">For Arabic, German and English we use the language specific feature sets and for the other languages the English feature set.</S>
+			<S sid ="222" ssid = "30">Development set results for POS tagging are shown in Table 4.</S>
+			<S sid ="223" ssid = "31">We can observe that Morfette, CRFSuite and the PCRF models for different orders have training times in the same order of magnitude.</S>
+			<S sid ="224" ssid = "32">For Arabic, Czech and English, the PCRF accuracy is comparable to the best baseline models.</S>
+			<S sid ="225" ssid = "33">For the other languages we see improvements of 0.13 for Spanish, 0.18 for Hungarian and 0.24 for German.</S>
+			<S sid ="226" ssid = "34">Evaluation on the test set confirms these results, see Table 5.6 The POS+MORPH tagging development set results are presented in Table 6.</S>
+			<S sid ="227" ssid = "35">Morfette is the fastest discriminative baseline tagger.</S>
+			<S sid ="228" ssid = "36">In comparison with Morfette the speed up for 3rd-order PCRFs lies between 1.7 for Czech and 5 for Arabic.</S>
+			<S sid ="229" ssid = "37">Morfette gives the best baseline results for Arabic, Spanish and Hungarian and CRFSuite for Czech and German.</S>
+			<S sid ="230" ssid = "38">The accuracy improvements of the best PCRF models over the best baseline models range from 0.27 for Spanish over 0.58 for Hungarian, 1.91 for Arabic, 1.96 for Czech to 2.82 for German.</S>
+			<S sid ="231" ssid = "39">The test set experiments in Table 7 confirm these results.</S>
+			<S sid ="232" ssid = "40">5 Conclusion.</S>
+			<S sid ="233" ssid = "41">We presented the pruned CRF (PCRF) model for very large tagsets.</S>
+			<S sid ="234" ssid = "42">The model is based on coarse-to- fine decoding and stochastic gradient descent training with early updating.</S>
+			<S sid ="235" ssid = "43">We showed that for moderate tagset sizes of ≈ 50, the model gives significant speedups over a standard CRF with negligi ble losses in accuracy.</S>
+			<S sid ="236" ssid = "44">Furthermore, we showed that training and tagging for approximated trigram and fourgram models is still faster than standard 1st- order tagging, but yields significant improvements in accuracy.</S>
+			<S sid ="237" ssid = "45">In oracle experiments with POS+MORPH tagsets we demonstrated that the losses due to our approximation depend on the word level ambiguity of therespective language and are moderate (≤ 0.14) ex cept for German where we observed a loss of 0.37.</S>
+			<S sid ="238" ssid = "46">ceed the memory of our test machine (144 GB) for Czech and Hungarian.</S>
+			<S sid ="239" ssid = "47">The Stanford Tagger is used 5 We set the CRFSuite option possible states = 0.</S>
+	</SECTION>
+	<SECTION title="Gime´nez and Ma`rquez (2004) report an accuracy of 97.16. " number = "6">
+			<S sid ="240" ssid = "1">instead of 97.12 for SVMTool for English and Manning (2011) an accuracy of 97.29 instead of 97.28 for the Stanford tagger.</S>
+			<S sid ="241" ssid = "2">We also showed that higher order tagging – which is prohibitive for standard CRF implementations – yields significant improvements over unpruned 1st- order models.</S>
+			<S sid ="242" ssid = "3">Analogous to the oracle experiments we observed big improvements for languages with a high level of POS+MORPH ambiguity such as German and smaller improvements for languages with less ambiguity such as Hungarian and Spanish.</S>
+	</SECTION>
+	<SECTION title="Acknowledgments">
+			<S sid ="243" ssid = "4">The first author is a recipient of the Google Europe Fellowship in Natural Language Processing, and this research is supported in part by this Google Fellowship.</S>
+			<S sid ="244" ssid = "5">This research was also funded by DFG (grant SFB 732).</S>
+	</SECTION>
+</PAPER>
