@@ -1,0 +1,308 @@
+<PAPER>
+	<ABSTRACT>
+		<S sid ="1" ssid = "1">The well-studied supervised Relation Extraction algorithms require training data that is accurate and has good coverage.</S>
+		<S sid ="2" ssid = "2">To obtain such a gold standard, the common practice is to do independent double annotation followed by adjudication.</S>
+		<S sid ="3" ssid = "3">This takes significantly more human effort than annotation done by a single annotator.</S>
+		<S sid ="4" ssid = "4">We do a detailed analysis on a snapshot of the ACE 2005 annotation files to understand the differences between single-pass annotation and the more expensive nearly three-pass process, and then propose an algorithm that learns from the much cheaper single-pass annotation and achieves a performance on a par with the extractor trained on multi-pass annotated data.</S>
+		<S sid ="5" ssid = "5">Furthermore, we show that given the same amount of human labor, the better way to do relation annotation is not to annotate with high-cost quality assurance, but to annotate more.</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number = "1">
+			<S sid ="6" ssid = "6">Relation Extraction aims at detecting and categorizing semantic relations between pairs of entities in text.</S>
+			<S sid ="7" ssid = "7">It is an important NLP task that has many practical applications such as answering factoid questions, building knowledge bases and improving web search.</S>
+			<S sid ="8" ssid = "8">Supervised methods for relation extraction have been studied extensively since rich annotated linguistic resources, e.g. the Automatic Content Extraction1 (ACE) training corpus, were released.</S>
+			<S sid ="9" ssid = "9">We will give a summary of related methods in section 2.</S>
+			<S sid ="10" ssid = "10">Those methods rely on accurate and complete annotation.</S>
+			<S sid ="11" ssid = "11">To obtain high quality annotation, the common wisdom is to let 1 http://www.itl.nist.gov/iad/mig/tests/ace/ two annotators independently annotate a corpus, and then asking a senior annotator to adjudicate the disagreements 2.</S>
+			<S sid ="12" ssid = "12">This annotation procedure roughly requires 3 passes3 over the same corpus.</S>
+			<S sid ="13" ssid = "13">Therefore it is very expensive.</S>
+			<S sid ="14" ssid = "14">The ACE 2005 annotation on relations is conducted in this way.</S>
+			<S sid ="15" ssid = "15">In this paper, we analyzed a snapshot of ACE training data and found that each annotator missed a significant fraction of relation mentions and annotated some spurious ones.</S>
+			<S sid ="16" ssid = "16">We found that it is possible to separate most missing examples from the vast majority of true-negative unlabeled examples, and in contrast, most of the relation mentions that are adjudicated as incorrect contain useful expressions for learning a relation extractor.</S>
+			<S sid ="17" ssid = "17">Based on this observation, we propose an algorithm that purifies negative examples and applies transductive inference to utilize missing examples during the training process on the single-pass annotation.</S>
+			<S sid ="18" ssid = "18">Results show that the extractor trained on single-pass annotation with the proposed algorithm has a performance that is close to an extractor trained on the 3-pass annotation.</S>
+			<S sid ="19" ssid = "19">We further show that the proposed algorithm trained on a single-pass annotation on the complete set of documents has a higher performance than an extractor trained on 3-pass annotation on 90% of the documents in the same corpus, although the effort of doing a single-pass annotation over the entire set costs less than half that of doing 3 passes over 90% of the documents.</S>
+			<S sid ="20" ssid = "20">From the perspective of learning a high-performance relation extractor, it suggests that a better way to do relation annotation is not to annotate with a high-cost quality assurance, but to annotate more.</S>
+	</SECTION>
+	<SECTION title="The senior annotator also found some missing examples as. " number = "2">
+			<S sid ="21" ssid = "1">shown in figure 1.</S>
+			<S sid ="22" ssid = "2">a similar cost compared to each of the two first-passes.</S>
+			<S sid ="23" ssid = "3">The adjudicator may not have to look at as many sentences as an annotator, but he is required to review all instances found by both annotators.</S>
+			<S sid ="24" ssid = "4">Moreover, he has to be more skilled and may have to spend more time on each instance to be able to resolve disagreements.</S>
+			<S sid ="25" ssid = "5">194 Proceedings of the 13th Conference of the European Chapter of the Association for Computational Linguistics, pages 194–203, Avignon, France, April 2327 2012.</S>
+			<S sid ="26" ssid = "6">c�2012 Association for Computational Linguistics 2.</S>
+			<S sid ="27" ssid = "7">Background.</S>
+			<S sid ="28" ssid = "8">2.1 Supervised Relation Extraction.</S>
+			<S sid ="29" ssid = "9">One of the most studied relation extraction tasks is the ACE relation extraction evaluation sponsored by the U.S. government.</S>
+			<S sid ="30" ssid = "10">ACE 2005 defined 7 major entity types, such as PER (Person), LOC (Location), ORG (Organization).</S>
+			<S sid ="31" ssid = "11">A relation in ACE is defined as an ordered pair of entities appearing in the same sentence which expresses one of the predefined relations.</S>
+			<S sid ="32" ssid = "12">ACE 2005 defines 7 major relation types and more than 20 subtypes.</S>
+			<S sid ="33" ssid = "13">Following previous work, we ignore sub-types in this paper and only evaluate on types when reporting relation classification performance.</S>
+			<S sid ="34" ssid = "14">Types include General-affiliation (GENAFF), Part-whole (PART-WHOLE), Person-social (PER-SOC), etc. ACE provides a large corpus which is manually annotated with entities (with coreference chains between entity mentions annotated), relations, events and values.</S>
+			<S sid ="35" ssid = "15">Each mention of a relation is tagged with a pair of entity mentions appearing in the same sentence as its arguments.</S>
+			<S sid ="36" ssid = "16">More details about the ACE evaluation are on the ACE official website.</S>
+			<S sid ="37" ssid = "17">Given a sentence s and two entity mentions arg1 and arg2 contained in s, a candidate relation mention r with argument arg1 preceding arg2 is defined as r=(s, arg1, arg2).</S>
+			<S sid ="38" ssid = "18">The goal of Relation Detection and Classification (RDC) is to determine whether r expresses one of the types defined.</S>
+			<S sid ="39" ssid = "19">If so, classify it into one of the types.</S>
+			<S sid ="40" ssid = "20">Supervised learning treats RDC as a classification problem and solves it with supervised Machine Learning algorithms such as MaxEnt and SVM.</S>
+			<S sid ="41" ssid = "21">There are two commonly used learning strategies (Sun et al., 2011).</S>
+			<S sid ="42" ssid = "22">Given an annotated corpus, one could apply a flatlearning strategy, which trains a single multi class classifier on training examples labeled as one of the relation types or not-a-relation, and apply it to determine its type or output not-a relation for each candidate relation mention during testing.</S>
+			<S sid ="43" ssid = "23">The examples of each type are the relation mentions that are tagged as instances of that type, and the not-a-relation examples are constructed from pairs of entities that appear in the same sentence but are not tagged as any of the types.</S>
+			<S sid ="44" ssid = "24">Alternatively, one could apply a hierarchical learning strategy, which trains two classifiers, a binary classifier RD for relation detection and the other a multi-class classifier RC for relation classification.</S>
+			<S sid ="45" ssid = "25">RD is trained by grouping tagged relation mentions of all types as positive instances and using all the not-a-relation cases (same as described above) as negative examples.</S>
+			<S sid ="46" ssid = "26">RC is trained on the annotated examples with their tagged types.</S>
+			<S sid ="47" ssid = "27">During testing, RD is applied first to identify whether an example expresses some relation, then RC is applied to determine the most likely type only if it is detected as correct by RD. State-of-the-art supervised methods for relation extraction also differ from each other on data representation.</S>
+			<S sid ="48" ssid = "28">Given a relation mention, feature-based methods (Miller et al., 2000; Kambhatla, 2004; Boschee et al., 2005; Grishman et al., 2005; Zhou et al., 2005; Jiang and Zhai, 2007; Sun et al., 2011) extract a rich list of structural, lexical, syntactic and semantic features to represent it; in contrast, the kernel based methods (Zelenko et al., 2003; Bunescu and Mooney, 2005a; Bunescu and Mooney, 2005b; Zhao and Grishman, 2005; Zhang et al., 2006a; Zhang et al., 2006b; Zhou et al., 2007; Qian et al., 2008) represent each instance with an object such as augmented token sequences or a parse tree, and used a carefully designed kernel function, e.g. subsequence kernel (Bunescu and Mooney, 2005b) or convolution tree kernel (Collins and Duffy, 2001), to calculate their similarity.</S>
+			<S sid ="49" ssid = "29">These objects are usually augmented with features such as semantic features.</S>
+			<S sid ="50" ssid = "30">In this paper, we use the hierarchical learning strategy since it simplifies the problem by letting us focus on relation detection only.</S>
+			<S sid ="51" ssid = "31">The relation classification stage remains unchanged and we will show that it benefits from improved detection.</S>
+			<S sid ="52" ssid = "32">For experiments on both relation detection and relation classification, we use SVM4 (Vapnik 1998) as the learning algorithm since it can be extended to support transductive inference as discussed in section 4.3.</S>
+			<S sid ="53" ssid = "33">However, for the analysis in section 3.2 and the purification preprocess steps in section 4.2, we use a MaxEnt5 model since it outputs probabilities6 for its predictions.</S>
+			<S sid ="54" ssid = "34">For the choice of features, we use the full set of features from Zhou et al.</S>
+			<S sid ="55" ssid = "35">(2005) since it is reported to have a state-of-the-art performance (Sun et al., 2011).</S>
+			<S sid ="56" ssid = "36">2.2 ACE 2005 annotation.</S>
+			<S sid ="57" ssid = "37">The ACE 2005 training data contains 599 articles 4 SVM-Light is used.</S>
+			<S sid ="58" ssid = "38">http://svmlight.joachims.org/.</S>
+			<S sid ="59" ssid = "39">5 OpenNLP MaxEnt package is used..</S>
+			<S sid ="60" ssid = "40">http://maxent.sourceforge.net/about.html 6 SVM also outputs a value associated with each prediction..</S>
+			<S sid ="61" ssid = "41">However, this value cannot be interpreted as probability.</S>
+			<S sid ="62" ssid = "42">195 from newswire, broadcast news, weblogs, usenet newsgroups/discussion forum, conversational telephone speech and broadcast conversations.</S>
+			<S sid ="63" ssid = "43">The annotation process is conducted as follows: two annotators working independently annotate each article and complete all annotation tasks (entities, values, relations and events).</S>
+			<S sid ="64" ssid = "44">After two annotators both finished annotating a file, all discrepancies are then adjudicated by a senior annotator.</S>
+			<S sid ="65" ssid = "45">This results in a high-quality annotation file.</S>
+			<S sid ="66" ssid = "46">More details can be found in the documentation of ACE 2005 Multilingual Training Data V3.0.</S>
+			<S sid ="67" ssid = "47">Since the final release of the ACE training corpus only contains the final adjudicated annotations, in which all the traces of the two first-pass annotations are removed, we use a snapshot of almost-finished annotation, ACE 2005 Multilingual Training Data V3.0, for our.</S>
+			<S sid ="68" ssid = "48">analysis.</S>
+			<S sid ="69" ssid = "49">In the remainder of this paper, we will call the two independent first-passes of annotation fp1 and fp2.</S>
+			<S sid ="70" ssid = "50">The higher-quality data done by merging fp1 and fp2 and then having disagreements adjudicated by the senior annotator is called adj.</S>
+			<S sid ="71" ssid = "51">From this corpus, we removed the files that have not been completed for all three passes.</S>
+			<S sid ="72" ssid = "52">On the final corpus consisting of 511 files, we can differentiate the annotations on which the three annotators have agreed and disagreed.</S>
+			<S sid ="73" ssid = "53">A notable fact of ACE relation annotation is that it is done with arguments from the list of annotated entity mentions.</S>
+			<S sid ="74" ssid = "54">For example, in a relation mention tyco&amp;apos;s ceo and president dennis kozlowski which expresses an EMPORG relation, the two arguments tyco and dennis kozlowski must have been tagged as entity mentions previously by the annotator.</S>
+			<S sid ="75" ssid = "55">Since fp1 and fp2 are done on all tasks independently, their disagreement on entity annotation will be propagated to relation annotation; thus we need to deal with these cases specifically.</S>
+	</SECTION>
+	<SECTION title="Analysis of data annotation. " number = "3">
+			<S sid ="76" ssid = "1">3.1 General statistics.</S>
+			<S sid ="77" ssid = "2">As discussed in section 2, relation mentions are annotated with entity mentions as arguments, and the lists of annotated entity mentions vary in fp1, fp2 and adj.</S>
+			<S sid ="78" ssid = "3">To estimate the impact propagated from entity annotation, we first calculate the ratio of overlapping entity mentions between entities annotated in fp1/fp2 with adj.</S>
+			<S sid ="79" ssid = "4">We found that fp1/fp2 each agrees with adj on around 89% of the entity mentions.</S>
+			<S sid ="80" ssid = "5">Following up, we checked the relation mentions7 from fp1 and fp2 against the adjudicated list of entity mentions from adj and found that 682 and 665 relation mentions respectively have at least one argument which doesn’t appear in the list of adjudicated entity mentions.</S>
+			<S sid ="81" ssid = "6">Given the list of relation mentions with both arguments appearing in the list of adjudicatedentity mentions, figure 1 shows the inter annotator agreement of the ACE 2005 relation annotation.</S>
+			<S sid ="82" ssid = "7">In this figure, the three circles represent the list of relation mentions in fp1, fp2 and adj, respectively.</S>
+			<S sid ="83" ssid = "8">47 645 538 fp1 fp2 3065 1486 1525 383 adj Figure 1.</S>
+			<S sid ="84" ssid = "9">Inter-annotator agreement of ACE 2005 relation annotation.</S>
+			<S sid ="85" ssid = "10">Numbers are the distinct relation mentions whose both arguments are in the list of adjudicated entity mentions.</S>
+			<S sid ="86" ssid = "11">It shows that each annotator missed a significant number of relation mentions annotated by the other.</S>
+			<S sid ="87" ssid = "12">Considering that we removed 682/665 relation mentions from fp1/fp2 because we generate this figure based on the list of adjudicated entity mentions, we estimate that fp1 and fp2 both missed around 18.328.5%8 of the relation mentions.</S>
+			<S sid ="88" ssid = "13">This clearly shows that both of the annotators missed a significant fraction of the relation mentions.</S>
+			<S sid ="89" ssid = "14">They also annotated some spurious relation mentions (as adjudicated in adj), although the fraction is smaller (close to 10% of all relation mentions in adj).</S>
+			<S sid ="90" ssid = "15">ACE 2005 relation annotation guidelines (ACE English Annotation Guidelines for Relations, version 5.8.3) defined 7 syntactic classes and the other class.</S>
+			<S sid ="91" ssid = "16">We plot the distribution of syntactic classes of the annotated 7 This is done by selecting the relation mentions whose both.</S>
+			<S sid ="92" ssid = "17">arguments are in the list of adjudicated entity mentions.</S>
+			<S sid ="93" ssid = "18">8 We calculate the lower bound by assuming that the 682.</S>
+			<S sid ="94" ssid = "19">relation mentions removed from fp1 are found in fp2, although with different argument boundary and headword tagged.</S>
+			<S sid ="95" ssid = "20">The upper bound is calculated by assuming that they are all irrelevant and erroneous relation mentions.</S>
+			<S sid ="96" ssid = "21">196 relations in figure 2 (3 of the classes, accounting together for less than 10% of the cases, are omitted) and the other class.</S>
+			<S sid ="97" ssid = "22">It seems that it is generally easier for the annotators to find and agree on relation mentions of the type Preposition/PreMod/Possessives but harder to find and agree on the ones belonging to Verbal and Other.</S>
+			<S sid ="98" ssid = "23">The definition and examples of these syntactic classes can be found in the annotation guidelines.</S>
+			<S sid ="99" ssid = "24">In the following sections, we will show the analysis on fp1 and adj since the result is similar for fp2.</S>
+			<S sid ="100" ssid = "25">examples that are not annotated in adj, and use it to make predictions on the mixed pool of correct examples, missing examples and spurious ones.</S>
+			<S sid ="101" ssid = "26">To illustrate how distinguishable the missing examples (false negatives) are from the true negative ones, 1) we apply the MaxEnt model on both false negatives and true negatives, 2) putthem together and rank them by the model predicted probabilities of being positive, 3) calculate their relative rank in this pool.</S>
+			<S sid ="102" ssid = "27">We plot the Cumulative distribution of frequency (CDF) of the ranks (as percentages in the mixed pools) of false negatives in figure 3.</S>
+			<S sid ="103" ssid = "28">We took similar steps for the spurious ones (false positives) and plot them in figure 3 as well (However, they are ranked by model-predicted probabilities of being negative).</S>
+			<S sid ="104" ssid = "29">Figure 2.</S>
+			<S sid ="105" ssid = "30">Percentage of examples of major syntactic classes.</S>
+			<S sid ="106" ssid = "31">3.2 Why the differences?.</S>
+			<S sid ="107" ssid = "32">To understand what causes the missing annotations and the spurious ones, we need methods to find how similar/different the false positives are to true positives and also how similar/different the false negatives (missing annotations) are to true negatives.</S>
+			<S sid ="108" ssid = "33">If we adopt a good similarity metric, which captures the structural, lexical and semantic similarity between relation mentions, this analysis will help us to understand the similarity/difference from an extraction perspective.</S>
+			<S sid ="109" ssid = "34">We use a state-of-the-art feature space (Zhou et al., 2005) to represent examples (including all correct examples, erroneous ones and untagged examples) and use MaxEnt as the weight learning model since it shows competitive performance in relation extraction (Jiang and Zhai, 2007) and outputs probabilities associated with each prediction.</S>
+			<S sid ="110" ssid = "35">We train a MaxEnt model for relation detection on true positives and true negatives, which respectively are the subset of correct examples annotated by fp1 (and adjudicated as correct ones) and negative Figure 3: cumulative distribution of frequency (CDF) of the relative ranking of model-predicted probability of being positive for false negatives in a pool mixed of false negatives and true negatives; and the CDF of the relative ranking of model-predicted probability of being negative for false positives in a pool mixed of false positives and true positives.</S>
+			<S sid ="111" ssid = "36">For false negatives, it shows a highly skewed distribution in which around 75% of the false negatives are ranked within the top 10%.</S>
+			<S sid ="112" ssid = "37">That means the missing examples are lexically, structurally or semantically similar to correct examples, and are distinguishable from the true negative examples.</S>
+			<S sid ="113" ssid = "38">However, the distribution of false positives (spurious examples) is close to uniform (flat curve), which means they are generally indistinguishable from the correct examples.</S>
+			<S sid ="114" ssid = "39">3.3 Categorize annotation errors.</S>
+			<S sid ="115" ssid = "40">The automatic method shows that the errors (spurious annotations) are very similar to the correct examples but provides little clue as to why that is the case.</S>
+			<S sid ="116" ssid = "41">To understand their causes, we sampled 65 examples from fp1 (10% of the 645 errors), read the sentences containing these 197 Category Percentage Example Relation Sampled text of spurious examples in fp1 Notes (examples are similar Type ones in adj for comparison) Duplicate u ORGAFF his budding friendship with US President ... his budding friendship relation 49.2% with US President George mention for coreferential entity mentions George W. Bush in the face of ... ge W. Bush in the face of ...</S>
+			<S sid ="117" ssid = "42">Correct 20% PHYS Hundreds of thousands of demonstrators took to the streets in Britain...</S>
+			<S sid ="118" ssid = "43">PER-SOC The dead included the quack doctor, 55-year-old (Symmetric relation) Nityalila Naotia, his teenaged son and...</S>
+			<S sid ="119" ssid = "44">The dead included the quack doctor, 55-year-old Nityalila Naotia, his teenaged son Argument not 15.4% PER-SOC Putin had even secretly invited British Prime in list Minister Tony Blair, Bush&amp;apos;s staunchest backer in the war on Iraq...</S>
+			<S sid ="120" ssid = "45">Violate 6.2% PHYS &amp;amp;quot;The amazing thing is they are going to turn reasonable San Francisco into ground zero for every criminal reader rule who wants to profit at their chosen profession&amp;amp;quot;, Paredes said.</S>
+			<S sid ="121" ssid = "46">Errors 6.1% PART- ...a likely candidate to run Vivendi Universal&amp;apos;s Arguments are tagged WHOLE reversed entertainment unit in the United States...</S>
+			<S sid ="122" ssid = "47">PART- Khakamada argued that the United Relation type error WHOLE States would also need Russia&amp;apos;s help &amp;amp;quot;to make the new Iraqi government seem legitimate.</S>
+			<S sid ="123" ssid = "48">illegal &amp;amp;quot;o % PHYS Up to 20,000 protesters thronged the plazas and Up to 20,000 protesters promotion streets of San Francisco, where... thronged the plazas and “blocthrouked” 3 categories streets of San Francisco, where...</S>
+			<S sid ="124" ssid = "49">Table 1.</S>
+			<S sid ="125" ssid = "50">Categories of spurious relation mentions in fp1 (on a sample of 10% of relation mentions), ranked by the percentage of the examples in each category.</S>
+			<S sid ="126" ssid = "51">In the sample text, red text (also marked with dotted underlines) shows head words of the first arguments and the underlined text shows head words of the second arguments.</S>
+			<S sid ="127" ssid = "52">erroneous relation mentions and compared them to the correct relation mentions in the same sentence; we categorized these examples and show them in table 1.</S>
+			<S sid ="128" ssid = "53">The most common type of error is duplicate relation mention for coreferential entity mentions.</S>
+			<S sid ="129" ssid = "54">The first row in table 1 shows an example, in which there is a relation ORGAFF tagged between US and George W. Bush in adj.</S>
+			<S sid ="130" ssid = "55">Because President and George W. Bush are coreferential, the example &amp;lt;US, President &amp;gt; from fp1 is adjudicated as incorrect.</S>
+			<S sid ="131" ssid = "56">This shows that if a relation is expressed repeatedly across relation mentions whose arguments are coreferential, the adjudicator only tags one of the relation mentions as correct, although the other is correct too.</S>
+			<S sid ="132" ssid = "57">This shared the same principle with another type of error illegal promotion through “blocked” categories 9 as defined in the annotation guideline.</S>
+			<S sid ="133" ssid = "58">The second largest category is correct, by which we mean the example is a correct relation mention and the adjudicator made a 9 For example, in sentence Smith went to a hotel in Brazil,.</S>
+			<S sid ="134" ssid = "59">(Smith, hotel) is a taggable PHYS Relation but (Smith, Brazil) is not, because to get the second relationship, one would have to “promote” Brazil through hotel.</S>
+			<S sid ="135" ssid = "60">For the precise definition of annotation rules, please refer to ACE (Automatic Content Extraction) English Annotation Guidelines for Relations, version 5.8.3.</S>
+			<S sid ="136" ssid = "61">mistake.</S>
+			<S sid ="137" ssid = "62">The third largest category is argument not in list, by which we mean that at least one of the arguments is not in the list of adjudicated entity mentions.</S>
+			<S sid ="138" ssid = "63">Based on Table 1, we can see that as many as 72%-88% of the examples which are adjudicated as incorrect are actually correct if viewed from a relation learning perspective, since most of them contain informative expressions for tagging relations.</S>
+			<S sid ="139" ssid = "64">The annotation guideline is designed to ensure high quality while not imposing too much burden on human annotators.</S>
+			<S sid ="140" ssid = "65">To reduce annotation effort, it defined rules such as illegal promotion through “blocked” categories.</S>
+			<S sid ="141" ssid = "66">The annotators’ practice suggests that they are following another rule not to annotate duplicate relation mention for coreferential entity mentions.</S>
+			<S sid ="142" ssid = "67">This follows the similar principle of reducing annotation effort but is not explicitly stated in the guideline: to avoid propagation of a relation through a coreference chain.</S>
+			<S sid ="143" ssid = "68">However, these examples are useful for learning more ways to express a relation.</S>
+			<S sid ="144" ssid = "69">Moreover, even for the erroneous examples (as shown in table 1 as violate reasonable reader rule and errors), most of them have some level of similar structures or semantics to the targeted relation.</S>
+			<S sid ="145" ssid = "70">Therefore, it is very hard to distinguish them without human proofreading.</S>
+			<S sid ="146" ssid = "71">198 Exp # Training Testing Detection (%) Classification (%) data data Precision Recall F1 Precision Recall F1 1 fp1 adj 83.4 60.4 70.0 75.7 54.8 63.6 2 fp2 adj 83.5 60.5 70.2 76.0 55.1 63.9 3 adj adj 80.4 69.7 74.6 73.4 63.6 68.2 Table 2.</S>
+			<S sid ="147" ssid = "72">Performance of RDC trained on fp1/fp2/adj, and tested on adj.</S>
+			<S sid ="148" ssid = "73">3.4 Why missing annotations and how.</S>
+			<S sid ="149" ssid = "74">many examples are missing?</S>
+			<S sid ="150" ssid = "75">For the large number of missing annotations, there are a couple of possible reasons.</S>
+			<S sid ="151" ssid = "76">One reason is that it is generally easier for a humanannotator to annotate correctly given a well defined guideline, but it is hard to ensure completeness, especially for a task like relation extraction.</S>
+			<S sid ="152" ssid = "77">Furthermore, the ACE 2005 annotation guideline defines more than 20 relation subtypes.</S>
+			<S sid ="153" ssid = "78">These many subtypes make it hard for an annotator to keep all of them in mind while doing the annotation, and thus it is inevitable that some examples are missed.</S>
+			<S sid ="154" ssid = "79">Here we proceed to approximate the number of missing examples given limited knowledge.</S>
+			<S sid ="155" ssid = "80">Let each annotator annotate n examples and assume that each pair of annotators agrees on a certain fraction p of the examples.</S>
+			<S sid ="156" ssid = "81">Assuming the examples are equally likely to be found by an annotator, therefore the total number of unique examples found by k annotators is Ek 0(1 − p) `n. If we had an infinite number of annotators (k -+ oo), the total number of unique examples will be &amp;amp;quot; , which is the upper bound of the total � number of examples.</S>
+			<S sid ="157" ssid = "82">In the case of the ACE 2005 relation mention annotation, since the two annotators annotate around 4500 examples and they agree on 2/3 of them, the total number of all positive examples is around 6750.</S>
+			<S sid ="158" ssid = "83">This is close to the number of relation mentions in the adjudicated list: 6459.</S>
+			<S sid ="159" ssid = "84">Here we assume the adjudicator is doing a more complex task than an annotator, resolving the disagreements and completing the annotation (as shown in figure 1).</S>
+			<S sid ="160" ssid = "85">The assumption of the calculation is a little crude but reasonable given the limited number of passes of annotation we have.</S>
+			<S sid ="161" ssid = "86">Recent research (Ji et al, 2010) shows that, by adding annotators for IE tasks, the merged annotation tends to converge after having 5 annotators.</S>
+			<S sid ="162" ssid = "87">To understand the annotation behavior better, in particular whether annotation will converge after adding a few annotators, more passes of annotation need to be collected.</S>
+			<S sid ="163" ssid = "88">We leave this as future work.</S>
+	</SECTION>
+	<SECTION title="Relation extraction with low-cost. " number = "4">
+			<S sid ="164" ssid = "1">annotation 4.1 Baseline algorithm.</S>
+			<S sid ="165" ssid = "2">To see whether a single-pass annotation is useful for relation detection and classification, we did 5-fold cross validation (5-fold CV) with each of fp1, fp2 and adj as the training set, and tested on adj.</S>
+			<S sid ="166" ssid = "3">The experiments are done with the same 511 documents we used for the analysis.</S>
+			<S sid ="167" ssid = "4">As shown in table 2, we did 5-fold CV on adj for experiment 3.</S>
+			<S sid ="168" ssid = "5">For fairness, we use settings similar to 5-fold.</S>
+			<S sid ="169" ssid = "6">CV for experiment 1 and 2.</S>
+			<S sid ="170" ssid = "7">Take experiment 1 as an example: we split both of fp1 and adj into 5 folds, use 4 folds from fp1 as training data, and 1fold from adj as testing data and does one train test cycle.</S>
+			<S sid ="171" ssid = "8">We rotate the folds (both training and testing) and repeat 5 times.</S>
+			<S sid ="172" ssid = "9">The final results are averaged over the 5 runs.</S>
+			<S sid ="173" ssid = "10">Experiment 2 was conducted similarly.</S>
+			<S sid ="174" ssid = "11">In the reminder of the paper, 5-fold CV experiments are all conducted in this way.</S>
+			<S sid ="175" ssid = "12">Table 2 shows that a relation tagger trained on the single-pass annotated data fp1 performs worse than the one trained on merged and adjudicated data adj, with 4.6 points lower F measure in relation detection, and 4.6 points lower relation classification.</S>
+			<S sid ="176" ssid = "13">For detection, precision on fp1 is 3 points higher than on adj but recall is much lower (close to 10 points).</S>
+			<S sid ="177" ssid = "14">The recall difference shows that the missing annotations contain expressions that can help to find more correct examples during testing.</S>
+			<S sid ="178" ssid = "15">The small precision difference indirectly shows that the spurious ones in fp1 (as adjudicated) do not hurt precision.</S>
+			<S sid ="179" ssid = "16">Performance on classification shows a similar trend because the relation classifier takes the examples predicted by the detector as correct as its input.</S>
+			<S sid ="180" ssid = "17">Therefore, if there is an error, it gets propagated to this stage.</S>
+			<S sid ="181" ssid = "18">Table 2 also shows similar performance differences between fp2 and adj.</S>
+			<S sid ="182" ssid = "19">In the remainder of this paper, we will discuss a few algorithms to improve a relation tagger trained on single-pass annotated data10.</S>
+			<S sid ="183" ssid = "20">Since we 10 We only use fp1 and adj in the following experiments.</S>
+			<S sid ="184" ssid = "21">because we observed that fp1 and fp2 are similar in general in the analysis, though a fraction of the annotation in fp1 199 already showed that most of the spurious annotations are not actually errors from an extraction perspective and table 2 shows that they do not hurt precision, we will only focus on utilizing the missing examples, in other words, training with an incomplete annotation.</S>
+			<S sid ="185" ssid = "22">4.2 Purify the set of negative examples.</S>
+			<S sid ="186" ssid = "23">As discussed in section 2, traditional supervised methods find all pairs of entity mentions that appear within a sentence, and then use the pairs that are not annotated as relation mentions as the negative examples for the purpose of training a relation detector.</S>
+			<S sid ="187" ssid = "24">It relies on the assumption that the annotators annotated all relation mentions and missed no (or very few) examples.</S>
+			<S sid ="188" ssid = "25">However, this is not true for training on a single-pass annotation, in which a significant portion of relation mentions are left not annotated.</S>
+			<S sid ="189" ssid = "26">If this scheme is applied, all of the correct pairs which the annotators missed belong to this “negative” category.</S>
+			<S sid ="190" ssid = "27">Therefore, we need a way to purify the “negative” set of examples obtained by this conventional approach.</S>
+			<S sid ="191" ssid = "28">Li and Liu (2003) focuses on classifying documents with only positive examples.</S>
+			<S sid ="192" ssid = "29">Their algorithm initially sets all unlabeled data to be negative and trains a Rocchio classifier, selects negative examples which are closer to the negative centroid than positive centroid as the purified negative examples, and then retrains the model.</S>
+			<S sid ="193" ssid = "30">Their algorithm performs well for text classification.</S>
+			<S sid ="194" ssid = "31">It is based on the assumption that there are fewer unannotated positive examples than negative ones in the unlabeled set, so true negative examples still dominate the set of noisy “negative” examples in the purification step.</S>
+			<S sid ="195" ssid = "32">Based on the same assumption, our purification process consists of the following steps: 1) Use annotated relation mentions as positive examples; construct all possible relation mentions that are not annotated, and initially set them to be negative.</S>
+			<S sid ="196" ssid = "33">We call this noisy data set D. 2) Train a MaxEnt relation detection model Mdet on D. 3) Apply Mdet on all unannotatedexamples, and rank them by the model predicted probabilities of being positive, 4) Remove the top I examples from D. These preprocessing steps result in a purified data set Dpur𝑒.</S>
+			<S sid ="197" ssid = "34">We can use Dpur𝑒 for the normal and fp2 is different.</S>
+			<S sid ="198" ssid = "35">Moreover, algorithms trained on them show similar performance.</S>
+			<S sid ="199" ssid = "36">training process of a supervised relation extraction algorithm.</S>
+			<S sid ="200" ssid = "37">The algorithm is similar to Li and Liu 2003.</S>
+			<S sid ="201" ssid = "38">However, we drop a few noisy examples instead of choosing a small purified subset since we have relatively few false negatives compared to the entire set of unannotated examples.</S>
+			<S sid ="202" ssid = "39">Moreover, after step 3, most false negatives are clustered within the small region of top ranked examples which has a high model-predicated probability of being positive.</S>
+			<S sid ="203" ssid = "40">The intuition is similar to what we observed from figure 3 for false negatives since we also observed very similar distribution using the model trained with noisy data.</S>
+			<S sid ="204" ssid = "41">Therefore, we can purify negatives by removing examples in this noisy subset.</S>
+			<S sid ="205" ssid = "42">However, the false negatives are still mixed with true negatives.</S>
+			<S sid ="206" ssid = "43">For example, still slightly more than half of the top 2000 examples are true negatives.</S>
+			<S sid ="207" ssid = "44">Thus we cannot simply flip their labels and use them as positive examples.</S>
+			<S sid ="208" ssid = "45">In the following section, we will use them in the form of unlabeled examples to help train a better model.</S>
+			<S sid ="209" ssid = "46">4.3 Transductive inference on unlabeled.</S>
+			<S sid ="210" ssid = "47">examples Transductive SVM (Vapnik, 1998; Joachims, 1999) is a semi-supervised learning method which learns a model from a data set consisting of both labeled and unlabeled examples.</S>
+			<S sid ="211" ssid = "48">Compared to its popular antecedent SVM, it also learns a maximum margin classification hyperplane, but additionally forces it to separate a set of unlabeled data with large margin.</S>
+			<S sid ="212" ssid = "49">The optimization function of Transductive SVM (TSVM) is the following: Figure 4.</S>
+			<S sid ="213" ssid = "50">TSVM optimization function for non-separable case (Joachims, 1999) TSVM can leverage an unlabeled set of examples to improve supervised learning.</S>
+			<S sid ="214" ssid = "51">As shown in section 3, a significant number ofrelation mentions are missing from the single pass annotation data.</S>
+			<S sid ="215" ssid = "52">Although it is not possible to find all missing annotations without human effort, we can improve the model by further 200 utilizing the fact that some unannotated examples should have been annotated.</S>
+			<S sid ="216" ssid = "53">The purification process discussed in the previous section removes I examples which have a high density of false negatives.</S>
+			<S sid ="217" ssid = "54">We further utilize the I examples as follows: 1) Construct a training corpus Dhybrid fromDpure by taking a random sample11 of I*(1 p)/p (p is the ratio of annotated examples to all examples; p=0.05 in fp1) negatively labeled examples in Dpure and setting them to be unlabeled.</S>
+			<S sid ="218" ssid = "55">In addition, the I examples removed by the purification process are added back as unlabeled examples.</S>
+			<S sid ="219" ssid = "56">2) Train TSVM on Dhybrid.</S>
+			<S sid ="220" ssid = "57">The second step trained a model which replaced the detection model in the hierarchical detection-classification learning scheme we used.</S>
+			<S sid ="221" ssid = "58">We will show in the next section that this improves the model.</S>
+	</SECTION>
+	<SECTION title="Experiments. " number = "5">
+			<S sid ="222" ssid = "1">Experiments were conducted over the same set of documents on which we did analysis: the 511 documents which have completed annotation in all of the fp1, fp2 and adj from the ACE 2005 Multilingual Training Data V3.0.</S>
+			<S sid ="223" ssid = "2">To reemphasize, we apply the hierarchical learning scheme and we focus on improving relation detection while keeping relation classification unchanged (results show that its performance is improved because of the improved detection).</S>
+			<S sid ="224" ssid = "3">We use SVM as our learning algorithm with the full feature set from Zhou et al.</S>
+			<S sid ="225" ssid = "4">(2005).</S>
+			<S sid ="226" ssid = "5">Baseline algorithm: The relation detector is unchanged.</S>
+			<S sid ="227" ssid = "6">We follow the common practice, which is to use annotated examples as positive ones and all possible untagged relation mentions as negative ones.</S>
+			<S sid ="228" ssid = "7">We sub-sampled the negative data by 1/2 since that shows better performance.</S>
+			<S sid ="229" ssid = "8">+purify: This algorithm adds an additional purification preprocessing step (section 4.2) before the hierarchical learning RDC algorithm.</S>
+			<S sid ="230" ssid = "9">After purification, the RDC algorithm is trained on the positive examples and purified negative examples.</S>
+			<S sid ="231" ssid = "10">We set I=200012 in all experiments.</S>
+			<S sid ="232" ssid = "11">11 We included this large random sample so that the balance.</S>
+			<S sid ="233" ssid = "12">of positive to negative examples in the unlabeled set would be similar to that of the labeled data.</S>
+			<S sid ="234" ssid = "13">The test data is not included in the unlabeled set.</S>
+			<S sid ="235" ssid = "14">12 We choose 2000 because it is close to the number of.</S>
+			<S sid ="236" ssid = "15">relations missed from each single-pass annotation.</S>
+			<S sid ="237" ssid = "16">In practice, it contains more than 70% of the false negatives, and it is less than 10% of the unannotated examples.</S>
+			<S sid ="238" ssid = "17">To estimate how many examples are missing (section 3.4), one +tSVM: First, the same purification process of +purify is applied.</S>
+			<S sid ="239" ssid = "18">Then we follow the steps described in section 4.3 to construct the set of unlabeled examples, and set all the rest of purified negative examples to be negative.</S>
+			<S sid ="240" ssid = "19">Finally, we train TSVM on both labeled and unlabeled data and replace the relation detection in the RDC algorithm.</S>
+			<S sid ="241" ssid = "20">The relation classification is unchanged.</S>
+			<S sid ="242" ssid = "21">Table 3 shows the results.</S>
+			<S sid ="243" ssid = "22">All experiments are done with 5-fold cross validation13 using testing data from adj.</S>
+			<S sid ="244" ssid = "23">The first three rows show experiments trained on fp1, and the last row (ADJ) shows the unmodified RDC algorithm trained on adj for comparison.</S>
+			<S sid ="245" ssid = "24">The purification of negative examples shows significant performance gain, 3.7% F1 on relation detection and 3.4% on relation classification.</S>
+			<S sid ="246" ssid = "25">The precision decreases but recall increases substantially since the missing examples are not treated as negatives.</S>
+			<S sid ="247" ssid = "26">Experiment shows that the purification process removes more than 60% of the false negatives.</S>
+			<S sid ="248" ssid = "27">Transductive SVM further improved performance by a relatively small margin.</S>
+			<S sid ="249" ssid = "28">This shows that the latent positive examples can help refine the model.</S>
+			<S sid ="250" ssid = "29">Results also show that transductive inference can find around 17% of missing relation mentions.</S>
+			<S sid ="251" ssid = "30">We notice that the performance of relation classification is improved since by improving relation detection, some examples that do not express a relation are removed.</S>
+			<S sid ="252" ssid = "31">The classification performance on single-pass annotation is close to the one trained on adj due to the help from a better relation detector trained with our algorithm.</S>
+			<S sid ="253" ssid = "32">We also did 5-fold cross validation with a model trained on a fraction of the 4/5 (4 folds) of adj data (each experiment shown in table 4 uses 4 folds of adj documents for training since one fold is left for cross validation).</S>
+			<S sid ="254" ssid = "33">The documents are sampled randomly.</S>
+			<S sid ="255" ssid = "34">Table 4 shows results for varying training data size.</S>
+			<S sid ="256" ssid = "35">Compared to the results shown in the “+tSVM” row of table 3, we can see that our best model trained on single-pass annotation outperforms SVM trained on 90% of the dual-pass, adjudicated data in both relation detection and classification, although it costs less than half the 3-pass annotation.</S>
+			<S sid ="257" ssid = "36">This suggests that given the same amount of human effort for should perform multiple passes of independent annotation on a small dataset and measure inter-annotator agreements.</S>
+			<S sid ="258" ssid = "37">13 Details about the settings for 5-fold cross validation are in. section 4.1.</S>
+			<S sid ="259" ssid = "38">201 Algorithm Detection (%) Classification (%) Precision Recall F1 Precision Recall F1 Baseline 83.4 60.4 70.0 75.7 54.8 63.6 +purify 76.8 70.9 73.7 69.8 64.5 67.0 +tSVM 76.4 72.1 74.2 69.4 65.2 67.2 ADJ (on adj) 80.4 69.7 74.6 73.4 63.6 68.2 Table 3.</S>
+			<S sid ="260" ssid = "39">5-fold cross-validation results.</S>
+			<S sid ="261" ssid = "40">All are trained on fp1 (except the last row showing the unchanged algorithm trained on adj for comparison), and tested on adj.</S>
+			<S sid ="262" ssid = "41">McNemar&amp;apos;s test show that the improvement from +purify to +tSVM, and from +tSVM to ADJ are statistically significant (with p&amp;lt;0.05).</S>
+			<S sid ="263" ssid = "42">Percentage of Detection (%) Classification (%) adj used Precision Recall F1 Precision Recall F1 60% × 4/5 86.9 41.2 55.8 78.6 37.2 50.5 70% × 4/5 85.5 51.3 64.1 77.7 46.6 58.2 80% × 4/5 83.3 58.1 68.4 75.8 52.9 62.3 90% × 4/5 82.0 64.9 72.5 74.9 59.4 66.2 Table 4.</S>
+			<S sid ="264" ssid = "43">Performance with SVM trained on a fraction of adj.</S>
+			<S sid ="265" ssid = "44">It shows 5 fold cross validation results.</S>
+			<S sid ="266" ssid = "45">relation annotation, annotating more documents with single-pass offers advantages over annotating less data with high quality assurance (dual passes and adjudication).</S>
+	</SECTION>
+	<SECTION title="Related work. " number = "6">
+			<S sid ="267" ssid = "1">Dligach et al.</S>
+			<S sid ="268" ssid = "2">(2010) studied WSD annotation from a cost-effectiveness viewpoint.</S>
+			<S sid ="269" ssid = "3">They showed empirically that, with same amount of annotation dollars spent, single-annotation is better than dual-annotation and adjudication.</S>
+			<S sid ="270" ssid = "4">The common practice for quality control of WSD annotation is similar to Relation annotation.</S>
+			<S sid ="271" ssid = "5">However, the task of WSD annotation is very different from relation annotation.</S>
+			<S sid ="272" ssid = "6">WSD requires that every example must be assigned some tag, whereas that is not required for relation tagging.</S>
+			<S sid ="273" ssid = "7">Moreover, relation tagging requires identifying two arguments and correctly categorizing their types.</S>
+			<S sid ="274" ssid = "8">The purified approach applied in this paper is related to the general framework of learning from positive and unlabeled examples.</S>
+			<S sid ="275" ssid = "9">Li and Liu (2003) initially set all unlabeled data to be negative and train a Rocchio classifier, then select negative examples which are closer to the negative centroid than positive centroid as the purified negative examples.</S>
+			<S sid ="276" ssid = "10">We share a similar assumption with Li and Liu (2003) but we use a different method to select negative examples since the false negative examples show a very skewed distribution, as described in section 5.2.</S>
+			<S sid ="277" ssid = "11">Transductive SVM was introduced by Vapnik (1998) and later refined in Joachims (1999).</S>
+			<S sid ="278" ssid = "12">A few related methods were studied on the subtask of relation classification (the second stage of the hierarchical learning scheme) in Zhang (2005).</S>
+			<S sid ="279" ssid = "13">Chan and Roth (2011) observed the similar phenomenon that ACE annotators rarely duplicate a relation link for coreferential mentions.</S>
+			<S sid ="280" ssid = "14">They use an evaluation scheme to avoid being penalized by the relation mentions which are not annotated because of this behavior.</S>
+	</SECTION>
+	<SECTION title="Conclusion. " number = "7">
+			<S sid ="281" ssid = "1">We analyzed a snapshot of the ACE 2005relation annotation and found that each single pass annotation missed around 1828% of relation mentions and contains around 10% spurious mentions.</S>
+			<S sid ="282" ssid = "2">A detailed analysis showed that it is possible to find some of the false negatives, and that most spurious cases are actually correct examples from a system builder’s perspective.</S>
+			<S sid ="283" ssid = "3">By automatically purifying negative examples and applying transductive inference on suspicious examples, we can train a relation classifier whose performance iscomparable to a classifier trained on the dual annotated and adjudicated data.</S>
+			<S sid ="284" ssid = "4">Furthermore, weshow that single-pass annotation is more cost effective than annotation with high quality assurance.</S>
+	</SECTION>
+	<SECTION title="Acknowledgments">
+			<S sid ="285" ssid = "5">Supported by the Intelligence Advanced Research Projects Activity (IARPA) via Air Force Research Laboratory (AFRL) contract number FA865010-C-7058.</S>
+			<S sid ="286" ssid = "6">The U.S. Government is authorized to reproduce and distribute reprints for Governmental purposes notwithstanding any copyright annotation thereon.</S>
+			<S sid ="287" ssid = "7">The views and conclusions contained herein are those of the authors and should not be interpreted as necessarily representing the official policies or endorsements, either expressed or implied, of IARPA, AFRL, or the U.S. Government.</S>
+			<S sid ="288" ssid = "8">202</S>
+	</SECTION>
+</PAPER>
