@@ -1,0 +1,1083 @@
+﻿Unknown word sense detection as outlier detection
+
+
+
+Katrin Erk 
+Computational Linguistics 
+Saarland University 
+Saarbru¨ cken, Germany
+erk@coli.uni-sb.de
+
+Abstract
+
+We address the problem of unknown word 
+sense detection: the identification of cor- 
+pus occurrences that are not covered by 
+a given sense inventory.  We model this 
+as an instance of outlier detection, using 
+a simple nearest neighbor-based approach 
+to measuring the resemblance of a new 
+item to a training set. In combination with 
+a method that alleviates data sparseness by 
+sharing training data across lemmas, the 
+approach achieves a precision of 0.77 and 
+recall of 0.82.
+
+
+1   Introduction
+
+If a system has seen only positive examples, how 
+does  it  recognize  a  negative  example?    This  is 
+the problem addressed by outlier detection, also 
+called novelty detection1 (Markou and Singh, 2003a; 
+Markou and Singh, 2003b; Marsland, 2003): to de- 
+tect novel or unknown items that differ from all the 
+seen training data. Outlier detection approaches typ- 
+ically derive some model of “normal” objects from 
+the training set and use a distance measure and a 
+threshold to detect abnormal items.
+  In this paper, we apply outlier detection tech- 
+niques to the task of unknown sense detection: the 
+identification of corpus occurrences that are not cov- 
+ered by a given sense inventory.  The training set
+
+    1 The term novelty detection is also used for the distinction 
+of novel and repeated information in information retrieval, a 
+different if related topic.
+
+
+
+
+
+
+
+
+
+
+
+
+Figure 1: Wrong assignment due to missing sense:
+from the Hound of the Baskervilles, Ch. 14
+
+
+
+
+
+against which new occurrences are compared will 
+consist of sense-annotated text.
+  Unknown sense detection is related to word sense 
+disambiguation (WSD) and to word sense discrim- 
+ination (Schu¨ tze, 1998), but differs from both.  In 
+WSD all senses are assumed known, and the task is 
+to select one of them, while in unknown sense detec- 
+tion the task is to decide whether a given occurrence 
+matches any of the known senses or none of them, 
+and all training instances, regardless of the sense to 
+which they belong, are modeled as one group of 
+known data.  Unknown sense detection also differs 
+from word sense discrimination, where no sense in- 
+ventory is given and the task is to group occurrences 
+into senses. In unknown sense detection the model 
+respects the given word senses.
+  The main motivation for this study comes from 
+shallow semantic parsing, by which we mean a com- 
+bination of WSD and the automatic assignment of
+
+
+semantic roles to free text.  In cases where a sense 
+is missing from the inventory, WSD will wrongly 
+assign one of the existing senses.  Figure 1 shows 
+an example, a sentence from the Hound of the 
+Baskervilles, analyzed by the SH A L M A N E S E R (Erk 
+and Pado, 2006) shallow semantic parser. The anal- 
+ysis is based on FrameNet (Baker et al., 1998), a 
+resource that lists senses and semantic roles for En- 
+glish expressions.  FrameNet is lacking a sense of 
+“expectation” or “being mentally prepared” for the 
+verb prepare, so prepared has been assigned the 
+sense CO O K I N G  C R E AT I O N, a possible but improb- 
+able analysis2.   Such erroneous labels can be fa- 
+tal when further processing builds on the results of 
+shallow semantic parsing, e.g. for drawing infer- 
+ences.  Unknown sense detection can prevent such 
+mistakes.
+  All sense inventories face the problem of missing 
+senses, either because of their small overall size (as 
+is the case for some non-English WordNets) or when 
+they encounter domain-specific senses.  Our study 
+will be evaluated on FrameNet because of our main 
+aim of improving shallow semantic parsing, but the 
+method we propose is applicable to any sense inven- 
+tory that has annotated data; in particular, it is also 
+applicable to WordNet.
+  In this paper we model unknown sense detec- 
+tion as outlier detection, using a simple Nearest 
+Neighbor-based method (Tax and Duin, 2000) that 
+compares the local probability density at each test 
+item with that of its nearest training item.
+  To our knowledge, there exists no other approach 
+to date to the problem of detecting unknown senses. 
+There are, however, approaches to the complemen- 
+tary problem of determining the closest known sense 
+for unknown words (Widdows, 2003; Curran, 2005; 
+Burchardt et al., 2005), which can be viewed as the 
+logical next step after unknown sense detection.
+
+Plan of the paper.  After a brief sketch of 
+FrameNet in Section 2, we describe the experimen- 
+tal setup used throughout this paper in Section 3. 
+Section 4 tests whether a very simple model suffices 
+for detecting unknown senses: a threshold on confi- 
+dence scores returned by the SH A L M A N E S E R WSD
+
+  2 Unfortunately, the semantic roles have been mis-assigned 
+by the system. The word I should fill the FO O D role, while for 
+a hound could be assigned the optional RE C E I V E R role.
+
+
+system.  The result is that recall is much too low. 
+Section 5 introduces the NN-based outlier detection 
+approach that we use in section 6 for unknown sense 
+detection, with better results than in the first experi- 
+ment but still low recall. Section 7 repeats the exper- 
+iment of section 6 with added training data, making 
+use of the fact that one semantic class in FrameNet 
+typically pertains to several lemmas and achieving a 
+marked improvement in results.
+
+2   FrameNet
+
+Frame Semantics (Fillmore, 1982) models the mean- 
+ings  of  a  word  or  expression  by  reference  to 
+frames which describe the background and situa- 
+tional knowledge necessary for understanding what 
+the predicate is “about”.  Each frame provides its 
+specific set of semantic roles.
+The  Berkeley FrameNet project  (Baker  et  al.,
+1998) is building a semantic lexicon for English de- 
+scribing the frames and linking them to the words 
+and expressions that can evoke them.   These can 
+be  verbs  as  well  as  nouns,  adjectives,  preposi- 
+tions, adverbs, and multiword expressions. Frames 
+are linked by IS-A and other relations.  Currently, 
+FrameNet contains 609 frames with 8,755 lemma- 
+frame pairs, of which 5,308 are exemplified in an- 
+notated sentences from the British National Corpus. 
+The annotation comprises 133,846 sentences.
+  As FrameNet is a growing resource, many lem- 
+mas are still lacking senses, and many senses are still 
+lacking annotation. This is problematic for the use 
+of FrameNet analyses as a basis for inferences over 
+text, as e.g. in Tatu and Moldovan (2005).
+  For example, the verb prepare from Figure 1 is 
+associated with the frames
+CO O K I N G  C R E AT I O N: prepare food
+AC T I V I T Y  P R E PA R E: get ready for an activity
+AC T I V I T Y  R E A DY  S TAT E: be ready for an activity
+WI L L I N G N E S S: be willing
+of which only the CO O K I N G  C R E AT I O N  sense has 
+been annotated.  The sense in Figure 1 is not cov- 
+ered yet: AC T I V I T Y  R E A DY  S TAT E would be more 
+appropriate than CO O K I N G  C R E AT I O N, but still not 
+optimal, since the sentence refers to a mental state 
+rather than the preparation of an activity.
+
+
+3	Experimental setup and data
+
+
+wave
+
+s 	subj      obj 	mod
+
+
+Experimental setup.  To evaluate an unknown 
+sense detection system, we need occurrences that are 
+guaranteed not to belong to any of the seen senses.
+
+
+She
+
+
+
+
+She
+
+
+hand 	outwards
+
+
+To that end we use sense-annotated data, in our case 
+the FrameNet annotated sentences, simulating un- 
+known senses by designating one sense of each am- 
+biguous lemma as unknown. All occurrences of that 
+sense are placed in the test set, while occurrences 
+of all other senses are split randomly between train- 
+ing and test set, using 5-fold cross-validation.  We 
+repeat the experiment with each of the senses of an 
+ambiguous lemma playing the part of the unknown 
+sense once.  Viewing each cross-validation run for 
+each unknown sense as a separate experiment, we 
+then report precision and recall averaged over un- 
+known senses and cross-validation runs.
+  It may seem questionable that in this experimen- 
+tal setup, the unknown sense occurrences of each 
+lemma all belong to the same sense. However, this 
+does not bias the experiment since none of the mod- 
+els we study take advantage of the shape of the test 
+set in any way. Rather, each test item is classified in- 
+dividually, without recourse to the other test items.
+
+Data.  All experiments in this paper were per- 
+formed on the FrameNet 1.2 annotated data per- 
+taining to ambiguous lemmas.   After removal of 
+instances that were annotated with more than one 
+sense, we obtain 26,496 annotated sentences for the
+1,031 ambiguous lemmas.  They were parsed with 
+Minipar (Lin, 1993); named entities were computed 
+using Heart of Gold (Callmeier et al., 2004).
+
+4	Experiment 1: WSD confidence scores 
+for unknown sense detection
+
+In this section we test a very simple model of un- 
+known sense detection:  Classifiers often return a 
+confidence score along with the assigned label. We 
+will try to detect unknown senses by a threshold 
+on confidence scores, declaring anything below the 
+threshold as unknown.  Note that this method can 
+only be applied to lemmas that have more than one 
+sense, since for single-sense lemmas the system will 
+always return the maximum confidence score.
+
+Data.   While the approach that we follow in this 
+section is applicable to all lemmas with at least two
+
+
+(1): subj, obj, mod (since s and subj corefer, 
+we use only one of them)
+(2): she, hand, outwards
+(3): subj-she, obj-hand, mod-outwards
+(4): mod-obj-subj
+
+Figure 2: Sample Minipar parse and extracted gram- 
+matical function features
+
+
+
+
+
+senses, we need lemmas with at least three senses 
+to evaluate it: One of the senses of each lemma is 
+treated as unknown, which for lemmas with three or 
+more senses leaves at least two senses for the train- 
+ing set.  This reduces our data set to 125 lemmas 
+with 7,435 annotated sentences.
+
+Modeling.   We test whether the WSD system built 
+into SH A L M A N E S E R  (Erk,  2005) can distinguish 
+known sense items from unknown sense items reli- 
+ably by its confidence scores.  The system extracts 
+a rich feature set, which forms the basis of all three 
+experiments in this paper:
+
+• a bag-of-words context, with a window size of 
+one sentence;
+
+• bi- and trigrams centered on the target word;
+
+• grammatical function information: for each de- 
+pendent of the target, (1) its function label, (2) 
+its headword, and (3) a combination of both are 
+used as features.  (4) The concatenation of all 
+function labels constitutes another feature. For 
+PPs, function labels are extended by the prepo- 
+sition. As an example, Figure 2 shows a BNC 
+sentence and its grammatical function features.
+
+• for verb targets, the target voice.
+
+The feature set is based on Florian et al. (2002) but 
+contains additional syntax-related features.   Each 
+word-related feature is represented as four features 
+for word, lemma, part of speech, and named entity.
+  SH A L M A N E S E R trains one Naive Bayes classifier 
+per lemma to be disambiguated. For this experiment,
+
+
+
+
+
+
+dxt
+x
+
+
+dtt´
+t‘
+t
+
+
+
+
+
+
+Table 1: Experiment 1: Results for label unknown 
+sense, WSD confidence level approach.  θ: confi- 
+dence threshold. σ: std. dev.
+
+
+
+
+
+all system parameters were set to their default set- 
+tings.  To detect unknown senses building on this 
+WSD system, we use a fixed confidence threshold 
+and label all items below the threshold as unknown.
+
+Results and discussion.   Table 1 shows precision 
+and recall for labeling instances as unknown using 
+different confidence thresholds θ, averaged over un- 
+known senses and 5-fold cross-validation3. We see 
+that while the precision of this method is acceptable 
+at 0.74 to 0.765, recall is extremely low, i.e. almost 
+no items were labeled unknown, even at a threshold 
+of 0.98.  However, SH A L M A N E S E R  has very high 
+confidence values overall:  Only 14.5% of all in- 
+stances in this study had a confidence value of 0.98 
+or below (7,697 of 53,206).
+  We conclude that with the given WSD system and 
+(rather standard) features, this simple method cannot 
+detect items with an unknown sense reliably.  This 
+may be due to the indiscriminately high confidence 
+scores; or it could indicate that classifiers, which 
+are geared at distinguishing between known classes 
+rather than detecting objects that differ from all seen 
+data, are not optimally suited to the task. However, 
+one further disadvantage of this approach is that, as 
+mentioned above, it can only be applied to lemmas 
+with more than one annotated sense. For FrameNet
+1.2, this comprises only 19% of the lemmas.
+
+5	A nearest neighbor-based method for 
+outlier detection
+
+In the previous section we have tested a simple ap- 
+proach to unknown sense detection using WSD con- 
+fidence scores. Our conclusion was that it was not a 
+viable approach, given its low recall and given that
+
+  3 Note that the minimum confidence score is 0.5 if 2 senses 
+are present in the training set, 0.33 for 3 present senses etc.
+
+
+Figure 3: Outlier detection by comparing distances 
+between nearest neighbors
+
+
+
+
+
+it is only applicable to lemmas with more than one 
+known sense.  In this section we introduce an al- 
+ternative approach, which uses distances to nearest 
+neighbors to detect outliers.
+  In general, the task of outlier detection is to de- 
+cide whether a new object belongs to a given training 
+set or not.  Typically, outlier detection approaches 
+derive some boundary around the training set, or 
+they derive from the set some model of “normal- 
+ity” to which new objects are compared (Markou 
+and Singh, 2003a; Markou and Singh, 2003b; Mars- 
+land, 2003).   Applications of outlier detection in- 
+clude  fault  detection  (Hickinbotham and  Austin,
+2000),  hand writing deciphering (Tax and Duin,
+1998; Scho¨ lkopf et al., 2000), and network intru- 
+sion detection (Yeung and Chow, 2002; Dasgupta 
+and Forrest, 1999).  One standard approach to out- 
+lier detection estimates the probability density of the 
+training set, such that a test object can be classified 
+as an outlier or non-outlier according to its probabil- 
+ity of belonging to the set.
+  Rather than estimating the complete density func- 
+tion, Tax and Duin (2000) approximate local density 
+at the test object by comparing distances between 
+nearest neighbors.  Given a test object x, the ap- 
+proach considers the training object t nearest to x 
+and compares the distance dxt between x and t to the 
+distance dttl   between t and its own nearest training
+data neighbor tl. Then the quotient between the dis-
+tances is used as an indicator of the (ab-)normality 
+of the test object x:
+
+p	(x) = dxt
+N N 	dtt
+
+When the distance dxt  is much larger than dttl , x is 
+considered an outlier. Figure 3 illustrates the idea.
+  The normality or abnormality of test objects is de- 
+cided by a fixed threshold θ on pN N .  The lowest
+
+
+
+threshold that makes sense is 1.0, which rejects any 
+x that is further apart from its nearest training neigh- 
+bor t than t is from its neighbor. Tax and Duin use 
+Euclidean distance, i.e.
+
+  	
+
+
+
+Fe
+atu
+res
+P
+r
+e
+c
+i
+s
+i
+o
+n
+R
+e
+c
+a
+l
+l
+A
+l
+l
+ 
+C
+x
+ 
+S
+y
+n
+Sy
+n-
+hw
+0.7
+07
+2	(σ 0.0088)
+0.7
+01
+6	(σ 0.0041)
+0.8
+33
+3	(σ 0.0085)
+0.7
+78
+4	(σ 0.0029)
+0.2
+68
+3	(σ 0.0043)
+0.3
+51
+1	(σ 0.0035)
+0.2
+09
+9	(σ 0.0042)
+0.2
+36
+8	(σ 0.0022)
+
+Table 2: Experiment 2: Results for label unknown
+
+
+dxt  =
+
+
+ (xi − ti)2
+i
+
+
+
+sense, NN-based 
+outlier detection, θ 
+= 1.0. σ: stan- dard 
+deviation
+
+
+Applied to feature vectors with entries either 0 or 1, 
+this corresponds to the size of the symmetric differ- 
+ence of the two feature sets.
+
+6	Experiment 2: NN-based outlier 
+detection
+
+In this section we use the NN-based outlier detection 
+approach of the previous section for an experiment 
+in unknown sense detection. Experimental setup and 
+data are as described in Section 3.
+
+Modeling.   We model unknown sense detection as 
+an outlier detection task, using Tax and Duin’s out- 
+lier detection approach that we have outlined in 
+the previous section.  Nearest neighbors (by Eu- 
+clidean distance) were computed using the ANN 
+tool (Mount and Arya, 2005). We compute one out- 
+lier detection model per lemma.  With training and 
+test sets constructed as described in Section 3, the 
+average training set comprises 22.5 sentences.
+  We use the same features as in Section 4, with fea- 
+ture vector entries of 1 for present and 0 for absent 
+features. For a more detailed analysis of the contri- 
+bution of different feature types, we test on reduced 
+as well as full feature vectors:
+
+All: full feature vectors
+
+Cx: only bag-of-word context features (words, lem- 
+mas, POS, NE)
+
+Syn: function labels of dependents
+
+Syn-hw: Syn plus headwords of dependents
+
+  We compare the NN-based model to that of 
+Experiment 1, but not to any simpler baseline. 
+While for WSD it is possible to formulate simple 
+frequency-based methods that can serve as a base- 
+line, this is not so in unknown sense detection be- 
+cause the frequency of unknown senses is, by def- 
+inition, unknown.  Furthermore, the number of an- 
+notated sentences per sense in FrameNet depends
+
+
+
+
+Fe
+atu
+res
+P
+r
+e
+c
+i
+s
+i
+o
+n
+all	≥ 10	≥ 20
+R
+e
+c
+a
+l
+l
+all	≥ 10	≥ 20
+Al
+l
+Cx
+Sy
+n
+Sy
+n-
+hw
+0.7
+1	0.70	0.67
+0.7
+0	0.70	0.67
+0.8
+3	0.81	0.77
+0.7
+8	0.76	0.73
+0.2
+7	0.35	0.45
+0.3
+5	0.47	0.58
+0.2
+1	0.22	0.21
+0.2
+4	0.28	0.31
+
+Table 3: Experiment 2: Results by training set size,
+θ = 1.0
+
+
+
+
+
+on the number of subcategorization frames of the 
+lemma rather than the frequency of the sense, which 
+makes frequency calculations meaningless.
+
+Results.   Table 2 shows precision and recall for la- 
+beling instances as unknown using a distance quo- 
+tient threshold of θ=1.0, averaged over unknown 
+senses and over 5-fold cross-validation. We see that 
+recall is markedly higher than in Experiment 1, es- 
+pecially for the two conditions that include context 
+words, All and Cx.  The syntax-based conditions 
+Syn and Syn-hw show a higher precision, with a 
+less pronounced increase in recall.
+  Raising the distance quotient threshold results in 
+little change in precision, but a large drop in recall. 
+For example, All vectors with a threshold of θ =
+1.1 achieve a recall of 0.14 in comparison to 0.27
+for θ = 1.0 .
+  Training set size is an important factor in sys- 
+tem results. Table 3 lists precision and recall for all 
+training sets, for training sets of size ≥ 10, and for 
+training sets of size ≥ 20. Especially in conditions 
+All and Cx, recall rises steeply when we only con- 
+sider cases with larger training sets.  However note 
+that precision does not rise with larger training sets, 
+rather it shows a slight decline.
+  Another important factor is the number of senses 
+that a lemma has, as the upper part of Table 7 shows. 
+For lemmas with a higher number of senses, preci-
+
+
+
+
+
+
+
+
+
+Figure 4: “Acceptance radius” of an outlier within 
+the training set (left) and a more “normal” training 
+set object (right)
+
+
+
+
+
+sion is much lower, while recall is much higher.
+
+Discussion.   While results in this experiment are 
+better than in Experiment 1 – in particular recall has 
+risen by 19 points for Cx –, system performance is 
+still not high enough to be usable in practice.
+  The uniformity of the training set has a large in- 
+fluence on performance, as Table 7 shows. The more 
+senses a lemma has, the harder it seems to be for the 
+model to identify known sense occurrences. Preci- 
+sion for the assignment of the unknown label drops, 
+while recall rises. We see a tradeoff between preci- 
+sion and recall, in this table as well as in Table 3. 
+There, we see that many more unknown test objects 
+are identified when training sets are larger, but a 
+larger training set does not translate into universally 
+higher results.
+  One possible explanation for this lies in a prop- 
+erty of Tax and Duin’s approach. If a training item t 
+is situated at distance d from its nearest neighbor in 
+the training set, then any test item within a radius of 
+d around t will be considered known. Thus we could 
+term d the “acceptance radius” of t. Now if t is an 
+outlier within the training set, then d will be large, as 
+illustrated in Figure 4. The sparser the training set is, 
+the more training outliers we are likely to find, with 
+large acceptance radii that assign a label of known 
+even to more distanced test items.  Thus a sparse 
+training set could lead to lower recall of unknown 
+sense assignment and at the same time higher pre- 
+cision, as the items labeled unknown would be the 
+ones at great distance from any items on the training 
+set – conforming to the pattern in Tables 3 and 7.
+
+7	Experiment 3: NN-based outlier 
+detection with added training data
+
+While the NN-based outlier detection model we 
+used in the previous experiment showed better re-
+
+
+
+
+
+
+Table 4: Extending training sets: an example
+
+Fe
+atu
+res
+P
+r
+e
+c
+i
+s
+i
+o
+n
+R
+e
+c
+a
+l
+l
+A
+l
+l
+ 
+C
+x
+ 
+S
+y
+n
+Sy
+n-
+hw
+0.7
+70
+9	(σ 0.001)
+0.7
+72
+7	(σ 0.0027)
+0.8
+57
+1	(σ 0.0045)
+0.8
+02
+5	(σ 0.0041)
+0.7
+24
+3	(σ 0.0018)
+0.8
+17
+2	(σ 0.0035)
+0.1
+69
+4	(σ 0.0012)
+0.3
+38
+3	(σ 0.0025)
+Sy
+n
+Sy
+n-
+hw
+0.8
+58
+7	(σ 0.0081)
+0.8
+05
+5	(σ 0.0056)
+0.1
+74
+8	(σ 0.0015)
+0.3
+51
+6	(σ 0.0015)
+
+Table 5: Experiment 3: Results for label unknown 
+sense, NN-based outlier detection, θ = 1.0. σ: stan- 
+dard deviation
+
+
+
+
+
+sults than the WSD confidence model, its recall is 
+still low.  We have suggested that data sparseness 
+may be responsible for the low performance. Con- 
+sequently, we repeat the experiment of the previous 
+section with more, but less specific, training data.
+  Like WordNet synsets, FrameNet frames are se- 
+mantic classes that typically comprise several lem- 
+mas or expressions.  So, assuming that words with 
+similar meaning occur in similar contexts, the con- 
+text features for lemmas in the same frame should 
+be similar. Following this idea, we supplement the 
+training data for a lemma by all the other annotated 
+data for the senses that are present in the training 
+set, where by “other data” we mean data with other 
+target lemmas. Table 4 shows an example4.
+
+Modeling.   Again, we use Tax and Duin’s outlier 
+detection approach for unknown sense detection. 
+The experimental design and evaluation are the same 
+as in Experiment 2, the only difference being the 
+training set extension. Training set extension raises 
+the average training set size from 22.5 to 374.
+
+Results.   Table 5 shows precision and recall for la- 
+beling instances as unknown, with a distance quo- 
+tient threshold of 1.0, averaged over unknown senses
+
+  4 Conditions Syn and Syn-hw were also tested using only 
+other target lemmas with the same part of speech. Results were 
+virtually unchanged.
+
+
+
+
+
+
+
+
+
+
+
+
+Table 6: Experiment 3: Results by training set size,
+θ = 1.0
+
+
+Number of 
+senses
+
+2
+3
+4
+5
+Ex
+p. 
+2	Prec.
+R
+e
+c
+.
+0.7
+8
+0.2
+1
+0.6
+8
+0.3
+8
+0.5
+9
+0.4
+7
+0.5
+5
+0.5
+9
+Ex
+p. 
+3	Prec.
+R
+e
+c
+.
+0.8
+3
+0.6
+8
+0.7
+1
+0.8
+1
+0.6
+3
+0.8
+9
+0.5
+6
+0.8
+8
+
+Table 7: Experiments 2 and 3: Results by the num- 
+ber of senses of a lemma, condition All, θ = 1.0
+
+
+
+
+
+and 5-fold cross-validation. In comparison to Exper- 
+iment 2, precision has risen slightly, and for condi- 
+tions All, Cx and Syn-hw, recall has risen steeply; 
+the maximum recall is achieved by Cx at 0.82.
+As before, increasing the distance quotient thresh-
+old leads to little change in precision but a sharp 
+drop in recall.  For All vectors, recall is 0.72 for 
+threshold 1.0, 0.56 for θ = 1.1, and 0.41 for θ = 1.2.
+  Table 6 shows system performance by training set 
+size. As the average training set in this experiment 
+is much larger than in Experiment 2, we are now 
+inspecting sets of minimum size 50 and 200 rather 
+than 10 and 20.  We find the same effect as in Ex- 
+periment 2, with noticeably higher recall for lemmas 
+with larger training sets, but slightly lower precision.
+  Table 7 breaks down system performance by the 
+degree of ambiguity of a lemma. Here, too, we see 
+the same effect as in Experiment 2: the more senses 
+a lemma has, the lower the precision and the higher 
+the recall of unknown label assignment.
+
+Discussion.	In comparison to Experiment 2, Ex- 
+periment 3 shows a dramatic increase in recall, and 
+even some increase in precision.  Precision and re- 
+call for conditions All and Cx are good enough for 
+the system to be usable in practice.
+  Of the four conditions, the three that involve con- 
+text words, All, Cx and Syn-hw, show consid-
+
+
+
+erably higher recall than Syn.   Furthermore, the 
+two conditions that do not involve syntactic fea- 
+tures, All and Cx, have markedly higher results 
+than Syn-hw. This could mean that syntactic fea- 
+tures are not as helpful as context features in detect- 
+ing unknown senses; however in Experiment 2 the 
+performance difference between Syn and the other 
+conditions was not by far as large as in this experi- 
+ment. It could also mean that frames are not as uni- 
+form in their syntactic structure as they are in their 
+context words.  This seems plausible as FrameNet 
+frames are constructed mostly on semantic grounds, 
+without recourse to similarity in syntactic structure.
+  Table 6 points to a sparse data problem, even with 
+training sets extended by additional items.  It also 
+shows that the more a test condition relies on context 
+word information, the more it profits from additional 
+data.  So it may be worthwhile to explore methods 
+for a further alleviation of data sparseness, e.g. by 
+generalizing over context words.
+  Table 7 underscores the large influence of train- 
+ing set uniformity: the more senses a lemma has, the 
+more likely the model is to classify a test instance as 
+unknown. This is the case even for extended training 
+sets.  One possible way of addressing this problem 
+would be to take into account more than a single 
+nearest neighbor in NN-based outlier detection in 
+order to compute more precise boundaries between 
+known and unknown instances.
+
+8   Conclusion and outlook
+
+We have defined and addressed the problem of 
+unknown word sense detection:  the identification 
+of corpus occurrences that are not covered by a 
+given sense inventory, using a training set of sense- 
+annotated data as a basis.   We have modeled this 
+problem as an instance of outlier detection, using 
+the simple nearest neighbor-based approach of Tax 
+and Duin to measure the resemblance of a new oc- 
+currence to the training data.  In combination with 
+a method that alleviates data sparseness by sharing 
+training data across lemmas, the approach achieves 
+good results that make it usable in practice:  With 
+items represented as vectors of context words (in- 
+cluding lemma, POS and NE), the system achieves
+0.77 precision and 0.82 recall in an evaluation on
+FrameNet 1.2.  The training set extension method,
+
+
+which proved crucial to our approach, relies solely 
+on a grouping of annotated data by semantic simi- 
+larity. As such, the method is applicable to any re- 
+source that groups words into semantic classes, for 
+example WordNet.
+  For this first study on unknown sense detection, 
+we have chosen a maximally simple outlier detec- 
+tion method; many extensions are possible. One ob- 
+vious possibility is the extension of Tax and Duin’s 
+method to more than one nearest training neigh- 
+bor for a more accurate estimate of local density. 
+Furthermore, more sophisticated feature vectors can 
+be employed to generalize over context words, and 
+other outlier detection approaches (Markou and 
+Singh, 2003a; Markou and Singh, 2003b; Marsland,
+2003) can be tested on this task.
+  Our immediate goal is to use unknown sense de- 
+tection in combination with WSD, to filter out items 
+that the WSD system cannot handle due to missing 
+senses. Once items have been identified as unknown, 
+they are available for further processing: If possible 
+one would like to assign some measure of sense in- 
+formation even to these items. Possibilities include 
+associating items with similar existing senses (Wid- 
+dows, 2003; Curran, 2005; Burchardt et al., 2005) or 
+clustering them into approximate senses.
+
+
+References
+
+C. Baker, C. Fillmore, and J. Lowe. 1998. The Berkeley
+FrameNet Project. In Proc. ACL-98, Montreal.
+
+A. Burchardt, K. Erk, and A. Frank. 2005.  A WordNet 
+detour to FrameNet.  In Proc. GLDV 2005 Workshop 
+GermaNet II, Bonn.
+
+U. Callmeier, A. Eisele, U. Scha¨fer, and M. Siegel. 2004.
+The DeepThought core architecture framework.   In
+Proc. LREC-04, Lisbon.
+
+James Curran.  2005.  Supersense tagging of unknown 
+nouns using semantic similarity.   In Proc. ACL-05, 
+Ann Arbor.
+
+D. Dasgupta and S. Forrest.   1999.   Novelty detection 
+in time series data using ideas from immunology.  In 
+Proc. International Conference on Intelligent Systems.
+
+Katrin Erk and Sebastian Pado.   2006.   Shalmaneser - 
+a toolchain for shallow semantic parsing.   In Proc. 
+LREC-06, Genoa.
+
+K. Erk.  2005.  Frame assignment as word sense disam- 
+biguation. In Proc. IWCS 2005, Tilburg.
+
+
+C. Fillmore. 1982. Frame Semantics. Linguistics in the
+Morning Calm.
+
+R. Florian, S. Cucerzan, C. Schafer, and D. Yarowsky.
+2002.   Combining classifiers for word sense disam- 
+biguation. Journal of Natural Language Engineering,
+8(4):327–431.
+
+S. Hickinbotham and J. Austin.  2000.  Neural networks 
+for novelty detection in airframe strain data. In Proc. 
+International Joint Conference on Neural Networks.
+
+D. Lin. 1993. Principle-based parsing without overgen- 
+eration. In Proc. ACL-93, Columbus, OH.
+
+M. Markou and S. Singh.   2003a.   Novelty detection: 
+A review. part 1: Statistical approaches. ACM Signal 
+Processing, 83(12):2481 – 2497.
+
+M. Markou and S. Singh.   2003b.   Novelty detection: 
+A review. part 2:  Neural network based approaches. 
+ACM Signal Processing, 83(12):2499 – 2521.
+
+S. Marsland.  2003.  Novelty detection in learning sys- 
+tems. Neural computing surveys, 3:157–195.
+
+D. Mount and S. Arya. 2005. ANN: A library for approx- 
+imate nearest neighbor searching.   Download from 
+http://www.cs.umd.edu/˜mount/ANN/.
+
+B. Scho¨ lkopf, R. Williamson, A. Smola, J. Shawe-Taylor, 
+and J. Platt. 2000. Support vector method for novelty 
+detection. Advances in neural information processing 
+systems, 12.
+
+H. Schu¨ tze. 1998. Automatic word sense discrimination.
+Computational Linguistics, 24(1):97 – 123.
+
+M. Tatu and D. Moldovan. 2005. A semantic approach to 
+recognizing textual entailment. In Proc. HLT/EMNLP
+2005, Vancouver.
+
+D. Tax and R. Duin. 1998. Outlier detection using clas- 
+sifier instability. In Advances in Pattern Recognition: 
+the Joint IAPR International Workshops.
+
+D. Tax and R. Duin.   2000.   Data description in sub- 
+spaces. In International Conference on Pattern recog- 
+nition, volume 2, Barcelona.
+
+Dominic Widdows. 2003. Unsupervised methods for de- 
+veloping taxonomies by combining syntactic and sta- 
+tistical information.   In Proc. HLT/NAACL-03, Ed- 
+monton.
+
+D. Yeung and C. Chow. 2002.  Parzen-window network 
+intrusion detectors. In Proc. International Conference 
+on Pattern Recognition.
+
+
