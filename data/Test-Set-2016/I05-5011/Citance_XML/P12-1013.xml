@@ -1,0 +1,222 @@
+<PAPER>
+	<ABSTRACT>
+		<S sid ="1" ssid = "1">Learning entailment rules is fundamental in many semantic-inference applications and has been an active field of research in recent years.</S>
+		<S sid ="2" ssid = "2">In this paper we address the problem of learning transitive graphs that describe entailment rules between predicates (termed entailment graphs).</S>
+		<S sid ="3" ssid = "3">We first identify that entailment graphs exhibit a “tree-like” property and are very similar to a novel type of graph termed forest-reducible graph.</S>
+		<S sid ="4" ssid = "4">We utilize this property to develop an iterative efficient approximation algorithm for learning the graph edges, where each iteration takes linear time.</S>
+		<S sid ="5" ssid = "5">We compare our approximation algorithm to a recently-proposed state-of-the-art exact algorithm and show that it is more efficient and scalable both theoretically and empirically, while its output quality is close to that given by the optimal solution of the exact algorithm.</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number = "1">
+			<S sid ="6" ssid = "6">Performing textual inference is in the heart of many semantic inference applications such as Question Answering (QA) and Information Extraction (IE).</S>
+			<S sid ="7" ssid = "7">A prominent generic paradigm for textual inference is Textual Entailment (TUE) (Dagan et al., 2009).</S>
+			<S sid ="8" ssid = "8">In TUE, the goal is to recognize, given two text fragments termed text and hypothesis, whether the hypothesis can be inferred from the text.</S>
+			<S sid ="9" ssid = "9">For example, the text “Cyprus was invaded by the Ottoman Empire in 1571” implies the hypothesis “The Ottomans attacked Cyprus”.</S>
+			<S sid ="10" ssid = "10">Semantic inference applications such as QA and IE crucially rely on entailment rules (Ravichandran and Hovy, 2002; Shinyama and Sekine, 2006) or equivalently inference rules, that is, rules that describe a directional inference relation between two fragments of text.</S>
+			<S sid ="11" ssid = "11">An important type of entailment rule specifies the entailment relation between natural language predicates, e.g., the entailment rule ‘X invade Y → X attack Y’ can be helpful in inferringthe aforementioned hypothesis.</S>
+			<S sid ="12" ssid = "12">Consequently, sub stantial effort has been made to learn such rules (Lin and Pantel, 2001; Sekine, 2005; Szpektor and Dagan, 2008; Schoenmackers et al., 2010).</S>
+			<S sid ="13" ssid = "13">Textual entailment is inherently a transitive relation , that is, the rules ‘x → y’ and ‘y → z’ imply the rule ‘x → z’.</S>
+			<S sid ="14" ssid = "14">Accordingly, Berant et al.</S>
+			<S sid ="15" ssid = "15">(2010) formulated the problem of learning entailment rules as a graph optimization problem, where nodes are predicates and edges represent entailment rules that respect transitivity.</S>
+			<S sid ="16" ssid = "16">Since finding the optimal set of edges respecting transitivity is NP-hard, they employed Integer Linear Programming (ILP) to find the exact solution.</S>
+			<S sid ="17" ssid = "17">Indeed, they showed that applying global transitivity constraints improves rule learning comparing to methods that ignore graph structure.</S>
+			<S sid ="18" ssid = "18">More recently, Berant et al.</S>
+			<S sid ="19" ssid = "19">(Berant et al., 2011) introduced a more efficient exact algorithm, which decomposes the graph into connected components and then applies an ILP solver over each component.</S>
+			<S sid ="20" ssid = "20">Despite this progress, finding the exact solution remains NP-hard – the authors themselves report they were unable to solve some graphs of rather moderate size and that the coverage of their method is limited.</S>
+			<S sid ="21" ssid = "21">Thus, scaling their algorithm to data sets with tens of thousands of predicates (e.g., the extractions of Fader et al.</S>
+			<S sid ="22" ssid = "22">(2011)) is unlikely.</S>
+			<S sid ="23" ssid = "23">117 Proceedings of the 50th Annual Meeting of the Association for Computational Linguistics, pages 117–125, Jeju, Republic of Korea, 814 July 2012.</S>
+			<S sid ="24" ssid = "24">Qc 2012 Association for Computational Linguistics In this paper we present a novel method for learning the edges of entailment graphs.</S>
+			<S sid ="25" ssid = "25">Our method computes much more efficiently an approximate solution that is empirically almost as good as the exact solution.</S>
+			<S sid ="26" ssid = "26">To that end, we first (Section 3) conjecture and empirically show that entailment graphs exhibit a “tree-like” property, i.e., that they can be reduced into a structure similar to a directed forest.</S>
+			<S sid ="27" ssid = "27">Then, we present in Section 4 our iterative approximation algorithm, where in each iteration a node is removed and re-attached back to the graph in a locally-optimal way.</S>
+			<S sid ="28" ssid = "28">Combining this scheme with our conjecture about the graph structure enables a linear algorithm for node re-attachment.</S>
+			<S sid ="29" ssid = "29">Section 5 shows empirically that this algorithm is by orders of magnitude faster than the state-of-the-art exact algorithm, and that though an optimal solution is not guaranteed, the area under the precision-recall curve drops by merely a point.</S>
+			<S sid ="30" ssid = "30">To conclude, the contribution of this paper is twofold: First, we define a novel modeling assumption about the tree-like structure of entailment graphs and demonstrate its validity.</S>
+			<S sid ="31" ssid = "31">Second, we exploit this assumption to develop a polynomial approximation algorithm for learning entailment graphs that can scale to much larger graphs than in the past.</S>
+			<S sid ="32" ssid = "32">Finally, we note that learning entailment graphs bears strong similarities to related tasks such as Taxonomy Induction (Snow et al., 2006) and Ontology induction (Poon and Domingos, 2010), and thus our approach may improve scalability in these fields as well.</S>
+	</SECTION>
+	<SECTION title="Background. " number = "2">
+			<S sid ="33" ssid = "1">Until recently, work on learning entailment rules between predicates considered each rule independently of others and did not exploit global dependencies.</S>
+			<S sid ="34" ssid = "2">Most methods utilized the distributional similarity hypothesis that states that semantically similar predicates occur with similar arguments (Lin and Pan- tel, 2001; Szpektor et al., 2004; Yates and Etzioni, 2009; Schoenmackers et al., 2010).</S>
+			<S sid ="35" ssid = "3">Some methods extracted rules from lexicographic resources such as WordNet (Szpektor and Dagan, 2009) or FrameNet (Bob and Rambow, 2009; Ben Aharon et al., 2010), and others assumed that semantic relations between predicates can be deduced from their co-occurrence in a corpus via manually-constructed patterns (Chklovski and Pantel, 2004).</S>
+			<S sid ="36" ssid = "4">Recently, Berant et al.</S>
+			<S sid ="37" ssid = "5">(2010; 2011) formulated the problem as the problem of learning global entail- ment graphs.</S>
+			<S sid ="38" ssid = "6">In entailment graphs, nodes are predicates (e.g., ‘X attack Y’) and edges represent entail ment rules between them (‘X invade Y → X attack Y’).</S>
+			<S sid ="39" ssid = "7">For every pair of predicates i, j, an entailment score wij was learned by training a classifier over distributional similarity features.</S>
+			<S sid ="40" ssid = "8">A positive wij indicated that the classifier believes i → j and a nega tive wij indicated that the classifier believes i --- j. Given the graph nodes V (corresponding to the predicates) and the weighting function w : V × V → R, they aim to find the edges of a graph G = (V, E) that maximize the objective L(i,j)∈E wij under the constraint that the graph is transitive (i.e., for every node triplet (i, j, k), if (i, j) ∈ E and (j, k) ∈ E, then (i, k) ∈ E).</S>
+			<S sid ="41" ssid = "9">Berant et al. proved that this optimization problem, which we term MaxTrans-Graph, is NP-hard, and so described it as an Integer Linear Program (ILP).</S>
+			<S sid ="42" ssid = "10">Let xij be a binary variable indicating the ex istence of an edge i → j in E. Then, X = {xij : i /= j} are the variables of the following ILP for MaxTrans-Graph: arg max wij · xij (1) X i/=j s.t. ∀i,j,k∈V xij + xjk − xik ≤ 1 ∀i,j∈V xij ∈ {0, 1} The objective function is the sum of weights over the edges of G and the constraint xij + xjk − xik ≤ 1 on the binary variables enforces that whenever xij = xjk = 1, then also xik = 1 (transitivity).Since ILP is NP-hard, applying an ILP solver di rectly does not scale well because the number of variables is O(|V |2) and the number of constraints is O(|V |3).</S>
+			<S sid ="43" ssid = "11">Thus, even a graph with ∼80 nodes (predi cates) has more than half a million constraints.</S>
+			<S sid ="44" ssid = "12">Consequently, in (Berant et al., 2011), they proposed a method that efficiently decomposes the graph into smaller components and applies an ILP solver on each component separately using a cutting-plane procedure (Riedel and Clarke, 2006).</S>
+			<S sid ="45" ssid = "13">Although this method is exact and improves scalability, it does not guarantee an efficient solution.</S>
+			<S sid ="46" ssid = "14">When the graph does not decompose into sufficiently small components, and the weights generate many violations of transitivi tractable.</S>
+			<S sid ="47" ssid = "15">this pap set of ed it is muc (a) Xdisease X d i s e a s e o c c u r i n Y c o u n t r y Xdisea se X cally and Do and lated task terms.</S>
+			<S sid ="48" ssid = "16">Gi structed a structure.</S>
+			<S sid ="49" ssid = "17">scenarios for a give common in Ycountry Xdisease be epidemic in Ycountry (b) frequent in Ycountry occur in disease begin in Ycountry base is e easily pr such as t Anoth sitivity c 2009).</S>
+			<S sid ="50" ssid = "18">In is replac lem from is polyn problem, tional va so many violations of transitivity easily occur.</S>
+			<S sid ="51" ssid = "19">The (c) common in frequent in be epidemic in occur in common in frequent in be epidemic in begin in begin in solution when applying LP relaxation is not a transitive graph, but nevertheless we show for comparison in Section 5 that our method is much faster.</S>
+			<S sid ="52" ssid = "20">Last, we note that transitive relations have been explored in adjacent fields such as Temporal Information Extraction (Ling and Weld, 2010), Ontology Induction (Poon and Domingos, 2010), and Co- reference Resolution (Finkel and Manning, 2008).</S>
+	</SECTION>
+	<SECTION title="Forest-reducible Graphs. " number = "3">
+			<S sid ="53" ssid = "1">The entailment relation, described by entailment graphs, is typically from a “semantically-specific” predicate to a more “general” one.</S>
+			<S sid ="54" ssid = "2">Thus, intuitively, the topology of an entailment graph is expected to be “tree-like”.</S>
+			<S sid ="55" ssid = "3">In this section we first formalize this intuition and then empirically analyze its validity.</S>
+			<S sid ="56" ssid = "4">This property of entailment graphs is an interesting topological observation on its own, but also enables the efficient approximation algorithm of Section 4.</S>
+			<S sid ="57" ssid = "5">For a directed edge i → j in a directed acyclic graphs (DAG), we term the node i a child of node j, and j a parent of i. A directed forest is a DAG Figure 1: A fragment of an entailment graph (a), its SCC graph (b) and its reduced graph (c).</S>
+			<S sid ="58" ssid = "6">Nodes are predicates with typed variables (see Section 5), which are omitted in (b) and (c) for compactness.</S>
+			<S sid ="59" ssid = "7">where all nodes have no more than one parent.</S>
+			<S sid ="60" ssid = "8">The entailment graph in Figure 1a (subgraph from the data set described in Section 5) is clearly not a directed forest – it contains a cycle of size two comprising the nodes ‘X common in Y’ and ‘X frequent in Y’, and in addition the node ‘X be epidemic in Y’ has 3 parents.</S>
+			<S sid ="61" ssid = "9">However, we can convert it to a directed forest by applying the following operations.</S>
+			<S sid ="62" ssid = "10">Anydirected graph G can be converted into a StronglyConnected-Component (SCC) graph in the follow ing way: every strongly connected component (a set of semantically-equivalent predicates, in our graphs) is contracted into a single node, and an edge is added from SCC S1 to SCC S2 if there is an edge in G from some node in S1 to some node in S2.</S>
+			<S sid ="63" ssid = "11">The SCC graph is always a DAG (Cormen et al., 2002), and if G is transitive then the SCC graph is also transitive.</S>
+			<S sid ="64" ssid = "12">The graph in Figure 1b is the SCC graph of the one in Xcountry invade Yplace Yplace be part of Xcountry Xcountry annex Yplace Figure 2: A fragment of an entailment graph that is not an FRG.</S>
+			<S sid ="65" ssid = "13">Figure 1a, but is still not a directed forest since the node ‘X be epidemic in Y’ has two parents.</S>
+			<S sid ="66" ssid = "14">The transitive closure of a directed graph G is obtained by adding an edge from node i to node j if there is a path in G from i to j. The transitive reduction of G is obtained by removing all edges whose absence does not affect its transitive closure.</S>
+			<S sid ="67" ssid = "15">In DAGs, the result of transitive reduction is unique (Aho et al., 1972).</S>
+			<S sid ="68" ssid = "16">We thus define the reduced graph Gred = (Vred, Ered) of a directed graph G as the transitive reduction of its SCC graph.</S>
+			<S sid ="69" ssid = "17">The graph in Figure 1c is the reduced graph of the one in Figure 1a and is a directed forest.</S>
+			<S sid ="70" ssid = "18">We say a graph is a forest-reducible graph (FRG) if all nodes in its reduced form have no more than one parent.</S>
+			<S sid ="71" ssid = "19">We now hypothesize that entailment graphs are FRGs.</S>
+			<S sid ="72" ssid = "20">The intuition behind this assumption is that the predicate on the left-hand-side of a unidirectional entailment rule has a more specific meaning than the one on the right-hand-side.</S>
+			<S sid ="73" ssid = "21">For instance, in Figure 1a ‘X be epidemic in Y’ (where ‘X’ is a type of disease and ‘Y’ is a country) is more specific than ‘X common in Y’ and ‘X frequent in Y’, which are equivalent, while ‘X occur in Y’ is even more general.</S>
+			<S sid ="74" ssid = "22">Accordingly, the reduced graph in Figure 1c is an FRG.</S>
+			<S sid ="75" ssid = "23">We note that this is not always the case: for example, the entailment graph in Figure 2 is not an FRG, because ‘X annex Y’ entails both ‘Y be part of X’ and ‘X invade Y’, while the latter two do not entail one another.</S>
+			<S sid ="76" ssid = "24">However, we hypothesize that this scenario is rather uncommon.</S>
+			<S sid ="77" ssid = "25">Consequently, a natural variant of the MaxTrans-Graph problem is to restrict the required output graph of the optimization problem (1) to an FRG.</S>
+			<S sid ="78" ssid = "26">We term this problem MaxTrans-Forest.</S>
+			<S sid ="79" ssid = "27">To test whether our hypothesis holds empirically we performed the following analysis.</S>
+			<S sid ="80" ssid = "28">We sampled 7 gold standard entailment graphs from the data set described in Section 5, manually transformed them into FRGs by deleting a minimal number of edges, and measured recall over the set of edges in each graph (precision is naturally 1.0, as we only delete gold standard edges).</S>
+			<S sid ="81" ssid = "29">The lowest recall value obtained was 0.95, illustrating that deleting a very small proportion of edges converts an entailment graph into an FRG.</S>
+			<S sid ="82" ssid = "30">Further support for the practical validity of this hypothesis is obtained from our experiments in Section 5.</S>
+			<S sid ="83" ssid = "31">In these experiments we show that exactly solving MaxTrans-Graph and MaxTrans-Forest (with an ILP solver) results in nearly identical performance.</S>
+			<S sid ="84" ssid = "32">An ILP formulation for MaxTrans-Forest is simple – a transitive graph is an FRG if all nodes in its reduced graph have no more than one parent.</S>
+			<S sid ="85" ssid = "33">It can be verified that this is equivalent to the following statement: for every triplet of nodes i, j, k, if i → j and i → k, then either j → k or k → j (or both).Therefore, the ILP is formulated by adding this lin ear constraint to ILP (1): ∀i,j,k∈V xij +xik +(1 − xjk )+(1 − xkj ) ≤ 3 (2) We note that despite the restriction to FRGs, Max Trans-Forest is an NP-hard problem by a reduction from the X3C problem (Garey and Johnson, 1979).</S>
+			<S sid ="86" ssid = "34">We omit the reduction details for brevity.</S>
+	</SECTION>
+	<SECTION title="Sequential Approximation Algorithms. " number = "4">
+			<S sid ="87" ssid = "1">In this section we present Tree-Node-Fix, an efficient approximation algorithm for MaxTrans-Forest, as well as Graph-Node-Fix, an approximation for MaxTrans-Graph.</S>
+			<S sid ="88" ssid = "2">4.1 Tree-Node-Fix.</S>
+			<S sid ="89" ssid = "3">The scheme of Tree-Node-Fix (TNF) is the following.</S>
+			<S sid ="90" ssid = "4">First, an initial FRG is constructed, using some initialization procedure.</S>
+			<S sid ="91" ssid = "5">Then, at each iteration a single node v is re-attached (see below) to the FRG in a way that improves the objective function.</S>
+			<S sid ="92" ssid = "6">This is repeated until the value of the objective function cannot be improved anymore by re-attaching a node.</S>
+			<S sid ="93" ssid = "7">Re-attaching a node v is performed by removing v from the graph and connecting it back with a better set of edges, while maintaining the constraint that it is an FRG.</S>
+			<S sid ="94" ssid = "8">This is done by considering all possible edges from/to the other graph nodes and choosing (a) (b) c (b’) c (c) v ure 3b) , or not an d the n it bec om es a roo t in Gre d c v v d1 d2 … … v r1 r2 r3 d … … … … (Figure 3c).</S>
+			<S sid ="95" ssid = "9">We describe the details of these 3 cases: Case 1: Inserting v into a component c ∈ Vred.</S>
+			<S sid ="96" ssid = "10">In this case we add in G edges from all nodes in c Figure 3: (a) Inserting v into a component c ∈ Vred .</S>
+			<S sid ="97" ssid = "11">(b) Inserting v as a child of c and a parent of a subset of c’s children in Gred .</S>
+			<S sid ="98" ssid = "12">(b’) A node d that is a descendant but not a child of c can not choose v as a parent, as v becomes its second parent.</S>
+			<S sid ="99" ssid = "13">(c) Inserting v as a new root.</S>
+			<S sid ="100" ssid = "14">the optimal subset, while the rest of the graph remains fixed.</S>
+			<S sid ="101" ssid = "15">Formally, let Sv−in = Li/=v wiv · xiv be the sum of scores over v’s incoming edges and Sv−out = Lk/=v wvk · xvk be the sum of scores overv’s outgoing edges.</S>
+			<S sid ="102" ssid = "16">Re-attachment amounts to opti mizing a linear objective: arg max(Sv-in + Sv-out) (3) Xv where the variables Xv ⊆ X are indicators for all pairs of nodes involving v. We approximate a solution for (1) by iteratively optimizing the simpler ob jective (3).</S>
+			<S sid ="103" ssid = "17">Clearly, at each re-attachment the value of the objective function cannot decrease, since the optimization algorithm considers the previous graph as one of its candidate solutions.</S>
+			<S sid ="104" ssid = "18">We now show that re-attaching a node v is linear.</S>
+			<S sid ="105" ssid = "19">To analyze v’s re-attachment, we consider the structure of the directed forest Gred just before v isre-inserted, and examine the possibilities for v’s in sertion relative to that structure.</S>
+			<S sid ="106" ssid = "20">We start by defining some helpful notations.</S>
+			<S sid ="107" ssid = "21">Every node c ∈ Vred and their descendants to v and from v to all nodes in c and their ancestors.</S>
+			<S sid ="108" ssid = "22">The score (3) in this case is s1(c) Sv-in(c) + Sv-out(c) (4) Case 2: Inserting v as a child of some c ∈ Vred.</S>
+			<S sid ="109" ssid = "23">Once c is chosen as the parent of v, choosing v’s children in Gred is substantially constrained.</S>
+			<S sid ="110" ssid = "24">A node that is not a descendant of c can not become a child of v, since this would create a new path from that node to c and would require by transitivity to add a corresponding directed edge to c (but all graph edges not connecting v are fixed).</S>
+			<S sid ="111" ssid = "25">Moreover, only a direct child of c can choose v as a parent instead of c (Figure 3b), since for any other descendant of c, v would become a second parent, and Gred will no longer be a directed forest (Figure 3b’).</S>
+			<S sid ="112" ssid = "26">Thus, this case requires adding in G edges from v to all nodes in c and their ancestors, and also for each new child of v, denoted by d ∈ Vred, we add edges from all nodes in d and their descendants to v. Crucially, although the number of possible subsets of c’s children in Gred is exponential, the fact that they are independent trees in Gred allows us to go over them one by one, and decide for each one whether it will be a child of v or not, depending on whether Sv-in(d) is positive.</S>
+			<S sid ="113" ssid = "27">Therefore, the score (3) in this case is: is a connected component in G. Let vc ∈ c be an s2(c) Sv-out(c)+ max(0, Sv-in(d)) (5) arbitrary representative node in c. We denote by Sv-in(c) the sum of weights from all nodes in c and their descendants to v, and by Sv-out(c) the sum of weights from v to all nodes in c and their ancestors: d∈child(c) where child(c) are the children of c. Case 3: Inserting v as a new root in Gred.</S>
+			<S sid ="114" ssid = "28">Similar to case 2, only roots of Gred can become children of Sv-in(c) = Sv-out(c) = i∈c i∈c wiv + wvi + k ∈/c k ∈/c wkv xkvc wvk xvc k v. In this case for each chosen root r we add in G edges from the nodes in r and their descendants to v. Again, each root can be examined independently.</S>
+			<S sid ="115" ssid = "29">Therefore, the score (3) of re-attaching v is: Note that {xvc k , xkvc } are edge indicators in Gand not Gred.</S>
+			<S sid ="116" ssid = "30">There are two possibilities for re attaching v – either it is inserted into an existing s3 max(0, Sv-in(r)) (6) r component c ∈ Vred (Figure 3a), or it forms a new component.</S>
+			<S sid ="117" ssid = "31">In the latter, there are also two cases:either v is inserted as a child of a component c (Fig where the summation is over the roots of Gred.</S>
+			<S sid ="118" ssid = "32">It can be easily verified that Sv-in(c) and Sv-out(c) satisfy the recursive definitions: Algorithm 1 Computing optimal re-attachment Input: FRG G = (V, E), function w, node v ∈ V Output: optimal re-attachment of v 1: remove v and compute Gred = (Vred , Ered ).</S>
+			<S sid ="119" ssid = "33">2: for all c ∈ Vred in post-order compute Sv-in (c) (Eq. 7) 3: for all c ∈ Vred in pre-order compute Sv-out (c) (Eq. 8) 4: case 1: s1 = maxc∈Vred s1 (c) (Eq. 4) 5: case 2: s2 = maxc∈Vred s2 (c) (Eq. 5) 6: case 3: compute s3 (Eq. 6) 7: re-attach v according to max(s1 , s2 , s3 ).</S>
+			<S sid ="120" ssid = "34">i k i k i k v v v Figure 4: Three types of transitivity constraint violations.</S>
+			<S sid ="121" ssid = "35">involving v. Figure 4 illustrates the three types of possible transitivity constraint violations when re- attaching v. The left side depicts a violation when (i, k) ∈/ E, expressed by the constraint in (9) below, and the middle and right depict two violations when the edge (i, k) ∈ E, expressed by the constraints in (10).</S>
+			<S sid ="122" ssid = "36">Thus, the ILP is formulated by adding the Sv-in(c) = wiv + Sv-in(d), c ∈ Vred (7) following constraints to the objective function (3): i∈c Sv-out(c) = i∈c d∈child(c) wvi + Sv-out(p), c ∈ Vred (8) ∀i,k∈V \{v} if (i, k) ∈/ E, xiv + xvk ≤ 1 (9) if (i, k) ∈ E, xvi ≤ xvk , xkv ≤ xiv (10) where p is the parent of c in Gred.</S>
+			<S sid ="123" ssid = "37">These recursive definitions allow to compute in linear time Sv-in(c) and Sv-out(c) for all c (given Gred) using dynamicprogramming, before going over the cases for re attaching v. Sv-in(c) is computed going over Vred leaves-to-root (post-order), and Sv-out(c) is computed going over Vred root-to-leaves (pre-order).</S>
+			<S sid ="124" ssid = "38">Re-attachment is summarized in Algorithm 1.</S>
+			<S sid ="125" ssid = "39">Computing an SCC graph is linear (Cormen et al., 2002) and it is easy to verify that transitive reduction in FRGs is also linear (Line 1).</S>
+			<S sid ="126" ssid = "40">Computing Sv-in(c) and Sv-out(c) (Lines 23) is also linear, as explained.</S>
+			<S sid ="127" ssid = "41">Cases 1 and 3 are trivially linear and in case 2 we go over the children of all nodes in Vred.</S>
+			<S sid ="128" ssid = "42">As the reduced graph is a forest, this simply means going over all nodes of Vred, and so the entire algorithm is linear.</S>
+			<S sid ="129" ssid = "43">Since re-attachment is linear, re-attaching all nodes is quadratic.</S>
+			<S sid ="130" ssid = "44">Thus if we bound the number of iterations over all nodes, the overall complexity is quadratic.</S>
+			<S sid ="131" ssid = "45">This is dramatically more efficient and scalable than applying an ILP solver.</S>
+			<S sid ="132" ssid = "46">In Section 5 we ran TNF until convergence and the maximal number of iterations over graph nodes was 8.</S>
+			<S sid ="133" ssid = "47">4.2 Graph-node-fix.</S>
+			<S sid ="134" ssid = "48">Next, we show Graph-Node-Fix (GNF), a similar approximation that employs the same re-attachment strategy but does not assume the graph is an FRG.</S>
+			<S sid ="135" ssid = "49">Thus, re-attachment of a node v is done with an ILP solver.</S>
+			<S sid ="136" ssid = "50">Nevertheless, the ILP in GNF is simpler than (1), since we consider only candidate edges xiv , xvk ∈ {0, 1} (11) Complexity is exponential due to the ILP solver; however, the ILP size is reduced by an order of magnitude to O(|V |) variables and O(|V |2) constraints.</S>
+			<S sid ="137" ssid = "51">4.3 Adding local constraints.</S>
+			<S sid ="138" ssid = "52">For some pairs of predicates i, j we sometimes have prior knowledge whether i entails j or not.</S>
+			<S sid ="139" ssid = "53">We term such pairs local constraints, and incorporate them into the aforementioned algorithms in the following way.</S>
+			<S sid ="140" ssid = "54">In all algorithms that apply an ILP solver, we add a constraint xij = 1 if i entails j or xij = 0 if i does not entail j. Similarly, in TNF we incorporate local constraints by setting wij = ∞ or wij = −∞.</S>
+	</SECTION>
+	<SECTION title="Experiments and Results. " number = "5">
+			<S sid ="141" ssid = "1">In this section we empirically demonstrate that TNF is more efficient than other baselines and its output quality is close to that given by the optimal solution.</S>
+			<S sid ="142" ssid = "2">5.1 Experimental setting.</S>
+			<S sid ="143" ssid = "3">In our experiments we utilize the data set released by Berant et al.</S>
+			<S sid ="144" ssid = "4">(2011).</S>
+			<S sid ="145" ssid = "5">The data set contains 10 entailment graphs, where graph nodes are typed predicates.</S>
+			<S sid ="146" ssid = "6">A typed predicate (e.g., ‘Xdisease occur in Ycountry ’) includes a predicate and two typed variables that specify the semantic type of the arguments.</S>
+			<S sid ="147" ssid = "7">For instance, the typed variable Xdisease can be instantiated by arguments such as ‘flu’ or ‘diabetes’.</S>
+			<S sid ="148" ssid = "8">The data set contains 39,012 potential edges, of which 3,427 are annotated as edges (valid entail- ment rules) and 35,585 are annotated as non-edges.The data set also contains, for every pair of pred the output of a classifier trained over distributional similarity features.</S>
+			<S sid ="149" ssid = "9">A positive sij indicates that the ● ● Exact−graph LP−relax GNF TNF ● the graph edges w is defined as wij = sij − λ, where λ is a single parameter controlling graph sparseness: ● tive for more pairs of predicates, rendering the graph ● more sparse.</S>
+			<S sid ="150" ssid = "10">In addition, the data set contains a set ● of local constraints (see Section 4.3).</S>
+			<S sid ="151" ssid = "11">We implemented the following algorithms for ● is first decomposed into components according to Berant et al’s method, as explained in Section 2.</S>
+			<S sid ="152" ssid = "12">No-trans Local scores are used without transitivity constraints – an edge (i, j) is inserted iff wij &gt; 0.</S>
+			<S sid ="153" ssid = "13">Exact-graph Berant et al.’s exact method (2011) for MaxTrans-Graph, which utilizes an ILP solver1.</S>
+			<S sid ="154" ssid = "14">Exact-forest Solving MaxTrans-Forest exactly by applying an ILP solver (see Eq. 2).</S>
+			<S sid ="155" ssid = "15">LP-relax Solving MaxTrans-Graph approximately by applying LP-relaxation (see Section 2) on each graph component.</S>
+			<S sid ="156" ssid = "16">We apply the LP solver within the same cutting-plane procedure as Exact- graph to allow for a direct comparison.</S>
+			<S sid ="157" ssid = "17">This also keeps memory consumption manageable, as other wise all |V |3 constraints must be explicitly encoded into the LP.</S>
+			<S sid ="158" ssid = "18">As mentioned, our goal is to present a method for learning transitive graphs, while LP- relax produces solutions that violate transitivity.</S>
+			<S sid ="159" ssid = "19">However, we run it on our data set to obtain empirical results, and to compare run-times against TNF.</S>
+			<S sid ="160" ssid = "20">Graph-Node-Fix (GNF) Initialization of each component is performed in the following way: if the graph is very sparse, i.e. λ ≥ C for some constant C (set to 1 in our experiments), then solving the graph exactly is not an issue and we use Exact-graph.</S>
+			<S sid ="161" ssid = "21">Otherwise, we initialize by applying Exact-graph in a sparse configuration, i.e., λ = C . Tree-Node-Fix (TNF) Initialization is done as in GNF, except that if it generates a graph that is not an FRG, it is corrected by a simple heuristic: for every node in the reduced graph Gred that has more than 1 We use the Gurobi optimization package in all experiments..</S>
+			<S sid ="162" ssid = "22">−0.8 −0.6 −0.4 −0.2 0.0 −lambda Figure 5: Run-time in seconds for various −λ values.</S>
+			<S sid ="163" ssid = "23">one parent, we choose from its current parents the single one whose SCC is composed of the largest number of nodes in G. We evaluate algorithms by comparing the set of gold standard edges with the set of edges learned by each algorithm.</S>
+			<S sid ="164" ssid = "24">We measure recall, precision and F1 for various values of the sparseness parameter λ, and compute the area under the precision-recall Curve (AUC) generated.</S>
+			<S sid ="165" ssid = "25">Efficiency is evaluated by comparing run-times.</S>
+			<S sid ="166" ssid = "26">5.2 Results.</S>
+			<S sid ="167" ssid = "27">We first focus on run-times and show that TNF is efficient and has potential to scale to large data sets.</S>
+			<S sid ="168" ssid = "28">Figure 5 compares run-times2 of Exact-graph, GNF, TNF, and LP-relax as −λ increases and the graph becomes denser.</S>
+			<S sid ="169" ssid = "29">Note that the y-axis is in logarithmic scale.</S>
+			<S sid ="170" ssid = "30">Clearly, Exact-graph is extremely slow and run-time increases quickly.</S>
+			<S sid ="171" ssid = "31">For λ = 0.3 run-time was already 12 hours and we were unable to obtain results for λ &lt; 0.3, while in TNF we easily got a solution for any λ.</S>
+			<S sid ="172" ssid = "32">When λ = 0.6, where both Exact-graph and TNF achieve best F1, TNF is 10 times faster than Exact-graph.</S>
+			<S sid ="173" ssid = "33">When λ = 0.5, TNF is 50 times faster than Exact-graph and so on.</S>
+			<S sid ="174" ssid = "34">Most importantly, run-time for GNF and TNF increases much more slowly than for Exact-graph.</S>
+			<S sid ="175" ssid = "35">2 Run on a multi-core 2.5GHz server with 32GB of RAM..</S>
+			<S sid ="176" ssid = "36">● ● ●● ● ● ● ● ● ● ● ● ● ● ● ● ● ● Exact−graph TNF No−trans ● ● ● ● and as shown above run-time is quite slow.</S>
+			<S sid ="177" ssid = "37">Last, we note that the results of Exact-forest are almost identical to Exact graph (maximal F1: 0.43), illustrating that assuming that entailment graphs are FRGs (Section 3) is reasonable in this data set.</S>
+			<S sid ="178" ssid = "38">To conclude, TNF learns transitive entailment graphs of good quality much faster than Exact- graph.</S>
+			<S sid ="179" ssid = "39">Our experiment utilized an available data set of moderate size; However, we expect TNF to scale to large data sets (that are currently unavailable), where other baselines would be impractical.</S>
+			<S sid ="180" ssid = "40">0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 recall Figure 6: Precision (y-axis) vs. recall (x-axis) curve.</S>
+			<S sid ="181" ssid = "41">Maximal F1 on the curve is .43 for Exact-graph, .41 for TNF, and .34 for No-trans.</S>
+			<S sid ="182" ssid = "42">AUC in the recall range 00.5 is .32 for Exact-graph, .31 for TNF, and .26 for No-trans.</S>
+			<S sid ="183" ssid = "43">Run-time of LP-relax is also bad compared to TNF and GNF.</S>
+			<S sid ="184" ssid = "44">Run-time increases more slowly than Exact-graph, but still very fast comparing to TNF.</S>
+			<S sid ="185" ssid = "45">When λ = 0.6, LP-relax is almost 10 times slower than TNF, and when λ = −0.1, LP-relax is 200 times slower than TNF.</S>
+			<S sid ="186" ssid = "46">This points to the difficulty of scaling LP-relax to large graphs.</S>
+			<S sid ="187" ssid = "47">As for the quality of learned graphs, Figure 6 provides a precision-recall curve for Exact-graph, TNF and No-trans (GNF and LP-relax are omitted from the figure and described below to improve readability).</S>
+			<S sid ="188" ssid = "48">We observe that both Exact-graph and TNF substantially outperform No-trans and that TNF’s graph quality is only slightly lower than Exact-graph (which is extremely slow).</S>
+			<S sid ="189" ssid = "49">Following Berant et al., we report in the caption the maximal F1 on the curve and AUC in the recall range 00.5 (the widest range for which we have results for all algorithms).</S>
+			<S sid ="190" ssid = "50">Note that compared to Exact-graph, TNF reduces AUC by a point and the maximal F1 score by 2 points only.</S>
+			<S sid ="191" ssid = "51">GNF results are almost identical to those of TNF (maximal F1=0.41, AUC: 0.31), and in fact for all λ configurations TNF outperforms GNF by no more than one F1 point.</S>
+			<S sid ="192" ssid = "52">As for LP-relax, results are just slightly lower than Exact-graph (maximal F1: 0.43, AUC: 0.32), but its output is not a transitive graph,</S>
+	</SECTION>
+	<SECTION title="Conclusion. " number = "6">
+			<S sid ="193" ssid = "1">Learning large and accurate resources of entailment rules is essential in many semantic inference applications.</S>
+			<S sid ="194" ssid = "2">Employing transitivity has been shown to improve rule learning, but raises issues of efficiency and scalability.</S>
+			<S sid ="195" ssid = "3">The first contribution of this paper is a novel modeling assumption that entailment graphs are very similar to FRGs, which is analyzed and validated empirically.</S>
+			<S sid ="196" ssid = "4">The main contribution of the paper is an efficient polynomial approximation algorithm for learning entailment rules, which is based on this assumption.</S>
+			<S sid ="197" ssid = "5">We demonstrate empirically that our method is by orders of magnitude faster than the state-of-the-art exact algorithm, but still produces an output that is almost as good as the optimal solution.</S>
+			<S sid ="198" ssid = "6">We suggest our method as an important step towards scalable acquisition of precise entailment resources.</S>
+			<S sid ="199" ssid = "7">In future work, we aim to evaluate TNF on large graphs that are automatically generated from huge corpora.</S>
+			<S sid ="200" ssid = "8">This of course requires substantial efforts of pre-processing and test-set annotation.</S>
+			<S sid ="201" ssid = "9">We also plan to examine the benefit of TNF in learning similar structures, e.g., taxonomies or ontologies.</S>
+	</SECTION>
+	<SECTION title="Acknowledgments">
+			<S sid ="202" ssid = "10">This work was partially supported by the IsraelScience Foundation grant 1112/08, the PASCAL 2 Network of Excellence of the European Com-.</S>
+			<S sid ="203" ssid = "11">munity FP7ICT-20071-216886, and the European Community’s Seventh Framework Programme (FP7/20072013) under grant agreement no. 287923 (EXCITEMENT).</S>
+			<S sid ="204" ssid = "12">The first author has carried out this research in partial fulfilment of the requirements for the Ph.D. degree.</S>
+	</SECTION>
+</PAPER>
