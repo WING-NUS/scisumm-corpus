@@ -21,7 +21,7 @@ It follows the basic  structure and guidelines of the Biomedical Summarization T
 creating a corpus of training topics from computational linguistics research papers.  
 The task is defined as follows:
 
-Given: A topic consisting of a Reference Paper (RP) and upto 10 Citing Papers (CPs) that all contain citations to the RP. In each CP, the text spans (i.e., citances) have been identified that pertain to a particular citation to the RP.
+Given: A topic consisting of a Reference Paper (RP) and <del>upto 10</del> Citing Papers (CPs) that all contain citations to the RP. In each CP, the text spans (i.e., citances) have been identified that pertain to a particular citation to the RP.
 
 * Task 1a: For each citance, identify the spans of text (cited text spans) in the RP that most accurately reflect the citance. These are of the granularity  of a sentence fragment, a full sentence, or several consecutive sentences (no more than 5).
 * Task 1b: For each cited text span, identify what facet of the paper it belongs to, from a predefined set of facets.

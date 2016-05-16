@@ -1,0 +1,885 @@
+<PAPER>
+	<ABSTRACT>
+		<S sid ="1" ssid = "1">Identifying entailment relations between predicates is an important part of applied semantic inference.</S>
+		<S sid ="2" ssid = "2">In this article we propose a global inference algorithm that learns such entailment rules.</S>
+		<S sid ="3" ssid = "3">First, we deﬁne a graph structure over predicates that represents entailment relations as directed edges.</S>
+		<S sid ="4" ssid = "4">Then, we use a global transitivity constraint on the graph to learn the optimal set of edges, formulating the optimization problem as an Integer Linear Program.</S>
+		<S sid ="5" ssid = "5">The algorithm is applied in a setting where, given a target concept, the algorithm learns on the ﬂy all entailment rules between predicates that co-occur with this concept.</S>
+		<S sid ="6" ssid = "6">Results show that our global algorithm improves performance over baseline algorithms by more than 10%.</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number = "1">
+			<S sid ="7" ssid = "7">The Textual Entailment (TE) paradigm is a generic framework for applied semantic inference.</S>
+			<S sid ="8" ssid = "8">The objective of TE is to recognize whether a target textual meaning can be inferred from another given text.</S>
+			<S sid ="9" ssid = "9">For example, a question answering system has to recognize that alcohol affects blood pressure is inferred from the text alcohol reduces blood pressure to answer the question What affects blood pressure?</S>
+			<S sid ="10" ssid = "10">In the TE framework, entailment is deﬁned as a directional relationship between pairs of text expressions, denoted by T, the entailing text, and H, the entailed hypothesis.</S>
+			<S sid ="11" ssid = "11">The text T is said to entail the hypothesis H if, typically, a human reading T would infer that H is most likely true (Dagan et al. 2009).</S>
+			<S sid ="12" ssid = "12">TE systems require extensive knowledge of entailment patterns, often captured as entailment rules—rules that specify a directional inference relation between two text fragments (when the rule is bidirectional this is known as paraphrasing).</S>
+			<S sid ="13" ssid = "13">A common type of text fragment is a proposition, which is a simple natural language expression that contains a predicate and arguments (such as alcohol affects blood pressure), where the predicate denotes some semantic relation between the concepts that are expressed ∗ TelAviv University, P.O. Box 39040, TelAviv, 69978, Israel.</S>
+			<S sid ="14" ssid = "14">Email: jonatha6@post.tau.ac.il.</S>
+			<S sid ="15" ssid = "15">∗∗ Bar-Ilan University, RamatGan, 52900, Israel.</S>
+			<S sid ="16" ssid = "16">Email: dagan@cs.biu.ac.il.</S>
+			<S sid ="17" ssid = "17">† Bar-Ilan University, RamatGan, 52900, Israel.</S>
+			<S sid ="18" ssid = "18">Email: goldbej@eng.biu.ac.il.</S>
+			<S sid ="19" ssid = "19">Submission received: 28 September 2010; revised submission received: 5 May 2011; accepted for publication: 5 July 2011..</S>
+			<S sid ="20" ssid = "20">© 2012 Association for Computational Linguistics by the arguments.</S>
+			<S sid ="21" ssid = "21">One important type of entailment rule speciﬁes entailment between propositional templates, that is, propositions where the arguments are possibly replaced by variables.</S>
+			<S sid ="22" ssid = "22">A rule corresponding to the aforementioned example may be X reduce blood pressure → X affect blood pressure.</S>
+			<S sid ="23" ssid = "23">Because facts and knowledge are mostly expressed by propositions, such entailment rules are central to the TE task.</S>
+			<S sid ="24" ssid = "24">This has led to active research on broad-scale acquisition of entailment rules for predicates (Lin and Pantel 2001; Sekine 2005; Szpektor and Dagan 2008; Yates and Etzioni 2009; Schoenmackers et al. 2010).</S>
+			<S sid ="25" ssid = "25">Previous work has focused on learning each entailment rule in isolation.</S>
+			<S sid ="26" ssid = "26">It is clear, however, that there are interactions between rules.</S>
+			<S sid ="27" ssid = "27">A prominent phenomenon is that entailment is inherently a transitive relation, and thus the rules X → Y and Y → Z imply the rule X → Z.1 In this article we take advantage of these global interactions to improve entailment rule learning.</S>
+			<S sid ="28" ssid = "28">After reviewing relevant background (Section 2), we describe a structure termed an entailment graph that models entailment relations between propositional templates (Section 3).</S>
+			<S sid ="29" ssid = "29">Next, we motivate and discuss a speciﬁc type of entailment graph, termed a focused entailment graph, where a target concept instantiates one of the arguments of all propositional templates.</S>
+			<S sid ="30" ssid = "30">For example, a focused entailment graph about the target concept nausea might specify the entailment relations between propositional templates like X induce nausea, X prevent nausea, and nausea is a symptom of X. In the core section of the article, we present an algorithm that uses a global approach to learn the entailment relations, which comprise the edges of focused entailment graphs (Section 4).</S>
+			<S sid ="31" ssid = "31">We deﬁne a global objective function and look for the graph that maximizes that function given scores provided by a local entailment classiﬁer and a global transitivity constraint.</S>
+			<S sid ="32" ssid = "32">The optimization problem is formulated as an Integer Linear Program (ILP) and is solved with an ILP solver, which leads to an optimal solution with respect to the global function.</S>
+			<S sid ="33" ssid = "33">In Section 5 we demonstrate that this algorithm outperforms by 12–13% methods that utilize only local information as well as methods that employ a greedy optimization algorithm (Snow, Jurafsky, and Ng 2006) rather than an ILP solver.</S>
+			<S sid ="34" ssid = "34">The article also includes a comprehensive investigation of the algorithm and its components.</S>
+			<S sid ="35" ssid = "35">First, we perform manual comparison between our algorithm and the baselines and analyze the reasons for the improvement in performance (Sections 5.3.1 and 5.3.2).</S>
+			<S sid ="36" ssid = "36">Then, we analyze the errors made by the algorithm against manually prepared gold-standard graphs and compare them to the baselines (Section 5.4).</S>
+			<S sid ="37" ssid = "37">Last, we perform a series of experiments in which we investigate the local entailment classiﬁer and speciﬁcally experiment with various sets of features (Section 6).</S>
+			<S sid ="38" ssid = "38">We conclude and suggest future research directions in Section 7.</S>
+			<S sid ="39" ssid = "39">This article is based on previous work (Berant, Dagan, and Goldberger 2010), while substantially expanding upon it.</S>
+			<S sid ="40" ssid = "40">From a theoretical point of view, we reformulate the two ILPs previously introduced by incorporating a prior.</S>
+			<S sid ="41" ssid = "41">We show a theoretical relation between the two ILPs and prove that the optimization problem tackled is NP-hard.</S>
+			<S sid ="42" ssid = "42">From an empirical point of view, we conduct many new experiments that examine both the local entailment classiﬁer as well as the global algorithm.</S>
+			<S sid ="43" ssid = "43">Last, a rigorous analysis of the algorithm is performed and an extensive survey of previous work is provided.</S>
+			<S sid ="44" ssid = "44">1 Assuming that Y has the same sense in both X → Y and Y → Z, as we discuss later in Section 3..</S>
+			<S sid ="45" ssid = "45">74</S>
+	</SECTION>
+	<SECTION title="Background. " number = "2">
+			<S sid ="46" ssid = "1">In this section we survey methods proposed in past literature for learning entailment rules between predicates.</S>
+			<S sid ="47" ssid = "2">First, we discuss local methods that assess entailment given a pair of predicates, and then global methods that perform inference over a larger set of predicates.</S>
+			<S sid ="48" ssid = "3">2.1 Local Learning.</S>
+			<S sid ="49" ssid = "4">Three types of information have primarily been utilized in the past to learn entailment rules between predicates: lexicographic methods, distributional similarity methods, and pattern-based methods.</S>
+			<S sid ="50" ssid = "5">Lexicographic methods use manually prepared knowledge bases that contain information about semantic relations between lexical items.</S>
+			<S sid ="51" ssid = "6">WordNet (Fellbaum 1998b), by far the most widely used resource, speciﬁes relations such as hyponymy, synonymy, derivation, and entailment that can be used for semantic inference (Budanitsky and Hirst 2006).</S>
+			<S sid ="52" ssid = "7">For example, if WordNet speciﬁes that reduce is a hyponym of affect, then one can infer that X reduces Y → X affects Y. WordNet has also been exploited to automatically generate a training set for a hyponym classiﬁer (Snow, Jurafsky, and Ng 2004), and we make a similar use of WordNet in Section 4.1.</S>
+			<S sid ="53" ssid = "8">A drawback of WordNet is that it speciﬁes semantic relations for words and terms but not for more complex expressions.</S>
+			<S sid ="54" ssid = "9">For example, WordNet does not cover a complex predicate such as X causes a reduction in Y. Another drawback of WordNet is that it only supplies semantic relations between lexical items, but does not provide any information on how to map arguments of predicates.</S>
+			<S sid ="55" ssid = "10">For example, WordNet speciﬁes that there is an entailment relation between the predicates pay and buy, but does not describe the way in which arguments are mapped: if X pays Y for Z then X buys Z from Y. Thus, using WordNet directly to derive entailment rules between predicates is possible only for semantic relations such as hyponymy and synonymy, where arguments typically preserve their syntactic positions on both sides of the rule.</S>
+			<S sid ="56" ssid = "11">Some knowledge bases try to overcome this difﬁculty: Nomlex (Macleod et al. 1998) is a dictionary that provides the mapping of arguments between verbs and their nominalizations and has been utilized to derive predicative entailment rules (Meyers et al. 2004; Szpektor and Dagan 2009).</S>
+			<S sid ="57" ssid = "12">FrameNet (Baker, Fillmore, and Lowe 1998) is a lexicographic resource that is arranged around “frames”: Each frame corresponds to an event and includes information on the predicates and arguments relevant for that speciﬁc event supplemented with annotated examples that specify argument positions.</S>
+			<S sid ="58" ssid = "13">Consequently, FrameNet was also used to derive entailment rules between predicates (Coyne and Rambow 2009; Ben Aharon, Szpektor, and Dagan 2010).</S>
+			<S sid ="59" ssid = "14">Additional manually constructed resources for predicates include PropBank (Kingsbury, Palmer, and Marcus 2002) and VerbNet (Kipper, Dang, and Palmer 2000).</S>
+			<S sid ="60" ssid = "15">Distributional similarity methods are used to learn broad-scale resources, because lexicographic resources tend to have limited coverage.</S>
+			<S sid ="61" ssid = "16">Distributional similarity algorithms employ “the distributional hypothesis” (Harris 1954) and predict a semantic relation between two predicates by comparing the arguments with which they occur.</S>
+			<S sid ="62" ssid = "17">Quite a few methods have been suggested (Lin and Pantel 2001; Szpektor et al. 2004; Bhagat, Pantel, and Hovy 2007; Szpektor and Dagan 2008; Yates and Etzioni 2009; Schoenmackers et al. 2010), which differ in terms of the speciﬁcs of the ways in which predicates are represented, the features that are extracted, and the function used to compute feature vector similarity.</S>
+			<S sid ="63" ssid = "18">Next, we elaborate on some of the prominent methods.</S>
+			<S sid ="64" ssid = "19">75 Lin and Pantel (2001) proposed an algorithm that is based on a mutual information criterion.</S>
+			<S sid ="65" ssid = "20">A predicate is represented by a binary template, which is a dependency path between two arguments of a predicate where the arguments are replaced by variables.</S>
+			<S sid ="66" ssid = "21">Note that in a dependency tree, a path between two arguments must pass through their common predicate.</S>
+			<S sid ="67" ssid = "22">Also note that if a predicate has more than two arguments, then it is represented by more than one binary template, where each template corresponds to a different aspect of the predicate.</S>
+			<S sid ="68" ssid = "23">For example, the proposition I bought a gift for her contains a predicate and three arguments, and therefore is represented by the following subj obj obj prep pcomp−n subj three binary templates: X ←− buys −→ Y, X ←− buys −→ for −−−−−→ Y and X ←− buys prep pcomp −n −→ for −−−−−→ Y. For each binary template Lin and Pantel compute two sets of features Fx and Fy , which are the words that instantiate the arguments X and Y, respectively, in a large corpus.</S>
+			<S sid ="69" ssid = "24">Given a template t and its feature set for the X variable Ft , every fx ∈ Ft is weighted by the pointwise mutual information between the template and the feature: x ( fx ) = log Pr( fx ) , where the probabilities are computed using maximum likelihood over the corpus.</S>
+			<S sid ="70" ssid = "25">Given two templates u and v, the Lin measure (Lin 1998a) is computed for the variable X in the following manner: u v f ∈Fu ∩Fv [wx ( f ) + wx ( f )] Linx (u, v) = x x (1) f ∈Fu wx ( f ) + f ∈Fv wx ( f ) x x The measure is computed analogously for the variable Y and the ﬁnal distributional similarity score, termed DIRT, is the geometric average of the scores for the two variables: DIRT(u, v) = Linx (u, v) · Liny (u, v) (2) If DIRT(u, v) is high, this means that the templates u and v share many “informative” arguments and so it is possible that u → v. Note, however, that the DIRT similarity measure computes a symmetric score, which is appropriate for modeling synonymy but not entailment, an inherently directional relation.</S>
+			<S sid ="71" ssid = "26">To remedy that, Szpektor and Dagan (2008) suggested a directional distributional similarity measure.</S>
+			<S sid ="72" ssid = "27">In their work, Szpektor and Dagan chose to represent predicates with unary templates, which are identical to binary templates, only they contain a pred subj icate and a single argument, such as: X ←− buys.</S>
+			<S sid ="73" ssid = "28">Szpektor and Dagan explain that unary templates are more expressive than binary templates, and that some predicates can only be encoded using unary templates.</S>
+			<S sid ="74" ssid = "29">They propose that if for two unary templates u → v, then relatively many of the features of u should be covered by the features of v. This is captured by the asymmetric Cover measure suggested by Weeds and Weir (2003) (we omit the subscript x from Fu and Fv because in their setting there is only one argument): x x f Fu Fv wu ( f ) Cover(u, v) = f ∈Fu w ( f ) (3) The ﬁnal directional score, termed BInc (Balanced Inclusion), is the geometric average of the Lin measure and the Cover measure: BInc(u, v) = ,Lin(u, v) · Cover(u, v) (4) 76 Both Lin and Pantel as well as Szpektor and Dagan compute a similarity score for each argument separately, effectively decoupling the arguments from one another.</S>
+			<S sid ="75" ssid = "30">It is clear, however, that although this alleviates sparsity problems, it disregards an important piece of information, namely, the co-occurrence of arguments.</S>
+			<S sid ="76" ssid = "31">For example, if one looks at the following propositions: coffee increases blood pressure, coffee decreases fatigue, wine decreases blood pressure, wine increases fatigue, one can notice that the predicates occur with similar arguments and might mistakenly infer that decrease → increase.</S>
+			<S sid ="77" ssid = "32">However, looking at pairs of arguments reveals that the predicates do not share a single pair of arguments.</S>
+			<S sid ="78" ssid = "33">Yates and Etzioni (2009) address this issue and propose a generative model that estimates the probability that two predicates are synonymous (synonymy is simply bidirectional entailment) by comparing pairs of arguments.</S>
+			<S sid ="79" ssid = "34">They represent predicates and arguments as strings and compute for every predicate a feature vector that counts that number of times it occurs with any ordered pair of words as arguments.</S>
+			<S sid ="80" ssid = "35">Their main modeling decision is to assume that two predicates are synonymous if the number of pairs of arguments they share is maximal.</S>
+			<S sid ="81" ssid = "36">An earlier work by Szpektor et al.</S>
+			<S sid ="82" ssid = "37">(2004) also tried to learn entailment rules between predicates by using pairs of arguments as features.</S>
+			<S sid ="83" ssid = "38">They utilized an algorithm that learns new rules by searching for distributional similarity information on the Web for candidate predicates.</S>
+			<S sid ="84" ssid = "39">Pattern-based methods.</S>
+			<S sid ="85" ssid = "40">Although distributional similarity measures excel at identifying the existence of semantic similarity between predicates, they are often unable to discern the exact type of semantic similarity and speciﬁcally determine whether it is entailment.</S>
+			<S sid ="86" ssid = "41">Pattern-based methods are used to automatically extract pairs of predicates for a speciﬁc semantic relation.</S>
+			<S sid ="87" ssid = "42">Pattern-based methods identify a semantic relation between two predicates by observing that they co-occur in speciﬁc patterns in sentences.</S>
+			<S sid ="88" ssid = "43">For example, from the single proposition He scared and even startled me one might infer that startle is semantically stronger than scare and thus startle → scare.</S>
+			<S sid ="89" ssid = "44">Chklovski and Pantel (2004) manually constructed a few dozen patterns and learned semantic relations between predicates by looking for these patterns on the Web.</S>
+			<S sid ="90" ssid = "45">For example, the pattern X and even Y implies that Y is stronger than X, and the pattern to X and then Y indicates that Y follows X. The main disadvantage of pattern-based methods is that they are based on the co-occurrence of two predicates in a single sentence in a speciﬁc pattern.</S>
+			<S sid ="91" ssid = "46">These events are quite rare and require working on a very large corpus, or preferably, the Web.</S>
+			<S sid ="92" ssid = "47">Pattern-based methods were mainly utilized so far to extract semantic relations between nouns, and there has been some work on automatically learning patterns for nouns (Snow, Jurafsky, and Ng 2004).</S>
+			<S sid ="93" ssid = "48">Although these methods can be expanded for predicates, we are unaware of any attempt to automatically learn patterns that describe semantic relations between predicates (as opposed to the manually constructed patterns suggested by Chklovski and Pantel [2004]).</S>
+			<S sid ="94" ssid = "49">2.2 Global Learning.</S>
+			<S sid ="95" ssid = "50">It is natural to describe entailment relations between predicates (or language expressions in general) by a graph.</S>
+			<S sid ="96" ssid = "51">Nodes represent predicates, and edges represent entail- ment between nodes.</S>
+			<S sid ="97" ssid = "52">Nevertheless, using a graph for global learning of all entailment relations within a set of predicates, rather then between pairs of predicates, has attracted little attention.</S>
+			<S sid ="98" ssid = "53">Recently, Szpektor and Dagan (2009) presented the resource Argument- mapped WordNet, providing entailment relations for predicates in WordNet.</S>
+			<S sid ="99" ssid = "54">This resource was built on top of WordNet and augments it with mapping of arguments for predicates using NomLex (Macleod et al. 1998) and a corpus-based resource (Szpektor 77 and Dagan 2008).</S>
+			<S sid ="100" ssid = "55">Their resource makes simple use of WordNet’s global graph structure: New rules are suggested by transitively chaining graph edges, and then veriﬁed using distributional similarity measures.</S>
+			<S sid ="101" ssid = "56">Effectively, this is equivalent to using the intersection of the set of rules derived by this transitive chaining and the set of rules in a distributional similarity knowledge base.</S>
+			<S sid ="102" ssid = "57">The most similar work to ours is Snow, Jurafsky, and Ng’s (2006) algorithm for taxonomy induction, although it involves learning the hyponymy relation between nouns, which is a special case of entailment, rather than learning entailment between predicates.</S>
+			<S sid ="103" ssid = "58">We provide here a brief review of a simpliﬁed form of this algorithm.</S>
+			<S sid ="104" ssid = "59">Snow, Jurafsky, and Ng deﬁne a taxonomy T to be a set of pairs of words, expressing the hyponymy relation between them.</S>
+			<S sid ="105" ssid = "60">The notation Huv ∈ T means that the noun u is a hyponym of the noun v in T. They deﬁne D to be the set of observed data over all pairs of words, and deﬁne Duv ∈ D to be the observed evidence we have in the data for the event Huv ∈ T. Snow, Jurafsky, and Ng assume a model exists for inferring P(Huv ∈ T|Duv ): the posterior probability of the event Huv ∈ T, given the data.</S>
+			<S sid ="106" ssid = "61">Their goal is to ﬁnd the taxonomy that maximizes the likelihood of the data, that is, to ﬁnd Tˆ = argmax P(D|T) (5) T Using some independence assumptions and Bayes rule, the likelihood P(D|T) is expressed: P(D|T) = TI Huv ∈T P(Huv ∈ T|Duv )P(Duv ) P(Huv ∈ T) · TI Huv ∈/T P(Huv ∈/ T|Du v)P(Duv ) P(Huv ∈/ T) (6) Crucially, they demand that the taxonomy learned respects the constraint that hyponymy is a transitive relation.</S>
+			<S sid ="107" ssid = "62">To ensure that, they propose the following greedy algorithm: At each step they go over all pairs of words (u, v) that are not in the taxonomy, and try to add the single hyponymy relation Huv . Then, they calculate the set of relations Suv that Huv will add to the taxonomy due to the transitivity constraint (all of the relations Huw , where w is a hypernym of v in the taxonomy).</S>
+			<S sid ="108" ssid = "63">Last, they choose to add that set of relations Suv that maximizes P(D|T) out of all the possible candidates.</S>
+			<S sid ="109" ssid = "64">This iterative process stops when P(D|T) starts dropping.</S>
+			<S sid ="110" ssid = "65">Their implementation of the algorithm uses a hyponym classiﬁer presented in an earlier work (Snow, Jurafsky, and Ng 2004) as a model for P(H T D ) and a single sparsity parameter k = P(Huv ∈/T) . In P(Huv ∈T) this article we tackle a similar problem of learning a transitive relation, but we use linear programming (Vanderbei 2008) to solve the optimization problem.</S>
+			<S sid ="111" ssid = "66">2.3 Linear Programming.</S>
+			<S sid ="112" ssid = "67">A Linear Program (LP) is an optimization problem where a linear objective function is minimized (or maximized) under linear constraints.</S>
+			<S sid ="113" ssid = "68">min cT x (7) x∈Rd such that Ax ≤ b where c ∈ Rd is a coefﬁcient vector, and A ∈ Rn × Rd and b ∈ Rn specify the constraints.</S>
+			<S sid ="114" ssid = "69">In short, we wish to ﬁnd the optimal assignment for the d variables in the vector x, such 78 that all n linear constraints speciﬁed by the matrix A and the vector b are satisﬁed by this assignment.</S>
+			<S sid ="115" ssid = "70">If the variables are forced to be integers, the problem is termed an Integer Linear Program (ILP).</S>
+			<S sid ="116" ssid = "71">ILP has attracted considerable attention recently in several ﬁelds of NLP, such as semantic role labeling, summarization, and parsing (Althaus, Karamanis, and Koller 2004; Roth and Yih 2004; Riedel and Clarke 2006; Clarke and Lapata 2008; Finkel and Manning 2008; Martins, Smith, and Xing 2009).</S>
+			<S sid ="117" ssid = "72">In this article we formulate the entailment graph learning problem as an ILP, which leads to an optimal solution with respect to the objective function (vs. a greedy optimization algorithm suggested by Snow, Jurafsky, and Ng [2006]).</S>
+			<S sid ="118" ssid = "73">Recently, Do and Roth (2010) used ILP in a related task of learning taxonomic relations between nouns, utilizing constraints between sibling nodes and ancestor–child nodes in small graphs of three nodes.</S>
+	</SECTION>
+	<SECTION title="Entailment Graph. " number = "3">
+			<S sid ="119" ssid = "1">In this section we deﬁne a structure termed the entailment graph that describes the entailment relations between propositional templates (Section 3.1), and a speciﬁc type of entailment graph, termed the focused entailment graph, that concentrates on entail- ment relations that are relevant for some predeﬁned target concept (Section 3.2).</S>
+			<S sid ="120" ssid = "2">3.1 Entailment Graph: Deﬁnition and Properties.</S>
+			<S sid ="121" ssid = "3">The nodes of an entailment graph are propositional templates.</S>
+			<S sid ="122" ssid = "4">A propositional template is a binary template2 where at least one of the two arguments is a variable whereas the second may be instantiated.</S>
+			<S sid ="123" ssid = "5">In addition, the sense of the predicate is speciﬁed (according to some sense inventory, such as WordNet) and so each sense of a polysemous predicate corresponds to a separate template (and a separate graph node).</S>
+			<S sid ="124" ssid = "6">For example, subj obj subj obj X ←− treats#1 −→ Y and X ←− treats#2 −→ nausea are propositional templates for the ﬁrst and second sense of the predicate treat, respectively.</S>
+			<S sid ="125" ssid = "7">An edge (u, v) represents the fact that template u entails template v. Note that the entailment relation transcends hyponymy/troponomy.</S>
+			<S sid ="126" ssid = "8">For example, the template X is diagnosed with asthma entails the template X suffers from asthma, although one is not a hyponym of the other.</S>
+			<S sid ="127" ssid = "9">An example of an entailment graph is given in Figure 1.</S>
+			<S sid ="128" ssid = "10">Because entailment is a transitive relation, an entailment graph is transitive, that is, if the edges (u, v) and (v, w) are in the graph, so is the edge (u, w).</S>
+			<S sid ="129" ssid = "11">Note that the property of transitivity does not hold when the senses of the predicates are not speciﬁed.</S>
+			<S sid ="130" ssid = "12">For example, X buys Y → X acquires Y and X acquires Y → X learns Y, but X buys Y --- X learns Y. This violation occurs because the predicate acquire has two distinct senses in the two templates, but this distinction is lost when senses are not speciﬁed.</S>
+			<S sid ="131" ssid = "13">Transitivity implies that in each strongly connected component3 of the graph all nodes entail each other.</S>
+			<S sid ="132" ssid = "14">For example, in Figure 1 the nodes X-related-to-nausea and X- associated-with-nausea form a strongly connected component.</S>
+			<S sid ="133" ssid = "15">Moreover, if we merge every strongly connected component to a single node, the graph becomes a Directed Acyclic Graph (DAG), and a hierarchy of predicates can be obtained.</S>
+			<S sid ="134" ssid = "16">2 We restrict our discussion to templates with two arguments, but generalization is straightforward..</S>
+			<S sid ="135" ssid = "17">3 A strongly connected component is a subset of nodes in the graph where there is a path from any node to any other node.</S>
+			<S sid ="136" ssid = "18">79 Figure 1 A focused entailment graph.</S>
+			<S sid ="137" ssid = "19">For clarity, edges that can be inferred by transitivity are omitted.</S>
+			<S sid ="138" ssid = "20">The single strongly connected component is surrounded by a dashed line.</S>
+			<S sid ="139" ssid = "21">3.2 Focused Entailment Graphs.</S>
+			<S sid ="140" ssid = "22">In this article we concentrate on learning a type of entailment graph, termed the focused entailment graph.</S>
+			<S sid ="141" ssid = "23">Given a target concept, such as nausea, a focused entailment graph describes the entailment relations between propositional templates for which the target concept is one of the arguments (see Figure 1).</S>
+			<S sid ="142" ssid = "24">Learning such entailment rules in real time for a target concept is useful in scenarios such as information retrieval and question answering, where a user speciﬁes a query about the target concept.</S>
+			<S sid ="143" ssid = "25">The need for such rules has been also motivated by Clark et al.</S>
+			<S sid ="144" ssid = "26">(2007), who investigated what types of knowledge are needed to identify entailment in the context of the RTE challenge, and found that often rules that are speciﬁc to a certain concept are required.</S>
+			<S sid ="145" ssid = "27">Another example for a semantic inference algorithm that is utilized in real time is provided by Do and Roth (2010), who recently described a system that, given two terms, determines the taxonomic relation between them on the ﬂy. Last, we have recently suggested an application that uses focused entailment graphs to present information about a target concept according to a hierarchy of entailment (Berant, Dagan, and Goldberger 2010).</S>
+			<S sid ="146" ssid = "28">The beneﬁt of learning focused entailment graphs is threefold.</S>
+			<S sid ="147" ssid = "29">First, the target concept that instantiates the propositional template usually disambiguates the predicate and hence the problem of predicate ambiguity is greatly reduced.</S>
+			<S sid ="148" ssid = "30">Thus, we do not employ any form of disambiguation in this article, but assume that every node in a focused entailment graph has a single sense (we further discuss this assumption when describing the experimental setting in Section 5.1), which allows us to utilize transitivity constraints.</S>
+			<S sid ="149" ssid = "31">An additional (albeit rare) reason that might also cause violations of transitivity constraints is the notion of probabilistic entailment.</S>
+			<S sid ="150" ssid = "32">Whereas troponomy rules (Fellbaum 1998a) such as X walks → X moves can be perceived as being almost always correct, rules such as X coughs → X is sick might only be true with some probability.</S>
+			<S sid ="151" ssid = "33">Consequently, chaining a few probabilistic rules such as A → B, B → C, and C → D might not guarantee the correctness of A → D. Because in focused entailment graphs the number of nodes and diameter4 are quite small (for example, in the data set we 4 The distance between two nodes in a graph is the number of edges in a shortest path connecting them..</S>
+			<S sid ="152" ssid = "34">The diameter of a graph is the maximal distance between any two nodes in the graph.</S>
+			<S sid ="153" ssid = "35">80 present in Section 5 the maximal number of nodes is 26, the average number of nodes is 22.04, the maximal diameter is 5, and the average diameter is 2.44), we do not ﬁnd this to be a problem in our experiments in practice.</S>
+			<S sid ="154" ssid = "36">Last, the optimization problem that we formulate is NP-hard (as we show in Section 4.2).</S>
+			<S sid ="155" ssid = "37">Because the number of nodes in focused entailment graphs is rather small, a standard ILP solver is able to quickly reach the optimal solution.</S>
+			<S sid ="156" ssid = "38">To conclude, the algorithm we suggest next is applied in our experiments on focused entailment graphs.</S>
+			<S sid ="157" ssid = "39">However, we believe that it is suitable for any entailment graph whose properties are similar to those of focused entailment graphs.</S>
+			<S sid ="158" ssid = "40">For brevity, from now on the term entailment graph will stand for focused entailment graph.</S>
+	</SECTION>
+	<SECTION title="Learning Entailment Graph Edges. " number = "4">
+			<S sid ="159" ssid = "1">In this section we present an algorithm that, given the set of propositional templates constituting the nodes of an entailment graph, learns its edges (i.e., the entailment relations between all pairs of nodes).</S>
+			<S sid ="160" ssid = "2">The algorithm comprises two steps (described in Sections 4.1 and 4.2): In the ﬁrst step we use a large corpus and a lexicographic resource (WordNet) to train a generic entailment classiﬁer that given any pair of propositional templates estimates the likelihood that one template entails the other.</S>
+			<S sid ="161" ssid = "3">This generic step is performed only once, and is independent of the speciﬁc nodes of the target entailment graph whose edges we want to learn.</S>
+			<S sid ="162" ssid = "4">In the second step we learn on the ﬂy the edges of a speciﬁc target graph: Given the graph nodes, we use a global optimization approach that determines the set of edges that maximizes the probability (or score) of the entire graph.</S>
+			<S sid ="163" ssid = "5">The global graph decision is determined by the given edge probabilities (or scores) supplied by the entailment classiﬁer and by the graph constraints (transitivity and others).</S>
+			<S sid ="164" ssid = "6">4.1 Training an Entailment Classiﬁer.</S>
+			<S sid ="165" ssid = "7">We describe a procedure for learning a generic entailment classiﬁer, which can be used to estimate the entailment likelihood for any given pair of templates.</S>
+			<S sid ="166" ssid = "8">The classiﬁer is constructed based on a corpus and a lexicographic resource (WordNet) using the following four steps: (1) Extract a large set of propositional templates from the corpus.</S>
+			<S sid ="167" ssid = "9">(2) Use WordNet to automatically generate a training set of pairs of templates—both positive and negative examples.</S>
+			<S sid ="168" ssid = "10">(3) Represent each training set example with a feature vector of various distributional similarity scores.</S>
+			<S sid ="169" ssid = "11">(4) Train a classiﬁer over the training set.</S>
+			<S sid ="170" ssid = "12">(1) Template extraction.</S>
+			<S sid ="171" ssid = "13">We parse the corpus with the Minipar dependency parser (Lin 1998b) and use the Minipar representation to extract all binary templates from every parse tree, employing the procedure described by Lin and Pantel (2001), which considers all dependency paths between every pair of nouns in the parse tree.</S>
+			<S sid ="172" ssid = "14">We also apply over the extracted paths the syntactic normalization procedure described by Szpektor and Dagan (2007), which includes transforming passive forms into active forms and removal of conjunctions, appositions, and abbreviations.</S>
+			<S sid ="173" ssid = "15">In addition, we use 81 Table 1 Positive and negative examples for entailment in the training set.</S>
+			<S sid ="174" ssid = "16">The direction of entailment is from the left template to the right template.</S>
+			<S sid ="175" ssid = "17">Positive examples Negative examples subj obj subj obj subj obj subj obj (X ←− desires −→ Y, X ←− wants −→ Y) (X ←− pushes −→ Y,X ←− blows −→ Y) subj vrel subj vrel subj vrel subj vrel (X ←− causes ←− Y, X ←− creates ←− Y) (X ←− issues ←− Y,X ←− signs ←− Y) a simple heuristic to ﬁlter out templates that probably do not include a predicate: We omit “unidirectional” templates where the root of template has a single child, such as prep p−comp nn therapy −→in−−−−→patient−→cancer, unless one of the edges is labeled with a passive relation, such as in the template nausea vrel characterized subj poisoning, which contains ←− ←− the Minipar passive label vrel.5 Last, the arguments are replaced by variables, resulting subj obj in propositional templates such as X ←− affect −→ Y. The lexical items that remain in the template after replacing the arguments by variables are termed predicate words.</S>
+			<S sid ="176" ssid = "18">(2) Training set generation.</S>
+			<S sid ="177" ssid = "19">WordNet is used to automatically generate a training set of positive (entailing) and negative (non-entailing) template pairs.</S>
+			<S sid ="178" ssid = "20">Let T be the set of propositional templates extracted from the corpus.</S>
+			<S sid ="179" ssid = "21">For each ti ∈ T with two variables and a single predicate word w, we extract from WordNet the set H of direct hypernyms (distance of one in WordNet) and synonyms of w. For every h ∈ H, we generate a new template tj from ti by replacing w with h. If tj ∈ T, we consider (ti , tj ) to be a positive example.</S>
+			<S sid ="180" ssid = "22">Negative examples are generated analogously, only considering direct cohyponyms of w, which are direct hyponyms of direct hypernyms of w that are not synonymous to w. It has been shown in past work that in most cases cohyponym terms do not entail one another (Mirkin, Dagan, and Gefet 2006).</S>
+			<S sid ="181" ssid = "23">A few examples for positive and negative training examples are given in Table 1.</S>
+			<S sid ="182" ssid = "24">This generation method is similar to the “distant supervision” method proposed by Snow, Jurafsky, and Ng (2004) for training a noun hypernym classiﬁer.</S>
+			<S sid ="183" ssid = "25">It differs in some important aspects, however: First, Snow, Jurafsky, and Ng consider a positive example to be any Wordnet hypernym, irrespective of the distance, whereas we look only at direct hypernyms.</S>
+			<S sid ="184" ssid = "26">This is because predicates are mainly verbs and precision drops quickly when looking at verb hypernyms in WordNet at a longer distance.</S>
+			<S sid ="185" ssid = "27">Second, Snow, Jurafsky, and Ng generate negative examples by looking at any two nouns where one is not the hypernym of the other.</S>
+			<S sid ="186" ssid = "28">In the spirit of “contrastive estimation” (Smith and Eisner 2005), we prefer to generate negative examples that are “hard,” that is, negative examples that, although not entailing, are still semantically similar to positive examples and thus focus the classiﬁer ’s attention on determining the boundary of the entailment class.</S>
+			<S sid ="187" ssid = "29">Last, we use a balanced number of positive and negative examples, because classiﬁers tend to perform poorly on the minority class when trained on imbalanced data (Van Hulse, Khoshgoftaar, and Napolitano 2007; Nikulin 2008).</S>
+			<S sid ="188" ssid = "30">(3) Distributional similarity representation.</S>
+			<S sid ="189" ssid = "31">We aim to train a classiﬁer that for an input template pair (t1 , t2 ) determines whether t1 entails t2 . Our approach is to represent a template pair by a feature vector where each coordinate is a different distributional similarity score for the pair of templates.</S>
+			<S sid ="190" ssid = "32">The different distributional similarity scores 5 This passive construction is not handled by the normalization scheme employed by Szpektor and Dagan.</S>
+			<S sid ="191" ssid = "33">(2007).</S>
+			<S sid ="192" ssid = "34">82 are obtained by utilizing various distributional similarity algorithms that differ in one or more of their characteristics.</S>
+			<S sid ="193" ssid = "35">In this way we hope to combine the various methods proposed in the past for measuring distributional similarity.</S>
+			<S sid ="194" ssid = "36">The distributional similarity algorithms we employ vary in one or more of the following dimensions: the way the predicate is represented, the way the features are represented, and the function used to measure similarity between the feature representations of the two templates.</S>
+			<S sid ="195" ssid = "37">Predicate representation.</S>
+			<S sid ="196" ssid = "38">As mentioned, we represent predicates over dependency tree structures.</S>
+			<S sid ="197" ssid = "39">However, some distributional similarity algorithms measure similarity between binary templates directly (Lin and Pantel 2001; Szpektor et al. 2004; Bhagat, Pantel, and Hovy 2007; Yates and Etzioni 2009), whereas others decompose binary templates into two unary templates, estimate similarity between two pairs of unary templates, and combine the two scores into a single score (Szpektor and Dagan 2008).</S>
+			<S sid ="198" ssid = "40">Feature representation.</S>
+			<S sid ="199" ssid = "41">The features of a template are some function of the terms that instantiated the argument variables in a corpus.</S>
+			<S sid ="200" ssid = "42">Two representations that are used in our experiments are derived from an ontology that maps natural language phrases to semantic identiﬁers (see Section 5).</S>
+			<S sid ="201" ssid = "43">Another variant occurs when using binary templates: a template may be represented by a pair of feature vectors, one for each variable as in the DIRT algorithm (Lin and Pantel 2001), or by a single vector, where features represent pairs of instantiations (Szpektor et al. 2004; Yates and Etzioni 2009).</S>
+			<S sid ="202" ssid = "44">The former variant reduces sparsity problems, whereas Yates and Etzioni showed the latter is more informative and performs favorably on their data.</S>
+			<S sid ="203" ssid = "45">Similarity function.</S>
+			<S sid ="204" ssid = "46">We consider two similarity functions: The symmetric Lin (Lin and Pantel 2001) similarity measure, and the directional BInc (Szpektor and Dagan 2008) similarity measure, reviewed in Section 2.</S>
+			<S sid ="205" ssid = "47">Thus, information about the direction of entailment is provided by the BInc measure.</S>
+			<S sid ="206" ssid = "48">We compute for any pair of templates (t1 , t2 ) 12 distributional similarity scores using all possible combinations of the aforementioned dimensions.</S>
+			<S sid ="207" ssid = "49">These scores are then used as 12 features representing the pair (t1 , t2 ).</S>
+			<S sid ="208" ssid = "50">(A full description of the features is given in Section 5.)</S>
+			<S sid ="209" ssid = "51">This is reminiscent of Connor and Roth (2007), who used the output of unsupervised classiﬁers as features for a supervised classiﬁer in a verb disambiguation task.</S>
+			<S sid ="210" ssid = "52">(4) Training a classiﬁer Two types of classiﬁers may be trained in our scheme over the training set: margin classiﬁers (such as SVM) and probabilistic classiﬁers.</S>
+			<S sid ="211" ssid = "53">Given a pair of templates (u, v) and their feature vector Fuv , we denote by an indicator variable Iuv the event that u entails v. A margin classiﬁer estimates a score Suv for the event Iuv = 1, which indicates the positive or negative distance of the feature vector Fuv from the separating hyperplane.</S>
+			<S sid ="212" ssid = "54">A probabilistic classiﬁer provides the posterior probability Puv = P(Iuv = 1|Fuv ).</S>
+			<S sid ="213" ssid = "55">4.2 Global Learning of Edges.</S>
+			<S sid ="214" ssid = "56">In this step we get a set of propositional templates as input, and we would like to learn all of the entailment relations between these propositional templates.</S>
+			<S sid ="215" ssid = "57">For every pair of templates we can compute the distributional similarity features and get a score from the trained entailment classiﬁer.</S>
+			<S sid ="216" ssid = "58">Once all the scores are calculated we try to ﬁnd the optimal graph—that is, the best set of edges over the propositional templates.</S>
+			<S sid ="217" ssid = "59">Thus, in this scenario the input is the nodes of the graph and the output are the edges.</S>
+			<S sid ="218" ssid = "60">To learn edges we consider global constraints, which allow only certain graph topologies.</S>
+			<S sid ="219" ssid = "61">Because we seek a global solution under transitivity and other constraints, ILP is a natural choice, enabling the use of state-of-the-art ILP optimization packages.</S>
+			<S sid ="220" ssid = "62">Given a set of nodes V and a weighting function f : V × V → R (derived from the 83 entailment classiﬁer in our case), we want to learn the directed graph G = (V, E), where E = {(u, v)| Iuv = 1}, by solving the following ILP over the variables Iuv : Gˆ = argmax ) f (u, v) · Iuv (8) G uj=v s.t. ∀u,v,w∈V Iuv + Ivw − Iuw ≤ 1 (9) ∀u,v∈Ayes Iuv = 1 (10) ∀u,v∈Ano Iuv = 0 (11) ∀uj=v Iuv ∈ {0, 1} (12) The objective function in Equation (8) is simply a sum over the weights of the graph edges.</S>
+			<S sid ="221" ssid = "63">The global constraint is given in Equation (9) and states that the graph must respect transitivity.</S>
+			<S sid ="222" ssid = "64">This constraint is equivalent to the one suggested by Finkel and Manning (2008) in a coreference resolution task, except that the edges of our graph are directed.</S>
+			<S sid ="223" ssid = "65">The constraints in Equations (10) and (11) state that for a few node pairs, deﬁned by the sets Ayes and Ano , respectively, we have prior knowledge that one node does or does not entail the other node.</S>
+			<S sid ="224" ssid = "66">Note that if (u, v) ∈ Ano , then due to transitivitythere must be no path in the graph from u to v, which rules out additional edge combi nations.</S>
+			<S sid ="225" ssid = "67">We elaborate on how the sets Ayes and Ano are computed in our experiments in Section 5.</S>
+			<S sid ="226" ssid = "68">Altogether, this Integer Linear Program contains O(|V|2 ) variables and O(|V|3 ) constraints, and can be solved using state-of-the-art optimization packages.</S>
+			<S sid ="227" ssid = "69">A theoretical aspect of this optimization problem is that it is NP-hard.</S>
+			<S sid ="228" ssid = "70">We can phrase it as a decision problem in the following manner: Given V, f , and a threshold k, we wish to know if there is a set of edges E that respects transitivity and (u,v)∈E f (u, v) ≥ k. Yannakakis (1978) has shown that the simpler problem of ﬁnding in a graph Gt = (Vt, Et ) a subset of edges A ⊆ Et that respects transitivity and |A|≥ k is NP-hard.</S>
+			<S sid ="229" ssid = "71">Thus, we can conclude that our optimization problem is also NP-hard by the trivial polynomial reduction deﬁning the function f that assigns the score 0 for node pairs (u, v) ∈/ Et and the score 1 for node pairs (u, v) ∈ Et.</S>
+			<S sid ="230" ssid = "72">Because the decision problem is NP-hard, it is clear that the corresponding maximization problem is also NP-hard.</S>
+			<S sid ="231" ssid = "73">Thus, obtaining a solution using ILP is quite reasonable and in our experiments also proves to be efﬁcient (Section 5).</S>
+			<S sid ="232" ssid = "74">Next, we describe two ways of obtaining the weighting function f , depending on the type of entailment classiﬁer we prefer to train.</S>
+			<S sid ="233" ssid = "75">4.2.1 Score-Based Weighting Function.</S>
+			<S sid ="234" ssid = "76">In this case, we assume that we choose to train a margin entailment classiﬁer estimating the score Suv (a positive score if the classiﬁer predicts entailment, and a negative score otherwise) and deﬁne f score (u, v) = Suv − λ.</S>
+			<S sid ="235" ssid = "77">This gives rise to the following objective function:   Gˆ score = argmax )(Suv − λ) · Iuv = argmax ) Suv · Iuv  − λ · |E| (13) G uj=v G uj=vThe term λ · |E| is a regularization term reﬂecting the fact that edges are sparse.</S>
+			<S sid ="236" ssid = "78">Intu itively, this means that we would like to insert into the graph only edges with a score 84 Suv &gt; λ, or in other words to “push” the separating hyperplane towards the positive half space by λ.</S>
+			<S sid ="237" ssid = "79">Note that the constant λ is a parameter that needs to be estimated and we discuss ways of estimating it in Section 5.2.</S>
+			<S sid ="238" ssid = "80">4.2.2 Probabilistic Weighting Function.</S>
+			<S sid ="239" ssid = "81">In this case, we assume that we choose to train a probabilistic entailment classiﬁer.</S>
+			<S sid ="240" ssid = "82">Recall that Iuv is an indicator variable denoting whether u entails v, that Fuv is the feature vector for the pair of templates u and v, and de- ﬁne F to be the set of feature vectors for all pairs of templates in the graph.</S>
+			<S sid ="241" ssid = "83">The classiﬁer estimates the posterior probability of an edge given its features: Puv = P(Iuv = 1|Fuv ), and we would like to look for the graph G that maximizes the posterior probability P(G|F).</S>
+			<S sid ="242" ssid = "84">In Appendix A we specify some simplifying independence assumptions under which this graph maximizes the following linear objective function: Gˆ prob = argmax )(log Puv + log η) · Iuv = argmax ) log Puv · Iuv + log η · |E| G uj=v 1 − Puv G uj=v 1 − Puv (14) where η = P(Iuv =1) is the prior odds ratio for an edge in the graph, which needs to be uv estimated in some manner.</S>
+			<S sid ="243" ssid = "85">Thus, the weighting function is deﬁned by fprob (u, v) = log Puv log . 1−Puv Both the score-based and the probabilistic objective functions obtained are quite similar: Both contain a weighted sum over the edges and a regularization component reﬂecting the sparsity of the graph.</S>
+			<S sid ="244" ssid = "86">Next, we show that we can provide a probabilistic interpretation for our score-based function (under certain conditions), which will allow us to use a margin classiﬁer and interpret its output probabilistically.</S>
+			<S sid ="245" ssid = "87">4.2.3 Probabilistic Interpretation of Score-Based Weighting Function.</S>
+			<S sid ="246" ssid = "88">We would like to use the score Suv , which is bounded in (∞, −∞), and derive from it a probability Puv . To that end we project Suv onto (0, 1) using the sigmoid function, and deﬁne Puv in the following manner: Puv = 1 1 + exp(−Suv ) (15) Note that under this deﬁnition the log probability ratio is equal to the inverse of the sigmoid function: log Puv 1 1+exp( S ) = log = log 1 = S (16) 1 − Puv exp(−Suv ) 1+exp(−Suv ) exp(−Suv ) uv Therefore, when we derive Puv from Suv with the sigmoid function, we can rewrite Gˆ prob as: Gˆ prob = argmax ) Suv · Iuv + log η · |E| = Gˆ score (17) G uj=v where we see that in this scenario the two objective functions are identical and the regularization term λ is related to the edge prior odds ratio by: λ = − log η.</S>
+			<S sid ="247" ssid = "89">85 Moreover, assume that the score Suv is computed as a linear combination over n features (such as a linear-kernel SVM), that is, Suv = n i · αi , where Si denotes feature values and αi denotes feature weights.</S>
+			<S sid ="248" ssid = "90">In this case, the projected probability acquires the standard form of a logistic classiﬁer: Puv = 1 n 1 + exp(− ) Si · αi ) (18) i=1 Hence, we can train the weights αi using a margin classiﬁer and interpret the output of the classiﬁer probabilistically, as we do with a logistic classiﬁer.</S>
+			<S sid ="249" ssid = "91">In our experiments in Section 5 we indeed use a linear-kernel SVM to train the weights αi and then we can interchangeably interpret the resulting ILP as either score-based or probabilistic optimization.</S>
+			<S sid ="250" ssid = "92">4.2.4 Comparison to Snow, Jurafsky, and Ng (2006).</S>
+			<S sid ="251" ssid = "93">Our work resembles Snow, Jurafsky, and Ng’s work in that both try to learn graph edges given a transitivity constraint.</S>
+			<S sid ="252" ssid = "94">There are two key differences in the model and in the optimization algorithm, however.</S>
+			<S sid ="253" ssid = "95">First, they employ a greedy optimization algorithm that incrementally adds hyponyms to a large taxonomy (WordNet), whereas we simultaneously learn all edges using a global optimization method, which is more sound and powerful theoretically, and leads to the optimal solution.</S>
+			<S sid ="254" ssid = "96">Second, Snow, Jurafsky, and Ng’s model attempts to determine the graph that maximizes the likelihood P(F|G) and not the posterior P(G|F).</S>
+			<S sid ="255" ssid = "97">If we cast their objective function as an ILP we get a formulation that is almost identical to ours, only containing the inverse prior odds ratio log 1 = − log η rather than the prior odds ratio as the regularization term (cf.</S>
+			<S sid ="256" ssid = "98">Section 2): Gˆ = argmax ) log Puv (1 − Puv ) · Iuv − log η · |E| (19) G uj=v This difference is insigniﬁcant when η ∼ 1, or when η is tuned empirically for optimal performance on a development set.</S>
+			<S sid ="257" ssid = "99">If, however, η is statistically estimated, this might cause unwarranted results: Their model will favor dense graphs when the prior odds ratio is low (η &lt; 1 or P(Iuv = 1) &lt; 0.5), and sparse graphs when the prior odds ratio is high (η &gt; 1 or P(Iuv = 1) &gt; 0.5), which is counterintuitive.</S>
+			<S sid ="258" ssid = "100">Our model does not suffer from this shortcoming because it optimizes the posterior rather than the likelihood.</S>
+			<S sid ="259" ssid = "101">In Section 5 we show that our algorithm signiﬁcantly outperforms the algorithm presented by Snow, Jurafsky, and Ng.</S>
+	</SECTION>
+	<SECTION title="Experimental Evaluation. " number = "5">
+			<S sid ="260" ssid = "1">This section presents an evaluation and analysis of our algorithm.</S>
+			<S sid ="261" ssid = "2">5.1 Experimental Setting.</S>
+			<S sid ="262" ssid = "3">A health-care corpus of 632MB was harvested from the Web and parsed using the Mini- par parser (Lin 1998b).</S>
+			<S sid ="263" ssid = "4">The corpus contains 2,307,585 sentences and almost 50 million 86 Table 2 The similarity score features used to represent pairs of templates.</S>
+			<S sid ="264" ssid = "5">The columns specify the corpus over which the similarity score was computed, the template representation, the similarity measure employed, and the feature representation (as described in Section 4.1).</S>
+			<S sid ="265" ssid = "6"># Corpus Template Similarity measure Feature representation 1 he alth car e bi na ry B I n c p a i r o f C U I t u p l e s 2 he alth car e bi na ry B I n c p a i r o f C U I s 3 he alth car e bi na ry B I n c C U I t u p l e 4 he alth car e bi na ry B I n c C U I 5 he alth car e bi na ry L i n p a i r o f C U I t u p l e s 6 he alth car e bi na ry L i n p a i r o f C U I s 7 he alth car e bi na ry L i n C U I t u p l e 8 he alth car e bi na ry L i n C U I 9 he alth car e un ar y B I n c C U I t u p l e 10 he alth car e u na ry B I n c C U I 11 he alth car e u na ry L i n C U I t u p l e 12 he alth car e u na ry L i n C U I 13 RC V1 bi na ry L i n l e x i c a l i t e m s 14 RC V1 un ar y L i n l e x i c a l i t e m s 15 RC V1 un ar y B I n c l e x i c a l i t e m s 16 Lin &amp; Pa nte l bi na ry L i n l e x i c a l i t e m s word tokens.</S>
+			<S sid ="266" ssid = "7">We used the Uniﬁed Medical Language System (UMLS)6 to annotate medical concepts in the corpus.</S>
+			<S sid ="267" ssid = "8">The UMLS is a database that maps natural language phrases to over one million concept identiﬁers in the health-care domain (termed CUIs).</S>
+			<S sid ="268" ssid = "9">We annotated all nouns and noun phrases that are in the UMLS with their (possibly multiple) CUIs.</S>
+			<S sid ="269" ssid = "10">We now provide the details of training an entailment classiﬁer as explained in Section 4.1.</S>
+			<S sid ="270" ssid = "11">We extracted all templates from the corpus where both argument instantiations are medical concepts, that is, annotated with a CUI (∼50,000 templates).</S>
+			<S sid ="271" ssid = "12">This was done to increase the likelihood that the extracted templates are related to the health-care domain and reduce problems of ambiguity.</S>
+			<S sid ="272" ssid = "13">As explained in Section 4.1, a pair of templates constitutes an input example for the entailment classiﬁer, and should be represented by a set of features.</S>
+			<S sid ="273" ssid = "14">The features we used were different distributional similarity scores for the pair of templates, as summarized in Table 2.</S>
+			<S sid ="274" ssid = "15">Twelve distributional similarity measures were computed over the health-care corpus using the aforementioned variations (Section 4.1), where two feature representations were considered: in the UMLS each natural language phrase may be mapped not to a single CUI, but to a tuple of CUIs.</S>
+			<S sid ="275" ssid = "16">Therefore, in the ﬁrst representation, each feature vector coordinate counts the number of times a tuple of CUIs was mapped to the term instantiating the template argument, and in the second representation it counts the number of times each single CUI was one of the CUIs mapped to the term instantiating the template argument.</S>
+			<S sid ="276" ssid = "17">In addition, we obtained the original template similarity lists learned by Lin and Pantel (2001), and had available three distributional similarity measures learned by Szpektor and Dagan (2008), over the RCV1 corpus,7 as detailed in Table 2.</S>
+			<S sid ="277" ssid = "18">Thus, each pair of templates is represented by a total of 16 distributional similarity scores.</S>
+			<S sid ="278" ssid = "19">6 http://www.nlm.nih.gov/research/umls.</S>
+			<S sid ="279" ssid = "20">7 http://trec.nist.gov/data/reuters/reuters.html.</S>
+			<S sid ="280" ssid = "21">87 We automatically generated a balanced training set of 20,144 examples using Word- Net and the procedure described in Section 4.1, and trained the entailment classiﬁer with SVMperf (Joachims 2005).</S>
+			<S sid ="281" ssid = "22">We use the trained classiﬁer to obtain estimates for Puv and Suv , given that the score-based and probabilistic scoring functions are equivalent (cf.</S>
+			<S sid ="282" ssid = "23">Section 4.2.3).</S>
+			<S sid ="283" ssid = "24">To evaluate the performance of our algorithm, we manually constructed gold- standard entailment graphs.</S>
+			<S sid ="284" ssid = "25">First, 23 medical target concepts, representing typical topics of interest in the medical domain, were manually selected from a (longer) list of the most frequent concepts in the health-care corpus.</S>
+			<S sid ="285" ssid = "26">The 23 target concepts are: alcohol, asthma, biopsy, brain, cancer, CDC, chemotherapy, chest, cough, diarrhea, FDA, headache, HIV, HPV, lungs, mouth, muscle, nausea, OSHA, salmonella, seizure, smoking, and x-ray.</S>
+			<S sid ="286" ssid = "27">For each concept, we wish to learn a focused entailment graph (cf.</S>
+			<S sid ="287" ssid = "28">Figure 1).</S>
+			<S sid ="288" ssid = "29">Thus, the nodes of each graph were deﬁned by extracting all propositional templates in which the corresponding target concept instantiated an argument at least K(= 3) times in the health- care corpus (average number of graph nodes = 22.04, std = 3.66, max = 26, min = 13).</S>
+			<S sid ="289" ssid = "30">Ten medical students were given the nodes of each graph (propositional templates) and constructed the gold standard of graph edges using a Web interface.</S>
+			<S sid ="290" ssid = "31">We gave an oral explanation of the annotation process to each student, and the ﬁrst two graphs annotated by every student were considered part of the annotator training phase and were discarded.</S>
+			<S sid ="291" ssid = "32">The annotators were able to select every propositional template and observe all of the instantiations of that template in our health-care corpus.</S>
+			<S sid ="292" ssid = "33">For example, selecting the template X helps with nausea might show the propositions relaxation helps with nausea, acupuncture helps with nausea, and Nabilone helps with nausea.</S>
+			<S sid ="293" ssid = "34">The concept of entailment was explained under the framework of TE (Dagan et al. 2009), that is, the template t1 entails the template t2 if given that the instantiation of t1 with some concept is true then the instantiation of t2 with the same concept is most likely true.</S>
+			<S sid ="294" ssid = "35">As explained in Section 3.2, we did not perform any disambiguation because a target concept disambiguates the propositional templates in focused entailment graphs.</S>
+			<S sid ="295" ssid = "36">In practice, cases of ambiguity were very rare, except for a single scenario where in templates such as X treats asthma, annotators were unclear whether X is a type of doctor or a type of drug.</S>
+			<S sid ="296" ssid = "37">The annotators were instructed in such cases to select the template, read the instantiations of the template in the corpus, and choose the sense that is most prevalent in the corpus.</S>
+			<S sid ="297" ssid = "38">This instruction was applicable to all cases of ambiguity.</S>
+			<S sid ="298" ssid = "39">Each concept graph was annotated by two students.</S>
+			<S sid ="299" ssid = "40">Following the current recognizing TE (RTE) practice (Bentivogli et al. 2009), after initial annotation the two students met for a reconciliation phase.</S>
+			<S sid ="300" ssid = "41">They worked to reach an agreement on differences and corrected their graphs.</S>
+			<S sid ="301" ssid = "42">Inter-annotator agreement was calculated using the kappa statistic (Siegel and Castellan 1988) both before (κ = 0.59) and after (κ = 0.9) reconciliation.</S>
+			<S sid ="302" ssid = "43">Each learned graph was evaluated against the two reconciliated graphs.</S>
+			<S sid ="303" ssid = "44">Summing the number of possible edges over all 23 concept graphs we get 10,364 possible edges, of which 882 on average were included by the annotators (averaging over the two gold-standard annotations for each graph).</S>
+			<S sid ="304" ssid = "45">The concept graphs were randomly split into a development set (11 concepts) and a test set (12 concepts).We used the lpsolve8 package to learn the edges of the graphs.</S>
+			<S sid ="305" ssid = "46">This package ef ﬁciently solves the model without imposing integer restrictions9 and then uses the branch-and-bound method to ﬁnd an optimal integer solution.</S>
+			<S sid ="306" ssid = "47">We note that in the 8 http://lpsolve.sourceforge.net/5.5/.</S>
+			<S sid ="307" ssid = "48">9 While ILP is an NP-hard problem, LP is a polynomial problem and can be solved efﬁciently..</S>
+			<S sid ="308" ssid = "49">88 experiments reported in this article the optimal solution without integer restrictions was already integer.</S>
+			<S sid ="309" ssid = "50">Thus, although in general our optimization problem is NP-hard, in our experiments we were able to reach an optimal solution for the input graphs very efﬁciently (we note that in some scenarios not reported in this article the optimal solution was not integer and so an integer solution is not guaranteed a priori).</S>
+			<S sid ="310" ssid = "51">As mentioned in Section 4.2, we added a few constraints in cases where there was strong evidence that edges are not in the graph.</S>
+			<S sid ="311" ssid = "52">This is done in the following scenarios (examples given in Table 3): (1) When two templates u and v are identical except for a pair of words wu and wv , and wu is an antonym of wv , or a hypernym of wv at distance ≥ 2 in WordNet.</S>
+			<S sid ="312" ssid = "53">(2) When two nodes u and v are transitive “opposites,” that subj obj obj subj is, if u = X ←− w −→ Y and v = X ←− w −→ Y, for any word w. We note that there are some transitive verbs that express a reciprocal activity, such as X marries Y, but usually reciprocal events are not expressed using a transitive verb structure.</S>
+			<S sid ="313" ssid = "54">In addition, in some cases we have strong evidence that edges do exist in the graph.</S>
+			<S sid ="314" ssid = "55">This is done in a single scenario (see Table 3), which is speciﬁc to the output of Minipar: obj when two templates differ by a single edge and the ﬁrst is of the type X −→ Y and the other is of the type X vrel Y, which expresses a passive verb modiﬁer of nouns.</S>
+			<S sid ="315" ssid = "56">Altogether, these initializations took place in less than 1% of the node pairs in the graphs.</S>
+			<S sid ="316" ssid = "57">We note that we tried to use WordNet relations such as hypernym and synonym as “positive” hard constraints (using the constraint Iuv = 1), but this resulted in reduced performance because the precision of WordNet was not high enough.</S>
+			<S sid ="317" ssid = "58">The graphs learned by our algorithm were evaluated by two measures.</S>
+			<S sid ="318" ssid = "59">The ﬁrst measure evaluates the graph edges directly, and the second measure is motivated by semantic inference applications that utilize the rules in the graph.</S>
+			<S sid ="319" ssid = "60">The ﬁrst measure is simply the F1 of the set of learned edges compared to the set of gold-standard edges.</S>
+			<S sid ="320" ssid = "61">In the second measure we take the set of learned rules and infer new propositions by applying the rules over all propositions extracted from the health-care corpus.</S>
+			<S sid ="321" ssid = "62">We apply the rules iteratively over all propositions until no new propositions are inferred.</S>
+			<S sid ="322" ssid = "63">For example, given the corpus proposition relaxation reduces nausea and the edges X reduces nausea → X helps with nausea and X helps with nausea → X related to nausea, we evaluate the set {relaxation reduces nausea, relaxation helps with nausea, relaxation related to nausea}.</S>
+			<S sid ="323" ssid = "64">For each graph we measure the F1 of the set of propositions inferred by the learned graphs when compared to the set of propositions inferred by the gold-standard graphs.</S>
+			<S sid ="324" ssid = "65">For both measures the ﬁnal score of an algorithm is a macro-average F1 over the 24 gold-standard test-set graphs (two gold-standard graphs for each of the 12 test concepts).</S>
+			<S sid ="325" ssid = "66">Table 3 Scenarios in which we added hard constraints to the ILP.</S>
+			<S sid ="326" ssid = "67">Scenario Example Initialization subj obj subj obj antonym (X ←− decrease −→ Y,X ←− increase −→ Y) Iuv = 0 subj obj subj obj hypernym ≥ 2 (X ←− affect −→ Y,X ←− irritate −→ Y) Iuv = 0 subj obj subj obj transitive opposite (X ←− cause −→ Y,Y ←− cause −→ X) Iuv = 0 subj obj subj vrel syntactic variation (X ←− follow −→ Y,Y ←− follow ←− X) Iuv = 1 89 Learning the edges of a graph given an input concept takes about 1–2 seconds on a standard desktop.</S>
+			<S sid ="327" ssid = "68">5.2 Evaluated Algorithms.</S>
+			<S sid ="328" ssid = "69">First, we describe some baselines that do not utilize the entailment classiﬁer or the ILP solver.</S>
+			<S sid ="329" ssid = "70">For each of the 16 distributional similarity measures (Table 2) and for each template t, we computed a list of templates most similar to t (or entailing t for directional measures).</S>
+			<S sid ="330" ssid = "71">Then, for each measure we learned graphs by inserting an edge (u, v), when u is in the top K templates most similar to v. The parameter K can be optimized either on the automatically generated training set (from WordNet) or on the manually annotated development set.</S>
+			<S sid ="331" ssid = "72">We also learned graphs using WordNet: We inserted an edge (u, v) when u and v differ by a single word wu and wv , respectively, and wu is a direct hyponym or synonym of wv . Next, we describe algorithms that utilize the entailment classiﬁer.Our algorithm, named ILP-Global, utilizes global information and an ILP formula tion to ﬁnd maximum a posteriori graphs.</S>
+			<S sid ="332" ssid = "73">Therefore, we compare it to the following three variants: (1) ILP-Local: An algorithm that uses only local information.</S>
+			<S sid ="333" ssid = "74">This is done by omitting the global transitivity constraints, and results in an algorithm that inserts an edge (u, v) if and only if (Suv − λ) &gt; 0.</S>
+			<S sid ="334" ssid = "75">(2) Greedy-Global: An algorithm that looks for the maximum a posteriori graphs but only employs the greedy optimization procedure as described by Snow, Jurafsky, and Ng (2006).</S>
+			<S sid ="335" ssid = "76">(3) ILP-Global-Likelihood: An ILP formulation where we look for the maximum likelihood graphs, as described by Snow, Jurafsky, and Ng (cf.</S>
+			<S sid ="336" ssid = "77">Section 4.2).</S>
+			<S sid ="337" ssid = "78">We evaluate these algorithms in three settings which differ in the method by which the edge prior odds ratio, η (or λ), is estimated: (1) η = 1 (λ = 0), which means that no prior is used.</S>
+			<S sid ="338" ssid = "79">(2) Tuning η and using the value that maximizes performance over the development set.</S>
+			<S sid ="339" ssid = "80">(3) Estimating η using maximum likelihood over the development set, which results in η ∼ 0.1 (λ ∼ 2.3), corresponding to the edge density P(Iuv = 1) ∼ 0.09.</S>
+			<S sid ="340" ssid = "81">For all local algorithms whose output does not respect transitivity constraints, we added all edges inferred by transitivity.</S>
+			<S sid ="341" ssid = "82">This was done because we assume that the rules learned are to be used in the context of an inference or entailment system.</S>
+			<S sid ="342" ssid = "83">Because such systems usually perform chaining of entailment rules (Raina, Ng, and Manning 2005; Bar-Haim et al. 2007; Harmeling 2009), we conduct this chaining as well.</S>
+			<S sid ="343" ssid = "84">Nevertheless, we also measured performance when edges inferred by transitivity are not added: We once again chose the edge prior value that maximizes F1 over the development set and obtained macro-average recall/precision/F1 of 51.5/34.9/38.3.</S>
+			<S sid ="344" ssid = "85">This performance is comparable to the macro-average recall/precision/F1 of 44.5/45.3/38.1 we report next in Table 4.</S>
+			<S sid ="345" ssid = "86">5.3 Experimental Results and Analysis.</S>
+			<S sid ="346" ssid = "87">In this section we present experimental results and analysis that show that the ILP-Global algorithm improves performance over baselines, speciﬁcally in terms of precision.</S>
+			<S sid ="347" ssid = "88">Tables 4–7 and Figure 2 summarize the performance of the algorithms.</S>
+			<S sid ="348" ssid = "89">Table 4 shows our main result when the parameters λ and K are optimized to maximize performance over the development set.</S>
+			<S sid ="349" ssid = "90">Notice that the algorithm ILP-Global-Likelihood is omitted, because when optimizing λ over the development set it conﬂates with ILP-Global.</S>
+			<S sid ="350" ssid = "91">The rows Local1 and Local2 present the best algorithms that use a single distributional similarity resource.</S>
+			<S sid ="351" ssid = "92">Local1 and Local2 correspond to the conﬁgurations 90 Table 4 Results when tuning for performance over the development set.</S>
+			<S sid ="352" ssid = "93">Edges Propositions Re cal l Pre cis ion F 1 Re cal l Pre cis ion F1ILP Glo bal (λ = 0.45 ) 4 6.</S>
+			<S sid ="353" ssid = "94">0 5 0 . 1 43.</S>
+			<S sid ="354" ssid = "95">8 6 7.</S>
+			<S sid ="355" ssid = "96">3 6 9 . 6 66.</S>
+			<S sid ="356" ssid = "97">2 Gre edy Glo bal (λ = 0.3) 4 5.</S>
+			<S sid ="357" ssid = "98">7 3 7 . 1 36.</S>
+			<S sid ="358" ssid = "99">6 6 4.</S>
+			<S sid ="359" ssid = "100">2 5 7 . 2 56.</S>
+			<S sid ="360" ssid = "101">3ILP Loc al (λ = 1.5) 4 4.</S>
+			<S sid ="361" ssid = "102">5 4 5 . 3 38.</S>
+			<S sid ="362" ssid = "103">1 6 5.</S>
+			<S sid ="363" ssid = "104">2 6 1 . 0 58.</S>
+			<S sid ="364" ssid = "105">6 Loc al1 (K = 10) 5 3.</S>
+			<S sid ="365" ssid = "106">5 3 4 . 9 37.</S>
+			<S sid ="366" ssid = "107">5 7 3.</S>
+			<S sid ="367" ssid = "108">5 5 0 . 6 56.</S>
+			<S sid ="368" ssid = "109">1 Loc al2 (K = 55) 5 2.</S>
+			<S sid ="369" ssid = "110">5 3 1 . 6 37.</S>
+			<S sid ="370" ssid = "111">7 6 9.</S>
+			<S sid ="371" ssid = "112">8 5 0 . 0 57.</S>
+			<S sid ="372" ssid = "113">1 Table 5 Results when the development set is not used to estimate λ and K. Edges Propositions Re cal l Pre cis ion F 1 Re cal l Pre cis ion F1 ILP Glo bal 5 8.</S>
+			<S sid ="373" ssid = "114">0 2 8 . 5 35.</S>
+			<S sid ="374" ssid = "115">9 7 6.</S>
+			<S sid ="375" ssid = "116">0 4 6 . 0 54.</S>
+			<S sid ="376" ssid = "117">6 Gre edy Glo bal 6 0.</S>
+			<S sid ="377" ssid = "118">8 2 5 . 6 33.</S>
+			<S sid ="378" ssid = "119">5 7 7.</S>
+			<S sid ="379" ssid = "120">8 4 1 . 3 50.</S>
+			<S sid ="380" ssid = "121">9ILP Loc al 6 9.</S>
+			<S sid ="381" ssid = "122">3 1 9 . 7 26.</S>
+			<S sid ="382" ssid = "123">8 8 2.</S>
+			<S sid ="383" ssid = "124">7 3 3 . 3 42.</S>
+			<S sid ="384" ssid = "125">6 Loc al1 (K = 100) 9 2.</S>
+			<S sid ="385" ssid = "126">6 1 1 . 3 20.</S>
+			<S sid ="386" ssid = "127">0 9 5.</S>
+			<S sid ="387" ssid = "128">3 1 8 . 9 31.</S>
+			<S sid ="388" ssid = "129">1 Loc al2 (K = 100) 6 3.</S>
+			<S sid ="389" ssid = "130">1 2 5 . 5 34.</S>
+			<S sid ="390" ssid = "131">0 7 7.</S>
+			<S sid ="391" ssid = "132">7 3 9 . 9 50.</S>
+			<S sid ="392" ssid = "133">9 Wor dN et 1 0.</S>
+			<S sid ="393" ssid = "134">8 4 4 . 1 13.</S>
+			<S sid ="394" ssid = "135">2 3 9.</S>
+			<S sid ="395" ssid = "136">9 7 2 . 4 47.</S>
+			<S sid ="396" ssid = "137">3 Table 6 Results with prior estimated on the development set, that is η = 0.1, which is equivalent to λ = 2.3.</S>
+			<S sid ="397" ssid = "138">Edges Propositions Re cal l Pre cis ion F 1 Re cal l Pre cis ion F1 ILP Glo bal 1 6 . 8 6 7 . 1 24.</S>
+			<S sid ="398" ssid = "139">4 4 3 . 9 8 6 . 8 56.</S>
+			<S sid ="399" ssid = "140">3 ILP Global Lik elih ood 9 1 . 8 9 . 8 17.</S>
+			<S sid ="400" ssid = "141">5 9 4 . 0 1 6 . 7 28.</S>
+			<S sid ="401" ssid = "142">0 Gre edy Glo bal 1 4 . 7 6 2 . 9 21.</S>
+			<S sid ="402" ssid = "143">2 4 3 . 5 8 6 . 6 56.</S>
+			<S sid ="403" ssid = "144">2 Gre edy Global Lik elih ood 10 0.</S>
+			<S sid ="404" ssid = "145">0 9 . 3 16.</S>
+			<S sid ="405" ssid = "146">8 10 0.</S>
+			<S sid ="406" ssid = "147">0 1 5 . 5 26.</S>
+			<S sid ="407" ssid = "148">5 described in Table 2 by features no. 5 and no. 1, respectively (see also Table 8).</S>
+			<S sid ="408" ssid = "149">ILP- Global improves performance by at least 13%, and signiﬁcantly outperforms all local methods, as well as the greedy optimization algorithm both on the edges F1 measure (p &lt; 0.05) and on the propositions F1 measure (p &lt; 0.01).10 Table 5 describes the results when the development set is not used to estimate the parameters λ and K: A uniform prior (Puv = 0.5) is assumed for algorithms that use the entailment classiﬁer, and the automatically generated training set is employed to estimate K. Again ILP-Global-Likelihood is omitted in the absence of a prior.</S>
+			<S sid ="409" ssid = "150">ILP-Global outperforms all other methods in this scenario as well, although by a smaller margin for a few of the baselines.</S>
+			<S sid ="410" ssid = "151">Comparing Table 4 to Table 5 reveals that excluding the 10 We tested signiﬁcance using the two-sided Wilcoxon rank test (Wilcoxon 1945)..</S>
+			<S sid ="411" ssid = "152">91 Table 7 Results per concept for the ILP-Global.</S>
+			<S sid ="412" ssid = "153">Con cept R P F1 Sm oki ng 58.</S>
+			<S sid ="413" ssid = "154">1 81.</S>
+			<S sid ="414" ssid = "155">8 67.</S>
+			<S sid ="415" ssid = "156">9 Seiz ure 64.</S>
+			<S sid ="416" ssid = "157">7 51.</S>
+			<S sid ="417" ssid = "158">2 57.</S>
+			<S sid ="418" ssid = "159">1 Hea dac he 60.</S>
+			<S sid ="419" ssid = "160">9 50.</S>
+			<S sid ="420" ssid = "161">0 54.</S>
+			<S sid ="421" ssid = "162">9 Lun gs 50.</S>
+			<S sid ="422" ssid = "163">0 56.</S>
+			<S sid ="423" ssid = "164">5 53.</S>
+			<S sid ="424" ssid = "165">1 Dia rrhe a 42.</S>
+			<S sid ="425" ssid = "166">1 60.</S>
+			<S sid ="426" ssid = "167">0 49.</S>
+			<S sid ="427" ssid = "168">5 Che mot her apy 44.</S>
+			<S sid ="428" ssid = "169">7 52.</S>
+			<S sid ="429" ssid = "170">5 48.</S>
+			<S sid ="430" ssid = "171">3 HP V 35.</S>
+			<S sid ="431" ssid = "172">2 76.</S>
+			<S sid ="432" ssid = "173">0 48.</S>
+			<S sid ="433" ssid = "174">1 Sal mo nell a 27.</S>
+			<S sid ="434" ssid = "175">3 80.</S>
+			<S sid ="435" ssid = "176">0 40.</S>
+			<S sid ="436" ssid = "177">7X ray 75.</S>
+			<S sid ="437" ssid = "178">0 23.</S>
+			<S sid ="438" ssid = "179">1 35.</S>
+			<S sid ="439" ssid = "180">3 Ast hm a 23.</S>
+			<S sid ="440" ssid = "181">1 30.</S>
+			<S sid ="441" ssid = "182">6 26.</S>
+			<S sid ="442" ssid = "183">3 Mo uth 17.</S>
+			<S sid ="443" ssid = "184">7 35.</S>
+			<S sid ="444" ssid = "185">5 23.</S>
+			<S sid ="445" ssid = "186">7 FD A 53.</S>
+			<S sid ="446" ssid = "187">3 15.</S>
+			<S sid ="447" ssid = "188">1 23.</S>
+			<S sid ="448" ssid = "189">5 sparse prior indeed increases recall at a price of a sharp decrease in precision.</S>
+			<S sid ="449" ssid = "190">Note, however, that local algorithms are more vulnerable to this phenomenon.</S>
+			<S sid ="450" ssid = "191">This makes sense because in local algorithms eliminating the prior adds edges that in turn add more edges due to the constraint of transitivity and so recall dramatically rises at the expense of precision.</S>
+			<S sid ="451" ssid = "192">Global algorithms are not as prone to this effect because they refrain from adding edges that eventually lead to the addition of many unwarranted edges.</S>
+			<S sid ="452" ssid = "193">Table 5 also shows that WordNet, a manually constructed resource, has notably the highest precision and lowest recall.</S>
+			<S sid ="453" ssid = "194">The low recall exempliﬁes how the entailment relations given by the gold-standard annotators transcend much beyond simple lexical relations that appear in WordNet: Many of the gold-standard entailment relations are missing from WordNet or involve multi-word phrases that do not appear in WordNet at all.</S>
+			<S sid ="454" ssid = "195">Note that although the precision of WordNet is the highest in Table 5, its absolute value (44.1%) is far from perfect.</S>
+			<S sid ="455" ssid = "196">This illustrates that hierarchies of predicates are quite Figure 2 Recall-precision curve comparing ILP-Global with Greedy-Global and ILP-Local.</S>
+			<S sid ="456" ssid = "197">92 Table 8 Results of all distributional similarity measures when tuning K over the development set.</S>
+			<S sid ="457" ssid = "198">We encode the description of the measures presented in Table 2 in the following manner— h = health-care corpus; R = RCV1 corpus; b = binary templates; u = unary templates; L = Lin similarity measure; B = BInc similarity measure; pCt = pair of CUI tuples representation; pC = pair of CUIs representation; Ct = CUI tuple representation; C = CUI representation; Lin &amp; Pantel = similarity lists learned by Lin and Pantel.</S>
+			<S sid ="458" ssid = "199">Edges Propositions Dist . sim.</S>
+			<S sid ="459" ssid = "200">mea sure Re cal l Pre cis ion F 1 Re cal l Pre cis ion F1hbB pCt 5 2.</S>
+			<S sid ="460" ssid = "201">5 3 1 . 6 37.</S>
+			<S sid ="461" ssid = "202">7 6 9.</S>
+			<S sid ="462" ssid = "203">8 5 0 . 0 57.</S>
+			<S sid ="463" ssid = "204">1hbB pC 5 0.</S>
+			<S sid ="464" ssid = "205">5 2 6 . 5 30.</S>
+			<S sid ="465" ssid = "206">7 6 7.</S>
+			<S sid ="466" ssid = "207">1 4 3 . 5 50.</S>
+			<S sid ="467" ssid = "208">1hbB Ct 1 0.</S>
+			<S sid ="468" ssid = "209">4 4 4 . 5 15.</S>
+			<S sid ="469" ssid = "210">4 3 9.</S>
+			<S sid ="470" ssid = "211">1 7 8 . 9 51.</S>
+			<S sid ="471" ssid = "212">6h-b B-C 7 . 6 4 2 . 9 11.</S>
+			<S sid ="472" ssid = "213">1 3 7.</S>
+			<S sid ="473" ssid = "214">9 7 9 . 8 50.</S>
+			<S sid ="474" ssid = "215">7hbL pCt 5 3.</S>
+			<S sid ="475" ssid = "216">4 3 4 . 9 37.</S>
+			<S sid ="476" ssid = "217">5 7 3.</S>
+			<S sid ="477" ssid = "218">5 5 0 . 6 56.</S>
+			<S sid ="478" ssid = "219">1hbL pC 4 7.</S>
+			<S sid ="479" ssid = "220">2 3 5 . 2 35.</S>
+			<S sid ="480" ssid = "221">6 6 8.</S>
+			<S sid ="481" ssid = "222">6 5 2 . 9 56.</S>
+			<S sid ="482" ssid = "223">2hbL Ct 4 7.</S>
+			<S sid ="483" ssid = "224">0 2 6 . 6 30.</S>
+			<S sid ="484" ssid = "225">2 6 4.</S>
+			<S sid ="485" ssid = "226">9 4 7 . 4 49.</S>
+			<S sid ="486" ssid = "227">6h-b L-C 3 4.</S>
+			<S sid ="487" ssid = "228">6 2 2 . 9 22.</S>
+			<S sid ="488" ssid = "229">5 5 7.</S>
+			<S sid ="489" ssid = "230">2 5 2 . 6 47.</S>
+			<S sid ="490" ssid = "231">6huB Ct 5 . 1 3 7 . 4 8.</S>
+			<S sid ="491" ssid = "232">5 3 5.</S>
+			<S sid ="492" ssid = "233">1 9 1 . 0 49.</S>
+			<S sid ="493" ssid = "234">7h-u B-C 7 . 2 4 2 . 4 11.</S>
+			<S sid ="494" ssid = "235">5 3 6.</S>
+			<S sid ="495" ssid = "236">1 9 0 . 3 50.</S>
+			<S sid ="496" ssid = "237">1huL Ct 2 2.</S>
+			<S sid ="497" ssid = "238">8 2 2 . 0 18.</S>
+			<S sid ="498" ssid = "239">3 4 9.</S>
+			<S sid ="499" ssid = "240">7 4 9 . 2 44.</S>
+			<S sid ="500" ssid = "241">5h-u L-C 1 6.</S>
+			<S sid ="501" ssid = "242">7 2 6 . 3 17.</S>
+			<S sid ="502" ssid = "243">8 4 7.</S>
+			<S sid ="503" ssid = "244">0 5 6 . 8 48.</S>
+			<S sid ="504" ssid = "245">1R-b L-l 4 9.</S>
+			<S sid ="505" ssid = "246">4 2 1 . 8 25.</S>
+			<S sid ="506" ssid = "247">2 7 2.</S>
+			<S sid ="507" ssid = "248">4 3 9 . 0 45.</S>
+			<S sid ="508" ssid = "249">5R-u L-l 2 4.</S>
+			<S sid ="509" ssid = "250">1 3 0 . 0 16.</S>
+			<S sid ="510" ssid = "251">8 4 7.</S>
+			<S sid ="511" ssid = "252">1 5 5 . 2 42.</S>
+			<S sid ="512" ssid = "253">1R-u B-l 9 . 5 5 7 . 1 14.</S>
+			<S sid ="513" ssid = "254">1 3 7.</S>
+			<S sid ="514" ssid = "255">2 8 4 . 0 49.</S>
+			<S sid ="515" ssid = "256">5 Lin &amp; Pan tel 3 7.</S>
+			<S sid ="516" ssid = "257">1 3 2 . 2 25.</S>
+			<S sid ="517" ssid = "258">1 5 8.</S>
+			<S sid ="518" ssid = "259">9 5 4 . 6 48.</S>
+			<S sid ="519" ssid = "260">6 ambiguous and thus using WordNet directly yields relatively low precision.</S>
+			<S sid ="520" ssid = "261">WordNet is vulnerable to such ambiguity because it is a generic domain-independent resource, whereas our algorithm learns from a domain-speciﬁc corpus.</S>
+			<S sid ="521" ssid = "262">For example, the words have and cause are synonyms according to one of the senses in WordNet and so the erroneous rule X have asthma ↔ X cause asthma is learned using WordNet.</S>
+			<S sid ="522" ssid = "263">Another example is the rule X follows chemotherapy → X takes chemotherapy, which is incorrectly inferred because follow is a hyponym of take according to one of WordNet’s senses (she followed the feminist movement).</S>
+			<S sid ="523" ssid = "264">Due to these mistakes made by WordNet, the precision achieved by our automatically trained ILP-Global algorithm when tuning parameters on the development set (Table 4) is higher than that of WordNet.</S>
+			<S sid ="524" ssid = "265">Table 6 shows the results when the prior η is estimated using maximum likelihood over the development set (by computing the edge density over all the development set graphs), and not tuned empirically with grid search.</S>
+			<S sid ="525" ssid = "266">This allows for a comparison between our algorithm that maximizes the a posteriori probability and Snow, Jurafsky, and Ng’s (2006) algorithm that maximizes the likelihood.</S>
+			<S sid ="526" ssid = "267">The gold-standard graphs are quite sparse (η ∼ 0.1); therefore, as explained in Section 4.2.4, the effect of the prior is substantial.</S>
+			<S sid ="527" ssid = "268">ILP-Global and Greedy-Global learn sparse graphs with high precision and low recall, whereas ILP-Global-Likelihood and Greedy-Global-Likelihood learn dense graphs with high recall but very low precision.</S>
+			<S sid ="528" ssid = "269">Overall, optimizing the a posteriori probability is substantially better than optimizing likelihood, but still leads to a large degradation in performance.</S>
+			<S sid ="529" ssid = "270">This can be explained because our algorithm is not purely probabilistic: The learned graphs are the product of mixing a probabilistic objective function with non-probabilistic constraints.</S>
+			<S sid ="530" ssid = "271">Thus, plugging the estimated prior into this model results in performance that is far from optimal.</S>
+			<S sid ="531" ssid = "272">In future work, we will examine 93 a purely probabilistic approach that will allow us to reach good performance when estimating η directly.</S>
+			<S sid ="532" ssid = "273">Nevertheless, currently optimal results are achieved when the prior η is tuned empirically.</S>
+			<S sid ="533" ssid = "274">Figure 2 shows a recall–precision curve for ILP-Global, Greedy-Global, and ILP- Local, obtained by varying the prior parameter, λ.</S>
+			<S sid ="534" ssid = "275">The ﬁgure clearly demonstrates the advantage of using global information and ILP.</S>
+			<S sid ="535" ssid = "276">ILP-Global is better than Greedy-Global and ILP-Local in almost every point of the recall–precision curve, regardless of the exact value of the prior parameter.</S>
+			<S sid ="536" ssid = "277">Last, we present for completeness in Table 7 the results of ILP-Global for all concepts in the test set.</S>
+			<S sid ="537" ssid = "278">In Table 8 we present the results obtained for all 16 distributional similarity measures.</S>
+			<S sid ="538" ssid = "279">The main conclusion we can derive from this table is that the best distributional similarity measures are those that represent templates using pairs of argument instantiations rather than each argument separately.</S>
+			<S sid ="539" ssid = "280">A similar result was found by Yates and Etzioni (2009), who described the RESOLVER paraphrase learning system and have shown that it outperforms DIRT.</S>
+			<S sid ="540" ssid = "281">In their analysis, they attribute this result to their representation that utilizes pairs of arguments comparing to DIRT, which computes a separate score for each argument.</S>
+			<S sid ="541" ssid = "282">In the next two sections we perform a more thorough qualitative and quantitative comparison trying to analyze the importance of using global information in graph learning (Section 5.3.1), as well as the contribution of using ILP rather than a greedy optimization procedure (Section 5.3.2).</S>
+			<S sid ="542" ssid = "283">We note that the analysis presented in both sections is for the results obtained when optimizing parameters over the development set.</S>
+			<S sid ="543" ssid = "284">5.3.1 Global vs. Local Information.</S>
+			<S sid ="544" ssid = "285">We looked at all edges in the test-set graphs where ILP-Global and ILP-Local disagree and checked which algorithm was correct.</S>
+			<S sid ="545" ssid = "286">Table 9 presents the result.</S>
+			<S sid ="546" ssid = "287">The main advantage of using ILP-Global is that it avoids inserting wrong edges into the graph.</S>
+			<S sid ="547" ssid = "288">This is because ILP-Local adds any edge (u, v) such that Puv crosses a certain threshold, disregarding edges that will be consequently added due to transitivity (recall that for local algorithms we add edges inferred by transitivity, cf.</S>
+			<S sid ="548" ssid = "289">Section 5.2).</S>
+			<S sid ="549" ssid = "290">ILP-Global will avoid such edges of high probability if it results in inserting many low probability edges.</S>
+			<S sid ="550" ssid = "291">This results in an improvement in precision, as exhibited by Table 4.</S>
+			<S sid ="551" ssid = "292">Figures 3 and 4 show fragments of the graphs learned by ILP-Global and ILP- Local (prior to adding transitive edges) for the test-set concepts diarrhea and seizure, and illustrate qualitatively how global considerations improve precision.</S>
+			<S sid ="552" ssid = "293">In Figure 3, we witness that the single erroneous edge X results in diarrhea → X prevents diarrhea inserted by the local algorithm because Puv is high, effectively bridges two strongly connected components and induces a total of 12 wrong edges (all edges from the upper component to the lower component), whereas ILP-Global refrains from inserting this edge.</S>
+			<S sid ="553" ssid = "294">Figure 4 depicts an even more complex scenario.</S>
+			<S sid ="554" ssid = "295">First, ILP-Local induces a strongly connected component of ﬁve nodes for the predicates control, treat, stop, Table 9 Comparing disagreements between ILP-Global and ILP-Local against the gold-standard graphs.</S>
+			<S sid ="555" ssid = "296">Gl ob al= Tr ue/ Lo cal =F als e Gl ob al= Fal se/ Lo cal =T ru e Gol d stan dar d=t rue 4 8 4 2 Gol d stan dar d=f alse 7 8 4 9 4 94 Figure 3 A comparison between ILP-Global and ILP-local for two fragments of the test-set concept diarrhea.</S>
+			<S sid ="556" ssid = "297">reduce, and prevent, whereas ILP-Global splits this strongly connected component into two, which although not perfect, is more compatible with the gold-standard graphs.</S>
+			<S sid ="557" ssid = "298">In addition, ILP-Local inserts four erroneous edges that connect two components of size 4 and 5, which results in adding eventually 30 wrong edges.</S>
+			<S sid ="558" ssid = "299">On the other hand, Figure 4 A comparison between ILP-Global and ILP-Local for two fragments of the test-set concept seizure.</S>
+			<S sid ="559" ssid = "300">95 ILP-Global is aware of the consequences of adding these four seemingly good edges, and prefers to omit them from the learned graph, leading to much higher precision.</S>
+			<S sid ="560" ssid = "301">Although the main contribution of ILP-Global, in terms of F1 , is in an increase in precision, we also notice an increase in recall in Table 4.</S>
+			<S sid ="561" ssid = "302">This is because the optimal prior is λ = 0.45 in ILP-Global but λ = 1.5 in ILP-Local.</S>
+			<S sid ="562" ssid = "303">Thus, any edge (u, v) such that 0.45 &lt; Suv &lt; 1.5 will have positive weight in ILP-Global and might be inserted into the graph, but will have negative weight in ILP-Local and will be rejected.</S>
+			<S sid ="563" ssid = "304">The reason is that in a local setting, reducing false positives is handled only by applying a large penalty for every wrong edge, whereas in a global setting wrong edges can be rejected because they induce more “bad” edges.</S>
+			<S sid ="564" ssid = "305">Overall, this leads to an improved recall in ILP-Global.</S>
+			<S sid ="565" ssid = "306">This also explains why ILP-Local is severely harmed when no prior is used at all, as shown in Table 5.</S>
+			<S sid ="566" ssid = "307">Last, we note that across the 12 test-set graphs, ILP-Global achieves better F1 over the edges in 7 graphs with an average advantage of 11.7 points, ILP-Local achieves better F1 over the edges in 4 graphs with an average advantage of 3.0 points, and one performance is equal.</S>
+			<S sid ="567" ssid = "308">5.3.2 Greedy vs. Non-Greedy Optimization.</S>
+			<S sid ="568" ssid = "309">We would like to understand how using an ILP solver improves performance compared with a greedy optimization procedure.</S>
+			<S sid ="569" ssid = "310">Table 4 demonstrates that ILP-Global and Greedy-Global reach a similar level of recall, although ILP-Global achieves far better precision.</S>
+			<S sid ="570" ssid = "311">Again, we investigated edges for which the two algorithms disagree and checked which one was correct.</S>
+			<S sid ="571" ssid = "312">Table 10 demonstrates that the higher precision is because ILP-Global avoids inserting wrong edges into the graph.</S>
+			<S sid ="572" ssid = "313">Figure 5 illustrates some of the reasons ILP-Global performs better than Greedy- Global.</S>
+			<S sid ="573" ssid = "314">Parts A1–A3 show the progression of Greedy-Global, which is an incremental algorithm, for a fragment of the headache graph.</S>
+			<S sid ="574" ssid = "315">In part A1 the learning algorithm still separates the nodes X prevents headache and X reduces headache from the nodes X causes headache and X results in headache (nodes surrounded by a bold oval shape constitute a strongly connected component).</S>
+			<S sid ="575" ssid = "316">After two iterations, however, the four nodes are joined into a single strongly connected component, which is an error in principle but at this point seems to be the best decision to increase the posterior probability of the graph.</S>
+			<S sid ="576" ssid = "317">This greedy decision has two negative ramiﬁcations.</S>
+			<S sid ="577" ssid = "318">First, the strongly connected component can no longer be untied.</S>
+			<S sid ="578" ssid = "319">Thus, in A3 we observe that in future iterations the strongly connected component expands further and many more wrong edges are inserted into the graph.</S>
+			<S sid ="579" ssid = "320">On the other hand, in B we see that ILP-Global takes into consideration the global interaction between the four nodes and other nodes of the graph, and decides to split this strongly connected component in two, which improves the precision of ILP-Global.</S>
+			<S sid ="580" ssid = "321">Second, note that in A3 the nodes Associate X with headache and Associate headache with X are erroneously isolated.</S>
+			<S sid ="581" ssid = "322">This is because connecting them to the strongly connected component that contains six nodes will add many edges with Table 10 Comparing disagreements between ILP-Global and Greedy-Global against the gold-standard graphs.</S>
+			<S sid ="582" ssid = "323">IL P= Tr ue /G ree dy =F als e IL P= Fal se/ Gr ee dy =T ru e Gol d stan dar d=t rue 6 6 5 6 Gol d stan dar d=f alse 4 4 4 8 0 96 Figure 5 A comparison between ILP-Global and Greedy-Global.</S>
+			<S sid ="583" ssid = "324">Parts A1–A3 depict the incremental progress of Greedy Global for a fragment of the headache graph.</S>
+			<S sid ="584" ssid = "325">Part B depicts the corresponding fragment in ILP-Global.</S>
+			<S sid ="585" ssid = "326">Nodes surrounded by a bold oval shape are strongly connected components.</S>
+			<S sid ="586" ssid = "327">low probability and so this is avoided by Greedy-Global.</S>
+			<S sid ="587" ssid = "328">Because in ILP-Global the strongly connected component was split in two, it is possible to connect these two nodes to some of the other nodes and raise the recall of ILP-Global.</S>
+			<S sid ="588" ssid = "329">Thus, we see that greedy optimization might get stuck in local maxima and consequently suffer in terms of both precision and recall.</S>
+			<S sid ="589" ssid = "330">Last, we note that across the 12 test-set graphs, ILP-Global achieves better F1 over the edges in 9 graphs with an average advantage of 10.0 points, Greedy-Global achieves better F1 over the edges in 2 graphs with an average advantage of 1.5 points, and in one case performance is equal.</S>
+			<S sid ="590" ssid = "331">5.4 Error Analysis.</S>
+			<S sid ="591" ssid = "332">In this section, we compare the results of ILP-Global with the gold-standard graphs and perform error analysis.</S>
+			<S sid ="592" ssid = "333">Error analysis was performed by comparing the 12 graphs learned by ILP-Global to the corresponding 12 gold-standard graphs (randomly sampling from the two available gold-standard graphs), and manually examining all edges for which the two disagree.</S>
+			<S sid ="593" ssid = "334">We found that the number of false positives and false negatives is almost equal: 282 edges were learned by ILP-Global but are not in the gold- standard graphs (false positive) and 287 edges were in the gold-standard graphs but were not learned by ILP-Global (false negatives).</S>
+			<S sid ="594" ssid = "335">97 Table 11 Error analysis for false positives and false negatives.</S>
+			<S sid ="595" ssid = "336">False positives False negatives Tota l cou nt 28 2 Tot al co un t 28 7 Cla ssiﬁ er erro r 8 4.</S>
+			<S sid ="596" ssid = "337">8 % Cl ass iﬁe r err or 7 3.</S>
+			<S sid ="597" ssid = "338">5 %Co hyp ony m erro r 1 8.</S>
+			<S sid ="598" ssid = "339">0 % Lo ng pre dic ate err or 3 6.</S>
+			<S sid ="599" ssid = "340">2 % Dir ecti on erro r 1 5.</S>
+			<S sid ="600" ssid = "341">1 % Ge ner alit y err or 2 6.</S>
+			<S sid ="601" ssid = "342">8 % Str ing ov erl ap err or 2 0.</S>
+			<S sid ="602" ssid = "343">9 % Table 11 presents the results of our manual error analysis.</S>
+			<S sid ="603" ssid = "344">Most evident is the fact that the majority of mistakes are misclassiﬁcations of the entailment classiﬁer.</S>
+			<S sid ="604" ssid = "345">For 73.5% of the false negatives the classiﬁer ’s probability was Puv &lt; 0.5 and for 84.8% of the false positives the classiﬁer ’s probability was Puv &gt; 0.5.</S>
+			<S sid ="605" ssid = "346">This shows that our current classiﬁer struggles to distinguish between positive and negative examples.</S>
+			<S sid ="606" ssid = "347">Figure 6 illustrates some of this difﬁculty by showing the distribution of the classiﬁer ’s probability, Puv , over all node pairs in the 12 test-set graphs.</S>
+			<S sid ="607" ssid = "348">Close to 80% of the scores are in the range 0.45–0.5, most of which are simply node pairs for which all distributional similarity features are zero.</S>
+			<S sid ="608" ssid = "349">Although in the great majority of such node pairs (t1 , t2 ) t1 indeed does not entail t2 , there are also some cases where t1 does entail t2 . This implies that the current feature representation is not rich enough, and in the next section we explore a larger feature set.</S>
+			<S sid ="609" ssid = "350">Table 11 also shows some other reasons found for false positives.</S>
+			<S sid ="610" ssid = "351">Many false positives are pairs of predicates that are semantically related, that is, 18% of false positives are templates that are hyponyms of a common predicate (cohyponym error), and 15.1% of false positives are pairs where we err in the direction of entailment (direction error).</S>
+			<S sid ="611" ssid = "352">For example ILP-Global learns that place X in mouth → remove X from mouth, which is a Figure 6 Distribution of probabilities given by the classiﬁer over all node pairs of the test-set graphs.</S>
+			<S sid ="612" ssid = "353">98 cohyponym error, and also that X affects lungs → X damages lungs, which is a direction error because entailment holds in the other direction.</S>
+			<S sid ="613" ssid = "354">This illustrates the infamous difﬁculty of distributional similarity features to discern the type of semantic relation between two predicates.</S>
+			<S sid ="614" ssid = "355">Table 11 also shows additional reasons for false negatives.</S>
+			<S sid ="615" ssid = "356">We found that in 36.2% of false negatives one of the two templates contained a “long” predicate, that is a predicate composed of more than one content word, such as Ingestion of X causes injury to Y. This might indicate that the size of the health-care corpus is too small to collect sufﬁcient statistics for complex predicates.</S>
+			<S sid ="616" ssid = "357">In addition, 26.8% of false negatives were manually analyzed as “generality errors.“ An example is the edge HPV strain causes X → associate HPV with X that is in the gold-standard graph but was missed by ILP-Global.</S>
+			<S sid ="617" ssid = "358">Indeed, this edge falls within the deﬁnition of textual entailment and is correct: For example, if some HPV strain causes cervical cancer then cervical cancer is associated with HPV.</S>
+			<S sid ="618" ssid = "359">Because the entailed template is much more general than the entailing template, however, they are not instantiated by similar arguments in the corpus and distributional similarity features fail to capture their semantic similarity.</S>
+			<S sid ="619" ssid = "360">Last, we note that in 20.9% of the false negatives, there was some string overlap between the entailing and entailed templates, for example in X controls asthma symptoms → X controls asthma.</S>
+			<S sid ="620" ssid = "361">In the next section we experiment with a feature that is based on string similarity.</S>
+			<S sid ="621" ssid = "362">Tables 8 and 9 show that there are cases where ILP-Global makes a mistake, whereas ILP-Local or Greedy-Global are correct.</S>
+			<S sid ="622" ssid = "363">An illustrating example for such a case is shown in Figure 7.</S>
+			<S sid ="623" ssid = "364">Looking at ILP-Local we see that the entailment classiﬁer correctly classiﬁes the edges X triggers asthma → X causes asthma and X causes asthma → Associate X with asthma, but misclassiﬁes X triggers asthma → Associate X with asthma.</S>
+			<S sid ="624" ssid = "365">Because this conﬁguration violates a transitivity constraint, ILP-Global must make a global decision whether to add the edge X triggers asthma → Associate X with asthma or to omit one of Figure 7 A scenario where ILP-Global makes a mistake, but ILP-Local is correct.</S>
+			<S sid ="625" ssid = "366">99 the correct edges.</S>
+			<S sid ="626" ssid = "367">The optimal global decision in this case causes a mistake with respect to the gold standard.</S>
+			<S sid ="627" ssid = "368">More generally, a common phenomenon of ILP-Global is that it splits components that are connected in ILP-Local, for example, in Figures 3 and 4.</S>
+			<S sid ="628" ssid = "369">ILP- Global splits the components in a way that is optimal according to the scores of the local entailment classiﬁer, but these are not always accurate according to the gold standard.</S>
+			<S sid ="629" ssid = "370">Figure 5 exempliﬁes a scenario where ILP-Global errs, but Greedy-Global is (partly) correct.</S>
+			<S sid ="630" ssid = "371">ILP-Global mistakenly learns entailment rules from the templates Associate X with headache and Associate headache with X to the templates X causes headache and X results in headache, whereas Greedy-Global isolates the templates Associate X with headache and Associate headache with X in a separate component.</S>
+			<S sid ="631" ssid = "372">This happens because of the greedy nature of Greedy-Global.</S>
+			<S sid ="632" ssid = "373">Notice that in step A2 the templates X causes headache and X results in headache are already included (erroneously) in a connected component with the templates X prevents headache and X reduces headache.</S>
+			<S sid ="633" ssid = "374">Thus, adding the rules from Associate X with headache and Associate headache with X to X causes headache and X results in headache would also add the rules to X reduces headache and X prevents headache and the Greedy-Global avoids that.</S>
+			<S sid ="634" ssid = "375">ILP-Global does not have that problem: It simply chooses the optimal choice according to the entailment classiﬁer, which splits the connected component presented in A2.</S>
+			<S sid ="635" ssid = "376">Thus, once again we see that mistakes made by ILP-Global are often due to the inaccuracies of the scores given by the local entailment classiﬁer.</S>
+	</SECTION>
+	<SECTION title="Local Classiﬁer Extensions. " number = "6">
+			<S sid ="636" ssid = "1">The error analysis in Section 5.4 exempliﬁed that most errors are the result of misclassi- ﬁcations made by the local entailment classiﬁer.</S>
+			<S sid ="637" ssid = "2">In this section, we investigate the local entailment classiﬁer component, focusing on the set of features used for classiﬁcation.</S>
+			<S sid ="638" ssid = "3">We ﬁrst present an experimental setting in which we consider a wider set of features, then we present the results of the experiment, and last we perform feature analysis and draw conclusions.</S>
+			<S sid ="639" ssid = "4">6.1 Feature Set and Experimental Setting.</S>
+			<S sid ="640" ssid = "5">In previous sections we employed a distant supervision framework: We generated training examples automatically with WordNet, and represented each example with distributional similarity features.</S>
+			<S sid ="641" ssid = "6">Distant supervision comes with a price, however—it prevents us from utilizing all sources of information.</S>
+			<S sid ="642" ssid = "7">For example, looking at the pair of gold-standard templates X manages asthma and X improves asthma management, one can exploit the fact that management is a derivation of manage to improve the estimation of entailment.</S>
+			<S sid ="643" ssid = "8">The automatically generated training set was generated by looking at Word- Net’s hypernym, synonym, and cohyponyms relations, however, and hence no such examples appear in the training set, rendering this type of feature useless.</S>
+			<S sid ="644" ssid = "9">Moreover, one cannot use WordNet’s hypernym, synonym, and cohyponym relations as features because the generated training set is highly biased—all positive training examples are either hypernyms or synonyms and all negative examples are cohyponyms.</S>
+			<S sid ="645" ssid = "10">In this section we would like to examine the utility of various features, while avoiding the biases that occur due to distant supervision.</S>
+			<S sid ="646" ssid = "11">Therefore, we use the 23 manually annotated gold-standard graphs for both training and testing, in a cross-validation setting.</S>
+			<S sid ="647" ssid = "12">Although this reduces the size of the training set it allows us to estimate the utility of various features in a setting where the training set and test set are sampled from the same underlying distribution, without the aforementioned biases.</S>
+			<S sid ="648" ssid = "13">100 We would like to extract features that express information that is diverse and orthogonal to the one given by distributional similarity.</S>
+			<S sid ="649" ssid = "14">Therefore, we turn to existing knowledge resources that were created using both manual and automatic methods, expressing various types of linguistic and statistical information that is relevant for entailment prediction: 1.</S>
+			<S sid ="650" ssid = "15">WordNet: contains manually annotated relations such as hypernymy,.</S>
+			<S sid ="651" ssid = "16">synonymy, antonymy, derivation, and entailment.</S>
+			<S sid ="652" ssid = "17">2.</S>
+			<S sid ="653" ssid = "18">VerbOcean11 (Chklovski and Pantel 2004): contains verb relations such as.</S>
+			<S sid ="654" ssid = "19">stronger-than and similar that were learned with pattern-based methods.</S>
+			<S sid ="655" ssid = "20">3.</S>
+			<S sid ="656" ssid = "21">CATVAR12 (Habash and Dorr 2003): contains word derivations such as.</S>
+			<S sid ="657" ssid = "22">develop–development.</S>
+			<S sid ="658" ssid = "23">4.</S>
+			<S sid ="659" ssid = "24">FRED13 (Ben Aharon, Szpektor, and Dagan 2010): contains entailment.</S>
+			<S sid ="660" ssid = "25">rules between templates learned automatically from FrameNet.</S>
+			<S sid ="661" ssid = "26">5.</S>
+			<S sid ="662" ssid = "27">NomLex14 (Macleod et al. 1998): contains English nominalizations.</S>
+			<S sid ="663" ssid = "28">including their argument mapping to the corresponding verbal form.</S>
+			<S sid ="664" ssid = "29">6.</S>
+			<S sid ="665" ssid = "30">BAP15 (Kotlerman et al. 2010): contains directional distributional.</S>
+			<S sid ="666" ssid = "31">similarity scores between lexical terms (rather than propositional templates) calculated with the BAP similarity scoring function.</S>
+			<S sid ="667" ssid = "32">Table 12 describes the 16 new features that were generated for each of the gold- standard examples (resulting in a total of 32 features).</S>
+			<S sid ="668" ssid = "33">The ﬁrst 15 features were generated by the aforementioned knowledge bases.</S>
+			<S sid ="669" ssid = "34">The last feature measures the edit distance between templates: Given a pair of templates (t1 , t2 ), we concatenate the words in each template and derive a pair of strings (s1 , s2 ).</S>
+			<S sid ="670" ssid = "35">Then we compute the Levenshtein string edit-distance (Cohen, Ravikumar, and Fienberg 2003) between s1 and s2 and divide the score by |s1 | + |s2 | for normalization.</S>
+			<S sid ="671" ssid = "36">Table 12 also describes for each feature the number and percentage of examples for which the feature value is nonzero (out of the examples generated from the 23 gold- standard graphs).</S>
+			<S sid ="672" ssid = "37">A salient property of many of the new features is that they are sparse: The four antonymy features as well as the Derivation, Entailment, Nomlex, and FRED features occur in very few examples in our data set, which might make training with these features difﬁcult.</S>
+			<S sid ="673" ssid = "38">After generating the new features we employ a leave-one-graph-out strategy to maximally exploit the manually annotated gold standard for training.</S>
+			<S sid ="674" ssid = "39">For each of the test-set graphs, we train over all development and test-set graphs except for the one that is left out,16 after tuning the algorithm’s parameters and test.</S>
+			<S sid ="675" ssid = "40">Parameter tuning is done by cross-validation over the development set, tuning to maximize the F1 of the set 11 http://demo.patrickpantel.com/demos/verbocean/.</S>
+			<S sid ="676" ssid = "41">12 http://clipdemos.umiacs.umd.edu/catvar/.</S>
+			<S sid ="677" ssid = "42">13 http://u.cs.biu.ac.il/∼nlp/downloads/FRED.html.</S>
+			<S sid ="678" ssid = "43">14 http://nlp.cs.nyu.edu/nomlex/index.html.</S>
+			<S sid ="679" ssid = "44">15 http://u.cs.biu.ac.il/∼nlp/downloads/DIRECT.html.</S>
+			<S sid ="680" ssid = "45">16 As described in Section 5, we train with a balanced number of positive and negative examples.</S>
+			<S sid ="681" ssid = "46">Because.</S>
+			<S sid ="682" ssid = "47">the number of positive examples in the gold standard is smaller than the number of negative examples, we use all positives and randomly sample the same number of negatives, resulting in ∼ 1, 500 training examples.</S>
+			<S sid ="683" ssid = "48">101 Table 12 The set of new features.</S>
+			<S sid ="684" ssid = "49">The last two columns denote the number and percentage of examples for which the value of the feature is nonzero in examples generated from the 23 gold-standard graphs.</S>
+			<S sid ="685" ssid = "50">Name Type Description # % Hyper.</S>
+			<S sid ="686" ssid = "51">boolean Whether (t1 , t2 ) are identical except for a pair of words (w1 , w2 ) such that w2 is a hypernym (distance ≤ 2) of w1 in WordNet.</S>
+			<S sid ="687" ssid = "52">Syno.</S>
+			<S sid ="688" ssid = "53">boolean Whether (t1 , t2 ) are identical except for a pair of words (w1 , w2 ) such that w2 is a synonym of w1 in WordNet.</S>
+			<S sid ="689" ssid = "54">Co-hypo.</S>
+			<S sid ="690" ssid = "55">boolean Whether (t1 , t2 ) are identical except for a pair of words (w1 , w2 ) such that w2 is a cohyponym of w1 in WordNet.</S>
+			<S sid ="691" ssid = "56">WN Ant.</S>
+			<S sid ="692" ssid = "57">boolean Whether (t1 , t2 ) are identical except for a pair of words (w1 , w2 ) such that w2 is an antonym of w1 in WordNet.</S>
+			<S sid ="693" ssid = "58">VO Ant.</S>
+			<S sid ="694" ssid = "59">boolean Whether (t1 , t2 ) are identical except for a pair of words (w1 , w2 ) such that w2 is an antonym of w1 in VerbOcean.</S>
+			<S sid ="695" ssid = "60">WN Ant.</S>
+			<S sid ="696" ssid = "61">2 boolean Whether there exists in (t1 , t2 ) a pair of words (w1 , w2 ) such that w2 is an antonym of w1 in WordNet.</S>
+			<S sid ="697" ssid = "62">VO Ant.</S>
+			<S sid ="698" ssid = "63">2 boolean Whether there exists in (t1 , t2 ) a pair of words (w1 , w2 ) such that w2 is an antonym of w1 in VerbOcean.</S>
+			<S sid ="699" ssid = "64">Derivation boolean Whether there exists in (t1 , t2 ) a pair of words (w1 , w2 ) such that w2 is a derivation of w1 in WordNet or CATVAR.</S>
+			<S sid ="700" ssid = "65">Entailment boolean Whether there exists in (t1 , t2 ) a pair of words (w1 , w2 ) such that w2 is entailed by w1 in WordNet.</S>
+			<S sid ="701" ssid = "66">120 1.1 94 0.9 302 2.8 6 0.06 25 0.2 22 0.2 73 0.7 78 0.7 20 0.2 FRED boolean Whether t1 entails t2 in FRED.</S>
+			<S sid ="702" ssid = "67">9 0.08 Nomlex boolean Whether t1 entails t2 in Nomlex.</S>
+			<S sid ="703" ssid = "68">8 0.07 VO strong boolean Whether (t1 , t2 ) are identical except for a pair of words (w1 , w2 ) such that w2 is stronger than w1 in VerbOcean.</S>
+			<S sid ="704" ssid = "69">VO simil.</S>
+			<S sid ="705" ssid = "70">boolean Whether (t1 , t2 ) are identical except for a pair of words (w1 , w2 ) such that w2 is similar to w1 in VerbOcean.Positive boolean Disjunction of the features Hypernym, Synonym, Nom lex, and VO stronger.</S>
+			<S sid ="706" ssid = "71">104 1 191 1.8 289 2.7 BAP real maxw1 ∈t1 ,w2 ∈t2 BAP(w1 , w2 ).</S>
+			<S sid ="707" ssid = "72">506 4.7 Edit real Normalized edit-distance.</S>
+			<S sid ="708" ssid = "73">100 of learned edges (the development and test set are described in Section 5).</S>
+			<S sid ="709" ssid = "74">Graphs are always learned with the LP-Global algorithm.</S>
+			<S sid ="710" ssid = "75">Our main goal is to check whether the added features improve performance, and therefore we run the experiment both with and without the new features.</S>
+			<S sid ="711" ssid = "76">In addition, we would like to test whether using different classiﬁers affects performance.</S>
+			<S sid ="712" ssid = "77">Therefore, we run the experiments with a linear-kernel SVM, a square-kernel SVM, a Gaussian-kernel SVM, logistic regression, and naive Bayes.</S>
+			<S sid ="713" ssid = "78">We use the SVMPerf package (Joachims 2005) to train the SVM classiﬁers and the Weka package (Hall et al. 2009) for logistic regression and naive Bayes.</S>
+			<S sid ="714" ssid = "79">6.2 Experiment Results.</S>
+			<S sid ="715" ssid = "80">Table 13 describes the macro-average recall, precision, and F1 of all classiﬁers both with and without the new features on the development set and test set.</S>
+			<S sid ="716" ssid = "81">Using all features is denoted by Xall , and using the original features is denoted by Xold . 102 Table 13 Macro-average recall, precision, and F1 on the development set and test set using the parameters that maximize F1 of the learned edges over the development set.</S>
+			<S sid ="717" ssid = "82">Development set Test set Alg orit hm Re cal l Pr eci sio n F 1 Re cal l Pre cis ion F1 Lin earal l 4 8.</S>
+			<S sid ="718" ssid = "83">1 3 1 . 9 36.</S>
+			<S sid ="719" ssid = "84">3 5 1.</S>
+			<S sid ="720" ssid = "85">7 3 7 . 7 40.</S>
+			<S sid ="721" ssid = "86">3 Lin earol d 4 0.</S>
+			<S sid ="722" ssid = "87">3 3 3 . 3 34.</S>
+			<S sid ="723" ssid = "88">8 4 7.</S>
+			<S sid ="724" ssid = "89">2 4 2 . 2 41.</S>
+			<S sid ="725" ssid = "90">1 Gau ssia nall 4 1.</S>
+			<S sid ="726" ssid = "91">8 3 2 . 4 35.</S>
+			<S sid ="727" ssid = "92">1 4 8.</S>
+			<S sid ="728" ssid = "93">0 4 1 . 1 40.</S>
+			<S sid ="729" ssid = "94">7 Gau ssia nold 4 1.</S>
+			<S sid ="730" ssid = "95">1 3 1 . 2 33.</S>
+			<S sid ="731" ssid = "96">9 5 0.</S>
+			<S sid ="732" ssid = "97">3 3 9 . 7 40.</S>
+			<S sid ="733" ssid = "98">5 Squ areal l 3 9.</S>
+			<S sid ="734" ssid = "99">9 3 2 . 0 34.</S>
+			<S sid ="735" ssid = "100">1 4 3.</S>
+			<S sid ="736" ssid = "101">7 3 9 . 8 38.</S>
+			<S sid ="737" ssid = "102">9 Squ areol d 3 8.</S>
+			<S sid ="738" ssid = "103">0 3 1 . 6 32.</S>
+			<S sid ="739" ssid = "104">9 5 0.</S>
+			<S sid ="740" ssid = "105">2 4 1 . 0 41.</S>
+			<S sid ="741" ssid = "106">3 Log istic all 3 4.</S>
+			<S sid ="742" ssid = "107">4 2 7 . 6 29.</S>
+			<S sid ="743" ssid = "108">1 3 9.</S>
+			<S sid ="744" ssid = "109">8 4 1 . 7 37.</S>
+			<S sid ="745" ssid = "110">8 Log istic old 3 9.</S>
+			<S sid ="746" ssid = "111">3 3 1 . 2 33.</S>
+			<S sid ="747" ssid = "112">5 4 5.</S>
+			<S sid ="748" ssid = "113">4 4 0 . 9 39.</S>
+			<S sid ="749" ssid = "114">9 Bay esall 2 0.</S>
+			<S sid ="750" ssid = "115">8 3 3 . 2 24.</S>
+			<S sid ="751" ssid = "116">5 2 7.</S>
+			<S sid ="752" ssid = "117">4 4 6 . 0 31.</S>
+			<S sid ="753" ssid = "118">7 Bay esold 2 0.</S>
+			<S sid ="754" ssid = "119">3 3 4 . 9 24.</S>
+			<S sid ="755" ssid = "120">6 2 6.</S>
+			<S sid ="756" ssid = "121">4 4 5 . 4 30.</S>
+			<S sid ="757" ssid = "122">9 Examining the results it does not appear that the new features improve performance.</S>
+			<S sid ="758" ssid = "123">Whereas on the development set the new features add 1.2–1.5 F1 points for all SVM classiﬁers, on the test set using the new features decreases performance for the linear and square classiﬁers.</S>
+			<S sid ="759" ssid = "124">This shows that even if there is some slight increase in performance when using SVM on the development set, it is masked by the variance added in the process of parameter tuning.</S>
+			<S sid ="760" ssid = "125">In general, including the new features does not yield substantial differences in performance.</S>
+			<S sid ="761" ssid = "126">Secondly, the SVM classiﬁers perform better than the logistic and naive Bayes classiﬁers.</S>
+			<S sid ="762" ssid = "127">Using the more complex square and Gaussian kernels does not seem justiﬁed, however, as the differences between the various kernels are negligible.</S>
+			<S sid ="763" ssid = "128">Therefore, in our analysis we will use a linear kernel SVM classiﬁer.</S>
+			<S sid ="764" ssid = "129">Last, we note that although we use supervised learning rather than distant supervision, the results we get are slightly lower than those presented in Section 5.</S>
+			<S sid ="765" ssid = "130">This is probably due to the fact that our manually annotated data set is rather small.</S>
+			<S sid ="766" ssid = "131">Nevertheless, this shows that the quality of the distant supervision training set generated automatically from WordNet is reasonable.</S>
+			<S sid ="767" ssid = "132">Next, we perform analysis of the different features of the classiﬁer to better understand the reasons for the negative result obtained.</S>
+			<S sid ="768" ssid = "133">6.3 Feature Analysis.</S>
+			<S sid ="769" ssid = "134">We saw that the new features slightly improved performance for SVM classiﬁers on the development set, although no clear improvement was witnessed on the test set.</S>
+			<S sid ="770" ssid = "135">To further check whether the new features carry useful information we measured the training set accuracy for each of the 12 training sets (leaving out each time one test- set graph).</S>
+			<S sid ="771" ssid = "136">Using the new features improved the average training set accuracy from 71.6 to 72.3.</S>
+			<S sid ="772" ssid = "137">More importantly, it improved performance consistently in all 12 training sets by 0.4–1.2 points.</S>
+			<S sid ="773" ssid = "138">This strengthens our belief that the new features do carry a certain amount of information, but this information is too sparse to affect the overall 103 performance of the algorithm.</S>
+			<S sid ="774" ssid = "139">In addition, notice that the absolute accuracy on the training set is low—72.3.</S>
+			<S sid ="775" ssid = "140">This shows that separating entailment from non-entailment using the current set of features is challenging.</S>
+			<S sid ="776" ssid = "141">Next, we would like to perform analysis on each of the features.</S>
+			<S sid ="777" ssid = "142">First, we perform an ablation test over the features by omitting each one of them and retraining the classiﬁer Linearall . In Table 14, the columns ablation F1 and ∆ show the F1 obtained and the difference in performance from the Linearall classiﬁer, which scored 40.3 F1 points.</S>
+			<S sid ="778" ssid = "143">Results show that there is no “bad” feature that deteriorates performance.</S>
+			<S sid ="779" ssid = "144">For almost all features ablation causes a decrease in performance, although this decrease is relatively small.</S>
+			<S sid ="780" ssid = "145">There are only four features for which ablation decreases performance by more than one point: three distributional similarity features, but also the new hypernym feature.</S>
+			<S sid ="781" ssid = "146">The next three columns in the table describe the precision and recall of the new boolean features.</S>
+			<S sid ="782" ssid = "147">The column Feature type indicates whether we expect a feature to indicate entailment or non-entailment and the columns Prec.</S>
+			<S sid ="783" ssid = "148">and Recall specify the Table 14 Results of feature analysis.</S>
+			<S sid ="784" ssid = "149">The second column denotes the proportion of manually annotated examples for which the feature value is nonzero.</S>
+			<S sid ="785" ssid = "150">A detailed explanation of the other columns is provided in the body of the article.</S>
+			<S sid ="786" ssid = "151">Feature name % Ablation F1 ∆ Feature type Prec.</S>
+			<S sid ="787" ssid = "152">Recall Classiﬁcation F1 h-b-B-pCt 8.2 39.3 −1 14.9 h-b-B-pC 6.9 39.5 −0.8 33.2 h-b-B-Ct 1.6 40.3 0 15.4 h-b-B-C 1.6 40.5 0.2 11.2 h-b-L-pCt 23.6 38.3 −2.0 37.0 h-b-L-pC 21.4 39.4 −0.9 35.2 h-b-L-Ct 9.7 40.1 −0.2 27.3 h-b-L-C 8.1 39.7 −0.6 14.1 h-u-B-Ct 1.0 39.4 −0.9 10.9 h-u-B-C 1.1 39.8 −0.5 12.6 h-u-L-Ct 6.1 39.8 −0.5 18.5 h-u-L-C 6.3 39.2 −1.1 19.3 Rb-L-l 22.5 40.1 −0.2 26.7 Ru-L-l 8.3 39.4 −0.9 23.2 Ru-B-l 1.9 39.8 −0.5 16.7 Lin &amp; Pantel 8.8 38.7 −1.6 23.0 Hyper.</S>
+			<S sid ="788" ssid = "153">1.1 38.7 −1.6 + 37.1 4.9 9.7 Syno.</S>
+			<S sid ="789" ssid = "154">0.9 40.3 0 + 43.1 4.5 15.8 Co-hypo.</S>
+			<S sid ="790" ssid = "155">2.8 40.1 −0.2 − 82.0 2.5 17.9 WN ant.</S>
+			<S sid ="791" ssid = "156">0.06 39.8 −0.5 − 75.0 0.05 1.2 VO ant.</S>
+			<S sid ="792" ssid = "157">0.2 40.1 −0.2 − 96.0 0.2 2.2 WN ant.</S>
+			<S sid ="793" ssid = "158">2.</S>
+			<S sid ="794" ssid = "159">0.2 39.4 −0.9 − 59.1 0.1 2.7 VO ant.</S>
+			<S sid ="795" ssid = "160">2 0.7 40.2 −0.1 − 98.6 0.7 2.2 Derivation 0.7 39.5 −0.8 + 47.4 4.1 10.2 Entailment 0.2 39.7 −0.6 + 15.0 0.3 1.2 FRED 0.08 39.7 −0.6 + 77.8 0.8 3.2 NomLex 0.07 39.8 −0.5 + 75.0 0.7 3.3 VO strong.</S>
+			<S sid ="796" ssid = "161">1 39.4 −0.9 + 34.6 4 6.9 VO simil.</S>
+			<S sid ="797" ssid = "162">1.8 39.4 −0.9 + 28.8 6.1 12.5 Positive 2.7 39.8 −0.5 + 36.7 11.8 BAP 4.7 40.1 −0.2 13.3 Edit 100 39.9 −0.4 15.5 104 precision and recall of that feature.</S>
+			<S sid ="798" ssid = "163">For example, the feature FRED is a positive feature that we expect to support entailment, and indeed 77.8% of the gold-standard examples for which it is turned on are positive examples.</S>
+			<S sid ="799" ssid = "164">It is turned on only in 0.8% of the positive examples, however.</S>
+			<S sid ="800" ssid = "165">Similarly, VO ant.</S>
+			<S sid ="801" ssid = "166">is a negative feature that we expect to support non-entailment, and indeed 96% of the gold-standard examples for which it is on are negative examples, but it is turned on in only 0.2% of the negative examples.</S>
+			<S sid ="802" ssid = "167">The precision results are quite reasonable: For most positive features the precision is well over the proportion of positive examples in the gold standard, which is about 10% (except for the Entailment feature whose precision is only 15%).</S>
+			<S sid ="803" ssid = "168">For the negative features it seems that the precision of VerbOcean features is very high (though they are sparse), and the precision of WordNet antonyms and cohyponyms is lower.</S>
+			<S sid ="804" ssid = "169">Looking at the recall we can see that the coverage of the boolean features is low.</S>
+			<S sid ="805" ssid = "170">The last column in the table describes results of training the classiﬁer with a single feature.</S>
+			<S sid ="806" ssid = "171">For each feature we train a linear kernel SVM, tune the sparsity parameter on the development set, and measure F1 over the test set.</S>
+			<S sid ="807" ssid = "172">Naturally, classiﬁers that are trained on sparse features yield low performance.</S>
+			<S sid ="808" ssid = "173">This column allows us once again (cf.</S>
+			<S sid ="809" ssid = "174">Table 8) to examine the original distributional similarity features.</S>
+			<S sid ="810" ssid = "175">There are three distributional similarity features that achieve F1 of more than 30 points, and all three represent features using pairs of argument instantiations rather than treat each argument separately, as we have already witnessed in Section 5.</S>
+			<S sid ="811" ssid = "176">Note also that the feature h-b-L-pCt, which uses binary templates, the Lin similarity measure, and features that are pairs of CUI tuples, is the best feature both in terms of the ablation test and when it is used as a single feature for the classiﬁer.</S>
+			<S sid ="812" ssid = "177">The result obtained by this feature is only 3.3 points lower than that obtained when using the entire feature set.</S>
+			<S sid ="813" ssid = "178">We believe this is for two reasons: First, the 16 distributional similarity features are correlated with one another and thus using all of them does not boost performance substantially.</S>
+			<S sid ="814" ssid = "179">For example, the Pearson correlation coefﬁcients between the features h-b-B-pCt, h-b-B-Ct, h-b-L-pCt, h-b-L-Ct, h-u-B-Ct, and h-u-L-Ct (all utilize CUI tuples) and h-b-B-pC, h-b-B-C, h-b-L-pC, h-b-L-C, h-u-B-C, and h-u-L-C (all use CUIs), respectively, are over 0.9.</S>
+			<S sid ="815" ssid = "180">The second reason for gaining only 3.3 points by the remaining features is that, as discussed, the new set of features is relatively sparse.</S>
+			<S sid ="816" ssid = "181">To sum up, we suggest several hypotheses that explain our results and analysis: • The new features are too sparse to substantially improve the performance of the local entailment classiﬁer in our data set.</S>
+			<S sid ="817" ssid = "182">This perhaps can be attributed to the nature of our domain-speciﬁc health-care corpus.</S>
+			<S sid ="818" ssid = "183">In the future, we would like to examine the sparsity of these features in a general domain.</S>
+			<S sid ="819" ssid = "184">• Looking at the training set accuracy, ablations, and precision of the new features, it seems that the behavior of most of them is reasonable.</S>
+			<S sid ="820" ssid = "185">Thus, it is possible that in a different learning scheme that does not use the resources as features the information they provide may become beneﬁcial.</S>
+			<S sid ="821" ssid = "186">For example, in a simple “back-off” approach one can use rules from precise resources to determine entailment, and apply a classiﬁer only when no precise resource contains a relevant rule.</S>
+			<S sid ="822" ssid = "187">• In our corpus representing distributional similarity features with pairs of argument instantiations is better than treating each argument independently.</S>
+			<S sid ="823" ssid = "188">105 • Given the current training set accuracy and the sparsity of the new features, it is important to develop methods that gather large-scale information that is orthogonal to distributional similarity.</S>
+			<S sid ="824" ssid = "189">In our opinion, the most promising direction for acquiring such rich information is by methods that look at co-occurrence of predicates or templates on the Web (Chklovski and Pantel 2004; Pekar 2008).</S>
+	</SECTION>
+	<SECTION title="Conclusions and Future Work. " number = "7">
+			<S sid ="825" ssid = "1">This article presented a global optimization algorithm for learning entailment rules between predicates, represented as propositional templates.</S>
+			<S sid ="826" ssid = "2">Most previous work on learning entailment rules between predicates focused on local learning methods, which consider each pair of predicates in isolation.</S>
+			<S sid ="827" ssid = "3">To the best of our knowledge, this is the most comprehensive attempt to date to exploit global interactions between predicates for improving the set of learned entailment rules.</S>
+			<S sid ="828" ssid = "4">We modeled the problem as a graph learning problem, and searched for the best graph under a global transitivity constraint.</S>
+			<S sid ="829" ssid = "5">Two objective functions were deﬁned for the optimization procedure, one score-based and the other probabilistic, and we have shown that under certain conditions (speciﬁed in Appendix A) the score-based function can be interpreted probabilistically.</S>
+			<S sid ="830" ssid = "6">This allowed us to use both margin as well as probabilistic classiﬁers for the underlying entailment classiﬁer.</S>
+			<S sid ="831" ssid = "7">We solved the optimization problem using Integer Linear Programming, which provides an optimal solution (compared to the greedy algorithm suggested by Snow, Jurafsky, and Ng [2006]), and demonstrated empirically that this method outperforms local algorithms as well as a state-of-the-art greedy optimization algorithm on the graph learning task.</S>
+			<S sid ="832" ssid = "8">We also analyzed quantitatively and qualitatively the reasons for the improved performance of our global algorithm and performed detailed error analysis.</S>
+			<S sid ="833" ssid = "9">Last, we experimented with various entailment classiﬁers that utilize different sets of features from many knowledge bases.</S>
+			<S sid ="834" ssid = "10">The experiments and analysis performed indicate that the current performance of the local entailment classiﬁer needs to be improved.</S>
+			<S sid ="835" ssid = "11">We believe that the most promising direction for improving the local classiﬁer is to use methods that look for co-occurrence of predicates in sentences or documents on the Web, because these methods excel at identifying speciﬁc semantic relations.</S>
+			<S sid ="836" ssid = "12">It is also possible to use other sources of information such as lexicographic resources, although this probably will require a learning scheme that is robust to the relatively low coverage of these resources.</S>
+			<S sid ="837" ssid = "13">Increasing the size of the training corpus is also an important direction for improving the entailment classiﬁer.</S>
+			<S sid ="838" ssid = "14">Another important direction for future work is to apply our algorithm to graphs that are larger by a few orders of magnitude than the focused entailment graphs dealt with in this article.</S>
+			<S sid ="839" ssid = "15">This will introduce a challenge to our current optimization algorithm due to complexity issues, as our ILP contains O(|V|3 ) constraints.</S>
+			<S sid ="840" ssid = "16">In addition, this will require careful handling of predicate ambiguity, which interferes with the transitivity of entailment and will become a pertinent issue in large graphs.</S>
+			<S sid ="841" ssid = "17">Some ﬁrst steps in this direction have already been carried out (Berant, Dagan, and Goldberger 2011).</S>
+			<S sid ="842" ssid = "18">In addition, our graphs currently contain a single type of edge, namely, the entail- ment relation.</S>
+			<S sid ="843" ssid = "19">We would like to model more types of edges in the graph, representing additional semantic relations such as cohyponymy, and to explicitly describe the interactions between the various types of edges, aiming to further improve the quality of the learned entailment rules.</S>
+			<S sid ="844" ssid = "20">106 Figure 8 A hierarchical summary of propositions involving nausea as an argument, such as headache is related to nausea, acupuncture helps with nausea, and Lorazepam treats nausea.</S>
+			<S sid ="845" ssid = "21">Last, in Section 3.1 we mentioned that by merging strongly connected components in entailment graphs, hierarchies of predicates can be generated (recall Figure 1).</S>
+			<S sid ="846" ssid = "22">As proposed by Berant, Dagan, and Goldberger (2010), we believe that these hierarchies can be useful not only in the context of semantic inference applications, but also in the ﬁeld of faceted search and hierarchical text exploration (Stoica, Hearst, and Richardson 2007).</S>
+			<S sid ="847" ssid = "23">Figure 8 exempliﬁes how a set of propositions can be presented to a user according to the hierarchy of predicates shown in Figure 1.</S>
+			<S sid ="848" ssid = "24">In the ﬁeld of faceted search, information is presented using a number of hierarchies, corresponding to different facets or dimensions of the data.</S>
+			<S sid ="849" ssid = "25">One can easily use the hierarchy of predicates learned by our algorithm as an additional facet in the context of a text-exploration application.</S>
+			<S sid ="850" ssid = "26">In future work, we intend to implement this application and perform user experiments to test whether adding this hierarchy facilitates exploration of textual information.</S>
+			<S sid ="851" ssid = "27">Appendix A: Derivation of the Probabilistic Objective Function In this section we provide a full derivation for the probabilistic objective function given in Section 4.2.2.</S>
+			<S sid ="852" ssid = "28">Given two nodes u and v from a set of nodes V, we denote by Iuv = 1 the event that u entails v, by Fuv the feature vector representing the ordered pair (u, v), and by F the set of feature vectors over all ordered pairs of nodes, that is, F = ∪uj=v Fuv . We wish to learn a set of edges E, such that the posterior probability P(G|F) is maximized, where G = (V, E).</S>
+			<S sid ="853" ssid = "29">We assume that we have a “local” model estimating the edge posterior probability Puv = P(Iuv = 1|Fuv ).</S>
+			<S sid ="854" ssid = "30">Because this model was trained over a balanced training set, the prior for the event that u entails v under the model is uniform: P(Iuv = 1) = P(Iuv = 0) = 1 . Using Bayes’s rule we get: P(Iuv = 1) P(Iuv = 1|Fuv ) = P(Fuv ) · P(Fuv |Iuv = 1) = a · P(Fuv |Iuv = 1) (A.1) P(Iuv = 0) P(Iuv = 0|Fuv ) = P(Fuv ) · P(Fuv |Iuv = 0) = a · P(Fuv |Iuv = 0) (A.2) 107 where a = 1 · (Fuv ) is a constant with respect to any graph.</S>
+			<S sid ="855" ssid = "31">Thus, we conclude that P(Iuv |Fuv ) = a · P(Fuv |Iuv ).</S>
+			<S sid ="856" ssid = "32">Next, we make three independence assumptions (the ﬁrst two are following Snow, Jurafsky, and Ng [2006]): P(F|G) = TI P(Fuv |G) (A.3) uj=v P(Fuv |G) = P(Fuv |Iuv ) (A.4) P(G) = TI P(Iuv ) (A.5) uj=v Assumption A.3 states that each feature vector is independent from other feature vectors given the graph.</S>
+			<S sid ="857" ssid = "33">Assumption A.4 states that the features Fuv for the pair (u, v) are generated by a distribution depending only on whether entailment holds for (u, v).</S>
+			<S sid ="858" ssid = "34">Last, Assumption A.5 states that edges are independent and the prior probability of a graph is a product of the prior probabilities of the edges.</S>
+			<S sid ="859" ssid = "35">Using these assumptions and equations A.1 and A.2, we can now express the posterior P(G|F): P(G|F) ∝ P(G) · P(F|G) (A.6) = TI[P(Iuv ) · P(Fuv |Iuv )] (A.7) uj=v = TI P(Iuv ) · uj=v P(I F ) a (A.8) ∝ TI P(Iuv ) · Puv (A.9) uj=v = TI (u,v)∈E P(Iuv = 1) · Puv · TI (u,v)∈/E P(Iuv = 0) · (1 − Puv ) (A .10) Note that under the “local model” the prior for an edge in the graph was uniform, because the model was trained over a balanced training set.</S>
+			<S sid ="860" ssid = "36">Generally, however, this is not the case, and thus we introduce an edge prior into the model when formulating the global objective function.</S>
+			<S sid ="861" ssid = "37">Now, we can formulate P(G|F) as a linear function: Gˆ = argmax G TI (u,v)∈E P(Iuv = 1) · Puv · TI (u,v)∈/E P(Iuv = 0) · (1 − Puv ) (A.11) = argmax G ) (u,v)∈E log(Puv · P(Iuv = 1)) + ) (u,v)∈/E log[(1 − Puv ) · P(Iuv = 0)] (A.12) = argmax ) (Iuv · log(Puv · P(Iuv = 1)) + (1 − Iuv ) · log[(1 − Puv ) · P(Iuv = 0)]) G uj=v log Puv · P(Iuv = 1) (A.13) \ = argmax ) ( (1 − Puv ) · P(Iuv = 0) · Iuv + (1 − Puv ) · P(Iuv = 0) (A.14) G uj=v 108 = argmax ) log Puv (1 − Puv ) · Iuv + log η · |E| (A.15) G uj=v In the last transition we omit uj=v (1 − Puv ) · P(Iuv = 0), which is a constant with respect to the graph and denote the prior odds ratio by η = P(Iuv =1) . This leads to the uv ﬁnal formulation described in Section 4.2.2.</S>
+	</SECTION>
+	<SECTION title="Acknowledgments">
+			<S sid ="862" ssid = "38">We would like to thank Roy Bar-Haim, David Carmel, and the anonymous reviewers for their useful comments.</S>
+			<S sid ="863" ssid = "39">We also thank Dafna Berant and the nine students who prepared the gold-standard data set.</S>
+			<S sid ="864" ssid = "40">This work was developed under the collaboration of FBKirst/University of Haifa and was partially supported by the Israel Science Foundation grant 1112/08.</S>
+			<S sid ="865" ssid = "41">The ﬁrst author is grateful to the Azrieli Foundation for the award of an Azrieli Fellowship, and has carried out this research in partial fulﬁlment of the requirements for the Ph.D. degree.</S>
+	</SECTION>
+</PAPER>
