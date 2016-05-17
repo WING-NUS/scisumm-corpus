@@ -2,7 +2,7 @@ Formatting edits made on 17 May 2016
 
 E09-2008 <- version in Test Set, wrong Citation Offset for last citation; Citation Marker Offset should be just '77'; filename does not have 'annv3'
 P06-2124 <- citance 18 fixed the Citation Offset
-P98-1045 <- Citance 11 closed the open <S> tag
+P98-1045 <- Citance 11 closed the open S tag
 J96-3004 <- closed the open ABSTRACT tag, added abstract., changed summary/J96-3004.abstract.txt
 C08-1098/Citance_XML/E09-1079 <- closed the open ABSTRACT tag
 C08-1098/Citance_XML/W13-2302 <- closed the open ABSTRACT tag
