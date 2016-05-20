@@ -1,0 +1,2148 @@
+﻿Improving NLP through Marginalization of Hidden Syntactic Structure
+
+
+Jason Naradowsky,   Sebastian Riedel, and David A. Smith
+Department of Computer Science 
+University of Massachusetts Amherst 
+Amherst, MA, 01003, U.S.A.
+{narad,  riedel, dasmith}@cs.umass.edu
+
+
+Abstract
+
+Many NLP tasks make predictions that are in- 
+herently coupled to syntactic relations, but for 
+many languages the resources required to pro- 
+vide such syntactic  annotations are unavail- 
+able.  For others it is unclear exactly  how 
+much of the syntactic  annotations can be ef- 
+fectively leveraged with current models, and 
+what structures in the syntactic trees are most 
+relevant to the current task.
+We  propose  a  novel method which avoids 
+the need for any syntactically  annotated data 
+when predicting a  related  NLP task.  Our 
+method  couples  latent syntactic representa- 
+tions, constrained to form valid dependency 
+graphs or constituency  parses, with the predic- 
+tion task via specialized factors in a Markov 
+random field. At both training and test time we 
+marginalize over this hidden structure, learn- 
+ing the optimal  latent representations for the 
+problem. Results show that this approach pro- 
+vides significant gains over a syntactically  un- 
+informed baseline, outperforming  models that 
+observe syntax on an English relation extrac- 
+tion task, and performing comparably to them 
+in semantic role labeling.
+
+
+1   Introduction
+
+Many NLP tasks are inherently  tied to syntax, and 
+state-of-the-art solutions to these tasks often rely on 
+syntactic  annotations  as either  a source for useful 
+features (Zhang et al., 2006, path features in relation 
+extraction) or as a scaffolding  upon which a more 
+narrow, specialized classification  can occur (as of- 
+ten done in semantic role labeling).  This decou-
+
+
+pling of the end task from its intermediate repre- 
+sentation is sometimes known  as the two-stage ap- 
+proach (Chang et al., 2010) and comes with several 
+drawbacks.  Most notably this decomposition pro- 
+hibits the learning method from utilizing the labels 
+from the end task when predicting the intermediate 
+representation,  a structure  which must have some 
+correlation to the end task to provide any benefit.
+  Relying on intermediate representations that are 
+specifically syntactic in nature introduces its own 
+unique set of problems.  Large amounts of syntac- 
+tically annotated data is difficult to obtain, costly 
+to produce, and often tied to a particular  domain 
+that may vary greatly from that of the desired end 
+task. Additionally, current systems often utilize  only 
+a small amount of the annotation for any particular 
+task. For instance, performing named entity recogni- 
+tion (NER) jointly with constituent parsing has been 
+shown to improve performance on both tasks, but 
+the only aspect of the syntax which is leveraged by 
+the NER component is the location of noun phrases 
+(Finkel and Manning,  2009). By instead discover- 
+ing a latent representation jointly with the end task 
+we address all of these concerns, alleviating the need 
+for any syntactic annotations, while simultaneously 
+attempting to learn a latent syntax relevant to both 
+the particular domain and structure of the end task.
+  We phrase the joint model as factor graph and 
+marginalize over the hidden structure of the inter- 
+mediate representation at both training and test time, 
+to optimize performance on the end task.  Infer- 
+ence is done via loopy belief propagation, making 
+this framework trivially extensible  to most graph 
+structures.  Computation  over latent syntactic rep-
+
+
+
+810
+
+
+Proceedings of the 2012 Joint Conference on Empirical Methods in Natural Language Processing and Computational Natural
+Language Learning,  pages 810–820, Jeju Island, Korea, 12–14 July 2012. Qc 2012 Association for Computational Linguistics
+
+
+resentations is made tractable with the use of special 
+combinatorial factors  which implement  unlabeled 
+variants of common dynamic-programming parsing 
+algorithms,  constraining the hidden representation 
+to realize valid dependency graphs or constituency 
+trees.
+  We apply this strategy to two common NLP tasks, 
+coupling  a model  for the end task prediction  with 
+latent and general syntactic representations via spe- 
+cialized logical factors which learn associations be- 
+tween latent and observed structure. In comparisons 
+with identical models which observe “gold” syntac- 
+tic annotations, derived from off-the-shelf parsers or 
+provided with the corpora, we find that our hidden 
+marginalization method is comparable in both tasks 
+and almost every language tested, sometimes signifi- 
+cantly outperforming models which observe the true 
+syntax.
+  The following sections  serves  as a preliminary, 
+introducing an inventory of factors  and variables 
+for  constructing  factor graph representations  of 
+syntactically-coupled NLP tasks. Section 3 explores 
+the benefits of this method on relation extraction 
+(RE), where we compare the use dependency  and 
+constituency  structure as latent representations.  We 
+then turn to a more established semantic role label-
+ing (SRL) task (§4) where we evaluate across a wide
+range of languages.
+
+2   Latent Pseudo-Syntactic Structure
+
+The models presented in this paper are phrased in 
+terms of variables in an undirected graphical model, 
+Markov random field. More specifically, we imple- 
+ment the model  as a factor graph, a bipartite graph 
+composed of factors and variables in which we can 
+efficiently compute the marginal beliefs of any vari- 
+able set with the sum-product algorithm for cyclic 
+graphs, loopy belief propagation,. We now intro- 
+duce the basic variable and factor components used 
+throughout the paper.
+
+2.1   Latent Dependency Structure
+
+Dependency grammar  is a lexically-oriented  syn- 
+tactic formalism in which syntactic  relationships 
+are expressed as dependencies between individual 
+words.  Each non-root  word specifies  another  as 
+its head, provided that the resulting structure forms
+
+
+a valid directed graph, ie.  there are no cycles in 
+the graph. Due to the flexibility of this representa- 
+tion it is often used to describe free-word-order lan- 
+guages, and increasingly  preferred in NLP for more 
+language-in-use scenarios. A dependency graph can 
+be modeled with the following nodes,  as first pro- 
+posed by Smith and Eisner (2008):
+• Let {Link(i, j)  : 0 ≤ i ≤ j ≤ n, n 1=  
+j} be O(n2) boolean variables corresponding 
+to the possible links in a dependency  parse.  
+Li,j
+= true implies that there is a dependency  from 
+parent i to child j.
+• Let {LI N K (i, j)  : 0 ≤ i ≤ j ≤ n, n 1=  
+j} be O(n2) unary factors, each paired with a 
+cor- responding Link(i, j) variable and 
+expressing
+the independent belief that Link(i, j) = true.
+
+2.2   Latent Constituency Structure
+
+Alternatively we can describe the more structured 
+constituency formalism by setting up a representa- 
+tion over span variables:
+
+• Let {Span(i, j) : 0 ≤ i < j ≤ n} be O(n2) 
+boolean variables such that Span(i, j) = true 
+iff there is a bracket spanning i to j 1.
+• Let {SPAN(i, j) : 0 ≤ i < j ≤ n} be O(n2) 
+unary factors, each attached to the correspond- 
+ing Span(i, j) variable. These factors score the 
+independent suitability  of each span to appear
+in an unlabeled constituency tree.
+
+  All boolean variables presented in this paper will 
+be paired to unary factors  in this manner,  which 
+we will omit in future descriptions.   This encom- 
+passes the necessary representational structure for 
+both syntactic formalisms, but nothing introduced 
+up to this point guarantees that either of these rep- 
+resentations will form a valid tree or DAG.
+
+2.3   Combinatorial Factors
+
+Naively constraining   these  latent representations 
+through the introduction  of many interconnected 
+ternary factors is possible, but would likely be com- 
+putationally intractable. However,   as observed  in
+
+  1 In practice, we do not need to include variables for spans 
+of width 1 or n, since they will always be true.
+
+
+Smith and Eisner (2008), we can encapsulating 
+common dynamic programming algorithms within 
+special-purpose factors to efficiently globally con- 
+strain variable configurations .  Since the outgoing 
+messages from  such factors to a variable can be com- 
+puted from the factor’s posterior beliefs about that 
+variable, there is no difficulty in exchanging beliefs 
+between these special-purpose  factors and the rest 
+of the graph, and inference can proceed using the 
+standard sum-product  or max-product belief prop- 
+agation. Here we present two combinatorial factors 
+that provide efficient ways of constraining the model 
+to fit common syntactic frameworks.
+
+• Let CKYTREE be a global combinatorial  fac- 
+tor, as used in previous work in efficient pars- 
+ing (Naradowsky and Smith, 2012), attached to 
+all the Span(i, j) variables. This factor con-
+tributes a factor of 1 to the model’s score iff the 
+span variables collectively form a legal, binary 
+bracketing  and a factor of 0 otherwise.  It en- 
+forces, therefore, a hard constraint on the vari- 
+ables, computing beliefs via an unlabeled vari- 
+ant of the inside-outside algorithm.
+• Let DEP-TREE  be a global combinatorial fac- 
+tor, as presented  in Smith and Eisner (2008), 
+which attaches to all Link(i, j) variables and 
+similarly contributes a factor of 1 iff the config-
+uration of Link  variables forms a valid projec- 
+tive dependency graph. A graph is projective if 
+its edges do not cross.
+
+2.4   Marginal MAP Inference
+
+It is straightforward  to train these  latent variable 
+models to maximize the marginal probability  of their 
+outputs, conditioning on their inputs, and marginal- 
+izing out the latent syntactic variables. To compute 
+feature expectations, we can use marginal inference 
+techniques such as sampling  and sum-product  belief 
+propagation to compute marginal probabilities.
+  A knottier  problem arises when we want to find 
+the best assignment  to the variables  of  interest 
+while marginalizing out “nuisance” latent variables. 
+This is the problem of marginal MAP inference— 
+sometimes known as consensus  decoding—which 
+has been shown to be NP-hard and without  a poly- 
+nomial time approximation scheme (Sima’an, 1996;
+
+
+Casacuberta and Higuera, 2000). In the NLP com- 
+munity, these inference problems often arise when 
+dealing with spurious ambiguity where multiple 
+derivations  can lead to the same derived structure.  In 
+tree substitution grammars, for instance, there may 
+be many ways of combining  elementary trees to pro- 
+duce the same output tree; in machine translation, 
+many different elementary  phrases or elementary 
+tree pairs might produce the same output string. For 
+syntactic parsing, Goodman (1996) proposed a vari- 
+ational method for summing out spurious ambiguity 
+that was equivalent to minimum  Bayes risk decoding 
+(Goel and Byrne, 2000; Kumar and Byrne, 2004) 
+with a constituent-recall   loss function.  For MT, 
+May and Knight (2006) proposed methods for de- 
+terminizing  tree automata to reduce ambiguity,  and 
+Li et al. (2009) proposed a variational  method based 
+on n-gram loss functions. More recently, Liu and Ih- 
+ler (2011) analyzed message-passing algorithms  for 
+marginal MAP.
+  In this paper, we adopt a simple minimum  Bayes 
+risk decoding  scheme.  First, we perform sum- 
+product belief propagation on the full factor graph. 
+Then, we maximize the expected accuracy  of the 
+variables of interest, subject to any hard constraints 
+on them (such as mutual exclusion among labels). In 
+some cases with complex combinatorial constraints, 
+this simple MBR scheme has proved  more effec- 
+tive than exact decoding over all variables (Auli and 
+Lopez, 2011).
+
+3   Relation Extraction
+
+Performing  a syntax-based NLP task in most real- 
+world scenarios requires that the incoming data first 
+be parsed using a pre-trained  parsing  model. For 
+some tasks, like relation extraction,  many data sets 
+lack syntactic annotation and these circumstances 
+persist even into the training phase.   In this sec- 
+tion we explore such scenarios and contrast the use 
+of parser-provided syntactic annotation to marginal- 
+izing over latent representations of constituency or 
+dependency syntax. We show the hidden syntactic 
+models are not just competitive with these “oracle” 
+models, but in some configurations can actually out- 
+perform them.
+  Relation extraction is the task of identifying se- 
+mantic relations between sets of entities in text (as
+
+
+illustrated in Fig. 1b), and a good  proving ground 
+for latent syntactic methods for two reasons.  First, 
+because entities  share a semantic  relationship,   un- 
+der most linguistic analyses these entities will also 
+share some syntactic relation.  Indeed, syntactic fea- 
+tures  have  long been  an extremely useful source 
+of information for relation extraction systems (Cu- 
+lotta and Sorensen, 2004; Mintz et al., 2009). Sec- 
+ondly, relation  extraction  has been a common  task 
+for pioneering efforts in processing data mined from 
+the internet, and otherwise noisy or out-of-domain 
+data. In particular,  large noisily-annotated  data sets 
+have been generated by leveraging freely available 
+knowledge bases such as Freebase (Bollacker et al.,
+2008; Mintz et al., 2009).  Such data sets have been 
+utilized successfully for relation extraction from the 
+web (Bunescu and Mooney, 2007).
+
+3.1   Model
+
+We  present a simple model for representing rela- 
+tional structure, with the only variables present be- 
+ing a set of boolean-valued variables representing an 
+undirected dependency between two entities, and an 
+additional set of boolean label variables representing 
+the type label of the relation.
+
+• Let {Rel(i, j : 0 ≤ i < j ≤ n} be O(n2) 
+boolean variables such that Rel(i, j) = true iff 
+there is a relation spanning i to j.
+
+• Let {Rel-Label(i, j, λ) : λ ∈ L, and 0 ≤ i <
+j ≤ n} be O(|L|n2) boolean variables such
+that Rel-Label(i, j, λ) = true iff there is a re-
+lation spanning i to j with relation type λ.
+
+• Let {ATMOST1(i, j)  : 0 ≤ i < j ≤ n} be 
+O(n2) factors, each coordinating  the set L of 
+possible nonterminal variables to the Rel vari-
+able at each i, j tuple, allowing a Rel-Label 
+variable to be true iff all other label variables 
+are false and Rel(i, j) = true.
+
+
+Here the Rel(i, j)  and Rel-Label(i, j)  variables 
+simply express the representation of the problem, 
+while the ATMOST1 factors are logical constraints 
+ensuring that only one label will apply to a particu- 
+lar relation.
+
+
+3.2   Coordination Factors
+An important contribution of this work is the intro- 
+duction of a flexible, general framework for connect- 
+ing the latent and observable partitions of the model. 
+We accomplish this through the use of two addi- 
+tional factors, each expressing the same basic logic, 
+which learn when to coordinate and when to ignore 
+correlations between the latent syntax and the end 
+task. While here we specify binary and ternary ver- 
+sions of these factors, they also generalize to higher 
+dimensions.
+• Let {D-CONNECT(i, j, k)  :  0 ≤ i < j ≤
+n; 0 ≤ k ≤ n} be O(n3) factors coordinating
+any number of dependency syntax Link(i, j)
+variables with representational variables on the 
+end task, multiplying in 1 to the model score 
+unless all variables are on, in which  case it mul- 
+tiplies a connective  potential  φ derived from 
+its features. Thus it functions logically as a 
+soft NAND factor. In this ternary formulation k 
+represents a hidden  dependency  head or pivot 
+which is shared between two syntactic depen- 
+dencies anchored at the indices of the entities 
+in the relation (as illustrated in Fig. 1).
+• Let {C-CONNECT(i, j)   :  0  ≤  i < j ≤
+n} be O(n2)  factors coordinating  syntactic
+Span(i, j)  and relation arc Rel(i, j),  identi-
+cally to D-CONNECT but with a 1-to-1 map- 
+ping.  Intuitively the joint model might learn 
+φ > 1, i.e., constituency  spans and task predic- 
+tion relations are more likely to be coterminous.
+
+  The difficulty in working with latent dependency 
+syntax is that we posit that the RE variables do not 
+share  a 1-to-1 mapping with variables in the hid- 
+den representation.  We expect instead, according 
+to linguistic intuition, that a relation  between enti- 
+ties at position i and j in the sentence should have 
+corresponding syntactic dependencies but that they 
+are likely to realize this by sharing the same head 
+word (as depicted in Fig.1),  a word whose identity 
+should help label the relation. Therefore we intro- 
+duce a special coordination  factor, D-CONNECT as 
+a ternary  factor to capture the relationship  between 
+pairs of latent syntactic variables and a single rela- 
+tion variable, pivoting on the same unknown  head 
+word.
+
+
+ 
+
+Figure 1: Latent Dependency coupling for the RE task. 
+The D-CONNECT  factor expresses ternary connection  re- 
+lations because the shared head word of the proposed re- 
+lation is unknown. As is convention, variables are repre- 
+sented by circles, factors by rectangles.
+
+
+We introduce six model scenarios.
+
+• Baseline, simply the arc-factored model con- 
+sisting only of Rel and corresponding  Label 
+variables for each entity. Features on the re- 
+lation factors, which are common to all model
+configurations,  are combinations of lexical in- 
+formation (i.e., the words that form the entity, 
+the pos-tags of the entities, etc.) as well as the 
+distance between the relation. This is a light- 
+weight model  and generally  does not attempt 
+to exhaustively leverage all possible proven 
+sources of useful features (Zhou et al., 2005) 
+towards a higher  absolute score, but rather to 
+serve  as a point of comparison to the models 
+which rely on syntactic information.
+
+• Baseline-Ent, a variant of Baseline with addi- 
+tional features which include combinations of
+
+
+• Oracle D-Parse, in which we also instantiate a 
+full set of latent dependency syntax variables,
+and connect them to the baseline model us- 
+ing D-CONNECT factors. Syntax variables are 
+clamped to their true values.
+• Oracle C-Parse, the constituency syntax ana- 
+logue of Oracle D-Parse.
+• Hidden D-Parse, which is an extension of Or- 
+acle D-Parse  in which we connect all syntax 
+variables to a DEP-TREE   factor, syntax vari- 
+ables are unobserved,  and are learned jointly
+with the end task. The features for latent syntax 
+are a subset of those used in dependency pars- 
+ing (McDonald et al., 2005).
+• Hidden C-Parse, the constituency syntax ana- 
+logue of Hidden D-Parse. The feature set is 
+similar but bigrams  are taken over the words 
+defining the constituent  span, rather than the
+words defining the head/modifier relation.
+
+  Coordination factor features for the syntactically- 
+informed  models are particularly  important. This 
+became evident  in initial experiments  where the 
+baseline was often able to outperform the hidden 
+syntactic model. However, inclusion of entity and 
+mention label features into the connection factors 
+provides the model with greater  reasoning  over 
+when to coordinate or ignore the relation predictions 
+with the underlying  syntax. These are a proper sub- 
+set of the Baseline-Ent features.
+
+3.3   Data
+
+We  evaluate  these models  using the 2005 Auto- 
+matic Content Extraction (ACE) data set (Walker,
+2006), using the English (dual-annotated) and Chi- 
+nese (solely annotator #1 data set) sections.   Each 
+corpus is annotated with entity mentions—tagged as 
+PER, ORG, LOC, or MISC—and,  where applica- 
+ble, what type of relation exists between them (e.g., 
+coarse: PHYS; fine: Located). But like most cor- 
+pora available for the task, the burden of acquiring 
+corresponding syntactic annotation is left to the re- 
+searcher.  In this situation it is common to turn to 
+existing pre-trained parsing models.
+We generate our data by first splitting the raw
+
+
+
+A
+C
+E
+ 
+R
+e
+s
+u
+l
+t
+s
+
+
+M
+od
+el
+E
+n
+g
+l
+i
+s
+h
+Unlabeled	Labeled
+C
+h
+i
+n
+e
+s
+e
+Unlabeled	Labeled
+
+P
+R
+F
+1
+P
+R
+F
+1
+P
+R
+F
+1
+P
+R
+F
+1
+Ba
+se
+lin
+e
+Ba
+se
+lin
+e-
+En
+t
+85
+.4
+87
+.2
+57
+.0
+65
+.4
+68
+.4
+74
+.8
+83
+.0
+85
+.8
+55
+.3
+64
+.4
+66
+.4
+73
+.6
+42
+.9
+55
+.2
+26
+.8
+31
+.1
+33
+.0
+39
+.8
+42
+.6
+51
+.2
+21
+.3
+29
+.4
+28
+.4
+37
+.4
+Or
+acl
+e 
+D-
+Pa
+rse
+Hi
+dd
+en 
+D-
+Pa
+rse
+89
+.3
+87
+.8
+67
+.4
+69
+.8
+76
+.8
+77
+.7
+89
+.3
+85
+.3
+66
+.2
+67
+.8
+75
+.4
+75
+.6
+60
+.0
+48
+.0
+32
+.6
+32
+.0
+42
+.2
+38
+.4
+58
+.1
+47
+.2
+31
+.3
+30
+.0
+40
+.7
+36
+.7
+Or
+acl
+e 
+C-
+Pa
+rse
+Hi
+dd
+en 
+C-
+Pa
+rse
+89
+.1
+90
+.5
+68
+.7
+69
+.9
+77
+.6
+78
+.9
+87
+.5
+88
+.8
+67
+.5
+68
+.6
+76
+.2
+77
+.4
+66
+.8
+56
+.3
+37
+.8
+32
+.3
+48
+.3
+41
+.0
+63
+.8
+53
+.4
+37
+.0
+31
+.6
+46
+.8
+39
+.7
+
+Table 1: Relation Extraction Results. Models using hidden constituency syntax provide significant gains over the 
+syntactically-uniformed  baseline model in both languages, but the advantages of the latent syntax were mitigated on 
+the smaller Chinese data set.
+
+
+
+
+are also tokenized according to Penn Chinese Tree- 
+bank standards (Xue et al., 2005).  The sentences are 
+then tagged and parsed using the Stanford CoreNLP 
+tools, using the standard pre-trained models for tag- 
+ging (Toutanvoa and Manning,  2000), and the fac- 
+tored parsing model of Klein and Manning (2002). 
+The distributed grammar is trained on a variety  of 
+sources, including the standard Wallstreet  Journal 
+corpus, but also biomedical,  translation,  and ques- 
+tions.  We then apply entity and relation annota- 
+tions noisily to the data, collapsing multi-word  en- 
+tities into one term.  We filter out sentences with 
+fewer than two entities (and are thus incapable of 
+containing  relations)  and sentences with more than
+40 words (to keep the parses more reliable). This 
+yields 6966 sentences for English data, but unfortu- 
+nately only 747 sentences for the Chinese. Nine of 
+every ten sentences comprise the training  set, with 
+every tenth sentence reserved for test.
+
+3.4   Results
+
+We train all models using 20 iterations of stochastic 
+gradient descent, each with a maximum  of 10 BP it- 
+erations (though in practice we find convergence to 
+often occur much earlier). The results are presented 
+in Table 1, showing precision, recall, and F-measure 
+for both labeled and unlabeled prediction. For En- 
+glish, not only is the hidden marginalization method 
+a suitable  replacement  for the syntactic  trees pro- 
+vided by pre-trained, state-of-the-art models, but in 
+both configurations we find that inducing an optimal 
+hidden structure is preferable to the parser-produced 
+annotations. On Chinese, where the data set is atyp-
+
+
+over the baseline in the constituency-based model 
+though it is not able to match the observed syntax 
+model.
+  Despite  the intuition that both entities occupy 
+roles as modifiers  of the same verb, we find that 
+the Hidden D-Parse model often fails to recover the 
+correct latent structure, and that even when success- 
+ful dependency parses are observed, the head word 
+is often not uniquely indicative of the relation type 
+(as known is not strongly correlated with the relation 
+type EMPLOYS in the phrase: Shigeru Miyamoto, 
+best known for his work at the video game company 
+Nintendo).  Hence when it comes to relation extrac- 
+tion, at least on our relatively  small data sets, we find 
+the simplest approach to latent syntactic structure is 
+the best.
+  We now turn to the task of semantic role label- 
+ing to evaluate this method on a more established 
+hand-annotated  data set, and a more varied set of 
+languages.
+
+4   Semantic Role Labeling
+
+The task of semantic role labeling (SRL) aims to 
+detect and label the semantic relationships between 
+particular words, most commonly verbs (referred to 
+in the domain  as predicates),  and their arguments 
+(Meza-Ruiz and Riedel, 2009).
+  In a manner similar to RE, there is a strong corre- 
+lation between the presence of an SRL relation and 
+there existing an underlying syntactic dependency, 
+though this is not always expressed as directly  as a
+1-to-1 correspondence. This has historically  moti- 
+vated a reliance  on syntactic annotation, and some
+
+
+a.) Syntactic  Combinatorial Constraint
+
+
+
+DEP-Tree
+
+
+
+
+
+
+b.) Syntactic  Layer
+
+Link
+5, 1
+
+
+
+
+Link
+5, 2
+
+
+
+
+Link
+5, 3
+
+
+
+
+.    .    .
+
+
+
+
+Link
+5, n
+
+
+
+
+
+D-Connect
+5, 1
+
+
+D-Connect
+5, 2
+
+
+D-Connect
+5, 3
+
+
+D
+-
+C
+o
+n
+n
+e
+c
+t
+5
+,
+ 
+n
+
+
+
+
+
+
+c.) Argument Prediction
+
+Arg
+5, 1
+
+
+
+
+Arg
+5, 2
+
+
+At Most  1
+
+
+
+
+Arg
+5, 3
+
+
+d.) Sense Prediction
+
+
+
+
+At Most  1
+
+
+
+Pred
+
+
+
+sense.
+01
+
+
+sense.
+02
+
+.
+.
+.
+
+
+role
+A0
+
+
+role
+A1
+
+
+role
+A2
+
+
+.  .  .
+
+
+role
+A-TM
+
+
+5 	sense.
+|
+S
+|
+
+
+
+
+
+Figure 2: A tiered graphic representing the three different SRL model configurations.  The baseline system is described 
+in the bottom (c & d), the separate panels highlighting  the independent predictions of this model: sense labels are 
+assigned in an entirely separate process from argument prediction. Pruning in the model takes place primarily in 
+this tier, since we observe true predicates we only instantiate over these indices.  The middle tier (b.) illustrates the 
+syntactic representation layer, and the connective factors between syntax and SRL. In the observed syntax model 
+the Link  variables are clamped to their correct values, with no need for a factor to coordinate them to form a valid 
+tree. Finally, the hidden model comprises all layers, including  a combinatorial  syntactic constraint (a.) over syntactic 
+variables. In this scenario all labels in (b.) are hidden at both training and test time.
+
+
+
+
+feature-rich classifiers to the parsed trees. Related 
+work has recognized the large annotation burden the 
+task demands, but aimed to keep the syntactic anno- 
+tations and induce semantic roles (Lang and Lapata,
+2010). In this section we will take the opposite ap- 
+proach, disregarding the syntactic annotations which 
+we argue are more costly to acquire,  as they require 
+more formal linguistic training to produce.
+
+4.1   Model
+We  present  a simple, flexible model for SRL in 
+which  sense predictions  are made independently  of 
+the rest of the model, and argument predictions  are 
+made independently of each other. The model struc- 
+ture is composed as depicted in Fig. 2.
+• Let {Arg(i, j)  : 0 ≤ i < j ≤ n} be O(n2)
+
+
+iff predicate i takes token j as an argument.
+• Let {Role(i, j, λ)  :  λ  ∈  L, and 0 ≤ i <
+j ≤ n} be O(|L|n2) boolean variables such
+that Role(i, j, λ)  = true iff Arg(i, j) is true
+and takes the role label λ.
+• Let {Sense(i, σ)  :  σ  ∈  S, and 0  ≤ i ≤
+n} be O(|S|n)  boolean  variables  such that
+Sense(i, σ) = true iff predicate i has sense
+σ.
+
+4.1.1	Features
+  At the coarsest level both the SRL and RE models 
+are specifying  binary predictions  between a pair of 
+indices in the sentence, and a set of labels for each 
+dependency that happens to be true. Similarly we
+
+
+ 
+
+Figure 3: Examining the learned hidden representation for SRL. In this example the syntactic dependency arcs derived 
+from gold standard syntactic annotations (left) are entirely disjoint from the correct predicate/arguments pairs (shown 
+in the heatmaps by the squares outlined  in black), and the observed syntax model fails to recover any of the correct 
+predictions. In contrast, the hidden model structure (right) learns a representation that closely parallels the desired end 
+task predictions, helping it recover three of the four correct SRL predictions (shaded arcs: red corresponds to a correct 
+prediction, with true labels GA, KARA, etc.), and providing  some evidence towards the fourth. The dependency tree 
+corresponding to the hidden structure is derived by edge-factored decoding: dependency variables whose beliefs > 0.5 
+are classified as true (though some arcs not relevant to the SRL predictions are omitted for clarity).
+
+
+
+
+RE, with the sole exception that we incorporate the 
+observable lemma and morphological  features into 
+bigrams on predicate/argument pairs. For sense pre- 
+diction we rely only on unigram features taken in a 
+close (w = 2) window of the target predicate.
+  For the coordinating factors  we use  subsets  of 
+combinations of word, part-of-speech,  and capital- 
+ization  features taken between head and argument, 
+and concatenate these with the distance and direc- 
+tion between the predicate and argument. We do not 
+find the performance of the system to be as sensi- 
+tive to which features are present in the coordinating 
+factors as we did in the RE task.
+
+4.2   Data
+
+We evaluate our SRL model using the data set devel- 
+oped for the CoNLL 2009 shared task competition
+
+
+(Hajicˇ et al., 2009), which features seven languages 
+and provides an ideal opportunity to measure the 
+ability of the hidden structure to generalize across 
+languages of disparate origin and varied character- 
+istics. It also provides the opportunity to observe 
+a variety of different annotation  styles and biases, 
+some of which our model was able to uncover as ill- 
+suited to common models for the task. The data it- 
+self provides word, lemma, part-of-speech, and mor- 
+phological feature information, along with gold de- 
+pendency parses. Words which denote predicates are 
+identified, and their (train time) arguments are pro- 
+vided. They are also annotated with a sense label 
+for each predicate, which is scored as an additional 
+SRL dependency. Thus the task involves predicting 
+for each predicate  a set of argument dependencies 
+and the sense label associated with that predicate.
+
+
+
+
+D
+a
+t
+a
+
+M
+o
+d
+e
+l
+Unla
+bele
+d
+L
+a
+b
+e
+l
+e
+d
+CoNL
+L 2009 
+F1
+
+
+P
+R
+F
+1
+P
+R
+F
+1
+M
+A
+X.
+M
+EA
+N
+M
+ED
+.
+
+C
+at
+al
+a
+n
+B
+a
+s
+e
+l
+i
+n
+e
+O
+r
+a
+cl
+e 
+S
+y
+n
+. 
+H
+id
+d
+e
+n 
+S
+y
+n
+.
+92
+.2
+0
+98
+.4
+8
+95
+.2
+1
+62
+.4
+3
+96
+.1
+7
+92
+.8
+4
+74
+.4
+8
+97
+.3
+1
+94
+.0
+1
+73
+.8
+0
+70
+.4
+2
+68
+.8
+6
+58
+.7
+6
+68
+.7
+8
+67
+.1
+5
+65
+.4
+3
+69
+.5
+9
+67
+.9
+9
+
+
+
+
+
+
+
+
+
+8
+0
+.
+3
+7
+1
+.
+0
+7
+4.
+1
+
+
+
+
+
+
+
+
+
+
+C
+hi
+n
+es
+e
+B
+a
+s
+e
+l
+i
+n
+e
+O
+r
+a
+cl
+e 
+S
+y
+n
+. 
+H
+id
+d
+e
+n 
+S
+y
+n
+.
+72
+.4
+8
+98
+.5
+7
+90
+.7
+9
+64
+.8
+2
+78
+.9
+8
+79
+.0
+9
+68
+.4
+4
+87
+.6
+9
+84
+.5
+3
+65
+.9
+7
+87
+.6
+4
+81
+.9
+7
+59
+.0
+0
+70
+.2
+2
+71
+.4
+0
+62
+.2
+9
+77
+.9
+7
+76
+.3
+2
+
+
+
+
+
+
+
+
+
+7
+8
+.
+6
+7
+2
+.
+2
+7
+0.
+4
+
+
+
+
+
+
+
+
+
+
+C
+z
+e
+c
+h
+B
+a
+s
+e
+l
+i
+n
+e
+O
+r
+a
+cl
+e 
+S
+y
+n
+. 
+H
+id
+d
+e
+n 
+S
+y
+n
+.
+97
+.7
+3
+98
+.6
+2
+92
+.3
+9
+56
+.5
+0
+81
+.2
+5
+89
+.3
+5
+71
+.6
+1
+89
+.0
+9
+90
+.8
+5
+84
+.8
+0
+92
+.9
+4
+74
+.4
+1
+48
+.8
+0
+68
+.2
+5
+71
+.9
+6
+61
+.8
+4
+74
+.8
+4
+73
+.1
+6
+
+
+
+
+
+
+
+
+
+8
+5
+.
+4
+7
+2
+.
+4
+7
+1.
+7
+
+
+
+
+
+
+
+
+
+
+E
+n
+gli
+s
+h
+B
+a
+s
+e
+l
+i
+n
+e
+O
+r
+a
+cl
+e 
+S
+y
+n
+. 
+H
+id
+d
+e
+n 
+S
+y
+n
+.
+92
+.4
+6
+96
+.7
+5
+95
+.0
+6
+71
+.5
+6
+82
+.2
+5
+79
+.0
+6
+80
+.6
+8
+88
+.9
+1
+86
+.3
+2
+84
+.5
+6
+85
+.4
+8
+83
+.8
+2
+65
+.4
+5
+72
+.6
+7
+69
+.7
+2
+73
+.7
+8
+78
+.5
+5
+76
+.1
+2
+
+
+
+
+
+
+
+
+
+8
+5
+.
+6
+7
+5
+.
+6
+7
+2.
+1
+
+
+
+
+
+
+
+
+
+
+G
+er
+m
+a
+n
+B
+a
+s
+e
+l
+i
+n
+e
+O
+r
+a
+cl
+e 
+S
+y
+n
+. 
+H
+id
+d
+e
+n 
+S
+y
+n
+.
+93
+.4
+9
+95
+.1
+8
+91
+.9
+2
+44
+.2
+4
+79
+.1
+1
+86
+.2
+6
+60
+.0
+6
+86
+.4
+1
+89
+.0
+0
+75
+.0
+0
+73
+.2
+4
+69
+.4
+7
+35
+.4
+9
+60
+.8
+7
+65
+.1
+9
+48
+.1
+8
+66
+.4
+9
+67
+.2
+6
+
+
+
+
+
+
+
+
+
+7
+9
+.
+7
+6
+8
+.
+1
+6
+7.
+8
+
+
+
+
+
+
+
+
+
+
+Ja
+pa
+ne
+se
+B
+a
+s
+e
+l
+i
+n
+e
+O
+r
+a
+cl
+e 
+S
+y
+n
+. 
+H
+id
+d
+e
+n 
+S
+y
+n
+.
+91
+.6
+4
+93
+.8
+4
+90
+.8
+8
+43
+.3
+6
+48
+.1
+5
+73
+.4
+7
+58
+.8
+7
+63
+.6
+4
+81
+.2
+5
+80
+.4
+1
+90
+.0
+6
+73
+.4
+2
+38
+.0
+5
+46
+.2
+1
+59
+.3
+6
+51
+.6
+6
+61
+.0
+8
+65
+.6
+5
+
+
+
+
+
+
+
+
+
+7
+8
+.
+2
+6
+2
+.
+7
+7
+2.
+0
+
+
+
+
+
+
+
+
+
+
+S
+p
+a
+ni
+sh
+B
+a
+s
+e
+l
+i
+n
+e
+O
+r
+a
+cl
+e 
+S
+y
+n
+. 
+H
+id
+d
+e
+n 
+S
+y
+n
+.
+82
+.9
+0
+98
+.9
+6
+96
+.1
+5
+39
+.4
+7
+94
+.1
+9
+90
+.5
+3
+53
+.4
+8
+96
+.5
+2
+93
+.2
+5
+67
+.6
+4
+70
+.6
+8
+68
+.8
+1
+32
+.2
+1
+67
+.2
+7
+64
+.7
+9
+43
+.6
+4
+68
+.9
+3
+66
+.7
+4
+
+
+
+
+
+
+
+
+
+8
+0
+.
+5
+7
+0
+.
+4
+7
+3.
+4
+
+
+
+
+
+
+
+
+
+
+Table 2: SRL Results. The hidden model excels on the unlabeled prediction  results, often besting the scores obtained 
+using the parses distributed  with the CoNLL data sets. These gains did not always translate to the labeled task where 
+poor sense prediction hindered absolute performance.
+
+
+
+
+4.3   Results
+
+We  evaluate  across a set of model configurations 
+analogous to before. All experiments used 30 itera- 
+tions of SGD with a Gaussian prior, and a max 10 it- 
+erations of BP to compute the marginals for each ex- 
+ample. In comparison to the CoNLL competition en- 
+tries (Table 2, rightmost columns) our syntactically- 
+informed models generally fall in the middle of the 
+rankings.  This is not surprising given the indepen- 
+dent predictions of the model and the very general, 
+language universal assumptions we have made in the 
+model structure and feature sets. However, in terms 
+of gauging the usefulness of the hidden syntactic 
+marginalization  method the results  are extremely 
+compelling, with only marginal differences between 
+the performance of the observed-syntax model, es- 
+pecially relative to the baseline.
+  And despite the simplicity of the model, we still 
+manage  to perform at state-of-the-art  levels in a 
+few instances, sometimes outperforming  most of the 
+competition  entries without observing any syntax. 
+The performance on Chinese is an example of this,
+
+
+with our system outperforming all but the best sys- 
+tem, and the hidden syntactic model only slightly 
+behind.
+
+  Abstracting away from the performance compar- 
+isons against other systems, the unlabeled results are 
+the more revealing evidence for the use of hidden 
+syntactic structure.  Here the average hidden model 
+score (88.89) almost outperforms the observed syn- 
+tax model (90.22, and vs. 66.80 baseline), mostly 
+due to the large margins on the unlabeled Japanese 
+scores. The strong independence  between  sense 
+prediction and argument prediction hinders perfor- 
+mance on the labeled task, but on all languages we 
+find an extremely significant improvement exploit- 
+ing hidden syntactic structure in comparison to the 
+baseline system—the hidden model recovers more 
+than 92% of the gap between the baseline and the 
+observed syntax model. It is also interesting to note 
+that in the shared task competition the two languages 
+which systems lost the most performance between 
+their parsing F1 and their SRL F1 were  Japanese 
+and German. As illustrated in Fig. 3, the corre-
+
+
+spondence between syntax and SRL are extremely, 
+and systematically,  poor. In this example our hid- 
+den structure model was able to assign strong beliefs 
+to the latent syntactic variables which correspond to 
+the correct predicate/argument pairs, allowing it to 
+correctly identify three of the four SRL arguments 
+when the joint model failed to recover one.
+
+5   Related Work
+
+This work is perhaps  mostly closely related to 
+the Learning over Constrained Latent Representa- 
+tions (LCLR) framework of Chang et al. (2010). 
+Their abstract problem formulation is identical: both 
+paradigms seek to couple the end task to an interme- 
+diate representation which is not accessible to the 
+learning algorithm. However much of the intent, 
+scale, and methodology is different.  LCLR aims 
+to provide  a flexible latent structure for increasing 
+the representational power of the model in a use- 
+ful way, and is demonstrated on tasks and domains 
+where data availability is not a key concern. In con- 
+trast, while our hidden structure models may outper- 
+form their observed syntax counterparts, our focus 
+is as much  on alleviating the burden of procuring 
+large amounts of syntactic  annotation  as it is about 
+increasing the expressiveness of the model.  To that 
+end we constrain a more sophisticated latent repre- 
+sentation and couple it to highly structured output 
+predictions,  opposed to binary classification prob- 
+lems. In methodology, we perform the more com- 
+putationally intensive marginalization operation in- 
+stead of maximizing.
+  Marginalization of hidden structure is also funda- 
+mental to other work, and featured most prominently 
+in generative Bayesian latent variable models (Teh 
+et al., 2006). Our approach is trained discrimina- 
+tively, affording  the use of very rich feature sets and 
+the prediction of partial structures without needing 
+to specify a full derivation.  Similar  approaches have 
+been used in more linear latent variable CRF-based 
+models (McCallum  et al., 2005), but these must only 
+marginalize only over hidden states of a much more 
+compact representation.  Naively extending this to 
+tree-based constraints would  often be computation- 
+ally inefficient,  and we avoid intractability  through 
+the encapsulation of much of the dynamic program- 
+ming machinery into specialized factors. Moreover,
+
+
+using loopy belief propagation  means that the in- 
+ference method is not closely coupled to the task 
+structure,  and need not change when applying  this 
+method to other types of graphs.
+
+6   Conclusion
+
+We  have  presented  a  novel method of coupling 
+syntactically-oriented NLP tasks to combinatorially- 
+constrained  hidden syntactic  representations,  and 
+have shown that marginalizing  over this latent rep- 
+resentation not only provides significant  improve- 
+ments over syntactically-uninformed  baselines, but 
+occasionally improves performance when compared 
+to systems which observe syntax. On the task of 
+relation extraction we find that a constituency  rep- 
+resentation provides the most improvement over the 
+baseline, while in the SRL domain our model is ex- 
+tremely competitive with the best reported results on 
+Chinese, and outperforms the model using the pro- 
+vided parses on German and Japanese.
+  We believe this method delivers very promising 
+results in our presented tasks, opening the door to 
+new lines of research examining  what types of con- 
+straints and what configurations of hidden struc- 
+ture are most beneficial for particular tasks and lan- 
+guages. Moreover,  we present one type of coordinat- 
+ing factor, as both D-CONNECT and C-CONNECT 
+logically express  a soft NAND  function, but more 
+sophisticated coupling  schemes are another natural 
+direction to pursue. Finally, we use sum-product 
+variant of belief propagation inference,  but more 
+specialized  inference schemes may show additional 
+benefits.
+
+Acknowledgements
+
+We would like to thank Andrea Gesmundo for help in 
+procuring sections of the CoNLL 2009 shared task data. 
+This work was supported in part by the Center for Intel- 
+ligent Information  Retrieval and in part by Army prime 
+contract number W911NF-07-1-0216  and University  of 
+Pennsylvania subaward number 103-548106.   The Uni- 
+versity of Massachusetts also gratefully acknowledges 
+the support of  Defense  Advanced  Research Projects 
+Agency (DARPA) Machine Reading Program under Air 
+Force Research Laboratory  (AFRL) prime contract no. 
+FA8750-09-C-0181. Any opinions, findings, and conclu- 
+sion or recommendations  expressed in this material are 
+those of the authors and do not necessarily reflect the 
+view of the DARPA, AFRL, or the US government.
+
+
+References
+
+Michael Auli and Adam Lopez. 2011. A comparison of 
+loopy belief propagation and dual decomposition for 
+integrated CCG supertagging and parsing. In ACL, 
+pages 470–480.
+Kurt Bollacker, Colin Evans,  Praveen  Paritosh,   Tim 
+Sturge,  and Jamie Taylor.  2008.  Freebase:   a col- 
+laboratively created graph database for structuring hu- 
+man knowledge. In SIGMOD, pages 1247–1250, New 
+York, NY, USA. ACM.
+Razvan C. Bunescu and Raymond  J. Mooney.  2007.
+Learning to extract relations from the web using mini- 
+mal supervision. In ACL.
+Francisco Casacuberta and Colin De La Higuera. 2000.
+Computational complexity of problems on probabilis- 
+tic grammars and transducers. In ICGI, pages 15–24.
+M. Chang, D. Goldwasser, D. Roth, and V. Srikumar.
+2010. Discriminative  learning over constrained latent 
+representations. In NAACL.
+Aron Culotta and Jeffery Sorensen. 2004. Dependency 
+tree kernels for relation extraction. In ACL, Barcelona, 
+Spain.
+Jenny Rose Finkel and Christopher D. Manning. 2009.
+Joint parsing and named entity recognition.    In
+NAACL,  pages 326–334.
+Vaibbhava Goel and William J. Byrne. 2000. Minimum 
+Bayes risk automatic  speech recognition. Computer 
+Speech and Language,  14(2):115–135.
+Joshua T. Goodman. 1996. Parsing algorithms and met- 
+rics. In ACL, pages 177–183.
+Jan  Hajicˇ,  Massimiliano Ciaramita, Richard Johans- 
+son, Daisuke Kawahara,  Maria Anto` nia Mart´ı, Llu´ıs 
+Ma`rquez,  Adam Meyers, Joakim Nivre, Sebastian 
+Pado´ , Jan Sˇ teˇpa´nek, Pavel Stranˇ a´k, Mihai Surdeanu, 
+Nianwen Xue, and Yi Zhang. 2009.  The CoNLL-
+2009 shared task: Syntactic  and semantic dependen- 
+cies in multiple languages.  In CoNLL: Shared Task, 
+pages 1–18.
+Dan Klein and Chris Manning. 2002. Fast exact infer- 
+ence with a factored model for natural language pro- 
+cessing. In NIPS.
+Shankar Kumar and William Byrne. 2004. Minimum 
+Bayes-risk decoding for statistical machine transla- 
+tion. In HLT-NAACL, pages 169–176.
+Joel Lang and Mirella Lapata. 2010. Unsupervised in- 
+duction of semantic roles. In HLT-NAACL, pages 939–
+947.
+Zhifei Li, Jason Eisner, and Sanjeev Khudanpur.   2009.
+Variational decoding for statistical  machine transla- 
+tion. In ACL, pages 593–601.
+Qiang Liu and Alexander Ihler. 2011. Variational algo- 
+rithms for marginal MAP. In UAI, pages 453–462.
+
+
+Jonathan May and Kevin Knight. 2006. A better n-best 
+list: Practical determinization of weighted finite tree 
+automata. In HLT-NAACL, pages 351–358.
+Andrew McCallum,  Kedar Bellare, and Fernando C. N.
+Pereira.   2005.    A  conditional random field for 
+discriminatively-trained  finite-state string edit dis- 
+tance. In UAI, pages 388–395.
+Ryan McDonald,  Fernando Pereira, Kiril  Ribarov, and 
+Jan Hajic.  2005.  Non-projective dependency pars- 
+ing using spanning tree algorithms. In HLT-EMNLP, 
+pages 523–530.
+Ivan Meza-Ruiz and Sebastian Riedel.  2009.  Jointly 
+identifying predicates,  arguments  and senses  using 
+Markov logic. In NAACL.
+Mike Mintz, Steven Bills, Rion Snow, and Daniel Juraf- 
+sky. 2009. Distant supervision for relation extraction 
+without labeled data. In ACL, pages 1003–1011.
+Jason Naradowsky and David A. Smith. 2012. Combina- 
+torial constraints for constituency parsing in graphical 
+novels. Technical report, University of Massachusetts 
+Amherst.
+Khalil  Sima’an.   1996.    Computational  complexity 
+of  probabilistic disambiguation  by means  of  tree- 
+grammars. In COLING, pages 1175–1180.
+David A. Smith and Jason Eisner. 2008. Dependency 
+parsing by belief propagation. In EMNLP,  pages 145–
+156.
+Y. W. Teh, M. I. Jordan, M. J. Beal, and D. M. Blei. 2006.
+Hierarchical Dirichlet processes. Journal of the Amer- 
+ican Statistical Association, 101(476):1566–1581.
+Kristina Toutanvoa and Christopher D. Manning. 2000.
+Enriching  the knowledge sources used in a maximum 
+entropy part-of-speech tagger. In EMNLP,  pages 63–
+70.
+Christopher Walker. 2006. Ace 2005 multilingual train- 
+ing corpus. number ldc2006t06. In Linguistic Data 
+Consortium.
+Nianwen Xue, Fei Xia, Fu-Dong Chiou, and Martha 
+Palmer.   2005.  The penn chinese treebank:  Phrase 
+structure annotation of a large corpus. In Natural Lan- 
+guage Engineering, pages 207–238.
+Min Zhang, Jie Zhang, and Jian Su. 2006. Exploring 
+syntactic features for relation extraction using a con- 
+volution tree kernel. In NAACL,  pages 288–295.
+GuoDong Zhou, Jian Su, Jie Zhang, and Min Zhang.
+2005. Exploring various knowledge in relation extrac- 
+tion. In ACL, pages 427–434.
+
+
+
+
+
