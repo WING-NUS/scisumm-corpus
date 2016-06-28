@@ -8,7 +8,8 @@ This package contains a release of training topics to aid in the development of 
 
 Please read further for details on the Computational Linguistics Shared Task run as part of BIRNDL 2016 workshop collocated with JCDL 2016 - official website hosted at: http://wing.comp.nus.edu.sg/cl-scisumm2016/
 
-To participate in the 2016 shared task, please register your team details at: https://easychair.org/conferences/?conf=birndl2016
+To participate in the 2016 shared task, please register your team details at: https://easychair.org/conferences/?conf=birndl2016 ><br>
+
 This edition of the shared task has ended. We thank the community for their enthusiastic participation! The preliminary results have been published as part of the BIRNDL workshop proceedings. Here is our overview paper: http://ceur-ws.org/Vol-1610/paper11.pdf
 
 To know how this corpus was constructed, please see ./docs/corpusconstruction.txt
