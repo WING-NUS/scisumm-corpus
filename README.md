@@ -1,18 +1,27 @@
-# README for the The 2nd Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2016)
+# README 
+
+## (scisumm-corpus @ https://github.com/WING-NUS/scisumm-corpus)
+
+This package contains a release of training and test topics to aid in the development of computational linguistics summarization systems.
+
+The CL-SciSumm Shared Task is run off the CL-SciSumm corpus, and comprises three sub-tasks in automatic research paper summarization on a new corpus of research papers. A training corpus of twenty topics and a test corpus of ten topics were released. The topics comprised of ACL Computational Linguistics research papers, and their citing papers and three output summaries each. The three output summaries comprise: the traditional self-summary of the paper (the abstract), the community summary (the collection of citation sentences ‘citances’) and a human summary written by a trained annotator. Within the corpus, each citance is also mapped to its referenced text in the reference paper and tagged with the information facet it represents. We plan to further enrich this dataset with the AAN metafeatures and other meta-descriptors developed by researchers at DERI, National University of Ireland. 
+
+To know how this corpus was constructed, please see ./docs/corpusconstruction.txt
+
+# Stay tuned for The PROPOSED 3rd Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2017)
+
+--
+# README for The 2nd Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2016)
 
 ## (scisumm-corpus @ https://github.com/WING-NUS/scisumm-corpus)
 
 February 29, 2016
 
-This package contains a release of training topics to aid in the development of computational linguistics summarization systems.
+This edition of the shared task has ended. We thank the community for their enthusiastic participation! The preliminary results have been published as part of the BIRNDL workshop proceedings. Here is our overview paper: http://ceur-ws.org/Vol-1610/paper11.pdf
 
 Please read further for details on the Computational Linguistics Shared Task run as part of BIRNDL 2016 workshop collocated with JCDL 2016 - official website hosted at: http://wing.comp.nus.edu.sg/cl-scisumm2016/
 
 To participate in the 2016 shared task, please register your team details at: https://easychair.org/conferences/?conf=birndl2016 ><br>
-
-This edition of the shared task has ended. We thank the community for their enthusiastic participation! The preliminary results have been published as part of the BIRNDL workshop proceedings. Here is our overview paper: http://ceur-ws.org/Vol-1610/paper11.pdf
-
-To know how this corpus was constructed, please see ./docs/corpusconstruction.txt
 
 ### Overview
 
