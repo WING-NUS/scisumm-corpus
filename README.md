@@ -6,11 +6,11 @@ This package contains a release of training and test topics to aid in the develo
 
 The CL-SciSumm Shared Task is run off the CL-SciSumm corpus, and comprises three sub-tasks in automatic research paper summarization on a new corpus of research papers. A training corpus of twenty topics and a test corpus of ten topics were released. The topics comprised of ACL Computational Linguistics research papers, and their citing papers and three output summaries each. The three output summaries comprise: the traditional self-summary of the paper (the abstract), the community summary (the collection of citation sentences ‘citances’) and a human summary written by a trained annotator. Within the corpus, each citance is also mapped to its referenced text in the reference paper and tagged with the information facet it represents. We plan to further enrich this dataset with the AAN metafeatures and other meta-descriptors developed by researchers at DERI, National University of Ireland. 
 
-To know how this corpus was constructed, please see ./docs/corpusconstruction.txt
+For more details, see the Contents Section at the bottom of this Readme. To know how this corpus was constructed, please see ./docs/corpusconstruction.txt
 
-# Stay tuned for The PROPOSED 3rd Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2017)
+### Stay tuned for The PROPOSED 3rd Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2017)
 
-# README for The 2nd Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2016)
+## README for The 2nd Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2016)
 
 February 29, 2016
 
@@ -37,7 +37,7 @@ Given: A topic consisting of a Reference Paper (RP) and <del>upto 10</del> Citin
 
 Evaluation: Task 1 will be scored by overlap of text spans measured by number of sentences in the system output vs gold standard. Task 2 will be scored using the ROUGE family of metrics between i) the system output and the gold standard summary fromt the reference spans ii) the system output and the asbtract of the reference paper. Again, Task 2 is optional. 
 
-### Contents
+## Contents
 
 This is the open repository for the Scientific Document Summarization Corpus and Annotations contributed to the public by the Web IR / NLP Group at @ the National University of Singapore (WING-NUS) 
 with generous support from Microsoft Research Asia.
@@ -115,16 +115,12 @@ This directory contains the two kinds of summaries - i. the abstract, and ii.the
 For the developemnt sets we will release in April, we will include a third type of summary - hand-written a
 nnotator summaries. These would be abstractive.
 
-### Annotation
+## Annotation
 
-Given a reference paper (RP) and upto 10 citing papers (CPs), annotators from 
-National University of Singapore and Nanyang Technological University
-were instructed to find citations to the RP in the 10 CPs. Annotators followed instructions
-in SciSumm-annotation-guidelines.pdf to mark the Citation Text,
-Citation Marker, Reference Text, and Discourse Facet for each citation
-of the RP found in the CP.  
+Given a reference paper (RP) and 10 or  more citing papers (CPs), annotators from the University of Hyderbad were instructed to find citations to the RP in the CPs. Annotators followed instructions in SciSumm-annotation-guidelines.pdf to mark the Citation Text,
+Citation Marker, Reference Text, and Discourse Facet for each citation of the RP found in the CP.  
 
-### Contact Information
+## Contact Information
 
 For further information about this data release, contact the following members of the BRNDL workshop organising committee:
 
