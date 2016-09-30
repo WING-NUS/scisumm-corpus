@@ -1,6 +1,6 @@
 # README 
 
-## (scisumm-corpus @ https://github.com/WING-NUS/scisumm-corpus)
+# (scisumm-corpus @ https://github.com/WING-NUS/scisumm-corpus)
 
 This package contains a release of training and test topics to aid in the development of computational linguistics summarization systems.
 
@@ -10,10 +10,7 @@ To know how this corpus was constructed, please see ./docs/corpusconstruction.tx
 
 # Stay tuned for The PROPOSED 3rd Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2017)
 
---
 # README for The 2nd Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2016)
-
-## (scisumm-corpus @ https://github.com/WING-NUS/scisumm-corpus)
 
 February 29, 2016
 
