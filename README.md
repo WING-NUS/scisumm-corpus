@@ -124,10 +124,10 @@ Citation Marker, Reference Text, and Discourse Facet for each citation of the RP
 
 For further information about this data release, contact the following members of the BRNDL workshop organising committee:
 
-* Kokil Jaidka (Nanyang Technological University) koki0001@e.ntu.edu.sg
-* Min-Yen Kan (Dept. of Computer Science, School of Computing, National University of Singapore) kanmy@comp.nus.edu.sg
-* Muthu Kumar Chandrasekaran (Dept. of Computer Science, School of Computing, National University of Singapore) muthu.chandra@comp.nus.edu.sg
+* <a href="https://kokiljaidka.wordpress.com/">Kokil Jaidka</a> (University of Pennsylvania) kokil.j@gmail.com
+* <a href="http://www.comp.nus.edu.sg/~kanmy/index.html">Min-Yen Kan</a> (Dept. of Computer Science, School of Computing, National University of Singapore) kanmy@comp.nus.edu.sg
+* <a href="http://www.comp.nus.edu.sg/~a0092669/">Muthu Kumar Chandrasekaran</a> (Dept. of Computer Science, School of Computing, National University of Singapore) muthu.chandra@comp.nus.edu.sg
 
 --------------------------------------------------------------------------
 
-This README was updated from README2014 by Muthu Kumar Chandrasekaran in Feb, 2016.  For revision information, check source code control logs.
+This README was updated from README2014 by Muthu Kumar Chandrasekaran in Feb, 2016. For revision information, check source code control logs.
