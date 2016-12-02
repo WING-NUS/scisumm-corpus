@@ -8,13 +8,13 @@ The CL-SciSumm Shared Task is run off the CL-SciSumm corpus, and comprises three
 
 For more details, see the Contents Section at the bottom of this Readme. To know how this corpus was constructed, please see ./docs/corpusconstruction.txt
 
-The CLSumm-2016 task has concluded. Thanks for your response! You can still download the corpus and publish your results at other venues. If you use the data and publish please let us know and cite this paper:
-@inproceedings{jaidka2016overview,
-title={Overview of the CL-SciSumm 2016 Shared Task},
-author={Jaidka, Kokil and Chandrasekaran, Muthu Kumar and Rustagi, Sajal and Kan, Min-Yen},
-booktitle={In Proceedings of Joint Workshop on Bibliometric-enhanced Information Retrieval and NLP for Digital Libraries (BIRNDL 2016)},
-year={2016}
-}
+The CLSumm-2016 task has concluded. Thanks for your response! You can still download the corpus and publish your results at other venues. If you use the data and publish please let us know and cite our task overview paper:<br>
+@inproceedings{jaidka2016overview,<br>
+title={Overview of the CL-SciSumm 2016 Shared Task},<br>
+author={Jaidka, Kokil and Chandrasekaran, Muthu Kumar and Rustagi, Sajal and Kan, Min-Yen},<br>
+booktitle={In Proceedings of Joint Workshop on Bibliometric-enhanced Information Retrieval and NLP for Digital Libraries (BIRNDL 2016)},<br>
+year={2016}<br>
+}<br>
 
 ### Stay tuned for The PROPOSED 3rd Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2017)
 
