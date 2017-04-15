@@ -8,11 +8,11 @@ The CL-SciSumm Shared Task is run off the CL-SciSumm corpus, and comprises three
 
 For more details, see the Contents Section at the bottom of this Readme. To know how this corpus was constructed, please see ./docs/corpusconstruction.txt
 
-The CLSumm-2017 task is open for registration! It will be collocated with ACM SIGIR 2017, Tokyo, Japan. 
+The CL-SciSumm 2017 task is open for registration! It will be collocated with <a href="http://sigir.org/sigir2017/">ACM SIGIR</a> 2017, Tokyo, Japan. 
 <a href="http://wing.comp.nus.edu.sg/cl-scisumm2017">Go to task website</a>.<br> 
 Register your team now via <a href ="https://easychair.org/conferences/?conf=birndl2017">easychair</a>
 
-If you use the data and publish please let us know and cite our task overview paper:<br>
+If you use the data and publish please let us know and cite our CL-SciSumm 2016 task overview paper:<br>
 @inproceedings{jaidka2016overview,<br>
 title={Overview of the CL-SciSumm 2016 Shared Task},<br>
 author={Jaidka, Kokil and Chandrasekaran, Muthu Kumar and Rustagi, Sajal and Kan, Min-Yen},<br>
@@ -21,19 +21,17 @@ year={2016}<br>
 }<br>
 
 
-## README for The 2nd Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2016)
+## README for The 3rd Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2017)
 
-February 29, 2016
+April 16, 2017
 
-This edition of the shared task has ended. We thank the community for their enthusiastic participation! The preliminary results have been published as part of the BIRNDL workshop proceedings. Here is our overview paper: http://ceur-ws.org/Vol-1610/paper11.pdf
+Please read further for details on the Computational Linguistics Shared Task run as part of BIRNDL 2017 workshop collocated with SIGIR 2017 - official website hosted at: http://wing.comp.nus.edu.sg/cl-scisumm2017
 
-Please read further for details on the Computational Linguistics Shared Task run as part of BIRNDL 2016 workshop collocated with JCDL 2016 - official website hosted at: http://wing.comp.nus.edu.sg/cl-scisumm2016/
-
-To participate in the 2016 shared task, please register your team details at: https://easychair.org/conferences/?conf=birndl2016 ><br>
+To participate in the 2017 shared task, please register your team details at: https://easychair.org/conferences/?conf=birndl2017 ><br>
 
 ### Overview
 
-You are invited to participate in the CL-SciSumm Shared Task at BIRNDL 2016. The shared task will be on automatic paper summarization in the Computational Linguistics (CL) domain. The output summaries will be of two types: faceted summaries of the traditional self-summary (the abstract) and the community summary (the collection of citation sentences ‘citances’). We also propose to group the citances by the facets of the text that they refer to.
+You are invited to participate in the CL-SciSumm Shared Task at BIRNDL 2017. The shared task will be on automatic paper summarization in the Computational Linguistics (CL) domain. The output summaries will be of two types: faceted summaries of the traditional self-summary (the abstract) and the community summary (the collection of citation sentences ‘citances’). We also propose to group the citances by the facets of the text that they refer to.
 
 This task follows up on the successful CL Pilot Task conducted as a part of the BiomedSumm Track at the Text Analysis Conference 2014 (TAC 2014).
 It follows the basic  structure and guidelines of the Biomedical Summarization Track and adapts them for annotating and 
@@ -70,7 +68,7 @@ README file for the previous edition of the shared task hosted at TAC2014.
     ./docs/corpusconstruction.txt
  
 A readme detailing the rules and steps followed to create the document
-corpus by randomly sampling 10 documents from the ACL Anthology corpus
+corpus by randomly sampling documents from the ACL Anthology corpus
 and selecting their citing papers.
   
     ./docs/annotation_naming_convention.txt
