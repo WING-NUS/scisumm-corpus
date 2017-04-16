@@ -62,8 +62,9 @@ Frequently asked questions on the 2016 shared task including updates to the corp
 annotation format from the previous edition.
 
     ./README2014.md
+    ./README2016.md
  
-README file for the previous edition of the shared task hosted at TAC2014.
+README file for the previous editionS of the shared task hosted at TAC2014 and BIRNDL@JCDL 2016.
 
     ./docs/corpusconstruction.txt
  
