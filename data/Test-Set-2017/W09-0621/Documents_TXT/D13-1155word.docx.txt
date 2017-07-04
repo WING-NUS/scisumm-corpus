@@ -1,0 +1,3563 @@
+﻿Overcoming the Lack of Parallel Data in Sentence Compression
+
+Katja Filippova  and Yasemin Altun
+Google
+Brandschenkestr. 110
+Zu¨ rich, 8004 Switzerland
+katjaf|altun@google.com
+
+
+
+Abstract
+
+A  major challenge  in  supervised  sentence 
+compression is making use of rich feature rep- 
+resentations  because of very scarce parallel 
+data. We  address this problem and present 
+a method  to automatically build a compres- 
+sion corpus  with hundreds  of thousands  of 
+instances on which deletion-based algorithms 
+can be trained. In our corpus, the syntactic 
+trees of the compressions are subtrees of their 
+uncompressed counterparts, and hence super- 
+vised systems which require a structural align- 
+ment between the input and output can be suc- 
+cessfully trained. We also extend an exist- 
+ing unsupervised compression method with a 
+learning module.  The new system uses struc- 
+tured prediction to learn from lexical, syntac- 
+tic and other features. An evaluation with hu- 
+man raters shows that the presented data har- 
+vesting method indeed produces a parallel cor- 
+pus of high quality. Also, the supervised sys- 
+tem trained on this corpus  gets high scores 
+both from human raters and in an automatic 
+evaluation setting, significantly outperforming 
+a strong baseline.
+
+
+1   Introduction and related work
+
+Sentence compression is a paraphrasing task where 
+the goal is to generate sentences shorter than given 
+while preserving the essential content.  A robust 
+compression system would be useful for mobile de- 
+vices as  well as a  module   in an extractive  sum- 
+marization system (Mani, 2001). Although  a com- 
+pression may differ lexically and structurally  from 
+the source sentence, to date most  systems are ex- 
+tractive and proceed  by deleting words from the
+
+
+input (Knight & Marcu, 2000; Dorr et al., 2003; 
+Turner & Charniak, 2005; Clarke & Lapata, 2008; 
+Berg-Kirkpatrick et al., 2011, inter alia).  To de- 
+cide which words, dependencies or phrases can be 
+dropped,  (i)  rule-based approaches (Grefenstette,
+1998; Jing & McKeown, 2000; Dorr et al., 2003; 
+Zajic et al., 2007), (ii) supervised models trained 
+on parallel data (Knight & Marcu, 2000; Turner & 
+Charniak, 2005; McDonald, 2006; Gillick & Favre,
+2009; Galanis & Androutsopoulos, 2010, inter alia) 
+and (iii) unsupervised methods which make use of 
+statistics collected from non-parallel  data (Hori & 
+Furui, 2004; Zajic et al., 2007; Clarke & Lapata,
+2008; Filippova & Strube, 2008) have been investi- 
+gated. Since it is infeasible to manually  devise a set 
+of accurate deletion rules with high coverage, recent 
+research has been devoted  to developing statistical 
+methods and possibly augmenting them with a few 
+linguistic rules to improve output readability (Clarke
+& Lapata, 2008; Nomoto, 2009).
+
+Supervised models. A major problem for super- 
+vised deletion-based systems is very limited amount 
+of parallel data. Many approaches make  use of a 
+small portion of the Ziff-Davis corpus which has 
+about 1K sentence-compression pairs1. Other main 
+sources of training data are the two manually crafted 
+compression corpora from the University of Edin- 
+burgh (“written” and “spoken”,  each approx. 1.4K 
+pairs). Galanis & Androutsopoulos (2011) attempt 
+at getting more parallel data by applying a deletion- 
+based compressor together with an automatic para-
+
+     1 The method of Galley & McKeown (2007) could benefit 
+from a larger number of sentences.
+
+
+phraser  and generating  multiple alternative  com- 
+pressions. To our knowledge, this extended data set 
+has not yet been used for successful training of com- 
+pression systems.
+  Scarce parallel data makes it hard to go beyond a 
+small set of features and explore lexicalization.  For 
+example, Knight & Marcu (2000) only induce non- 
+lexicalized CFG rules, many of which occurred only 
+once in the training data. The features of McDon- 
+ald (2006) are formulated  exclusively  in terms of 
+syntactic categories. Berg-Kirkpatrick  et al. (2011) 
+have as few as 13 features to decide whether a con- 
+stituent can be dropped.  Galanis & Androutsopou- 
+los (2010) use many features when deciding which 
+branches of the input dependency tree can be pruned 
+but require  a reranker  to select most fluent com- 
+pressions from a pool of candidates generated in the 
+pruning  phase, many of which are ungrammatical.
+  Even further data limitations exist for the algo- 
+rithms which operate on syntactic  trees and refor- 
+mulate the compression  task as a tree pruning  one 
+(Nomoto, 2008; Filippova & Strube, 2008; Cohn & 
+Lapata, 2009; Galanis & Androutsopoulos, 2010, in- 
+ter alia). These methods are sensitive to alignment 
+errors, their performance  degrades if the syntactic 
+structure of the compression is very different from 
+that of the input. For example,  see Nomoto’s 2009 
+analysis of the poor performance of the T3 system of 
+Cohn & Lapata (2009) when retrained on a corpus of 
+loosely similar RSS feeds and news.
+
+Unsupervised  models. Few approaches require 
+no training data at all.  The model of Hori & Fu- 
+rui (2004)  combines scores estimated from mono- 
+lingual corpora to generate compressions  of tran- 
+scribed speech. Adopting  an integer linear program- 
+ming (ILP) framework, Clarke & Lapata (2008) use 
+hand-crafted syntactic constraints and an ngram lan- 
+guage model, trained on uncompressed sentences, to 
+find best compressions.  The model of Filippova & 
+Strube (2008) also uses ILP but the problem is for- 
+mulated over dependencies and not ngrams. Condi- 
+tional probabilities and word counts collected from 
+a large  treebank  are combined  in an ad hoc man- 
+ner to assess grammatical importance and informa- 
+tiveness of dependencies.  Similarly, Woodsend & 
+Lapata (2010) formulate  an ILP problem to gener- 
+ate news story highlights  using precomputed scores.
+
+
+Again, an ad hoc combination of the scores learned 
+independently of the task is used in the objective 
+function.
+
+Contributions of this paper.  Our work is moti- 
+vated by the obvious need for a large parallel corpus 
+of sentences and compressions on which extractive 
+systems can be trained. Furthermore, we want the 
+compressions in the corpus to be structurally very 
+close to the input. Ideally, in every pair, the com- 
+pression should correspond to a subtree of the input. 
+To this end, our contributions are three-fold:
+• We describe an automatic procedure of con- 
+structing a parallel corpus of 250,000 sentence- 
+compression  pairs such that the dependency 
+tree of the compression  is a  subtree  of the
+source tree.  An evaluation with human raters 
+demonstrates high quality of the parallel  data 
+in terms of readability and informativeness.
+• We successfully apply the acquired data to train 
+a novel supervised compression system which 
+produces  readable  and informative  compres- 
+sions without employing   a separate reranker.
+In particular,  we start with the unsupervised 
+method of Filippova & Strube (2008) and re- 
+place the ad hoc edge weighting  with a  lin- 
+ear function  over a rich feature representation. 
+The parameter vector is learned from our cor- 
+pus specifically for the compression task us- 
+ing structured prediction (Collins, 2002). The 
+new system significantly  outperforms the base- 
+line and hence provides further evidence for the 
+utility of the parallel data.
+• We demonstrate that sparse lexical  features are 
+very useful for sentence compression, and that 
+a large parallel  corpus is a requirement  for ap- 
+plying them successfully.
+
+  The compression framework we adopt and the un- 
+supervised baseline are introduced in Section 2, the 
+training algorithm for learning  edge weights  from 
+parallel  data is described in Section 3.  In Section
+4 we explain how to obtain the data and present an 
+evaluation of its quality. In Section 5 we compare 
+the baseline with our system and report the results 
+of an experiment with humans as well as the results 
+of an automatic evaluation.
+
+
+2   Framework  and baseline
+
+We adopt the unsupervised compression framework 
+of Filippova & Strube (2008)  as our baseline and ex- 
+tend it to a supervised structured prediction problem. 
+In the experiments reported by Filippova & Strube 
+(2008), the system was evaluated on the Edinburgh 
+corpora. It achieved an F-score (Riezler et al., 2003) 
+higher than reported by other systems on the same 
+data under an aggressive compression rate and thus 
+presents a competitive  baseline.
+
+Tree pruning as optimization. In this framework, 
+compressions are obtained by deleting edges of the 
+source dependency structure so that (1) the retained 
+edges form a valid syntactic tree, and (2) their to- 
+tal edge weight is maximized.  The objective func-
+tion is defined over set X  = {xe, e ∈ E} of bi-
+nary variables, corresponding to the set E of the
+source edges, subject  to the structural and length 
+constraints,
+
+f (X ) =     xe × w(e)	(1)
+e∈E
+Here, w(e) denotes the weight of edge e. This con- 
+strained optimization  problem is solved under the 
+tree structure and length constraints using ILP. If xe 
+is resolved to 1, the respective edge is retained, oth- 
+erwise it is deleted. The tree structure constraints en- 
+force at most one parent for every node and structure 
+connectivity  (i.e., no disconnected subtrees). Given 
+that length(node(e)) denotes the length of the node 
+to which  edge e points and α is the maximum per- 
+mitted length for the compression, the length con- 
+straint is simply
+
+  xe × length(node(e)) ≤ α 	(2)
+e∈E
+Word limit is used in the original  paper, whereas we 
+use character length which is more appropriate for 
+system comparisons (Napoles et al., 2011). If uni- 
+form weights  are used in Eq. (1), the optimal so- 
+lution would correspond to a subtree  covering   as 
+many edges as possible while keeping the compres- 
+sion length under given limit.
+  The solution to the surface realization problem 
+(Belz et al., 2011) is standard: the words in the com- 
+pression subtree are put in the same order they are 
+found in the source.
+  
+
+Due to space limitations, we refer the reader to 
+(Filippova & Strube, 2008) for a detailed descrip- 
+tion on the method. Essential for the present discus- 
+sion is that source dependency trees are transformed 
+to dependency graphs in that (1) auxiliary, deter- 
+miner, preposition,  negation  and possessive nodes 
+are collapsed with their heads; (2) prepositions re- 
+place labels on the edges to their arguments; (3) the 
+dummy root node is connected with every inflected 
+verb. Figures 1(a)-1(b) illustrate most of the trans- 
+formations. The transformations are deterministic 
+and reversible, they can be implemented in a single 
+top-down tree traversal2.
+  The set E of edges in Eq. (1) is thus the set of 
+edges of the transformed dependency graph, like in 
+Fig. 1(b). A benefit of the transformations is that 
+function  words and negation appear in the compres- 
+sion if  and only if  their head words are present. 
+Hence no separate constraints  are required  to en- 
+sure that negation or a determiner  is preserved. The 
+dummy root node makes constraint formulation  eas- 
+ier and also allows  for the generation of compres- 
+sions from any finite clause of the source.
+  The described pruning optimization framework 
+is used both for the unsupervised  baseline and for 
+our supervised system. The difference between the 
+baseline and our system is  in how edge weights, 
+w(e)’s in Eq. (1), are instantiated.
+
+Baseline  edge  weights. The precomputed  edge 
+weights reflect syntactic importance as well as infor- 
+mativeness of the nodes they point to. Given edge 
+e from head node h to node n, the edge weight  is 
+the product of the syntactic and the informativeness 
+weights,
+
+          w(e) = wsynt(e) × winfo(e)	(3) 
+The syntactic weight is defined as
+
+       wsynt(e) = P (label(e)|lemma(h))        (4) 
+For example,  verb kill  may have  multiple argu- 
+ments realized with dependency labels subj, dobj, in,
+etc. However, these argument labels are not equally 
+likely, e.g., P (subj|kill) > P (in|kill).  When forced
+to prune an edge, the system would prefer to keep
+
+  2 Some of the transformations are comparable to what is im- 
+plemented in the Stanford parser (de Marneffe  et al., 2006).
+
+
+root
+
+
+
+ccomp
+
+
+
+pobj
+
+
+poss	nsubj
+detnsubj
+det	pobj
+ps
+p
+r
+e
+p
+pob
+j
+a
+m
+o
+d
+a
+u
+x
+p
+a
+s
+s
+pre
+p
+a
+m
+o
+d
+pre
+p
+a
+m
+o
+d
+Britain ’s  Ministry of Defense  says a British soldier was   killed in a roadside  blast in southern Afghanistan
+
+(a) Source dependency tree
+
+
+
+root 
+of
+
+
+
+
+subj
+
+
+root
+  
+
+ccomp amod
+
+
+
+
+
+subj
+
+
+
+
+in
+amod
+
+
+
+
+in
+amod
+
+
+root Britain’s Ministry  of Defense says   British  a soldier was killed  roadside in a blast southern in Afghanistan
+
+(b) Transformed graph
+
+
+
+root
+amod
+
+
+
+subj
+
+
+
+in	in
+
+
+root	British	a soldier	was killed	in a blast	in Afghanistan
+
+(c) Tree of extracted  headline  A British soldier was killed in a blast in
+Afghanistan
+
+
+
+
+det
+
+
+
+subj
+
+
+root
+
+
+
+pobj
+
+
+amod
+
+
+auxpass	prep
+
+
+det	prep	pobj
+
+
+A 	British	soldier	was 	killed	in	a	blast	in	Afghanistan
+
+(d) Tree of extracted headline with transformations undone
+
+Figure 1: Source, transformed and extracted trees given headline British  soldier killed in Afghanistan
+
+
+
+
+the subject edge over the preposition-in edge since it 
+contributes more weight to the objective function.
+  The informativeness  score is inspired by Wood- 
+send & Lapata (2012) and is defined as
+
+Pheadline(lemma(n))
+
+
+sumably all play a role in determining the 
+overall edge importance.
+
+3	Learning  edge weights
+
+Our supervised system differs from the 
+unsupervised
+
+
+winfo(e) =
+
+
+
+Particle
+
+
+(5)
+(lemma(n))
+
+
+baseline in 
+that instead 
+of relying on 
+precomputed 
+scores, we 
+define edge 
+weight w(e) 
+in Eq. (1) with 
+a
+
+
+This weight tells us how likely it is that a  word
+from an article  appears in the headline.  For exam- 
+ple, given two edges one of which points to verb say 
+and another one to verb kill, the latter would be pre- 
+ferred over the former  because kill is more “head- 
+liny” than say. When collecting  counts for the syn- 
+tactic and informativeness  scores, we used 9M news 
+articles crawled from the Internet, much more than 
+Filippova & Strube (2008). As a result our estimates 
+are probably more accurate than theirs.
+  Although both wsynt and winfo  have a meaning- 
+ful interpretation, there is no guarantee that product 
+is the best way to combine the two when assign- 
+ing edge weights. Also, it is unclear how to inte- 
+grate other signals, such as distance to the root, node 
+length or information about the siblings, which pre-
+
+
+linear function over a feature representation,
+
+              w(e) = w · f (e)	(6) Here f (e) is a vector  of binary variables for every
+feature from the set of all possible but very infre-
+quent features in the training set. f (e) has 1 for 
+every feature extracted for edge e and zero 
+otherwise.
+  Table 1 gives an overview of the feature 
+types we use  (edge  e  points from head  h 
+to node n). Note that syntactic, structural 
+and semantic features are closed-class.   For 
+all the structural features but char length, 
+seven  is used as maximum  possible value; 
+all possible  character  lengths  are bucketed 
+into six classes.  All the features are local – 
+for a given edge, contextual information is 
+included about
+
+
+syntactic	label(e); for e* to h, label(e*); pos(h); pos(n)
+structural	depth(n); #children(n); #children(h); char length(n); #words in(n)
+semantic	NE tag(h); NE tag(n); is negated(n)
+lexical	lemma(n); lemma(h)-label(e); for e* to n’s siblings, lemma(h)-label(e*)
+
+Table 1: Types of features extracted for edge e from h to n
+
+
+
+
+the head and the target nodes, and the siblings  as 
+well as the children  of the latter. The negation fea- 
+ture is only applicable to verb nodes which contain 
+a negative particle,  like not, after the tree transfor- 
+mations. Lexical features which combine lemmas 
+and syntactic labels are inspired by the unsupervised 
+baseline and are very sparse.
+  In what follows, our assumption is that we have a 
+compression corpus at our disposal where for every 
+input sentence there is a correct  “oracle” compres- 
+sion such that its transformed  parse tree matches a 
+subtree of the transformed input graph. Given such 
+a corpus,  we can apply structured prediction meth- 
+ods to learn the parameter vector w.  In our study 
+we employ an averaged variant of online structured 
+perceptron (Collins, 2002). In the context of sen- 
+tence fusion, a similar dependency structure prun- 
+ing framework  and a similar learning approach was 
+adopted by Elsner & Santhanam (2011).
+  At every iteration, for every input graph, we find 
+the optimal solution with ILP under the current pa- 
+rameter vector w.  The maximum permitted com- 
+pression length is set to be the same as the length 
+of the oracle compression.  Since the oracle com- 
+pression is a subtree of the input graph, it represents 
+a feasible solution  for ILP. The parameter vector is 
+updated if there is a mismatch between the predicted 
+and the oracle sets of edges for all the features with 
+a non-zero net count. More formally,  given an input 
+graph with the set of edges E, oracle compression
+C ⊂ E and compression Ct  ⊆ E predicted at itera-
+tion t , the parameter update vector at t + 1 is given
+by
+  
+
+Of course, training  a model with a large number 
+of features, such as a lexicalized model, is only pos- 
+sible if there is a large compression corpus where 
+the dependency tree of the compression is a subtree 
+of the source sentence.  In the next section we in- 
+troduce our method of getting a sufficient amount of 
+such data.
+
+4   Acquiring parallel data automatically
+
+In this section we explain how we obtained a parallel 
+corpus of sentences and compressions.  The underly- 
+ing idea is to harvest news articles from the Internet 
+where the headline appears to be similar to the first 
+sentence and use it to find an extractive compression 
+of the sentence.
+
+Collecting headline-sentence   pairs.  Using  a 
+news crawler,  we collected  a corpus  of news arti- 
+cles in English from the Internet. Similarly to previ- 
+ous work (Dolan et al., 2004; Wubben et al., 2009; 
+Bejan & Harabagiu, 2010, inter alia), the Google 
+News service3  was used to identify news. From ev- 
+ery article, the headline and the first sentence, which 
+are known to be semantically similar (Dorr et al.,
+2003), were extracted.  Predictably, very few head- 
+lines are extractive  compressions of the first sen- 
+tence, therefore simply looking for pairs where the 
+headline is a subsequence of the words from the first 
+sentence would not solve the problem of getting  a 
+large amount of parallel data. Importantly, headlines 
+are syntactically  quite different from “normal” sen- 
+tences.  For example, they may have no main verb, 
+omit determiners and appear incomplete, making it 
+hard for a supervised deletion-based system to learn 
+useful rules. Moreover, we observed poor parsing
+
+
+wt+1 = wt +
+
+
+
+e∈C \Ct
+
+
+f (e) −
+
+
+
+e∈Ct \C
+
+
+f (e)	(7)
+
+
+accuracy for 
+headlines which 
+would make 
+syntactic 
+annotations for 
+headlines hardly 
+useful.
+Thus, instead of 
+taking  the 
+headline  as it is, 
+we use
+
+
+w is averaged  over all the wt’s  so  that features
+
+
+it to find a proper extractive compression of the sen-
+
+
+whose weight fluctuated a lot during training are pe-	 	
+
+
+nalized (Freund & Shapire, 1999).
+
+
+3 http://news.google.com, Jan-Dec 
+2012.
+
+
+tence by matching lemmas of content words (nouns, 
+verbs, adjectives, adverbs) and coreference IDs of 
+entities from the headline with those of the sentence. 
+The exact procedure is as follows (H, S and T stand 
+for headline, sentence and transformed graph of the 
+sentence):
+
+PREPROCESSING     H and S are preprocessed in a 
+standard way: tokenized, lemmatized,  PoS and NE 
+tagged. Additionally, S is parsed with a dependency 
+parser (Nivre,  2006) and transformed as described  in 
+Section 2 to obtain T. Finally, pronominal anaphora 
+is resolved in S. Recall that S is the first sentence, 
+so the antecedent must be located in a preceding, 
+higher-level clause.
+
+FILTERING     To restrict the corpus to grammatical 
+and informative  headlines, we implemented  a cas- 
+cade of filters. Pair (H, S) is discarded if any of the 
+questions in Table 2 is answered positively.
+
+Is H a question?
+Is H or S too short? (less than four word tokens) 
+Is H about as long as S? (min ratio: 1.5)
+Does H lack a verb?
+Does H begin with a verb?
+Is there a noun, verb, adj, adv lemma from H
+not found in S?
+Are the noun, verb, adj, adv lemmas from H
+found in S in a different  order?
+
+Table 2: Filters applied to candidate pair (H,  S)
+
+
+MATCHING     Given the content words of H, a sub- 
+set of nodes in T is selected  based on lemma or 
+coreference identity of the main (head) word in the 
+nodes.  For example, the main word of a collapsed 
+node in T, which covers two words was killed, is 
+killed; was is its child attached with label aux in the 
+untransformed parse tree. This node is marked if H 
+contains word killed or killing because of the lemma 
+identity. In some cases there are multiple possible 
+matches. For example, given S Barack Obama said 
+he will attend G20 and H mentioning  Obama, both 
+Barack Obama and he nodes are marked in T. Once 
+all the nodes in T which match content words and 
+entities from H are identified,   a minimum subtree 
+covering  these nodes is found such that every word 
+or entity from H occurs as many  times  in T as in
+
+
+H. So if H mentions Obama only once, then either 
+Barack Obama or he must be covered by the subtree 
+but not both. This minimum  subtree corresponds to 
+an extractive headline, H*, which we generate by 
+ordering the surface forms of all the words in the 
+subtree nodes by their offsets in S. Finally, the char- 
+acter length of H* is compared with the length of 
+H. If H* is much longer than H, the pair (H,  S) is 
+discarded (max ratio 1.5).
+  As an illustration to the procedure, consider the 
+example from Figure 1 with the extracted headline 
+and its tree presented in Figure 1(c).  Given the 
+headline British soldier killed in Afghanistan,  the 
+extracted headline would be A British soldier was 
+killed in a blast in Afghanistan. The lemmas british, 
+soldier, kill, afghanistan from the headline match the 
+nodes British, a soldier, was killed, in Afghanistan 
+in the transformed graph. The node in a blast is 
+added because it is on the path from was killed to in 
+Afghanistan. Of course, it is possible to determinis- 
+tically undo the transformations in order to obtain a 
+standard dependency tree. In this case the extracted 
+headline would still correspond to a subtree of the 
+input (compare Fig. 1(d) with Fig. 1(a)). Also note 
+that a similar procedure can be implemented for con- 
+stituency parses.
+  The resulting corpus consists of 250K tuples (S, 
+T, H,  H*), Appendix provides more examples of 
+source  sentences, original headlines and extracted 
+headlines. We did not attempt to tune the values for
+minimum/maximum length and ratio – lower thresh- 
+olds may have produced comparable results.
+
+Evaluating  data quality.  The described proce- 
+dure produces a comparatively  large compression 
+corpus but how good are automatically  constructed 
+compressions?   To answer this question,  we ran- 
+domly selected 50 tuples from the corpus and set up 
+an experiment with human raters to validate and as- 
+sess data quality in terms of readability4  and infor- 
+mativeness5  which are standard measures of com- 
+pression quality (Clarke & Lapata, 2006). Raters 
+were asked to read a sentence and a compression 
+(original H or extracted H* headline) and then rate 
+the compression on two five-point  scales. Three rat- 
+ings were collected for every item. Table 3 gives
+
+4 Also called grammaticality and fluency.
+5 Also called importance and representativeness.
+
+
+
+average ratings with standard deviation.
+
+
+
+                  AVG read	 AVG info 
+ORIG. HEADLINE 	4.36 (0.75)	3.86 (0.79) 
+EXTR. HEADLINE 	4.26 (1.01)	3.70 (1.04)
+
+Table 3: Results for two kinds of headlines
+
+In  terms of  readability and informativeness  the 
+extracted headlines are comparable with human- 
+written ones:  at 95% confidence there is no statis- 
+tically significant difference between the two.
+  Encouraged by the results of the validation exper- 
+iment we proceeded to our next question: Can a su- 
+pervised compression system be successfully trained 
+on this corpus?
+
+5   System evaluation and discussion
+
+From the corpus of 250K tuples we used 100K to 
+get pairs of extracted  headlines and sentences for 
+training (on the development set we did not observe 
+much improvement from using more training data),
+250 for development  and the rest for testing. We 
+ran the learning algorithm for 20 iterations, checking 
+the performance on the development  set.  Features 
+which applied to less than 20 edges were pruned, 
+the size of the feature set is about 28K.
+
+5.1   Evaluation with humans
+
+50 pairs of original headlines and sentences (differ- 
+ent from the data validation  set in Sec. 4) were ran- 
+domly  selected for an evaluation with humans from 
+the test data. As in the data quality validation ex- 
+periment, we asked raters to assess the readability 
+and informativeness  of proposed compressions for 
+the unsupervised system, our system and human- 
+written headlines. The latter provide us with upper 
+bounds on the evaluation criteria. Three ratings per 
+item per parameter were collected. To get compara- 
+ble results, the unsupervised and our systems used 
+the same compression rate: for both, the requested 
+maximum  length was set to the length of the head- 
+line. Table 4 summarizes the results.
+  The results indicate that the trained model signifi- 
+cantly outperforms the unsupervised system, getting 
+particularly good marks for readability.  The differ- 
+ence in readability between our system and original 
+headlines is not statistically significant. Note that
+
+
+
+
+
+
+
+Table 4: Results for the systems and original  headline: † 
+and ‡ stand for significantly better than Unsupervised and 
+Our system at 95% confidence, respectively
+
+
+the unsupervised baseline is also capable of generat- 
+ing readable compressions but does a much poorer 
+job in selecting most important information. Our 
+trained model successfully learned to optimize both 
+scores.  We refer the reader to Appendix for input 
+and compression examples. Note that the ratings for 
+the human-written  headlines in this experiment  are 
+slightly different from the ratings in the data valida- 
+tion experiment  because a different  data sample was 
+used.
+
+5.2   Automatic evaluation
+
+Our automatic evaluation had the goal of explic- 
+itly addressing two relevant questions related to our 
+claims about (1) the benefits of having a large paral- 
+lel corpus and (2) employing  a supervised approach 
+with a rich feature representation.
+
+1. Our primary motivation for collecting parallel 
+data has been that having  access to sparse lex- 
+ical features, which considerably  increase the 
+feature space, would benefit compression sys- 
+tems. But is it really  the case for sentence com- 
+pression?   Can a comparable  performance  be 
+achieved with a closed, moderately  sized set of 
+dense, non-lexical features? If yes, then a large 
+compression  corpus  is probably not needed. 
+Furthermore, to demonstrate that a large corpus 
+is not only sufficient  but also necessary to learn 
+weights for thousands of features, we need to 
+compare the performance of the system when 
+trained on the full data set and a small  portion 
+of it.
+
+2. The syntactic and informativeness scores in Eq. 
+(3) were calculated over millions of news arti- 
+cles and do provide  us with meaninful statis- 
+tics (see Sec. 2).  Is there any benefit in re- 
+placing  those scores with weights learned for
+
+
+their feature counterparts?  Recall that one of 
+our feature  types in Table 1 is the concate- 
+nation of lemma(h)  (parent lemma) and la- 
+bel(e) which relies on the same information
+as wsynt = P (label(e)|lemma(h)).  The fea-
+ture counterpart of winfo defined in Eq. (5) is
+lemma(n)–the lemma of the node to which edge 
+points. How would the supervised system per- 
+form against the unsupervised one, if it only ex- 
+tracted features of these two types?
+
+  To answer these questions, we sampled 1,000 tu- 
+ples from the unused test data  and measured F1 
+score (Riezler et al., 2003) by comparing  the trees 
+of the generated compression and the “correct”, ex- 
+tracted headline. The systems we compared are the 
+unsupervised  baseline (UNSUP. SYSTEM) and the 
+supervised model trained on three kinds of feature 
+sets:  (1) SYNT-INFO  FEATURES, corresponding to 
+the supervised training of the unsupervised  base- 
+line model (i.e., lemma(h)-label(e)  and lemma(n)); 
+(2) NON-LEX FEATURES,  corresponding to a dense, 
+non-lexical  feature representation (i.e., all the fea- 
+ture types from Table 1 excluding the three involv- 
+ing lemmas);  (3) ALL   FEATURES (same  as OUR 
+SYSTEM).  Additionally, we trained the system on
+10% of the data–10K  as opposed  to 100K tuples, 
+ALL  FEATURES (10K)–for 20 iterations ignoring
+
+
+provement in going beyond the closed  set of 330 
+non-lexical  features to all, from 79.6 to 84.3 points. 
+Moreover,  successful training  requires a large cor- 
+pus since the performance of the system degrades if 
+only 10K training  instances are used. Note that this 
+number already exceeds all the existing compression 
+corpora taken together. Hence,  sparse lexical fea- 
+tures are useful for compression  and a large paral- 
+lel corpus is a requirement  for successful supervised 
+training.
+  Concerning our second question, learning feature 
+weights from the data produces significantly  better 
+results than the hand-crafted way of making use of 
+the same information,   even if a much larger  data 
+set is used to collect  statistics.  We observed a dra- 
+matic increase from 52.3 to 75.0 points. Thus, we 
+may conclude that training with dense and sparse 
+features directly from data definitely  improves the 
+performance of the dependency pruning system.
+
+5.3   Discussion
+It is important to note that the data we used is chal- 
+lenging: first sentences in news articles tend to be 
+long, in fact longer than other news sentences, which 
+implies less reliable  syntactic  analysis and noisier 
+input to the syntax-based systems.  In the test set 
+we used for the evaluation with humans, the mean 
+sentence length is 165 characters. The average com-
+
+
+features which applied to less than three edges6. As
+before, the same compression rate was used for all
+
+
+pression rate in characters is 0.46
+quite aggressive7. Recall that we
+
+
+± 0.16 which is
+the very same
+
+
+
+the systems. The results are summarized in Table 5.
+
+
+F1 
+sc
+or
+e 	#features
+U
+NS
+UP
+. 
+SY
+ST
+E
+M
+5
+2
+.
+3
+	N.A.
+S
+Y
+NT
+-
+IN
+FO 
+FE
+AT
+U
+R
+ES
+N
+O
+N-
+LE
+X 
+FE
+AT
+U
+R
+ES
+A
+LL  
+FE
+AT
+U
+R
+ES
+A
+LL  
+FE
+AT
+U
+R
+ES 
+(1
+0
+K)
+7
+5
+.
+0
+	12,490
+7
+9
+.
+6
+	330
+8
+4
+.
+3
+	27,813
+8
+1
+.
+4
+	22,529
+
+Table 5: Results for the unsupervised baseline and the 
+supervised system trained on three kinds of feature sets
+
+  Clearly, having more features, lexicalized and un- 
+lexicalized, is important: there is a significant  im-
+
+6 Recall from the beginning of the section that for the full
+
+
+used
+framework for the unsupervised baseline and our 
+system as well as the same compression rate. All the 
+preprocessing errors affect both systems equally and 
+the comparison of the two is fair. Predictably, wrong 
+syntactic parses significantly increase chances of an 
+ungrammatical  compression, and parser errors seem 
+to be a major source of readability deficiencies.
+  A property of the described compression frame- 
+work is that a desired  compression  length is ex- 
+pected to be provided by the user. This can be seen 
+both as a strength and as a weakness, depending  on 
+the application.  In a scenario where mobile  devices 
+with a limited screen size are used, or in a summa- 
+rization scenario  where  a total summary length is 
+provided  (see the DUC/TAC guidelines8), being able
+
+
+(100K) training set the threshold was set to 20 with no tuning.	 	
+
+
+For the 10K training set, we tried values of two, three, five and 
+varied the number of iterations. The result we report is the high- 
+est we could get for 10K.
+  
+
+7 We follow the standard terminology  where smaller values 
+imply shorter compressions.
+8 http://www.nist.gov/tac/
+
+
+to specify a length is definitely  an advantage. How- 
+ever, one can also think of other applications where 
+the user does not have a strict length constraint but 
+wants the text to be somewhat shorter.  In this case, 
+a reranker which  compares compressions generated 
+for a range of possible lengths can be employed  to 
+find a single compression (e.g., mean edge weight in 
+the solution or a language model-based score).
+
+6   Conclusions
+
+We have addressed a major  problem  for supervised 
+extractive compression models – the lack of a large 
+parallel corpus. To this end, we presented a method 
+to automatically build such a corpus from web doc- 
+uments available  on the Internet.  An evaluation 
+with humans demonstrates that the quality of the 
+corpus is high – the compressions are grammati- 
+cal and informative.  We also significantly improved 
+a competitive  unsupervised method achieving  high 
+readability  and informativeness  scores by incorpo- 
+rating thousands of features and learning the feature 
+weights from our corpus. This result further con- 
+firms the practical utility of the automatically ob- 
+tained data. We have shown that employing lexi- 
+cal features is important for sentence compression, 
+and that our supervised module  can successfully 
+learn their weights from the corpus.  To our knowl- 
+edge, we are the first to empirically demonstrate that 
+sparse features are useful for compression and that a 
+large parallel corpus is a requirement  for a success- 
+ful learning of their weights. We believe that other 
+supervised deletion-based systems can benefit from 
+our work.
+
+Acknowledgements:   The authors are thankful  to 
+the EMNLP reviewers for their feedback and sug- 
+gestions.
+
+Appendix
+
+The appendix presents examples of source sentences 
+(S), original headlines (H), extracted headlines (H*), 
+unsupervised baseline (U) and our system (O) com- 
+pressions.
+
+
+SH H* U OCountry star Sara Evans has married former 
+University of Alabama quarterback Jay Barker.
+Country star Sara Evans marries Country  star Sara 
+Evans has married Sara Evans has married Jay Barker Sara 
+Evans has married Jay Barker
+SH H* U OIntel would be building car batteries, expanding 
+its business beyond its core strength, the company said 
+in a statement
+Intel to build car batteriesIntel would be building car 
+batteries would be building the company said Intel would
+be building car batteries
+SH H* U OA New Orleans Saints team spokesan says tight end 
+Jeremy Shockey was taken to a hospita but is doing fine.
+Spokesman: Shockey taken to hospital, doing fine
+spokesman says Jeremy Shockey was taken to a hospital but
+is doing fine 
+A New Orleans Saints team spokesman says Jeremy 
+Shockey was taken tight 
+end 
+Jeremy Shocke was taken to a hospital but is doing fine
+SH H* U OPresident Obama declared a major disaster exists 
+in the State of Florida and ordered Federal aid to 
+supplement
+State nd local r
+e
+c
+o
+v
+e
+r
+y
+ 
+e
+f
+f
+o
+r
+t
+s
+ 
+i
+n
+ 
+t
+h
+e
+ 
+a
+r
+e
+a
+ 
+s
+t
+r
+u
+c
+k
+ 
+b
+y
+ 
+s
+e
+v
+e
+r
+e
+ 
+s
+t
+o
+r
+m
+s
+,
+ 
+f
+l
+o
+o
+d
+i
+n
+g
+,
+  
+t
+o
+r
+n
+a
+d
+o
+e
+s
+,
+ 
+a
+n
+d
+ 
+s
+t
+r
+a
+i
+g
+h
+t
+-
+l
+i
+n
+e
+  
+w
+i
+n
+d
+s
+ 
+b
+e
+g
+i
+n
+n
+i
+n
+g
+ 
+o
+n
+ 
+M
+a
+y
+ 
+1
+7
+,
+ 
+2
+0
+0
+9
+,
+ 
+a
+n
+d
+ 
+c
+o
+n
+t
+i
+n
+u
+i
+n
+g
+.
+P
+r
+e
+s
+i
+d
+e
+n
+t
+ 
+O
+b
+a
+m
+a
+ 
+d
+e
+c
+l
+a
+r
+e
+s
+ 
+m
+a
+j
+o
+r
+ 
+d
+i
+s
+a
+s
+t
+e
+r
+ 
+e
+x
+i
+s
+t
+s
+ 
+i
+n
+ 
+t
+h
+e
+ 
+S
+t
+a
+t
+e
+ 
+o
+f
+ 
+F
+l
+o
+r
+i
+d
+a
+ 
+P
+r
+e
+s
+i
+d
+e
+n
+t
+ 
+O
+b
+a
+m
+a
+ 
+d
+e
+c
+l
+a
+r
+e
+d
+ 
+a
+ 
+m
+a
+j
+o
+r
+ 
+d
+i
+s
+a
+s
+t
+e
+r
+ 
+e
+x
+i
+s
+t
+s
+ 
+i
+n
+ 
+t
+h
+e
+ 
+S
+t
+a
+t
+e
+ 
+o
+f
+ 
+F
+l
+o
+r
+i
+d
+a
+ 
+P
+r
+e
+s
+i
+d
+e
+n
+t
+ 
+O
+b
+a
+m
+a
+ 
+d
+e
+c
+l
+a
+r
+e
+d
+ 
+a
+ 
+m
+a
+j
+o
+r
+ 
+d
+i
+s
+a
+s
+t
+e
+r
+ 
+e
+x
+i
+s
+t
+s
+ 
+a
+n
+d
+ 
+o
+r
+d
+e
+r
+e
+d
+ 
+F
+e
+d
+e
+r
+a
+l
+ 
+a
+i
+d
+ 
+P
+r
+e
+s
+i
+d
+e
+n
+t
+ 
+O
+b
+a
+m
+a
+ 
+d
+e
+c
+l
+a
+r
+e
+d
+ 
+a
+ 
+m
+a
+j
+o
+r
+ 
+d
+i
+s
+a
+s
+t
+e
+r
+ 
+e
+x
+i
+s
+t
+s
+ 
+i
+n
+ 
+t
+h
+e
+ 
+S
+t
+a
+t
+e
+ 
+o
+f
+ 
+F
+l
+o
+r
+i
+d
+a
+S
+
+H 
+H
+* 
+U 
+O
+Re
+gul
+ato
+rs 
+Fri
+day 
+shu
+t 
+do
+wn 
+a 
+sm
+all 
+Flo
+rida 
+ban
+k, 
+bri
+ngi
+ng 
+to 
+119 
+the 
+nu
+mb
+er 
+of 
+US 
+ban
+k 
+fail
+ure
+s 
+thi
+s 
+yea
+r 
+am
+id
+mo
+unti
+ng 
+loa
+n 
+def
+aul
+ts.
+R
+e
+g
+u
+l
+a
+t
+o
+r
+s
+ 
+s
+h
+u
+t
+ 
+d
+o
+w
+n
+ 
+s
+m
+a
+l
+l
+ 
+F
+l
+o
+r
+i
+d
+a
+ 
+b
+a
+n
+k
+ 
+R
+e
+g
+u
+l
+a
+t
+o
+r
+s
+ 
+s
+h
+u
+t
+ 
+d
+o
+w
+n
+ 
+a
+ 
+s
+m
+a
+l
+l
+ 
+F
+l
+o
+r
+i
+d
+a
+ 
+b
+a
+n
+k
+ 
+s
+h
+u
+t
+ 
+d
+o
+w
+n
+ 
+b
+r
+i
+n
+g
+i
+n
+g
+ 
+t
+h
+e
+ 
+n
+u
+m
+b
+e
+r
+ 
+o
+f
+ 
+f
+a
+i
+l
+u
+r
+e
+s
+ 
+R
+e
+g
+u
+l
+a
+t
+o
+r
+s
+ 
+s
+h
+u
+t
+ 
+d
+o
+w
+n
+ 
+a
+ 
+s
+m
+a
+l
+l
+ 
+F
+l
+o
+r
+i
+d
+a
+ 
+b
+a
+n
+k
+S
+
+H 
+H
+* 
+U 
+O
+Thr
+ee 
+me
+n 
+wer
+e 
+arr
+est
+ed 
+We
+dne
+sda
+y 
+nig
+ht 
+and 
+Da
+yto
+n 
+poli
+ce 
+sai
+d 
+the
+ir 
+arre
+sts 
+are 
+in 
+con
+nec
+tion 
+to a 
+wes
+t 
+Da
+yto
+n
+ban
+k 
+rob
+ber
+y.
+3 
+me
+n 
+arr
+est
+ed 
+in 
+con
+nec
+tion 
+wit
+h 
+Ba
+nk 
+rob
+ber
+y
+T
+h
+r
+e
+e
+ 
+m
+e
+n
+ 
+w
+e
+r
+e
+ 
+a
+r
+r
+e
+s
+t
+e
+d
+ 
+a
+r
+e
+ 
+i
+n
+ 
+c
+o
+n
+n
+e
+c
+t
+i
+o
+n
+ 
+t
+o
+ 
+a
+ 
+b
+a
+n
+k
+ 
+r
+o
+b
+b
+e
+r
+y
+ 
+w
+e
+r
+e
+ 
+a
+r
+r
+e
+s
+t
+e
+d
+ 
+a
+n
+d
+ 
+D
+a
+y
+t
+o
+n
+ 
+p
+o
+l
+i
+c
+e
+ 
+s
+a
+i
+d
+ 
+t
+h
+e
+i
+r
+ 
+a
+r
+r
+e
+s
+t
+s
+ 
+a
+r
+e
+Thr
+ee 
+me
+n 
+wer
+e 
+arr
+est
+ed 
+and 
+poli
+ce 
+sai
+d 
+the
+ir 
+arre
+sts 
+are
+S
+
+H 
+H
+* 
+U 
+O
+Th
+e 
+gov
+ern
+me
+nt 
+and 
+the 
+soc
+ial 
+par
+tne
+rs 
+will 
+res
+um
+e 
+the 
+talk
+s 
+on 
+the 
+intr
+odu
+ctio
+n 
+of 
+the 
+so-
+call
+ed 
+cris
+is 
+tax
+,
+w
+h
+i
+c
+h
+ 
+w
+i
+l
+l
+ 
+b
+e
+ 
+l
+e
+v
+i
+e
+d
+ 
+o
+n
+ 
+a
+l
+l
+ 
+s
+a
+l
+a
+r
+i
+e
+s
+,
+ 
+p
+e
+n
+s
+i
+o
+n
+s
+ 
+a
+n
+d
+ 
+i
+n
+c
+o
+m
+e
+s
+ 
+o
+v
+e
+r
+ 
+H
+R
+K
+ 
+3
+,
+0
+0
+0
+.
+ 
+G
+o
+v
+e
+r
+n
+m
+e
+n
+t
+,
+ 
+s
+o
+c
+i
+a
+l
+ 
+p
+a
+r
+t
+n
+e
+r
+s
+ 
+t
+o
+ 
+r
+e
+s
+u
+m
+e
+ 
+t
+a
+l
+k
+s
+ 
+o
+n
+ 
+i
+n
+t
+r
+o
+d
+u
+c
+t
+i
+o
+n
+ 
+o
+f
+ 
+“
+c
+r
+i
+s
+i
+s
+”
+ 
+t
+a
+x
+.
+T
+h
+e
+ 
+g
+o
+v
+e
+r
+n
+m
+e
+n
+t
+ 
+a
+n
+d
+ 
+t
+h
+e
+ 
+s
+o
+c
+i
+a
+l
+ 
+p
+a
+r
+t
+n
+e
+r
+s
+ 
+w
+i
+l
+l
+ 
+r
+e
+s
+u
+m
+e
+ 
+t
+h
+e
+ 
+t
+a
+l
+k
+s
+ 
+o
+n
+ 
+t
+h
+e
+ 
+i
+n
+t
+r
+o
+d
+u
+c
+t
+i
+o
+n
+ 
+o
+f
+ 
+t
+h
+e
+ 
+c
+r
+i
+s
+i
+s
+ 
+t
+a
+x
+ 
+T
+h
+e
+ 
+g
+o
+v
+e
+r
+n
+m
+e
+n
+t
+ 
+w
+i
+l
+l
+ 
+r
+e
+s
+u
+m
+e
+ 
+t
+h
+e
+ 
+t
+a
+l
+k
+s
+ 
+o
+n
+ 
+t
+h
+e
+ 
+i
+n
+t
+r
+o
+d
+u
+c
+t
+i
+o
+n
+ 
+o
+f
+ 
+t
+h
+e
+ 
+c
+r
+i
+s
+i
+s
+ 
+t
+a
+x
+ 
+w
+h
+i
+c
+h
+ 
+w
+i
+l
+l
+ 
+b
+e
+ 
+l
+e
+v
+i
+e
+d
+ 
+T
+h
+e
+ 
+g
+o
+v
+e
+r
+n
+m
+e
+n
+t
+ 
+a
+n
+d
+ 
+t
+h
+e
+ 
+s
+o
+c
+i
+a
+l
+ 
+p
+a
+r
+t
+n
+e
+r
+s
+ 
+w
+i
+l
+l
+ 
+r
+e
+s
+u
+m
+e
+ 
+t
+h
+e
+ 
+t
+a
+l
+k
+s
+ 
+o
+n
+ 
+t
+h
+e
+ 
+i
+n
+t
+r
+o
+d
+u
+c
+t
+i
+o
+n
+ 
+o
+f
+ 
+t
+h
+e
+ 
+c
+r
+i
+s
+i
+s
+ 
+t
+a
+x
+S
+
+H 
+H
+* 
+U 
+O
+E
+n
+g
+l
+a
+n
+d
+ 
+s
+t
+a
+r
+ 
+D
+a
+v
+i
+d
+ 
+B
+e
+c
+k
+h
+a
+m
+ 
+m
+a
+y
+ 
+h
+a
+v
+e
+ 
+t
+h
+e
+ 
+c
+h
+a
+n
+c
+e
+ 
+t
+o
+ 
+r
+e
+t
+u
+r
+n
+ 
+t
+o
+ 
+A
+C
+ 
+M
+i
+l
+a
+n
+ 
+a
+f
+t
+e
+r
+ 
+t
+h
+e
+ 
+I
+t
+a
+l
+i
+a
+n
+ 
+c
+l
+u
+b
+’
+s
+ 
+c
+o
+a
+c
+h
+ 
+s
+a
+i
+d
+h
+e
+ 
+w
+a
+s
+ 
+o
+p
+e
+n
+ 
+t
+o
+ 
+h
+i
+s
+ 
+m
+o
+v
+e
+ 
+o
+n
+ 
+S
+u
+n
+d
+a
+y
+.
+ 
+B
+e
+c
+k
+h
+a
+m
+ 
+h
+a
+s
+ 
+c
+h
+a
+n
+c
+e
+ 
+o
+f
+ 
+r
+e
+t
+u
+r
+n
+i
+n
+g
+ 
+t
+o
+ 
+M
+i
+l
+a
+n
+D
+a
+v
+i
+d
+ 
+B
+e
+c
+k
+h
+a
+m
+ 
+m
+a
+y
+ 
+h
+a
+v
+e
+ 
+t
+h
+e
+ 
+c
+h
+a
+n
+c
+e
+ 
+t
+o
+ 
+r
+e
+t
+u
+r
+n
+ 
+t
+o
+ 
+A
+C
+ 
+M
+i
+l
+a
+n
+ 
+D
+a
+v
+i
+d
+ 
+B
+e
+c
+k
+h
+a
+m
+ 
+m
+a
+y
+ 
+h
+a
+v
+e
+ 
+t
+h
+e
+ 
+c
+h
+a
+n
+c
+e
+ 
+t
+o
+ 
+r
+e
+t
+u
+r
+n
+ 
+s
+a
+i
+d
+ 
+s
+t
+a
+r
+ 
+w
+a
+s
+ 
+D
+a
+v
+i
+d
+ 
+B
+e
+c
+k
+h
+a
+m
+ 
+m
+a
+y
+ 
+h
+a
+v
+e
+ 
+t
+h
+e
+ 
+c
+h
+a
+n
+c
+e
+ 
+t
+o
+ 
+r
+e
+t
+u
+r
+n
+ 
+t
+o
+ 
+A
+C
+ 
+M
+i
+l
+a
+n
+S
+
+H 
+H
+* 
+U 
+O
+Ea
+ster
+n 
+He
+alth 
+and 
+its 
+ins
+ura
+nce 
+co
+mp
+any 
+hav
+e 
+acc
+ept
+ed 
+lia
+bilit
+y 
+for 
+so
+me 
+pati
+ent
+s 
+inv
+olv
+ed 
+in 
+the 
+bre
+ast 
+ca
+nc
+er
+t
+e
+s
+t
+i
+n
+g
+ 
+s
+c
+a
+n
+d
+a
+l
+,
+ 
+a
+c
+c
+o
+r
+d
+i
+n
+g
+ 
+t
+o
+ 
+a
+ 
+s
+t
+a
+t
+e
+m
+e
+n
+t
+ 
+r
+e
+l
+e
+a
+s
+e
+d
+ 
+F
+r
+i
+d
+a
+y
+ 
+a
+f
+t
+e
+r
+n
+o
+o
+n
+.
+ 
+E
+a
+s
+t
+e
+r
+n
+ 
+H
+e
+a
+l
+t
+h
+ 
+a
+c
+c
+e
+p
+t
+s
+ 
+l
+i
+a
+b
+i
+l
+i
+t
+y
+ 
+f
+o
+r
+ 
+s
+o
+m
+e
+ 
+p
+a
+t
+i
+e
+n
+t
+s
+E
+a
+s
+t
+e
+r
+n
+ 
+H
+e
+a
+l
+t
+h
+ 
+h
+a
+v
+e
+ 
+a
+c
+c
+e
+p
+t
+e
+d
+ 
+l
+i
+a
+b
+i
+l
+i
+t
+y
+ 
+f
+o
+r
+ 
+s
+o
+m
+e
+ 
+p
+a
+t
+i
+e
+n
+t
+s
+ 
+H
+e
+a
+l
+t
+h
+ 
+h
+a
+v
+e
+ 
+a
+c
+c
+e
+p
+t
+e
+d
+ 
+l
+i
+a
+b
+i
+l
+i
+t
+y
+ 
+a
+c
+c
+o
+r
+d
+i
+n
+g
+ 
+t
+o
+ 
+a
+ 
+s
+t
+a
+t
+e
+m
+e
+n
+t
+ 
+E
+a
+s
+t
+e
+r
+n
+ 
+H
+e
+a
+l
+t
+h
+ 
+h
+a
+v
+e
+ 
+a
+c
+c
+e
+p
+t
+e
+d
+ 
+l
+i
+a
+b
+i
+l
+i
+t
+y
+ 
+f
+o
+r
+ 
+s
+o
+m
+e
+ 
+p
+a
+t
+i
+e
+n
+t
+s
+S
+
+H 
+H
+* 
+U 
+O
+Fro
+ntie
+r 
+Co
+mm
+uni
+cati
+ons 
+Cor
+p., 
+a 
+pro
+vid
+er 
+of 
+pho
+ne, 
+TV 
+and 
+Inte
+rnet 
+ser
+vic
+es, 
+sai
+d 
+Th
+urs
+da
+y
+i
+t
+ 
+h
+a
+s
+ 
+s
+t
+a
+r
+t
+e
+d
+ 
+a
+ 
+c
+a
+s
+h
+ 
+t
+e
+n
+d
+e
+r
+ 
+o
+f
+f
+e
+r
+ 
+t
+o
+ 
+p
+u
+r
+c
+h
+a
+s
+e
+ 
+u
+p
+ 
+t
+o
+ 
+$
+7
+0
+0
+ 
+m
+i
+l
+l
+i
+o
+n
+ 
+o
+f
+ 
+i
+t
+s
+ 
+n
+o
+t
+e
+s
+.
+ 
+F
+r
+o
+n
+t
+i
+e
+r
+ 
+C
+o
+m
+m
+u
+n
+i
+c
+a
+t
+i
+o
+n
+s
+ 
+s
+t
+a
+r
+t
+s
+ 
+t
+e
+n
+d
+e
+r
+ 
+o
+f
+f
+e
+r
+ 
+f
+o
+r
+ 
+u
+p
+ 
+t
+o
+ 
+$
+7
+0
+0
+ 
+m
+i
+l
+l
+i
+o
+n
+ 
+o
+f
+ 
+n
+o
+t
+e
+s
+Fro
+ntie
+r 
+Co
+mm
+uni
+cati
+ons  
+has 
+star
+ted 
+a 
+ten
+der 
+off
+er 
+to 
+pur
+cha
+se 
+$70
+0 
+mill
+ion 
+of 
+its 
+not
+es
+Fro
+ntie
+r 
+Co
+mm
+uni
+cati
+ons  
+sai
+d 
+Thu
+rsd
+ay 
+a 
+pro
+vid
+er 
+has 
+star
+ted 
+a 
+ten
+der 
+off
+er
+Fro
+ntie
+r 
+Co
+mm
+uni
+cati
+ons  
+has 
+star
+ted 
+a 
+ten
+der 
+off
+er 
+to 
+pur
+cha
+se 
+$70
+0 
+mill
+ion 
+of 
+its 
+not
+es
+
+
+References
+
+Bejan, C. & S. Harabagiu (2010).  Unsupervised 
+event coreference resolution  with rich linguistic 
+features. In Proc. of ACL-10, pp. 1412–1422.
+
+Belz, A., M. White, D. Espinosa, E. Kow, D. Hogan
+& A. Stent (2011). The first surface realization 
+shared task: Overview  and evaluation results.  In 
+Proc. of ENLG-11, pp. 217–226.
+
+Berg-Kirkpatrick, T., D. Gillick & D. Klein (2011).
+Jointly learning to extract and compress. In Proc. 
+of ACL-11.
+
+Clarke,  J. & M. Lapata (2006).  Models for sen- 
+tence compression: A  comparison  across  do- 
+mains, training requirements and evaluation mea- 
+sures. In Proc. of COLING-ACL-06, pp. 377–385.
+
+Clarke,  J. & M. Lapata (2008). Global inference 
+for sentence compression:  An integer linear pro- 
+gramming approach. Journal of Artificial Intelli- 
+gence Research, 31:399–429.
+
+Cohn, T. & M. Lapata (2009). Sentence compres- 
+sion as tree transduction.  Journal  of Artificial In- 
+telligence Research, 34:637–674.
+
+Collins, M. (2002). Discriminative training methods 
+for Hidden Markov Models: Theory  and exper- 
+iments with perceptron algorithms. In Proc. of 
+EMNLP-02, pp. 1–8.
+
+de Marneffe,  M.-C., B. MacCartney & C. D. Man- 
+ning (2006). Generating typed dependency parses 
+from phrase structure parses.  In Proc. of LREC-
+06, pp. 449–454.
+
+Dolan, B., C. Quirk & C. Brokett (2004). Unsu- 
+pervised construction of large paraphrase corpora: 
+Exploiting massively parallel  news sources. In 
+Proceedings of the 20th International  Conference 
+on Computational Linguistics,  Geneva, Switzer- 
+land, 23–27 August 2004, pp. 350–356.
+
+Dorr, B., D. Zajic & R. Schwartz (2003). Hedge 
+trimmer: A parse-and-trim approach to headline 
+generation.   In Proceedings of the Text Summa- 
+rization Workshop at HLT-NAACL-03, Edmonton, 
+Alberta, Canada, 2003, pp. 1–8.
+
+Elsner, M. & D. Santhanam (2011). Learning to fuse 
+disparate sentences. In Proceedings of the Work- 
+shop on Monolingual Text-to-text Generation, Prt- 
+land, OR, June 24 2011, pp. 54–63.
+
+Filippova, K. & M. Strube (2008). Dependency tree 
+based sentence compression.   In Proc. of INLG-
+08, pp. 25–32.
+
+Freund, Y. & R. E. Shapire (1999). Large margin 
+classification using the perceptron algorithm. Ma- 
+chine Learning, 37:277–296.
+
+Galanis, D. & I. Androutsopoulos (2010). An ex- 
+tractive supervised two-stage method for sentence 
+compression.	In Proc. of NAACL-HLT-10,  pp.
+885–893.
+
+Galanis, D. & I. Androutsopoulos (2011). A new 
+sentence compression dataset and its use in an ab- 
+stractive generate-and-rank sentence compressor. 
+In Proc. of UCNLG+Eval-11,  pp. 1–11.
+
+Galley, M. & K. R. McKeown (2007). Lexicalized 
+Markov grammars for sentence compression.  In 
+Proc. of NAACL-HLT-07, pp. 180–187.
+
+Gillick, D. & B. Favre (2009). A scalable global 
+model for summarization. In ILP for NLP-09, pp.
+10–18.
+
+Grefenstette, G. (1998). Producing intelligent tele- 
+graphic text reduction to provide an audio scan- 
+ning service for the blind.  In Working Notes of 
+the Workshop on Intelligent  Text Summarization, 
+Palo Alto, Cal., 23 March 1998, pp. 111–117.
+
+Hori, C. & S. Furui (2004).  Speech summariza- 
+tion: An approach through word extraction and 
+a method  for evaluation.  IEEE Transactions on 
+Information and Systems, E87-D(1):15–25.
+
+Jing, H. & K. McKeown (2000). Cut and paste based 
+text summarization.  In Proc. of NAACL-00, pp.
+178–185.
+
+Knight, K. & D. Marcu (2000).  Statistics-based 
+summarization – step one: Sentence compression. 
+In Proc. of AAAI-00, pp. 703–711.
+
+Mani, I. (2001). Automatic Summarization. Amster- 
+dam, Philadelphia: John Benjamins.
+
+
+McDonald, R. (2006). Discriminative sentence com- 
+pression with soft syntactic evidence. In Proc. of 
+EACL-06, pp. 297–304.
+
+Napoles, C., C. Callison-Burch,  J. Ganitkevitch  & 
+B. Van Durme (2011). Paraphrastic sentence com- 
+pression with a character-based  metric: Tighten- 
+ing without deletion. In Proceedings of the Work- 
+shop on Monolingual Text-to-text Generation, Prt- 
+land, OR, June 24 2011, pp. 84–90.
+
+Nivre, J. (2006).	Inductive  Dependency Parsing.
+Springer.
+
+Nomoto, T. (2008). A generic sentence trimmer with
+CRFs. In Proc. of ACL-HLT-08, pp. 299–307.
+
+Nomoto, T. (2009). A comparison of model free ver- 
+sus model intensive approaches to sentence com- 
+pression. In Proc. of EMNLP-09, pp. 391–399.
+
+Riezler, S., T. H. King, R. Crouch & A. Zaenen 
+(2003). Statistical  sentence condensation using 
+ambiguity  packing and stochastic disambiguation 
+methods for Lexical-Functional Grammar. In 
+Proc. of HLT-NAACL-03, pp. 118–125.
+
+Turner,  J. & E. Charniak (2005). Supervised and 
+unsupervised learning for sentence compression. 
+In Proc. of ACL-05, pp. 290–297.
+
+Woodsend, K. & M. Lapata (2010). Automatic gen- 
+eration of story highlights. In Proc. of ACL-10, 
+pp. 565–574.
+
+Woodsend, K. & M. Lapata (2012). Multiple as- 
+pect summarization  using Integer Linear Pro- 
+gramming. In Proc. of EMNLP-12, pp. 233–243.
+
+Wubben, S., A. van den Bosch, E. Krahmer & 
+E. Marsi (2009). Clustering and matching head- 
+lines for automatic  paraphrase acquisition.  In 
+Proc. of ENLG-09, pp. 122–125.
+
+Zajic, D., B. J. Dorr, J. Lin & R. Schwartz (2007).
+Multi-candidate reduction: Sentence compression 
+as a tool for document summarization tasks. In- 
+formation Processing & Management, Special Is- 
+sue on Text Summarization,  43(6):1549–1570.
+
+1491
+
+
+
