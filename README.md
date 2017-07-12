@@ -8,7 +8,7 @@ The CL-SciSumm Shared Task is run off the CL-SciSumm corpus, and comprises three
 
 For more details, see the Contents Section at the bottom of this Readme. To know how this corpus was constructed, please see ./docs/corpusconstruction.txt
 
-The CL-SciSumm 2017 task is open for registration! It will be collocated with <a href="http://sigir.org/sigir2017/">ACM SIGIR</a> 2017, Tokyo, Japan. 
+The CL-SciSumm 2017 task is now into the evaluation phase. Results will be released in the BIRNDL workshop collocated with <a href="http://sigir.org/sigir2017/">ACM SIGIR</a> 2017, Tokyo, Japan. 
 <a href="http://wing.comp.nus.edu.sg/cl-scisumm2017">Go to task website</a>.<br> 
 Register your team now via <a href ="https://easychair.org/conferences/?conf=birndl2017">easychair</a>
 
@@ -135,8 +135,8 @@ Citation Marker, Reference Text, and Discourse Facet for each citation of the RP
 For further information about this data release, contact the following members of the BRNDL 2017 workshop organising committee:
 
 * <a href="https://kokiljaidka.wordpress.com/">Kokil Jaidka</a> (University of Pennsylvania) kokil.j@gmail.com
-* <a href="http://www.comp.nus.edu.sg/~kanmy/index.html">Min-Yen Kan</a> (Dept. of Computer Science, School of Computing, National University of Singapore) kanmy@comp.nus.edu.sg
 * <a href="http://www.comp.nus.edu.sg/~a0092669/">Muthu Kumar Chandrasekaran</a> (Dept. of Computer Science, School of Computing, National University of Singapore) muthu.chandra@comp.nus.edu.sg
+* <a href="http://www.comp.nus.edu.sg/~kanmy/index.html">Min-Yen Kan</a> (Dept. of Computer Science, School of Computing, National University of Singapore) kanmy@comp.nus.edu.sg
 
 --------------------------------------------------------------------------
 
