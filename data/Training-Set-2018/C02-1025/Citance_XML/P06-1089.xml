@@ -1,0 +1,253 @@
+<PAPER>
+	<ABSTRACT>
+		<S sid ="1" ssid = "1">In this paper, we present a method for guessing POS tags of unknown words using local and global information.</S>
+		<S sid ="2" ssid = "2">Although many existing methods use only local information (i.e. limited window size or intrasentential features), global information (extra-sentential features) provides valuable clues for predicting POS tags of unknown words.</S>
+		<S sid ="3" ssid = "3">We propose a probabilistic model for POS guessing of unknown words using global information as well as local information, and estimate its parameters using Gibbs sampling.</S>
+		<S sid ="4" ssid = "4">We also attempt to apply the model to semi- supervised learning, and conduct experiments on multiple corpora.</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number = "1">
+			<S sid ="5" ssid = "5">Part-of-speech (POS) tagging is a fundamental language analysis task.</S>
+			<S sid ="6" ssid = "6">In POS tagging, we frequently encounter words that do not exist in training data.</S>
+			<S sid ="7" ssid = "7">Such words are called unknown words.</S>
+			<S sid ="8" ssid = "8">They are usually handled by an exceptional process in POS tagging, because the tagging system does not have information about the words.</S>
+			<S sid ="9" ssid = "9">Guessing the POS tags of such unknown words is a difficult task.</S>
+			<S sid ="10" ssid = "10">But it is an important issue both for conducting POS tagging accurately and for creating word dictionaries automatically or semi- automatically.</S>
+			<S sid ="11" ssid = "11">There have been many studies on POS guessing of unknown words (Mori and Nagao, 1996; Mikheev, 1997; Chen et al., 1997; Nagata, 1999; Orphanos and Christodoulakis, 1999).</S>
+			<S sid ="12" ssid = "12">In most of these previous works, POS tags of unknown words were predicted using only local information, such as lexical forms and POS tags of surrounding words or word-internal features (e.g. suffixes and character types) of the unknown words.</S>
+			<S sid ="13" ssid = "13">However, this approach has limitations in available information.</S>
+			<S sid ="14" ssid = "14">For example, common nouns and proper nouns are sometimes difficult to distinguish with only the information of a single occurrence because their syntactic functions are almost identical.</S>
+			<S sid ="15" ssid = "15">In English, proper nouns are capitalized and there is generally little ambiguity between common nouns and proper nouns.</S>
+			<S sid ="16" ssid = "16">In Chinese and Japanese, no such convention exists and the problem of the ambiguity is serious.</S>
+			<S sid ="17" ssid = "17">However, if an unknown word with the same lex ical form appears in another part with informative local features (e.g. titles of persons), this will give useful clues for guessing the part-of-speech of the ambiguous one, because unknown words with the same lexical form usually have the same part-of-speech.</S>
+			<S sid ="18" ssid = "18">For another example, there is a part-of-speech named sahen-noun (verbal noun) in Japanese.</S>
+			<S sid ="19" ssid = "19">Verbal nouns behave as common nouns, except that they are used as verbs when they are followed by a verb “suru”; e.g., a verbal noun “dokusho” means “reading” and “dokushosuru” is a verb meaning to “read books”.</S>
+			<S sid ="20" ssid = "20">It is difficult to distinguish a verbal noun from a common noun if it is used as a noun.</S>
+			<S sid ="21" ssid = "21">However, it will be easy if we know that the word is followed by “suru” in another part in the document.</S>
+			<S sid ="22" ssid = "22">This issue was mentioned by Asahara (2003) as a problem of possibility-based POS tags.</S>
+			<S sid ="23" ssid = "23">A possibility-based POS tag is a POS tag that represents all the possible properties of the word (e.g., a verbal noun is used as a noun or a verb), rather than a property of each instance of the word.</S>
+			<S sid ="24" ssid = "24">For example, a sahen- noun is actually a noun that can be used as a verb when it is followed by “suru”.</S>
+			<S sid ="25" ssid = "25">This property cannot be confirmed without observing real usage of the word appearing with “suru”.</S>
+			<S sid ="26" ssid = "26">Such POS tags may not be identified with only local information of one instance, because the property that each instance has is only one among all the possible properties.</S>
+			<S sid ="27" ssid = "27">To cope with these issues, we propose a method that uses global information as well as local information for guessing the parts-of-speech of unknown words.</S>
+			<S sid ="28" ssid = "28">With this method, all the occurrences of the unknown words in a document1 are taken into consideration at once, rather than that each occurrence of the words is processed separately.</S>
+			<S sid ="29" ssid = "29">Thus, the method models the whole document and finds a set of parts-of-speech by maximizing its conditional joint probability given the document, rather than independently maximizing the probability of each part-of-speech given each sentence.</S>
+			<S sid ="30" ssid = "30">Global information is known to be useful in other NLP tasks, especially in the named entity recognition task, and several studies successfully used global features (Chieu and Ng, 2002; Finkel et al., 2005).</S>
+			<S sid ="31" ssid = "31">One potential advantage of our method is its 1 In this paper, we use the word document to denote the whole data consisting of multiple sentences (training corpus or test corpus).</S>
+			<S sid ="32" ssid = "32">705 Proceedings of the 21st International Conference on Computational Linguistics and 44th Annual Meeting of the ACL, pages 705–712, Sydney, July 2006.</S>
+			<S sid ="33" ssid = "33">Qc 2006 Association for Computational Linguistics ability to incorporate unlabeled data.</S>
+			<S sid ="34" ssid = "34">Global features can be increased by simply adding unlabeled data into the test data.</S>
+			<S sid ="35" ssid = "35">Models in which the whole document is taken into consideration need a lot of computation compared to models with only local features.</S>
+			<S sid ="36" ssid = "36">They also cannot process input data one-by-one.</S>
+			<S sid ="37" ssid = "37">Instead, the entire document has to be read before processing.</S>
+			<S sid ="38" ssid = "38">We adopt Gibbs sampling in order to compute the models efficiently, and these models are suitable for offline use such as creating dictionaries from raw text where real-time processing is not necessary but high-accuracy is needed to reduce human labor required for revising automatically analyzed data.</S>
+			<S sid ="39" ssid = "39">The rest of this paper is organized as follows: Section 2 describes a method for POS guessing of unknown words which utilizes global information.</S>
+			<S sid ="40" ssid = "40">Section 3 shows experimental results on multiple corpora.</S>
+			<S sid ="41" ssid = "41">Section 4 discusses related work, and Takamura et al.</S>
+			<S sid ="42" ssid = "42">(2005) applied this model to an NLP task, semantic orientation extraction, and we apply it to POS guessing of unknown words here.</S>
+			<S sid ="43" ssid = "43">Suppose that unknown words with the same lexical form appear K times in a document.</S>
+			<S sid ="44" ssid = "44">Assume that the number of possible POS tags for unknown words is N , and they are represented by integers from 1 to N . Let tk denote the POS tag of the kth occurrence of the unknown words, let wk denote the local context (e.g. the lexical forms and the POS tags of the surrounding words) of the kth occurrence of the unknown words, and let w and t denote the sets of wk and tk respectively: w = {w1 , · · · , wK }, t = {t1 , · · · , tK }, tk ∈ {1, · · · , N }.</S>
+			<S sid ="45" ssid = "45">λi,j is a weight which denotes strength of the interaction between parts-of-speech i and j, and is symmetric (λi,j = λj,i).</S>
+			<S sid ="46" ssid = "46">We define the energy where POS tags of unknown words given w are t as follows: 1 K K K Section 5 gives conclusions.</S>
+	</SECTION>
+	<SECTION title="POS Guessing of Unknown Words with. " number = "2">
+			<S sid ="47" ssid = "1">E(t|w)=− λt ,t 2 kt k=1 kt =1 kt j=k + log p0 (tk |wk ) k=1 , (3) Global Information We handle POS guessing of unknown words as a sub-task of POS tagging, in this paper.</S>
+			<S sid ="48" ssid = "2">We assume that POS tags of known words are already determined beforehand, and positions in the document where unknown words appear are also identified.</S>
+			<S sid ="49" ssid = "3">Thus, we focus only on prediction of the POS tags of unknown words.</S>
+			<S sid ="50" ssid = "4">In the rest of this section, we first present a model for POS guessing of unknown words with global information.</S>
+			<S sid ="51" ssid = "5">Next, we show how the test data is analyzed and how the parameters of the model are estimated.</S>
+			<S sid ="52" ssid = "6">A method for incorporating where p0(t|w) is an initial distribution (local model) of the part-of-speech t which is calculated with only the local context w, using arbitrary statistical models such as maximum entropy models.</S>
+			<S sid ="53" ssid = "7">The right hand side of the above equation consists of two components; one represents global interactions between each pair of parts-of-speech, and the other represents the effects of local information.</S>
+			<S sid ="54" ssid = "8">In this study, we fix the inverse temperature β = 1.</S>
+			<S sid ="55" ssid = "9">The distribution of t is then obtained from Equation (1), (2) and (3) as follows: 1 1 K K unlabeled data with the model is also discussed.</S>
+			<S sid ="56" ssid = "10">2.1 Probabilistic Model Using Global.</S>
+			<S sid ="57" ssid = "11">P (t|w)= Z (w) p0 (t|w) exp 2 k=1 kt =1 kt j=k λtk ,tkt , (4) Information 1 K K We attempt to model the probability distribution of the parts-of-speech of all occurrences of the unknown words in a document which have the Z (w)= p0 (t|w) exp t∈T (w) K λt ,t 2 kt k=1 kt =1 kt j=k , (5)same lexical form.</S>
+			<S sid ="58" ssid = "12">We suppose that such parts of-speech have correlation, and the part-of-speech of each occurrence is also affected by its local context.</S>
+			<S sid ="59" ssid = "13">Similar situations to this are handled in physics.</S>
+			<S sid ="60" ssid = "14">For example, let us consider a case where a number of electrons with spins exist in a system.</S>
+			<S sid ="61" ssid = "15">The spins interact with each other, and each spin is also affected by the external magnetic field.</S>
+			<S sid ="62" ssid = "16">In the p0 (t|w)≡n p0 (tk |wk ), (6) k=1 where T (w) is the set of possible configurations of POS tags given w. The size of T (w) is N K , because there are K occurrences of the unknown words and each unknown word can have one of N POS tags.</S>
+			<S sid ="63" ssid = "17">The above equations can be rewritten as follows by defining a function fi,j (t): physical model, if the state of the system is s and K K 1 the energy of the system is E(s), the probability distribution of s is known to be represented by the following Boltzmann distribution: fi,j (t)≡ δ(tk , i)δ(tkt , j), (7) 2 k=1 kt =1 kt j=k P (s)= 1 exp{−βE(s)}, (1) 1 Z P (t|w)= Z (w) p0 (t|w) exp N N λi,j fi,j (t) , (8) izing constant defined as follows: N N Z = exp{−βE(s)}.</S>
+			<S sid ="64" ssid = "18">(2) s Z (w)= t∈T (w) p0 (t|w) exp λi,j fi,j (t) i=1 j=1 , (9) where δ(i, j) is the Kronecker delta: δ(i, j)=f 1 (i = j), 0 i = j initialize t(1) for m := 2 to M for k := 1 to K t(m) (m) (m) (m−1) (m−1) fi,j (t) represents the number of occurrences of the POS tag pair i and j in the whole document (divided by 2), and the model in Equation (8) is essentially a maximum entropy model with the document level features.</S>
+			<S sid ="65" ssid = "19">As shown above, we consider the conditional k ∼ P (tk |w, t1 , · · · , tk−1 , tk+1 , · · · , tK ) Figure 1: Gibbs Sampling is a distribution of x, and {x(1), · · · , x(M )} are M samples generated from P (x).</S>
+			<S sid ="66" ssid = "20">Then, the expectation of A(x) over P (x) is approximated by the joint probability of all the occurrences of the unknown words with the same lexical form in the samples: 1 A(x)P (x)c: M A(x(m) ).</S>
+			<S sid ="67" ssid = "21">(13) document given their local contexts, P (t|w), in M x m=1 contrast to conventional approaches which assume independence of the sentences in the document and use the probabilities of all the words only in a sentence.</S>
+			<S sid ="68" ssid = "22">Note that we assume independence between the unknown words with different lexical Thus, if we have M samples {t(1), · · · , t(M )} generated from the conditional joint distribution P (t|w), the marginal distribution of each POS tag is approximated as follows: M 1 forms, and each set of the unknown words with the same lexical form is processed separately from the Pk (t|w)c: M m=1 δ(t(m) , t).</S>
+			<S sid ="69" ssid = "23">(14) sets of other unknown words.</S>
+			<S sid ="70" ssid = "24">2.2 Decoding.</S>
+			<S sid ="71" ssid = "25">Let us consider how to find the optimal POS tags t basing on the model, given K local contexts of the unknown words with the same lexical form (test data) w, an initial distribution p0(t|w) and a set of model parameters Λ = {λ1,1, · · · , λN,N }.</S>
+			<S sid ="72" ssid = "26">One way to do this is to find a set of POS tags which maximizes P (t|w) among all possible candidates of t. However, the number of all possible candidates of the POS tags is N K and the calculation is generally intractable.</S>
+			<S sid ="73" ssid = "27">Although HMMs, MEMMs, and CRFs use dynamic programming and some studies with probabilistic models which have specific structures use efficient algorithms (Wang et al., 2005), such methods cannot be applied here because we are considering interactions (dependencies) between all POS tags, and their joint dis Next, we describe how to generate samples from the distribution.</S>
+			<S sid ="74" ssid = "28">We use Gibbs sampling for this purpose.</S>
+			<S sid ="75" ssid = "29">Gibbs sampling is one of the Markov chain Monte Carlo (MCMC) methods, which can generate samples efficiently from high- dimensional probability distributions (Andrieu et al., 2003).</S>
+			<S sid ="76" ssid = "30">The algorithm is shown in Figure 1.</S>
+			<S sid ="77" ssid = "31">The algorithm firstly set the initial state t(1), then one new random variable is sampled at a time from the conditional distribution in which all other variables are fixed, and new samples are cre ated by repeating the process.</S>
+			<S sid ="78" ssid = "32">Gibbs sampling is easy to implement and is guaranteed to converge to the true distribution.</S>
+			<S sid ="79" ssid = "33">The conditional distribution P (tk |w, t1, · · · , tk−1, tk+1, · · · , tK ) in Figure 1 can be calculated simply as follows: P (tk |w, t1 , · · · , tk−1 , tk+1 , · · · , tK ) = P (t|w) , P (t1 , · · · , tk−1 , tk+1 , · · · , tK |w) Z(w) p0 (t|w) exp{ 2 t =1 ktt =1 λt ,t tribution cannot be decomposed.</S>
+			<S sid ="80" ssid = "34">Therefore, we 1 = N P (t , 1 K k , t , t∗ , t K ktt j=kt , kt ktt } , , t w)use a sampling technique and approximate the so tk =1 1 · · · k−1 k k+1 · · · K | lution using samples obtained from the probability p0 (tk |wk ) exp{ K kt j=k λtkt ,tk } , (15) distribution.</S>
+			<S sid ="81" ssid = "35">= N p (t∗ K ∗ 0 k |wk ) exp{ kt =1 λtkt ,t∗ } We can obtain a solution ˆt = {tˆ1, · · · , tˆK } as tk =1 kt j=k k follows: tˆk =argmax Pk (t|w), (11) where the last equati on is obtain ed using the followin g relatio n: t where Pk (t|w) is the marginal distribution of the K K K 1 1 λtkt ,tktt = K λtkt ,tktt + K λtkt ,tk . part-of-speech of the kth occurrence of the unknown words given a set of local contexts w, and 2 kt =1 ktt =1 ktt j=kt 2 kt =1 ktt =1 kt j=k ktt j=k,ktt j=kt kt =1 kt j=k is calculated as an expected value over the distribution of the unknown words as follows: In later experiments, the number of samples M is set to 100, and the initial state t(1) is set to the POS Pk (t|w)= t1 ,···,tk−1 ,tk+1 ,···,tK tk =t P (t|w), tags which maximize p0(t|w).</S>
+			<S sid ="82" ssid = "36">The optimal solution obtained by Equation (11) maximizes the probability of each POS tag given = t∈T (w) δ(tk , t)P (t|w).</S>
+			<S sid ="83" ssid = "37">( 12) w, and this kind of approach is known as the maximum posterior marginal (MPM) estimate (Marro Expected values can be approximately calculated using enough number of samples generated from the distribution (MacKay, 2003).</S>
+			<S sid ="84" ssid = "38">Suppose that A(x) is a function of a random variable x, P (x) quin, 1985).</S>
+			<S sid ="85" ssid = "39">Finkel et al.</S>
+			<S sid ="86" ssid = "40">(2005) used simulated annealing with Gibbs sampling to find a solution in a similar situation.</S>
+			<S sid ="87" ssid = "41">Unlike simulated annealing, this approach does not need to define a cooling schedule.</S>
+			<S sid ="88" ssid = "42">Furthermore, this approach can obtain not only the best solution but also the second best 1 c: M M exp N N λi,j fi,j (t(m) ) .</S>
+			<S sid ="89" ssid = "43">(18) or the other solutions according to Pk (t|w), which m=1 i=1 j=1 are useful when this method is applied to semiautomatic construction of dictionaries because human annotators can check the ranked lists of candidates.The term in Equation (17) can also be approxi mated using M samples {t(1), · · · , t(M )} generated from PΛ(t|wl ) with Gibbs sampling: M 1 2.3 Parameter Estimation.</S>
+			<S sid ="90" ssid = "44">t∈T (wl ) fi,j (t)PΛ (t|wl )c: m=1 fi,j (t(m) ).</S>
+			<S sid ="91" ssid = "45">(19) Let us consider how to estimate the parameter Λ = {λ1,1, · · · , λN,N } in Equation (8) from training data consisting of L examples; {(w1, t1), · · · , (wL, tL)} (i.e., the training data contains L different lexical forms of unknown words).</S>
+			<S sid ="92" ssid = "46">We define the following objective function LΛ, and find Λ which maximizes LΛ (the subscript Λ denotes being parameterized by Λ): L LΛ = log n PΛ (tl |wl ) + log P (Λ), l=1 In later experiments, the initial state t(1) in Gibbs sampling is set to the gold standard tags in the training data.</S>
+			<S sid ="93" ssid = "47">2.4 Use of Unlabeled Data.</S>
+			<S sid ="94" ssid = "48">In our model, unlabeled data can be easily used by simply concatenating the test data and the unlabeled data, and decoding them in the testing phase.</S>
+			<S sid ="95" ssid = "49">Intuitively, if we increase the amount of the test data, test examples with informative local features may increase.</S>
+			<S sid ="96" ssid = "50">The POS tags of such examples can L = log n 1 ZΛ (wl ) p0 (tl |wl ) exp N N λi,j fi,j (tl ) be easily predicte d, and they are used as global features in predicti on of other example s. Thus, l=1 + log P (Λ), L r i=1 j=1 N N this method uses unlabele d data in only the test l ing phase, and the training phase is the same as = l=1 −log ZΛ (wl )+log p0 (tl |wl )+ i=1 j=1 λi,j fi,j (tl ) the case with no unlab eled data.</S>
+			<S sid ="97" ssid = "51">+ log P (Λ).</S>
+			<S sid ="98" ssid = "52">(16) The partial derivatives of the objective function are:</S>
+	</SECTION>
+	<SECTION title="Experiments. " number = "3">
+			<S sid ="99" ssid = "1">3.1 Data and Procedure.</S>
+			<S sid ="100" ssid = "2">∂LΛ = ∂λi,j L r f l=1 i,j (tl ) ∂ ∂λi ,j log ZΛ l (wl ) + ∂ ∂ λ i, j log P (Λ), We use eight corpor a for our experi ments; the Penn Chines e Treeba nk corpus 2.0 (CTB), a part of the PFR corpus (PFR), the EDR corpus (EDR), L r = fi,j (tl ) − l fi,j (t)PΛ (t|wl ) + ∂ ∂λi,j log P (Λ).</S>
+			<S sid ="101" ssid = "3">the Kyoto University corpus version 2 (KUC), the RWCP corpus (RWC), the GENIA corpus 3.02p l=1 t∈T (wl ) (17) (GEN ), the SUSA NNE corpu s (SUS) and the Penn We use Gaussian priors (Chen and Rosenfeld, 1999) for P (Λ): Treebank WSJ corpus (WSJ), (cf.</S>
+			<S sid ="102" ssid = "4">Table 1).</S>
+			<S sid ="103" ssid = "5">All the corpora are POS tagged corpora in Chinese(C), N N 2 i,j ∂ λi,j English(E) or Japanese(J), and they are split into log P (Λ)=− i=1 j=1 2σ2 + C, ∂λi,j log P (Λ) = − σ2 . three portions; training data, test data and unlabeled data.</S>
+			<S sid ="104" ssid = "6">The unlabeled data is used in ex where C is a constant and σ is set to 1 in later experiments.</S>
+			<S sid ="105" ssid = "7">The optimal Λ can be obtained by quasi-Newton methods using the above LΛ and ∂λi,j , and we use L-BFGS (Liu and Nocedal, 1989) for this purpose2.</S>
+			<S sid ="106" ssid = "8">However, the calculation is intractable because ZΛ(wl ) (see Equation (9)) in Equation (16) and a term in Equation (17) contain summations over all the possible POS tags.</S>
+			<S sid ="107" ssid = "9">To cope with the problem, we use the sampling technique again for the calculation, as suggested by Rosenfeld et al.</S>
+			<S sid ="108" ssid = "10">(2001).</S>
+			<S sid ="109" ssid = "11">ZΛ(wl ) can be approximated using M samples {t(1), · · · , t(M )} generated from p0(t|wl ): periments of semi-supervised learning, and POS tags of unknown words in the unlabeled data are eliminated.</S>
+			<S sid ="110" ssid = "12">Table 1 summarizes detailed information about the corpora we used: the language, the number of POS tags, the number of open class tags (POS tags that unknown words can have, described later), the sizes of training, test and unlabeled data, and the splitting method of them.</S>
+			<S sid ="111" ssid = "13">For the test data and the unlabeled data, unknown words are defined as words that do not appear in the training data.</S>
+			<S sid ="112" ssid = "14">The number of unknown words in the test data of each corpus is shown in Table 1, parentheses.</S>
+			<S sid ="113" ssid = "15">Accuracy of POS guessing of unknown words is calculated based on how many ZΛ (wl )= p0 (t|wl ) exp N N λi,j fi,j (t) , words among them are correctly POS guessed.</S>
+			<S sid ="114" ssid = "16">Figure 2 shows the procedu re of the experi t∈T (wl ) i=1 j=1 ments.</S>
+			<S sid ="115" ssid = "17">We split the training data into two parts; 2 In later experiments, L-BFGS often did not converge completely because we used approximation with Gibbs sampling, and we stopped iteration of L-BFGS in such cases.</S>
+			<S sid ="116" ssid = "18">the first half as sub-training data 1 and the latter half as sub-training data 2 (Figure 2, *1).</S>
+			<S sid ="117" ssid = "19">Then, we check the words that appear in the sub-training Corpus (Lang.)</S>
+			<S sid ="118" ssid = "20"># of POS (Open Class) # of Tokens (# of Unknown Words) [partition in the corpus] Training Test Unlabeled CTB (C) 34 (28) 84,937 [sec.</S>
+			<S sid ="119" ssid = "21">1–270] 7,980 (749) [sec.</S>
+			<S sid ="120" ssid = "22">271–300] 6,801 [sec.</S>
+			<S sid ="121" ssid = "23">301–325] PFR (C) 42 (39) 304,125 [Jan. 1–Jan. 9] 370,627 (27,774) [Jan. 10–Jan. 19] 445,969 [Jan. 20–Jan. 31] EDR (J) 15 (15) 2,550,532 [id = 4n + 0, id = 4n + 1] 1,280,057 (24,178) [id = 4n + 2] 1,274,458 [id = 4n + 3] KUC (J) 40 (36) 198,514 [Jan. 1–Jan. 8] 31,302 (2,477) [Jan. 9] 41,227 [Jan. 10] RWC (J) 66 (55) 487,333 [1–10,000th sentences] 190,571 (11,177) [10,001–14,000th sentences] 210,096 [14,001–18,672th sentences] GEN (E) 47 (36) 243,180 [1–10,000th sentences] 123,386 (7,775) [10,001–15,000th sentences] 134,380 [15,001–20,546th sentences] SUS (E) 125 (90) 74,902 [sec.</S>
+			<S sid ="122" ssid = "24">A01–08, G01–08, J01–08, N01–08] 37,931 (5,760) [sec.</S>
+			<S sid ="123" ssid = "25">A09–12, G09–12, J09– 17, N09–12] 37,593 [sec.</S>
+			<S sid ="124" ssid = "26">A13–20, G13–22, J21–24, N13–18] WSJ (E) 45 (33) 912,344 [sec.</S>
+			<S sid ="125" ssid = "27">0–18] 129,654 (4,253) [sec.</S>
+			<S sid ="126" ssid = "28">22–24] 131,768 [sec.</S>
+			<S sid ="127" ssid = "29">19–21] Table 1: Statistical Information of Corpora Corpus Training Data Test Data Unlabeled Data Sub- Training data 1 (*1) Sub- Training data 2 (*1) (optional) Sub-Local Model 1 (*3) Sub-Local Model 2 (*3) Local Model (*2) Global Model Test Result model parameters and training data are necessary to estimate the global model parameters , but the global model parameters cannot be estimated from the same training data from which the local model parameters are estimated.</S>
+			<S sid ="128" ssid = "30">In order to estimate the global model parameters , we firstly train sub local models 1 and 2 from the sub training data 1 and 2 respectivel y (Figure 2, *3).</S>
+			<S sid ="129" ssid = "31">The sub local models 1 and 2 are used for calculating p0(t|w) of unknown words in the sub training data 2 and 1 re Data flow for training Data flow for testing Figure 2: Experimental Procedure data 1 but not in the sub-training data 2, or vice versa.</S>
+			<S sid ="130" ssid = "32">We handle these words as (pseudo) unknown words in the training data.</S>
+			<S sid ="131" ssid = "33">Such (twofold) cross-validation is necessary to make training examples that contain unknown words3.</S>
+			<S sid ="132" ssid = "34">POS tags that these pseudo unknown words have are defined as open class tags, and only the open class tags are considered as candidate POS tags for unknown words in the test data (i.e., N is equal to the number of the open class tags).</S>
+			<S sid ="133" ssid = "35">In the training phase, we need to estimate two types of parameters; local model (parameters), which is necessary to calculate p0(t|w), and global model (parameters), i.e., λi,j . The local model parameters are estimated using all the training data (Figure 2, *2).</S>
+			<S sid ="134" ssid = "36">Local 3 A major method for generating such pseudo unknown words is to collect the words that appear only once in a corpus (Nagata, 1999).</S>
+			<S sid ="135" ssid = "37">These words are called hapax legomena and known to have similar characteristics to real unknown words (Baayen and Sproat, 1996).</S>
+			<S sid ="136" ssid = "38">These words are interpreted as being collected by the leave-one-out technique (which is a special case of cross-validation) as follows: One word is picked from the corpus and the rest of the corpus is considered as training data.</S>
+			<S sid ="137" ssid = "39">The picked word is regarded as an unknown word if it does not exist in the training data.</S>
+			<S sid ="138" ssid = "40">This procedure is iterated for all the words in the corpus.</S>
+			<S sid ="139" ssid = "41">However, this approach is not applicable to our experiments because those words that appear only once in the corpus do spectively, when the global model parameters are estimated from the entire training data.</S>
+			<S sid ="140" ssid = "42">In the testing phase, p0(t|w) of unknown words in the test data are calculated using the local model parameters which are estimated from the entire training data, and test results are obtained using the global model with the local model.</S>
+			<S sid ="141" ssid = "43">Global information cannot be used for unknown words whose lexical forms appear only once in the training or test data, so we process only non- unique unknown words (unknown words whose lexical forms appear more than once) using the proposed model.</S>
+			<S sid ="142" ssid = "44">In the testing phase, POS tags of unique unknown words are determined using only the local information, by choosing POS tags which maximize p0(t|w).</S>
+			<S sid ="143" ssid = "45">Unlabeled data can be optionally used for semi- supervised learning.</S>
+			<S sid ="144" ssid = "46">In that case, the test data and the unlabeled data are concatenated, and the best POS tags which maximize the probability of the mixed data are searched.</S>
+			<S sid ="145" ssid = "47">3.2 Initial Distribution.</S>
+			<S sid ="146" ssid = "48">In our method, the initial distribution p0(t|w) is used for calculating the probability of t given local context w (Equation (8)).</S>
+			<S sid ="147" ssid = "49">We use maximum entropy (ME) models for the initial distribution.</S>
+			<S sid ="148" ssid = "50">p0(t|w) is calculated by ME models as follows (Berger et al., 1996): H 1 not have global information and are useless for learning the global model, so we use the twofold cross validation method.</S>
+			<S sid ="149" ssid = "51">p0 (t|w)= Y (w) exp h=1 αh gh (w, t) , (20) Language Features English Prefixes of ω0 up to four characters, suffixes of ω0 up to four characters, ω0 contains Arabic numerals, ω0 contains uppercase characters, ω0 contains hyphens.</S>
+			<S sid ="150" ssid = "52">Chinese Japanese Prefixes of ω0 up to two characters, suffixes of ω0 up to two characters, ψ1 , ψ|ω0 |, ψ1 &amp; ψ|ω0 |, |ω0 | i=1 {ψi } (set of character types).</S>
+			<S sid ="151" ssid = "53">(common) |ω0 | (length of ω0 ), τ−1 , τ+1 , τ−2 &amp; τ−1 , τ+1 &amp; τ+2 , τ−1 &amp; τ+1 , ω−1 &amp; τ−1 , ω+1 &amp; τ+1 , ω−2 &amp; τ−2 &amp; ω−1 &amp; τ−1 , ω+1 &amp; τ+1 &amp; ω+2 &amp; τ+2 , ω−1 &amp; τ−1 &amp; ω+1 &amp; τ+1 . Table 2: Features Used for Initial Distribution Y (w)= N t=1 exp H h=1 αh gh (w, t) , (21) where gh(w, t) is a binary feature function.</S>
+			<S sid ="152" ssid = "54">We assume that each local context w contains the following information about the unknown word: • The POS tags of the two words on each side 4 Table 4: Ordered List of Increased/Decreased Number of Correctly Tagged Words of the unknown word: τ−2, τ−1, τ+1, τ+2.</S>
+			<S sid ="153" ssid = "55">• The lexical forms of the unknown word itself tags ˆt = bilities {tˆ1, · · · , tˆK }which maximize the probaand the two words on each side of the un known word: ω−2, ω−1, ω0, ω+1, ω+2.</S>
+			<S sid ="154" ssid = "56">• The character types of all the characters composing the unknown word: ψ1, · · · , ψ|ω0 |.</S>
+			<S sid ="155" ssid = "57">We use six character types: alphabet, numeral (Arabic and Chinese numerals), symbol, Kanji (Chinese character), Hiragana (Japanese script) and Katakana (Japanese script).</S>
+			<S sid ="156" ssid = "58">A feature function gh(w, t) returns 1 if w and t satisfy certain conditions, and otherwise 0; for example: of the local model: tˆk =argmax p0 (t|wk ).</S>
+			<S sid ="157" ssid = "59">(22) t The table shows the accuracies, the numbers of errors, the p-values of McNemar’s test against the results using only local information, and the numbers of non-unique unknown words in the test data.</S>
+			<S sid ="158" ssid = "60">On an Opteron 250 processor with 8GB of RAM, model parameter estimation and decoding without unlabeled data for the eight corpora took 117 minutes and 39 seconds in total, respectively.</S>
+			<S sid ="159" ssid = "61">In the CTB, PFR, KUC, RWC and WSJ corpora, the accuracies were improved using global information (statistically significant at p &lt; 0.05), compared to the accuracies obtained using only lo g123 (w, t)=f 1 (ω−1 =“President” and τ−1 =“NNP” and t = 5), cal information.</S>
+			<S sid ="160" ssid = "62">The increases of the accuracies on The features we use are shown in Table 2, which are based on the features used by Ratnaparkhi (1996) and Uchimoto et al.</S>
+			<S sid ="161" ssid = "63">(2001).</S>
+			<S sid ="162" ssid = "64">The parameters αh in Equation (20) are estimated using all the words in the training data whose POS tags are the open class tags.</S>
+			<S sid ="163" ssid = "65">3.3 Experimental Results.</S>
+			<S sid ="164" ssid = "66">The results are shown in Table 3.</S>
+			<S sid ="165" ssid = "67">In the table, local, local+global and local+global w/ unlabeled indicate that the results were obtained using only local information, local and global information, and local and global information with the extra unlabeled data, respectively.</S>
+			<S sid ="166" ssid = "68">The results using only local information were obtained by choosing POS 4 In both the training and the testing phases, POS tags of known words are given from the corpora.</S>
+			<S sid ="167" ssid = "69">When these surrounding words contain unknown words, their POS tags are represented by a special tag Unk.</S>
+			<S sid ="168" ssid = "70">the English corpora (the GEN and SUS corpora) were small.</S>
+			<S sid ="169" ssid = "71">Table 4 shows the increased/decreasednumber of correctly tagged words using global in formation in the PFR, RWC and SUS corpora.In the PFR (Chinese) and RWC (Japanese) corpora, many proper nouns were correctly tagged us ing global information.</S>
+			<S sid ="170" ssid = "72">In Chinese and Japanese, proper nouns are not capitalized, therefore proper nouns are difficult to distinguish from common nouns with only local information.</S>
+			<S sid ="171" ssid = "73">One reason that only the small increases were obtained with global information in the English corpora seems tobe the low ambiguities of proper nouns.</S>
+			<S sid ="172" ssid = "74">Many ver bal nouns in PFR and a few sahen-nouns (Japanese verbal nouns) in RWC, which suffer from the problem of possibility-based POS tags, were also correctly tagged using global information.</S>
+			<S sid ="173" ssid = "75">Whenthe unlabeled data was used, the number of non unique words in the test data increased.</S>
+			<S sid ="174" ssid = "76">Comparedwith the case without the unlabeled data, the accu Corpus (Lang.)</S>
+			<S sid ="175" ssid = "77">Accuracy for Unknown Words (# of Errors) [p-value] (# of Non-unique Unknown Words) local local+global local+global w/ unlabeled CTB (C) 0.7423 (193) 0.7717 (171) [0.0000] (344) 0.7704 (172) [0.0001] (361) PFR (C) 0.6499 (9723) 0.6690 (9193) [0.0000] (16019) 0.6785 (8930) [0.0000] (18861) EDR (J) 0.9639 (874) 0.9643 (863) [0.1775] (4903) 0.9651 (844) [0.0034] (7770) KUC (J) 0.7501 (619) 0.7634 (586) [0.0000] (788) 0.7562 (604) [0.0872] (936) RWC (J) 0.7699 (2572) 0.7785 (2476) [0.0000] (5044) 0.7787 (2474) [0.0000] (5878) GEN (E) 0.8836 (905) 0.8837 (904) [1.0000] (4094) 0.8863 (884) [0.0244] (4515) SUS (E) 0.7934 (1190) 0.7957 (1177) [0.1878] (3210) 0.7979 (1164) [0.0116] (3583) WSJ (E) 0.8345 (704) 0.8368 (694) [0.0162] (1412) 0.8352 (701) [0.7103] (1627) Table 3: Results of POS Guessing of Unknown Words model-based method, some global features were used such as “when the word appeared first in a position other than the beginning of sentences, the word was capitalized or not”.</S>
+			<S sid ="176" ssid = "78">These global features are static and can be handled in the same manner as local features, therefore Viterbi decoding was used.</S>
+			<S sid ="177" ssid = "79">The method is efficient but does not handle interactions between labels.Finkel et al.</S>
+			<S sid ="178" ssid = "80">(2005) proposed a method incorpo Table 5: Results of Multiple Trials and Comparison to Simulated Annealing racies increased in several corpora but decreased in the CTB, KUC and WSJ corpora.</S>
+			<S sid ="179" ssid = "81">Since our method uses Gibbs sampling in the training and the testing phases, the results are affected by the sequences of random numbers used in the sampling.</S>
+			<S sid ="180" ssid = "82">In order to investigate the influence, we conduct 10 trials with different sequences of pseudo random numbers.</S>
+			<S sid ="181" ssid = "83">We also conduct experiments using simulated annealing in decoding, as conducted by Finkel et al.</S>
+			<S sid ="182" ssid = "84">(2005) for information extraction.</S>
+			<S sid ="183" ssid = "85">We increase inverse temperature β in Equation (1) from β = 1 to β ≈ ∞ with the linear cooling schedule.</S>
+			<S sid ="184" ssid = "86">The results are shown in Table 5.</S>
+			<S sid ="185" ssid = "87">The table shows the mean values and the standard deviations of the accuracies for the 10 trials, and Marginal and S.A. mean that decoding is conducted using Equation (11) and simulated annealing respectively.</S>
+			<S sid ="186" ssid = "88">The variances caused by random numbers and the differences of the accuracies between Marginal and S.A. are relatively small.</S>
+	</SECTION>
+	<SECTION title="Related Work. " number = "4">
+			<S sid ="187" ssid = "1">Several studies concerning the use of global information have been conducted, especially in named entity recognition, which is a similar task to POS guessing of unknown words.</S>
+			<S sid ="188" ssid = "2">Chieu and Ng (2002) conducted named entity recognition using global features as well as local features.</S>
+			<S sid ="189" ssid = "3">In their ME rating non-local structure for information extraction.</S>
+			<S sid ="190" ssid = "4">They attempted to use label consistency of named entities, which is the property that named entities with the same lexical form tend to have the same label.</S>
+			<S sid ="191" ssid = "5">They defined two probabilistic models; a local model based on conditional random fields and a global model based on log- linear models.</S>
+			<S sid ="192" ssid = "6">Then the final model was constructed by multiplying these two models, which can be seen as unnormalized log-linear interpolation (Klakow, 1998) of the two models which are weighted equally.</S>
+			<S sid ="193" ssid = "7">In their method, interactions between labels in the whole document were considered, and they used Gibbs sampling and simulated annealing for decoding.</S>
+			<S sid ="194" ssid = "8">Our model is largely similar to their model.</S>
+			<S sid ="195" ssid = "9">However, in their method, parameters of the global model were estimated using relative frequencies of labels or were selected by hand, while in our method, global model parameters are estimated from training data so as to fit to the data according to the objective function.</S>
+			<S sid ="196" ssid = "10">One approach for incorporating global information in natural language processing is to utilize consistency of labels, and such an approach have been used in other tasks.</S>
+			<S sid ="197" ssid = "11">Takamura et al.</S>
+			<S sid ="198" ssid = "12">(2005) proposed a method based on the spin models in physics for extracting semantic orientations of words.</S>
+			<S sid ="199" ssid = "13">In the spin models, each electron has one of two states, up or down, and the models give probability distribution of the states.</S>
+			<S sid ="200" ssid = "14">The states of electrons interact with each other and neighboring electrons tend to have the same spin.</S>
+			<S sid ="201" ssid = "15">In their method, semantic orientations (positive or negative) of words are regarded as states of spins, in order to model the property that the semantic orientation of a word tends to have the same orientation as words in its gloss.</S>
+			<S sid ="202" ssid = "16">The mean field approximation was used for inference in their method.</S>
+			<S sid ="203" ssid = "17">Yarowsky (1995) studied a method for word sense disambiguation using unlabeled data.</S>
+			<S sid ="204" ssid = "18">Although no probabilistic models were considered explicitly in the method, they used the property of label consistency named “one sense per discourse” for unsupervised learning together with local information named “one sense per collocation”.</S>
+			<S sid ="205" ssid = "19">There exist other approaches using global information which do not necessarily aim to use label consistency.</S>
+			<S sid ="206" ssid = "20">Rosenfeld et al.</S>
+			<S sid ="207" ssid = "21">(2001) proposed whole-sentence exponential language models.</S>
+			<S sid ="208" ssid = "22">The method calculates the probability of a sentence s as follows:</S>
+	</SECTION>
+	<SECTION title="Acknowledgements">
+			<S sid ="209" ssid = "23">This work was supported by a grant from the National Institute of Information and Communications Technology of Japan.</S>
+			<S sid ="210" ssid = "24">Christophe Andrieu, Nando de Freitas, Arnaud Doucet, and Michael I. Jordan.</S>
+			<S sid ="211" ssid = "25">2003.</S>
+			<S sid ="212" ssid = "26">An introduction to MCMC for Machine Learning.</S>
+			<S sid ="213" ssid = "27">Machine Learning, 50:5–43.</S>
+			<S sid ="214" ssid = "28">Masayuki Asahara.</S>
+			<S sid ="215" ssid = "29">2003.</S>
+			<S sid ="216" ssid = "30">Corpus-based Japanese morphological analysis.</S>
+			<S sid ="217" ssid = "31">Nara Institute of Science and Technology, Doctor’s Thesis.</S>
+			<S sid ="218" ssid = "32">Harald Baayen and Richard Sproat.</S>
+			<S sid ="219" ssid = "33">1996.</S>
+			<S sid ="220" ssid = "34">Estimating Lexical Priors for Low-Frequency Morphologically Ambiguous Forms.</S>
+			<S sid ="221" ssid = "35">Computational Linguistics, 22(2):155–166.</S>
+			<S sid ="222" ssid = "36">Adam L. Berger, Stephen A. Della Pietra, and Vincent J. Della Pietra.1996.</S>
+			<S sid ="223" ssid = "37">A Maximum Entropy Approach to Natural Language Pro cessing.</S>
+			<S sid ="224" ssid = "38">Computational Linguistics, 22(1):39–71.</S>
+			<S sid ="225" ssid = "39">Stanley Chen and Ronald Rosenfeld.</S>
+			<S sid ="226" ssid = "40">1999.</S>
+			<S sid ="227" ssid = "41">A Gaussian Prior for Smoothing Maximum Entropy Models.</S>
+			<S sid ="228" ssid = "42">Technical Report CMUCS99-108, Carnegie Mellon University.</S>
+			<S sid ="229" ssid = "43">P (s)= 1 p (s) exp λ f (s) , Chaojan Chen, Minghong Bai, and KehJiann Chen.</S>
+			<S sid ="230" ssid = "44">1997.</S>
+			<S sid ="231" ssid = "45">Cate Z 0 i i i where p0(s) is an initial distribution of s and any language models such as trigram models can be used for this.</S>
+			<S sid ="232" ssid = "46">fi(s) is a feature function and can handle sentence-wide features.</S>
+			<S sid ="233" ssid = "47">Note that if we regard fi,j (t) in our model (Equation (7)) as a feature function, Equation (8) is essentially the same form as the above model.</S>
+			<S sid ="234" ssid = "48">Their models can incorporate any sentence-wide features including syntactic features obtained by shallow parsers.</S>
+			<S sid ="235" ssid = "49">They attempted to use Gibbs sampling and other sampling methods for inference, and model parameters were estimated from training data using the generalized iterative scaling algorithm with the sampling methods.</S>
+			<S sid ="236" ssid = "50">Although they addressed modeling of whole sentences, the method can be directly applied to modeling of whole documents which allows us to incorporate unlabeled data easily as we have discussed.</S>
+			<S sid ="237" ssid = "51">This approach, modeling whole wide-scope contexts with log-linear models and using sampling methods for inference, gives us an expressive framework and will be applied to other tasks.</S>
+	</SECTION>
+	<SECTION title="Conclusion. " number = "5">
+	</SECTION>
+</PAPER>

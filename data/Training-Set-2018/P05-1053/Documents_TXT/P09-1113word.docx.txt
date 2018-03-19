@@ -1,0 +1,3435 @@
+﻿Distant supervision for relation extraction without labeled data
+
+
+
+
+Mike Mintz, Steven Bills, Rion Snow, Dan Jurafsky
+Stanford University / Stanford, CA 94305
+{mikemintz,sbills,rion,jurafsky}@cs.stanford.edu
+
+
+
+
+
+
+
+
+
+
+Abstract
+
+Modern models of relation extraction for tasks like 
+ACE are based on supervised learning of relations 
+from small hand-labeled corpora. We investigate an 
+alternative paradigm that does not require labeled 
+corpora, avoiding  the domain dependence of ACE- 
+style algorithms,  and allowing the use of corpora 
+of any size.  Our experiments  use Freebase, a large 
+semantic database of several thousand relations, to 
+provide distant supervision. For each pair of enti- 
+ties that appears in some Freebase relation,  we find 
+all sentences containing those entities in a large un- 
+labeled corpus and extract textual features to train 
+a relation  classifier. Our algorithm  combines the 
+advantages of supervised IE (combining 400,000 
+noisy pattern features in a probabilistic  classifier) 
+and unsupervised IE (extracting  large numbers of 
+relations from large corpora of any domain). Our 
+model is able to extract 10,000 instances of 102 re- 
+lations at a precision  of 67.6%. We also analyze 
+feature performance, showing that syntactic  parse 
+features are particularly helpful for relations that are 
+ambiguous or lexically distant in their expression.
+
+1   Introduction
+
+At least three learning  paradigms have been ap- 
+plied to the task of extracting relational facts from 
+text (for example, learning that a person  is em- 
+ployed by a particular  organization,  or that a ge- 
+ographic entity is located in a particular  region).
+  In supervised  approaches, sentences in a cor- 
+pus are first hand-labeled for the presence of en- 
+tities and the relations between them. The NIST 
+Automatic Content Extraction (ACE) RDC 2003 
+and 2004 corpora, for example, include over 1,000 
+documents in which pairs of entities have been la- 
+beled with 5 to 7 major relation types and 23 to
+24 subrelations, totaling 16,771 relation instances. 
+ACE systems then extract a wide variety of lexi- 
+cal, syntactic,  and semantic features, and use su- 
+pervised classifiers to label the relation mention 
+holding  between a given pair of entities in a test 
+set sentence, optionally combining relation men-
+
+
+tions (Zhou et al., 2005; Zhou et al., 2007; Sur- 
+deanu and Ciaramita, 2007).
+  Supervised relation extraction suffers from a 
+number of problems, however. Labeled training 
+data is expensive to produce and thus limited in 
+quantity. Also, because the relations are labeled 
+on a particular  corpus, the resulting classifiers tend 
+to be biased toward that text domain.
+  An alternative  approach, purely unsupervised 
+information  extraction, extracts strings of words 
+between  entities in large amounts  of text, and 
+clusters and simplifies  these word strings to pro- 
+duce relation-strings (Shinyama and Sekine, 2006; 
+Banko et al., 2007). Unsupervised approaches can 
+use very large amounts of data and extract  very 
+large numbers of relations, but the resulting rela- 
+tions may not be easy to map to relations needed 
+for a particular  knowledge  base.
+  A third approach has been to use a very small 
+number of seed instances  or patterns to do boot- 
+strap learning (Brin, 1998; Riloff and Jones, 1999; 
+Agichtein  and Gravano, 2000; Ravichandran and 
+Hovy, 2002; Etzioni et al., 2005; Pennacchiotti 
+and Pantel,  2006; Bunescu and Mooney, 2007; 
+Rozenfeld and Feldman, 2008). These seeds are 
+used with a large corpus to extract  a new set of 
+patterns, which are used to extract more instances, 
+which are used to extract more patterns, in an it- 
+erative fashion. The resulting patterns often suffer 
+from low precision and semantic drift.
+  We propose an alternative paradigm, distant su- 
+pervision,  that combines some of the advantages 
+of each of these approaches.  Distant supervision 
+is an extension of the paradigm used by Snow et 
+al. (2005) for exploiting WordNet to extract hyper- 
+nym (is-a) relations between entities, and is simi- 
+lar to the use of weakly labeled data in bioinfor- 
+matics (Craven and Kumlien, 1999; Morgan et al.,
+
+
+
+
+1003
+
+Proceedings of the 47th Annual Meeting of the ACL and the 4th IJCNLP of the AFNLP,  pages 1003–1011, 
+Suntec, Singapore, 2-7 August 2009. Qc 2009 ACL and AFNLP
+
+
+
+Relation name
+New instance
+/location/location/contains
+/location/location/contains
+/music/artist/origin
+/people/deceased person/place of death
+/people/person/nationality
+/people/person/place of birth
+/book/author/works written
+/business/company/founders
+/people/person/profession
+Paris, Montmartre
+Ontario, Fort Erie
+Mighty Wagon, Cincinnati
+Fyodor Kamensky, Clearwater
+Marianne Yvonne Heemskerk, Netherlands
+Wavell Wayne Hinds, Kingston 
+Upton Sinclair, Lanny Budd 
+WWE, Vince McMahon 
+Thomas Mellon, judge
+Table 1: Ten relation instances extracted by our system that did not appear in Freebase.
+
+
+
+
+2004).  Our algorithm  uses Freebase (Bollacker et 
+al., 2008),  a large semantic  database, to provide 
+distant supervision for relation extraction.  Free- 
+base contains 116 million instances of 7,300 rela- 
+tions between 9 million entities.  The intuition of 
+distant supervision is that any sentence that con- 
+tains a pair of entities that participate in a known 
+Freebase relation  is likely to express that relation 
+in some way. Since there may be many sentences 
+containing a given entity pair, we can extract very 
+large numbers of (potentially  noisy) features that 
+are combined in a logistic  regression classifier.
+  Thus whereas the supervised training paradigm 
+uses a small labeled corpus of only 17,000 rela- 
+tion instances as training  data, our algorithm can 
+use much larger amounts of data: more text, more 
+relations, and more instances. We use 1.2 million 
+Wikipedia articles and 1.8 million instances of 102 
+relations connecting 940,000 entities. In addition, 
+combining vast numbers of features in a large clas- 
+sifier helps obviate problems with bad features.
+  Because  our algorithm is  supervised  by  a 
+database,  rather than by labeled text, it  does 
+not suffer from the problems of overfitting and 
+domain-dependence that plague  supervised sys- 
+tems. Supervision by a database also means that, 
+unlike in unsupervised approaches, the output of 
+our classifier  uses canonical  names for relations.
+  Our paradigm offers a natural way of integrating 
+data from multiple  sentences to decide if a relation 
+holds between two entities.  Because our algorithm 
+can use large amounts of unlabeled data, a pair of 
+entities may occur multiple times in the test set. 
+For each pair of entities, we aggregate the features 
+from the many different  sentences in which that 
+pair appeared into a single feature vector, allowing 
+us to provide our classifier with more information, 
+resulting in more accurate labels.
+  Table 1 shows examples of relation  instances 
+extracted by our system. We also use this system 
+to investigate the value of syntactic  versus lexi-
+
+
+cal (word sequence) features in relation extraction. 
+While syntactic features are known to improve the 
+performance of supervised IE, at least using clean 
+hand-labeled ACE data (Zhou et al., 2007; Zhou 
+et al., 2005), we do not know whether syntactic 
+features can improve the performance of unsuper- 
+vised or distantly supervised IE. Most previous 
+research in bootstrapping or unsupervised IE has 
+used only simple lexical features, thereby avoid- 
+ing the computational  expense of parsing (Brin,
+1998; Agichtein  and Gravano, 2000; Etzioni et al.,
+2005), and the few systems that have used unsu- 
+pervised IE have not compared the performance 
+of these two types of feature.
+
+2   Previous work
+
+Except for the unsupervised algorithms discussed 
+above, previous  supervised or bootstrapping ap- 
+proaches to relation extraction have typically re- 
+lied on relatively small datasets, or on only a small 
+number of distinct  relations.  Approaches based on 
+WordNet have often only looked at the hypernym 
+(is-a) or meronym (part-of) relation (Girju et al.,
+2003; Snow et al., 2005), while  those based on the 
+ACE program (Doddington et al., 2004) have been 
+restricted in their evaluation to a small number of 
+relation instances and corpora of less than a mil- 
+lion words.
+  Many early algorithms for relation extraction 
+used little or no syntactic information. For ex- 
+ample, the DIPRE algorithm by Brin (1998) used 
+string-based regular expressions in order to rec- 
+ognize  relations  such as author-book,   while the 
+SNOWBALL algorithm by Agichtein and Gravano 
+(2000) learned similar regular expression patterns 
+over words and named entity tags. Hearst (1992) 
+used a small  number  of regular expressions over 
+words and part-of-speech tags to find examples of 
+the hypernym relation. The use of these patterns 
+has been widely replicated in successful systems, 
+for example by Etzioni et al. (2005). Other work
+
+
+
+Re
+lati
+on 
+na
+m
+e
+S
+i
+z
+e
+Ex
+a
+m
+pl
+e
+/p
+eo
+pl
+e/
+pe
+rs
+on
+/n
+ati
+on
+ali
+ty
+/lo
+ca
+tio
+n/l
+oc
+ati
+on
+/c
+on
+tai
+ns
+/p
+eo
+pl
+e/
+pe
+rs
+on
+/pr
+of
+es
+si
+on
+/p
+eo
+pl
+e/
+pe
+rs
+on
+/pl
+ac
+e 
+of 
+bir
+th
+/di
+ni
+ng
+/re
+st
+au
+ra
+nt/
+cu
+isi
+ne
+/bu
+sin
+es
+s/b
+usi
+ne
+ss 
+ch
+ai
+n/l
+oc
+ati
+on
+/bi
+ol
+og
+y/
+or
+ga
+nis
+m 
+cla
+ssi
+fic
+ati
+on 
+ra
+nk
+/fil
+m/
+fil
+m/
+ge
+nr
+e
+/fil
+m/
+fil
+m/
+la
+ng
+ua
+ge
+/bi
+ol
+og
+y/
+or
+ga
+nis
+m 
+hi
+gh
+er 
+cl
+as
+sif
+ic
+ati
+on
+/fil
+m/
+fil
+m/
+co
+un
+try
+/fil
+m/
+wr
+ite
+r/fi
+lm
+/fil
+m/
+dir
+ec
+tor
+/fil
+m
+/fil
+m/
+pr
+od
+uc
+er/
+fil
+m
+/p
+eo
+ple
+/d
+ec
+ea
+se
+d 
+pe
+rs
+on
+/pl
+ac
+e 
+of 
+de
+at
+h
+/m
+us
+ic/
+art
+ist
+/or
+igi
+n
+/p
+eo
+pl
+e/
+pe
+rs
+on
+/re
+lig
+io
+n
+/b
+oo
+k/
+au
+th
+or/
+wo
+rk
+s 
+wr
+itt
+en
+/s
+oc
+ce
+r/f
+oo
+tb
+all 
+po
+sit
+io
+n/
+pl
+ay
+er
+s
+/p
+eo
+ple
+/d
+ec
+ea
+se
+d 
+pe
+rs
+on
+/ca
+us
+e 
+of 
+de
+at
+h
+/b
+oo
+k/
+bo
+ok
+/g
+en
+re
+/fil
+m/
+fil
+m/
+m
+us
+ic
+/b
+us
+in
+es
+s/
+co
+m
+pa
+ny
+/in
+du
+str
+y
+2
+8
+1,
+1
+0
+7
+2
+5
+3,
+2
+2
+3
+2
+0
+8,
+8
+8
+8
+1
+0
+5,
+7
+9
+9
+8
+6
+,
+2
+1
+3
+6
+6
+,
+5
+2
+9
+4
+2
+,
+8
+0
+6
+4
+0
+,
+6
+5
+8
+3
+1
+,
+1
+0
+3
+3
+0
+,
+0
+5
+2
+2
+7
+,
+2
+1
+7
+2
+3
+,
+8
+5
+6
+2
+3
+,
+5
+3
+9
+2
+2
+,
+0
+7
+9
+1
+8
+,
+8
+1
+4
+1
+8
+,
+6
+1
+9
+1
+7
+,
+5
+8
+2
+1
+7
+,
+2
+7
+8
+1
+7
+,
+2
+4
+4
+1
+6
+,
+7
+0
+9
+1
+6
+,
+4
+3
+1
+1
+4
+,
+0
+7
+0
+1
+3
+,
+8
+0
+5
+Jo
+hn 
+Du
+ga
+rd, 
+So
+ut
+h 
+Af
+ric
+a
+Be
+lgi
+u
+m, 
+Nij
+le
+n
+Du
+sa 
+M
+c
+D
+uff
+, 
+M
+at
+he
+m
+ati
+ci
+an
+Ed
+wi
+n 
+H
+ub
+bl
+e, 
+M
+ar
+sh
+fie
+ld
+M
+ac
+Ay
+o’s 
+M
+ex
+ic
+an 
+Kit
+ch
+en
+, 
+M
+ex
+ic
+an
+Ap
+pl
+e 
+In
+c., 
+Ap
+pl
+e 
+In
+c., 
+So
+ut
+h 
+Pa
+rk, 
+N
+C
+Sc
+or
+pa
+en
+ifo
+rm
+es
+, 
+Or
+de
+r
+W
+he
+re 
+th
+e 
+Si
+de
+wa
+lk 
+En
+ds
+, 
+Fil
+m 
+no
+ir
+En
+ter 
+th
+e 
+Ph
+oe
+nix
+, 
+C
+an
+to
+ne
+se
+C
+al
+op
+ter
+yx
+, 
+C
+al
+op
+ter
+yg
+id
+ae
+Tu
+rtl
+e 
+Di
+ar
+y, 
+Un
+ite
+d 
+St
+at
+es
+Irv
+in
+g 
+Sh
+ul
+m
+an
+, 
+Re
+bel 
+Wi
+th
+ou
+t  
+a 
+Ca
+us
+e
+Mi
+ch
+ae
+l 
+M
+an
+n, 
+C
+oll
+at
+er
+al
+Di
+an
+e 
+Es
+ke
+na
+zi, 
+Al
+ad
+di
+n
+Jo
+hn 
+W. 
+Ke
+rn, 
+As
+he
+vill
+e
+Th
+e 
+Oc
+to
+pu
+s 
+Pr
+oj
+ec
+t, 
+A
+us
+tin
+Jo
+se
+ph 
+Ch
+art
+ra
+nd
+, 
+C
+at
+ho
+lici
+s
+m
+Pa
+ul 
+Au
+st
+er, 
+Tr
+av
+els 
+in 
+th
+e 
+Sc
+rip
+tor
+iu
+m
+Mi
+dfi
+el
+de
+r, 
+Ch
+en 
+Ta
+o
+Ri
+ch
+ar
+d 
+Da
+int
+re
+e, 
+Tu
+be
+rc
+ul
+os
+is
+Po
+ny 
+So
+ldi
+er
+s, 
+Sc
+ien
+ce 
+fic
+tio
+n
+St
+avi
+sk
+y, 
+St
+ep
+he
+n 
+S
+on
+dh
+ei
+m
+AT
+S 
+M
+ed
+ic
+al, 
+H
+ea
+lth 
+ca
+re
+Table 2: The 23 largest Freebase relations  we use, with their size and an instance of each relation.
+
+
+
+
+such as Ravichandran  and Hovy (2002) and Pan- 
+tel and Pennacchiotti (2006) use the same formal- 
+ism of learning regular expressions over words and 
+part-of-speech tags to discover patterns indicating 
+a variety of relations.
+  More  recent approaches have used deeper syn- 
+tactic information derived from parses of the input 
+sentences, including work exploiting syntactic de- 
+pendencies by Lin and Pantel (2001) and Snow et 
+al. (2005),  and work in the ACE paradigm such 
+as Zhou et al. (2005) and Zhou et al. (2007).
+  Perhaps most similar  to our distant supervision 
+algorithm is the effective method of Wu and Weld 
+(2007) who extract  relations  from a  Wikipedia 
+page by using supervision from the page’s infobox. 
+Unlike their corpus-specific method, which is spe- 
+cific to a (single) Wikipedia  page, our algorithm 
+allows  us to extract evidence for a relation  from 
+many different documents, and from any genre.
+
+3   Freebase
+
+Following the literature, we use the term ‘rela- 
+tion’ to refer to an ordered, binary relation be- 
+tween entities. We refer to individual ordered pairs 
+in this relation as  ‘relation instances’. For ex- 
+ample, the person-nationality  relation holds be- 
+tween the entities  named ‘John Steinbeck’ and
+‘United States’,  so it has (John  Steinbeck,
+
+
+United States) as an instance.
+We  use relations  and relation instances from
+Freebase,  a  freely available  online database  of 
+structured  semantic  data.  Data in Freebase  is 
+collected from a variety of sources. One major 
+source is text boxes and other tabular  data from 
+Wikipedia. Data is also taken from NNDB (bio- 
+graphical information), MusicBrainz (music), the 
+SEC (financial  and corporate data), as well as di- 
+rect, wiki-style user editing.  After some basic 
+processing of the July 2008 link export to con- 
+vert Freebase’s data representation into binary re- 
+lations, we have 116 million instances of 7,300 
+relations between 9 million entities. We next fil- 
+ter out nameless and uninteresting  entities such as 
+user profiles  and music tracks. Freebase also con- 
+tains the reverses of many of its relations (book- 
+author v. author-book),  and these are merged. Fil- 
+tering and removing  all but the largest relations 
+leaves us with 1.8 million instances of 102 rela- 
+tions connecting 940,000 entities. Examples  are 
+shown in Table 2.
+
+4   Architecture
+
+The intuition of our distant supervision approach 
+is to use Freebase to give us a training  set of rela- 
+tions and entity pairs that participate in those rela- 
+tions. In the training step, all entities are identified
+
+
+in sentences using a named entity tagger that la- 
+bels persons, organizations and locations. If a sen- 
+tence contains two entities and those entities are an 
+instance of one of our Freebase relations, features 
+are extracted from that sentence and are added to 
+the feature vector for the relation.
+  The distant supervision assumption is that if two 
+entities participate in a relation,  any sentence that 
+contain those two entities might express that rela- 
+tion.  Because any individual sentence may give 
+an incorrect cue, our algorithm  trains a multiclass 
+logistic regression classifier, learning weights for 
+each noisy feature. In training, the features for 
+identical tuples (relation, entity1, entity2) from 
+different sentences are combined,  creating a richer 
+feature vector.
+  In the testing step, entities are again identified 
+using the named entity tagger. This time, every 
+pair of entities appearing together in a sentence is 
+considered a potential relation instance, and when- 
+ever those entities appear together, features are ex- 
+tracted on the sentence and added to a feature vec- 
+tor for that entity pair. For example, if a pair of 
+entities occurs in 10 sentences in the test set, and 
+each sentence has 3 features extracted from it, the 
+entity pair will have 30 associated features.  Each 
+entity pair in each sentence in the test corpus is run 
+through feature extraction, and the regression clas- 
+sifier predicts a relation name for each entity pair 
+based on the features from all of the sentences in 
+which it appeared.
+  Consider the location-contains relation, imag- 
+ining that in Freebase we had two instances of
+this relation:  (Virginia,  Richmond)  and
+(France,  Nantes).   As we encountered sen-
+tences like ‘Richmond, the capital of Virginia’ and
+‘Henry’s Edict of Nantes helped the Protestants of 
+France’ we would extract features from these sen- 
+tences. Some features would be very useful, such 
+as the features from the Richmond  sentence, and 
+some would be less useful, like  those from the 
+Nantes sentence.   In testing, if we came across 
+a sentence  like ‘Vienna, the capital of Austria’, 
+one or more of its features would match those of 
+the Richmond  sentence, providing evidence that
+(Austria,  Vienna)  belongs to the location-
+contains relation.
+  Note that one of the main advantages of our 
+architecture  is its ability to combine informa- 
+tion from many different mentions of the same
+relation.    Consider the entity pair (Steven
+
+
+Spielberg,  Saving Private  Ryan)
+from the following two sentences, as evidence  for
+the film-director relation.
+
+[Steven Spielberg]’s  film  [Saving Private
+Ryan] is loosely based on the brothers’  story. 
+Allison co-produced  the Academy  Award-
+winning [Saving Private Ryan], directed by
+[Steven Spielberg]...
+
+  The first sentence, while providing evidence for 
+film-director, could instead be evidence for film- 
+writer or film-producer. The second sentence does 
+not mention that Saving Private Ryan is a film, and 
+so could instead be evidence for the CEO relation 
+(consider ‘Robert Mueller directed the FBI’). In 
+isolation, neither of these features is conclusive, 
+but in combination, they are.
+
+5   Features
+
+Our features are based on standard lexical  and syn- 
+tactic features from the literature. Each feature 
+describes how two entities  are related in a sen- 
+tence, using either syntactic or non-syntactic in- 
+formation.
+
+5.1   Lexical features
+Our lexical features describe specific words be- 
+tween and surrounding the two entities in the sen- 
+tence in which they appear:
+• The sequence of words between the two entities
+• The part-of-speech tags of these words
+• A flag indicating which entity came first in the sentence
+• A window of k words to the left of Entity 1 and their
+part-of-speech tags
+• A window of k words to the right of Entity 2 and their
+part-of-speech tags
+
+Each lexical feature consists of the conjunction of 
+all these components.  We generate a conjunctive
+feature for each k ∈ {0, 1, 2}.  Thus each lexical
+row in Table 3 represents a single lexical feature.
+  Part-of-speech  tags were assigned by a  max- 
+imum entropy tagger trained on the Penn Tree- 
+bank,  and then simplified into seven categories: 
+nouns, verbs, adverbs, adjectives, numbers, for- 
+eign words, and everything else.
+  In an attempt to approximate syntactic features, 
+we also tested variations  on our lexical features: 
+(1) omitting all words that are not verbs and (2) 
+omitting all function words. In combination with 
+the other lexical  features, they gave a small boost 
+to precision, but not large enough to justify the in- 
+creased demand on our computational resources.
+
+
+
+Fe
+atu
+re 
+typ
+e
+L
+e
+f
+t
+ 
+w
+i
+n
+d
+o
+w
+	
+N
+E
+1
+	
+M
+i
+d
+d
+l
+e
+	
+N
+E
+2
+	
+R
+i
+g
+h
+t
+ 
+w
+i
+n
+d
+o
+w
+L
+e
+x
+i
+c
+a
+l
+ 
+L
+e
+x
+i
+c
+a
+l
+ 
+L
+e
+x
+i
+c
+a
+l
+ 
+S
+y
+n
+t
+a
+c
+t
+i
+c
+ 
+S
+y
+n
+t
+a
+c
+t
+i
+c
+ 
+S
+y
+n
+t
+a
+c
+t
+i
+c
+ 
+S
+y
+n
+t
+a
+c
+t
+i
+c
+ 
+S
+y
+n
+t
+a
+c
+t
+i
+c
+ 
+S
+y
+n
+t
+a
+c
+t
+i
+c
+ 
+S
+y
+n
+t
+a
+c
+t
+i
+c
+ 
+S
+y
+n
+t
+a
+c
+t
+i
+c
+ 
+S
+y
+n
+t
+a
+c
+t
+i
+c
+     [
+]
+ 
+	
+P
+E
+R
+	
+[
+w
+a
+s
+/
+V
+E
+R
+B
+ 
+b
+o
+r
+n
+/
+V
+E
+R
+B
+ 
+i
+n
+/
+C
+L
+O
+S
+E
+D
+]
+	
+L
+O
+C
+	
+ 
+[
+]
+ 
+[
+A
+s
+t
+r
+o
+n
+o
+m
+e
+r
+]
+	
+ 
+P
+E
+R
+	
+[
+w
+a
+s
+/
+V
+E
+R
+B
+ 
+b
+o
+r
+n
+/
+V
+E
+R
+B
+ 
+i
+n
+/
+C
+L
+O
+S
+E
+D
+]
+	
+L
+O
+C
+	
+[
+,
+]
+[
+#
+P
+A
+D
+#
+,
+ 
+A
+s
+t
+r
+o
+n
+o
+m
+e
+r
+]
+	
+P
+E
+R
+	
+  
+[
+w
+a
+s
+/
+V
+E
+R
+B
+ 
+b
+o
+r
+n
+/
+V
+E
+R
+B
+ 
+i
+n
+/
+C
+L
+O
+S
+E
+D
+]
+	
+L
+O
+C
+	
+[
+,
+ 
+M
+i
+s
+s
+o
+u
+r
+i
+]
+ 
+[
+]
+ 
+	
+P
+E
+R
+	
+[
+⇑
+s
+  
+w
+a
+s
+ 
+⇓
+p
+r
+e
+d
+ 
+b
+o
+r
+n
+ 
+⇓
+m
+o
+d
+ 
+i
+n
+ 
+⇓
+p
+c
+o
+m
+p
+−
+n
+ 
+]
+ 
+	
+L
+O
+C
+	
+	
+[
+]
+[
+E
+d
+w
+i
+n
+ 
+H
+u
+b
+b
+l
+e
+ 
+⇓
+l
+e
+x
+−
+m
+o
+d
+ 
+]
+ 
+	
+P
+E
+R
+	
+[
+⇑
+s
+  
+w
+a
+s
+ 
+⇓
+p
+r
+e
+d
+ 
+b
+o
+r
+n
+ 
+⇓
+m
+o
+d
+ 
+i
+n
+ 
+⇓
+p
+c
+o
+m
+p
+−
+n
+ 
+]
+ 
+	
+L
+O
+C
+	
+[
+]
+ 
+[
+A
+s
+t
+r
+o
+n
+o
+m
+e
+r
+ 
+⇓
+l
+e
+x
+−
+m
+o
+d
+ 
+]
+ 
+	
+P
+E
+R
+	
+[
+⇑
+s
+  
+w
+a
+s
+ 
+⇓
+p
+r
+e
+d
+ 
+b
+o
+r
+n
+ 
+⇓
+m
+o
+d
+ 
+i
+n
+ 
+⇓
+p
+c
+o
+m
+p
+−
+n
+ 
+]
+ 
+	
+L
+O
+C
+	
+[
+]
+          [
+]
+ 
+	
+	
+P
+E
+R
+	
+	
+[
+⇑
+s
+  
+w
+a
+s
+ 
+⇓
+p
+r
+e
+d
+ 
+b
+o
+r
+n
+ 
+⇓
+m
+o
+d
+ 
+i
+n
+ 
+⇓
+p
+c
+o
+m
+p
+−
+n
+ 
+]
+ 
+	
+  
+L
+O
+C
+	
+  
+[
+⇓
+l
+e
+x
+−
+m
+o
+d
+  
+,
+]
+ 
+[
+E
+d
+w
+i
+n
+ 
+H
+u
+b
+b
+l
+e
+ 
+⇓
+l
+e
+x
+−
+m
+o
+d
+ 
+]
+ 
+	
+	
+P
+E
+R
+	
+	
+[
+⇑
+s
+  
+w
+a
+s
+ 
+⇓
+p
+r
+e
+d
+ 
+b
+o
+r
+n
+ 
+⇓
+m
+o
+d
+ 
+i
+n
+ 
+⇓
+p
+c
+o
+m
+p
+−
+n
+ 
+]
+ 
+	
+  
+L
+O
+C
+	
+  
+[
+⇓
+l
+e
+x
+−
+m
+o
+d
+  
+,
+]
+ 
+[
+A
+s
+t
+r
+o
+n
+o
+m
+e
+r
+ 
+⇓
+l
+e
+x
+−
+m
+o
+d
+ 
+]
+ 
+	
+P
+E
+R
+	
+[
+⇑
+s
+  
+w
+a
+s
+ 
+⇓
+p
+r
+e
+d
+ 
+b
+o
+r
+n
+ 
+⇓
+m
+o
+d
+ 
+i
+n
+ 
+⇓
+p
+c
+o
+m
+p
+−
+n
+ 
+]
+ 
+	
+L
+O
+C
+	
+[
+⇓
+l
+e
+x
+−
+m
+o
+d
+  
+,
+]
+          [
+] 		PER		[⇑s  was ⇓pred born ⇓mod in ⇓pcomp−n ] 	  LOC	  [⇓inside Missouri] [Edwin Hubble ⇓lex−mod ] 		PER		[⇑s  was ⇓pred born ⇓mod in ⇓pcomp−n ] 	  LOC	  [⇓inside Missouri] [Astronomer ⇓lex−mod ] 	PER	[⇑s  was ⇓pred born ⇓mod in ⇓pcomp−n ] 	LOC	[⇓inside Missouri]
+
+Table 3: Features for ‘Astronomer Edwin Hubble was born in Marshfield, Missouri’.
+
+inside
+
+lex-mod 	s 	pred 	mod 	pcomp-n 	lex-mod
+
+
+Astronomer 	Edwin Hubble 	was 	born 	in 	Marshfield 	, 	Missouri
+
+Figure 1: Dependency parse with dependency path from ‘Edwin Hubble’ to ‘Marshfield’ highlighted in 
+boldface.
+
+
+
+
+5.2   Syntactic features
+
+In addition to lexical features we extract  a num- 
+ber of features based on syntax. In order to gener- 
+ate these features we parse each sentence with the 
+broad-coverage dependency parser MINIPAR (Lin,
+1998).
+  A dependency parse consists of a set of words 
+and chunks (e.g.  ‘Edwin Hubble’, ‘Missouri’,
+‘born’), linked by directional  dependencies (e.g.
+‘pred’, ‘lex-mod’), as  in Figure 1.   For each 
+sentence we extract a dependency path between 
+each pair of entities.  A dependency path con- 
+sists of a series  of dependencies, directions  and 
+words/chunks representing a traversal of the parse. 
+Part-of-speech tags are not included in the depen- 
+dency path.
+  Our syntactic features are similar to those used 
+in Snow et al. (2005). They consist of the conjunc- 
+tion of:
+
+• A dependency path between the two entities
+• For each entity,  one ‘window’ node that is not part of
+the dependency path
+
+A window node is a node connected to one of the 
+two entities and not part of the dependency path. 
+We generate one conjunctive  feature for each pair 
+of left and right window  nodes, as well as features 
+which omit one or both of them. Thus each syn- 
+tactic row in Table 3 represents a single syntactic 
+feature.
+
+
+5.3   Named entity tag 
+features
+Every feature contains, in addition to the 
+content described above, named entity tags for 
+the two en- tities. We perform named entity 
+tagging using the Stanford four-class named 
+entity tagger (Finkel et al., 2005). The tagger 
+provides each word with a
+label from {person, location, organization, 
+miscel-
+laneous, 
+none}.
+
+5.4   Feature 
+conjunction
+Rather than use each of the above features in 
+the classifier independently, we use only 
+conjunctive features. Each feature  consists of 
+the conjunc- tion of several attributes of the 
+sentence, plus the named entity tags.  For 
+two features to match, all of their conjuncts 
+must match exactly.   This yields low-recall but 
+high-precision features. With a small amount 
+of data, this approach would be problematic,  
+since most features would only be seen once, 
+rendering them useless to the classifier. Since we 
+use large amounts of data, even complex features 
+appear multiple times, allowing our high- 
+precision features to work as intended. 
+Features for a sample sentence are shown in 
+Table 3.
+
+6   
+Implementation
+
+6.1   
+Text
+For  unstructured text  we  use   the  
+Freebase Wikipedia  Extraction, a dump of the 
+full text of all Wikipedia articles (not including  
+discussion and
+
+
+
+Rel
+atio
+n
+Feat
+ure 
+typ
+e	Left window	NE1	Middle	NE2	Right window
+/arc
+hite
+ctur
+e/st
+ruct
+ure/
+arc
+hite
+ct
+
+/boo
+k/au
+thor/
+wor
+ks 
+writt
+en
+
+/boo
+k/bo
+ok 
+editi
+on/a
+utho
+r 
+edit
+or
+
+/bu
+sine
+ss/c
+om
+pan
+y/fo
+und
+ers
+
+/bus
+ines
+s/co
+mpa
+ny/p
+lace 
+fou
+nde
+d
+
+/film
+/film
+/co
+untr
+y
+
+/ge
+ogr
+aph
+y/riv
+er/
+mo
+uth
+
+/gov
+ern
+men
+t/pol
+itica
+l 
+part
+y/co
+untr
+y
+
+/infl
+uen
+ce/i
+nflu
+enc
+e 
+nod
+e/in
+flue
+nce
+d
+
+/lan
+gua
+ge/h
+uma
+n 
+lan
+gua
+ge/r
+egi
+on
+
+/mu
+sic/
+arti
+st/o
+rigi
+n
+
+/peo
+ple/
+dec
+eas
+ed 
+pers
+on/p
+lace 
+of 
+dea
+th
+
+/pe
+opl
+e/p
+ers
+on/
+nati
+ona
+lity
+
+/pe
+opl
+e/p
+ers
+on/
+par
+ent
+s
+
+/peo
+ple/
+pers
+on/p
+lace 
+of 
+birt
+h
+
+/pe
+opl
+e/p
+ers
+on/r
+eligi
+on
+LE
+X    	ORG	, the designer of the	PER
+SY
+N	designed ⇑s 	ORG	⇑s designed ⇓by−subj  by ⇓pcn 	PER	⇑s designed
+L
+E
+X
+ 
+	
+P
+E
+R
+	
+	
+s
+ 
+n
+o
+v
+e
+l
+	
+O
+R
+G
+ 
+S
+Y
+N
+	
+P
+E
+R
+	
+⇑
+p
+c
+n
+ 
+b
+y
+ 
+⇑
+m
+o
+d
+ 
+s
+t
+o
+r
+y
+ 
+⇑
+p
+r
+e
+d
+ 
+i
+s
+ 
+⇓
+s
+ 
+	
+O
+R
+G
+L
+E
+X
+ 
+ 
+ 
+ 
+	
+O
+R
+G
+	
+	
+s
+ 
+n
+o
+v
+e
+l
+	
+P
+E
+R
+ 
+S
+Y
+N
+	
+ 
+P
+E
+R
+	
+⇑
+n
+n
+ 
+s
+e
+r
+i
+e
+s
+ 
+⇓
+g
+e
+n
+ 
+	
+P
+E
+R
+L
+E
+X
+ 
+	
+O
+R
+G
+	
+	
+c
+o
+ 
+-
+ 
+f
+o
+u
+n
+d
+e
+r
+	
+P
+E
+R
+ 
+S
+Y
+N
+	
+O
+R
+G
+	
+⇑
+n
+n
+ 
+o
+w
+n
+e
+r
+ 
+⇓
+p
+e
+r
+s
+o
+n
+ 
+	
+P
+E
+R
+L
+E
+X
+ 
+ 
+ 
+ 
+	
+O
+R
+G
+	
+	
+-
+ 
+b
+a
+s
+e
+d
+	
+L
+O
+C
+ 
+S
+Y
+N
+	
+O
+R
+G
+	
+⇑
+s
+ 
+f
+o
+u
+n
+d
+e
+d
+ 
+⇓
+m
+o
+d
+ 
+i
+n
+ 
+⇓
+p
+c
+n
+ 
+	
+L
+O
+C
+LE
+X 	PER	, released in	LOC
+SY
+N	opened ⇑s 	ORG	⇑s opened ⇓mod in ⇓pcn 	LOC	⇑s opened
+LE
+X 	LOC	, which flows into the	LOC
+SY
+N	the ⇓det 	LOC	⇑s is ⇓pred tributary ⇓mod of ⇓pcn 	LOC	⇓det the
+LE
+X    	ORG	politician of the	LOC
+SY
+N	candidate ⇑nn 	ORG	⇑nn candidate ⇓mod for ⇓pcn 	LOC	⇑nn candidate
+LE
+X    	PER	, a student of	PER
+SY
+N	of ⇑pcn 	PER	⇑pcn of ⇑mod student ⇑appo 	PER	⇑pcn of
+L
+E
+X
+ 
+	
+L
+O
+C
+	
+	
+-
+ 
+s
+p
+e
+a
+k
+i
+n
+g
+ 
+a
+r
+e
+a
+s
+ 
+o
+f
+	
+L
+O
+C
+ 
+S
+Y
+N
+	
+L
+O
+C
+	
+⇑
+l
+e
+x
+−
+m
+o
+d
+ 
+ 
+s
+p
+e
+a
+k
+i
+n
+g
+ 
+a
+r
+e
+a
+s
+ 
+⇓
+m
+o
+d
+ 
+o
+f
+ 
+⇓
+p
+c
+n
+ 
+	
+L
+O
+C
+LE
+X    	ORG	based band	LOC
+SY
+N	is ⇑s 	ORG	⇑s is ⇓pred band ⇓mod from ⇓pcn 	LOC	⇑s is
+LE
+X 	PER	died in	LOC
+SY
+N	hanged ⇑s 	PER	⇑s hanged ⇓mod in ⇓pcn 	LOC	⇑s hanged
+L
+E
+X
+ 
+	
+P
+E
+R
+	
+	
+i
+s
+ 
+a
+ 
+c
+i
+t
+i
+z
+e
+n
+ 
+o
+f
+	
+L
+O
+C
+ 
+S
+Y
+N
+	
+P
+E
+R
+	
+⇓
+m
+o
+d
+ 
+f
+r
+o
+m
+ 
+⇓
+p
+c
+n
+ 
+	
+L
+O
+C
+LE
+X 	PER	, son of	PER
+SY
+N	father ⇑gen 	PER	⇑gen father ⇓person 	PER	⇑gen father
+L
+E
+X
+ 
+ 
+ 
+ 
+	
+P
+E
+R
+	
+ 
+ 
+ 
+ 
+ 
+i
+s
+ 
+t
+h
+e
+ 
+b
+i
+r
+t
+h
+p
+l
+a
+c
+e
+ 
+o
+f
+	
+P
+E
+R
+ 
+S
+Y
+N
+	
+P
+E
+R
+	
+⇑
+s
+ 
+b
+o
+r
+n
+ 
+⇓
+m
+o
+d
+ 
+i
+n
+ 
+⇓
+p
+c
+n
+ 
+	
+L
+O
+C
+LE
+X 	PER	embraced	LOC
+SY
+N	convert ⇓appo 	PER	⇓appo convert ⇓mod to ⇓pcn 	LOC	⇓appo convert
+
+Table 4: Examples of high-weight features for several relations.  Key: SYN = syntactic feature; LEX =
+lexical feature; -n = reversed; NE# = named entity tag of entity.
+
+
+
+
+user pages) which has been sentence-tokenized by 
+Metaweb  Technologies, the developers of Free- 
+base (Metaweb,   2008).  This dump consists of 
+approximately 1.8 million articles, with an av- 
+erage  of 14.3 sentences  per article.  The total 
+number of words (counting punctuation marks) is
+601,600,703.  For our experiments we use about 
+half of the articles:  800,000  for training and
+400,000 for testing.
+  We use Wikipedia because it is relatively up- 
+to-date,  and because its sentences tend to make 
+explicit  many facts that might be omitted in 
+newswire. Much of the information in Freebase is 
+derived from tabular data from Wikipedia,  mean- 
+ing that Freebase relations  are more likely to ap- 
+pear in sentences in Wikipedia.
+
+6.2   Parsing and chunking
+
+Each sentence of this unstructured text is depen- 
+dency  parsed by MINIPAR  to produce  a depen- 
+dency graph.
+  In preprocessing, consecutive  words with the 
+same  named  entity tag are  ‘chunked’, so  that 
+Edwin/PERSON Hubble/PERSON  becomes 
+[Edwin Hubble]/PERSON.  This chunking is 
+restricted by the dependency parse of the sentence, 
+however,  in that chunks must be contiguous in 
+the parse (i.e., no chunks across subtrees).  This
+
+
+ensures that parse tree structure is preserved, 
+since the parses must be updated to reflect the 
+chunking.
+
+6.3   Training and 
+testing
+
+For held-out evaluation experiments (see 
+section
+7.1), half of the instances of each relation  are 
+not used in training, and are later used to 
+compare against newly discovered instances.  
+This means that 900,000 Freebase relation  
+instances are used in training,  and 900,000 
+are held out. These ex- periments used 
+800,000 Wikipedia  articles in the training  
+phase and 400,000 different articles in the 
+testing phase.
+  For human evaluation experiments, all 1.8 
+mil- lion relation instances are used in training. 
+Again, we use 800,000 Wikipedia  articles in 
+the training phase and 400,000 different  
+articles in the testing phase.
+  For all our experiments, we only extract 
+relation instances that do not appear in our 
+training  data, i.e., instances that are not already 
+in Freebase.
+  Our system needs negative training  data for 
+the purposes of constructing the classifier. 
+Towards this end, we build a feature  vector  
+in the train- ing phase for an ‘unrelated’ 
+relation by randomly selecting entity pairs 
+that do not appear in any Freebase relation  
+and extracting  features for them. While it is 
+possible that some of these entity pairs
+
+
+1 
+0.9 
+0.8 
+0.7 
+
+
+0.6 
+0.5 
+0.4 
+0.3 
+
+
+
+
+Both Synt
+ax Surface
+ 
+
+
+0.2 
+0.1 
+0 
+0 	0.05 	0.1 	0.15 	0.2 	0.25 	0.3 	0.35 	0.4 	0.45 
+Oracle recall 
+
+
+Figure 2: Automatic evaluation with 50% of Freebase relation  data held out and 50% used in training 
+on the 102 largest relations we use. Precision for three different  feature sets (lexical features, syntactic 
+features, and both) is reported at recall levels from 10 to 100,000. At the 100,000 recall level, we classify 
+most of the instances into three relations: 60% as location-contains,  13% as person-place-of-birth, and
+10% as person-nationality.
+
+
+
+
+are in fact related but are wrongly omitted from 
+the Freebase data, we expect that on average these 
+false negatives will have a small effect on the per- 
+formance of the classifier. For performance rea- 
+sons, we randomly sample 1% of such entity pairs 
+for use as negative training examples. By contrast, 
+in the actual test data, 98.7% of the entity pairs we 
+extract do not possess any of the top 102 relations 
+we consider in Freebase.
+  We  use a  multi-class   logistic classifier  opti- 
+mized using L-BFGS with Gaussian regulariza- 
+tion.  Our classifier  takes as input an entity pair 
+and a feature vector,  and returns a relation  name 
+and a confidence score based on the probability of 
+the entity pair belonging to that relation. Once all 
+of the entity pairs discovered during testing have 
+been classified, they can be ranked by confidence 
+score and used to generate  a list of the n most 
+likely new relation instances.
+  Table 4  shows some high-weight features 
+learned by our system.  We discuss the results in 
+the next section.
+
+7   Evaluation
+
+We evaluate labels in two ways: automatically, 
+by holding out part of the Freebase relation  data 
+during training, and comparing newly discovered 
+relation  instances against this held-out data, and 
+manually, having humans who look at each posi-
+
+
+tively labeled entity pair and mark whether the re- 
+lation indeed holds between the participants. Both 
+evaluations allow us to calculate the precision of 
+the system for the best N instances.
+
+7.1   Held-out evaluation
+
+Figure 2 shows the performance of our classifier 
+on held-out  Freebase relation  data. While held-out 
+evaluation suffers from false negatives, it gives a 
+rough measure of precision without requiring ex- 
+pensive human evaluation, making it useful for pa- 
+rameter setting.
+  At most recall levels, the combination of syn- 
+tactic and lexical  features offers a substantial im- 
+provement in precision over either of these feature 
+sets on its own.
+
+7.2   Human evaluation
+
+Human evaluation was performed by evaluators on 
+Amazon’s Mechanical Turk service, shown to be 
+effective for natural language annotation in Snow 
+et al. (2008). We ran three experiments:  one us- 
+ing only syntactic features; one using only lexical 
+features; and one using both syntactic and lexical 
+features. For each of the 10 relations that appeared 
+most frequently in our test data (according to our 
+classifier), we took samples from the first 100 and
+1000 instances of this relation generated in each 
+experiment,  and sent these to Mechanical Turk for
+
+
+
+R
+e
+l
+a
+t
+i
+o
+n
+ 
+n
+a
+m
+e
+100 
+instance
+s
+1000 
+instances
+
+Sy
+n
+Le
+x
+Bo
+th
+Sy
+n
+Le
+x
+Bo
+th
+/
+f
+i
+l
+m
+/
+d
+i
+r
+e
+c
+t
+o
+r
+/
+f
+i
+l
+m
+/
+f
+i
+l
+m
+/
+w
+r
+i
+t
+e
+r
+/
+f
+i
+l
+m
+/
+g
+e
+o
+g
+r
+a
+p
+h
+y
+/
+r
+i
+v
+e
+r
+/
+b
+a
+s
+i
+n
+ 
+c
+o
+u
+n
+t
+r
+i
+e
+s
+/lo
+ca
+tio
+n/
+co
+un
+try
+/a
+d
+mi
+ni
+str
+ati
+ve 
+di
+vi
+si
+on
+s
+/
+l
+o
+c
+a
+t
+i
+o
+n
+/
+l
+o
+c
+a
+t
+i
+o
+n
+/
+c
+o
+n
+t
+a
+i
+n
+s
+/
+l
+o
+c
+a
+t
+i
+o
+n
+/
+u
+s
+ 
+c
+o
+u
+n
+t
+y
+/
+c
+o
+u
+n
+t
+y
+ 
+s
+e
+a
+t
+/
+m
+u
+s
+i
+c
+/
+a
+r
+t
+i
+s
+t
+/
+o
+r
+i
+g
+i
+n
+/
+p
+e
+o
+p
+l
+e
+/
+d
+e
+c
+e
+a
+s
+e
+d
+ 
+p
+e
+r
+s
+o
+n
+/
+p
+l
+a
+c
+e
+ 
+o
+f
+ 
+d
+e
+a
+t
+h
+/
+p
+e
+o
+p
+l
+e
+/
+p
+e
+r
+s
+o
+n
+/
+n
+a
+t
+i
+o
+n
+a
+l
+i
+t
+y
+/
+p
+e
+o
+p
+l
+e
+/
+p
+e
+r
+s
+o
+n
+/
+p
+l
+a
+c
+e
+ 
+o
+f
+ 
+b
+i
+r
+t
+h
+0.
+49
+0.
+70
+0.
+65
+0.
+68
+0.
+81
+0.
+51
+0.
+64
+0.
+80
+0.
+61
+0.
+78
+0.4
+3
+0.6
+0
+0.6
+4
+0.5
+9
+0.8
+9
+0.5
+1
+0.6
+6
+0.7
+9
+0.7
+0
+0.7
+7
+0.
+44
+0.
+65
+0.
+67
+0.
+70
+0.
+84
+0.
+53
+0.
+71
+0.
+81
+0.
+72
+0.
+78
+0.4
+9
+0.7
+1
+0.7
+3
+0.7
+2
+0.8
+5
+0.4
+7
+0.6
+1
+0.8
+0
+0.5
+6
+0.8
+8
+0.4
+1
+0.6
+1
+0.7
+1
+0.6
+8
+0.8
+3
+0.5
+7
+0.6
+3
+0.8
+1
+0.6
+1
+0.8
+5
+0.
+46
+0.
+69
+0.
+64
+0.
+72
+0.
+84
+0.
+42
+0.
+60
+0.
+78
+0.
+63
+0.
+91
+A
+v
+e
+r
+a
+g
+e
+0.
+67
+0.6
+6
+0.
+69
+0.6
+8
+0.6
+7
+0.
+67
+Table 5: Estimated precision on human-evaluation  experiments of the highest-ranked 100 and 1000 
+results per relation, using stratified samples. ‘Average’ gives the mean precision of the 10 relations. Key: 
+Syn = syntactic features only. Lex = lexical features only. We use stratified  samples because of the 
+overabundance of location-contains instances among our high-confidence results.
+
+
+
+
+human evaluation. Our sample size was 100.
+  Each predicted relation instance was labeled as 
+true or false by between 1 and 3 labelers on Me- 
+chanical Turk. We assigned the truth or falsehood 
+of each relation according to the majority vote of 
+the labels; in the case of a tie (one vote each way) 
+we assigned the relation  as true or false with equal 
+probability. The evaluation of the syntactic, lexi- 
+cal, and combination of features at a recall of 100 
+and 1000 instances is presented in Table 5.
+  At a recall of 100 instances, the combination of 
+lexical and syntactic  features has the best perfor- 
+mance for a majority  of the relations, while at a re- 
+call level of 1000 instances the results are mixed. 
+No feature set strongly  outperforms  any of the oth- 
+ers across all relations.
+
+8   Discussion
+
+Our results show that the distant supervision algo- 
+rithm is able to extract high-precision  patterns for 
+a reasonably large number of relations.
+  The held-out results in Figure 2 suggest that the 
+combination of syntactic and lexical features pro- 
+vides better performance than either feature set on 
+its own. In order to understand the role of syntactic 
+features, we examine Table 5, the human evalua- 
+tion of the most frequent 10 relations. For the top- 
+ranking 100 instances of each relation,  most of the 
+best results use syntactic features, either alone or 
+in combination with lexical features. For the top- 
+ranking 1000 instances of each relation, the results 
+are more mixed, but syntactic features still helped 
+in most classifications.
+  We then examine those relations for which syn- 
+tactic features seem to help. For example, syn- 
+tactic features consistently outperform lexical fea-
+
+
+tures for the director-film and writer-film relations. 
+As discussed in section 4, these two relations are 
+particularly  ambiguous, suggesting that syntactic 
+features may help tease apart  difficult relations. 
+Perhaps more telling, we noticed many examples 
+with a long string of words between the director 
+and the film:
+
+Back Street is a 1932 film made by Univer- 
+sal Pictures, directed by John M. Stahl, and 
+produced by Carl Laemmle Jr.
+
+Sentences like this have very long (and thus rare) 
+lexical features, but relatively short dependency 
+paths. Syntactic features can more easily abstract 
+from the syntactic modifiers that comprise the ex- 
+traneous parts of these strings.
+  Our results thus suggest that syntactic features 
+are indeed useful in distantly supervised informa- 
+tion extraction, and that the benefit of syntax oc- 
+curs in cases where the individual patterns are par- 
+ticularly  ambiguous, and where they are nearby in 
+the dependency structure but distant in terms of 
+words. It remains for future work to see whether 
+simpler,  chunk-based syntactic features might be 
+able to capture enough of this gain without the 
+overhead of full parsing, and whether coreference 
+resolution could improve performance.
+
+Acknowledgments
+
+We would like to acknowledge  Sarah Spikes for 
+her help in developing the relation extraction sys- 
+tem, Christopher Manning and Mihai Surdeanu 
+for their invaluable  advice, and Fuliang Weng 
+and Baoshi Yan for their guidance.  Our research 
+was partially funded by the NSF via award IIS-
+0811974 and by Robert Bosch LLC.
+
+
+References
+
+Eugene Agichtein and Luis Gravano. 2000. Snow- 
+ball: Extracting relations from large plain-text col- 
+lections. In Proceedings of the 5th ACM Interna- 
+tional Conference on Digital Libraries.
+Michele  Banko, Michael  J. Cafarella, Stephen Soder- 
+land, Matthew Broadhead, and Oren Etzioni. 2007. 
+Open information extraction  from the web.   In 
+Manuela M Veloso, editor, IJCAI-07,  pages 2670–
+2676.
+Kurt Bollacker, Colin Evans,  Praveen Paritosh,  Tim 
+Sturge, and Jamie Taylor. 2008. Freebase:  a col- 
+laboratively  created graph database for structuring 
+human knowledge. In SIGMOD ’08, pages 1247–
+1250, New York, NY. ACM.
+Sergei Brin.  1998. Extracting patterns and relations 
+from the World Wide Web. In Proceedings World 
+Wide Web and Databases International  Workshop, 
+Number 1590 in LNCS, pages 172–183. Springer.
+Razvan Bunescu and Raymond Mooney.  2007. Learn- 
+ing to extract relations from the web using minimal 
+supervision. In ACL-07, pages 576–583,  Prague, 
+Czech Republic, June.
+Mark Craven and Johan Kumlien. 1999. Constructing 
+biological  knowledge  bases by extracting informa- 
+tion from text sources.  In Thomas Lengauer, Rein- 
+hard Schneider, Peer Bork, Douglas L. Brutlag, Jan- 
+ice I. Glasgow, Hans W. Mewes, and Ralf Zimmer, 
+editors, ISMB, pages 77–86. AAAI.
+George Doddington, Alexis Mitchell, Mark Przybocki, 
+Lance Ramshaw,   Stephanie  Strassel,  and Ralph 
+Weischedel.  2004. The Automatic Content Extrac- 
+tion (ACE) Program–Tasks,  Data, and Evaluation. 
+LREC-04,  pages 837–840.
+Oren Etzioni, Michael Cafarella, Doug Downey, Ana- 
+Maria Popescu,  Tal Shaked, Stephen Soderland, 
+Daniel S. Weld, and Alexander  Yates.  2005. Un- 
+supervised named-entity extraction  from the web: 
+An  experimental  study.    Artificial  Intelligence,
+165(1):91–134.
+Jenny R. Finkel, Trond Grenager,  and Christopher 
+Manning. 2005. Incorporating non-local informa- 
+tion into information extraction  systems by gibbs 
+sampling. In ACL-05,  pages 363–370, Ann Arbor, 
+MI.
+Roxana Girju, Adriana Badulescu, and Dan Moldovan.
+2003. Learning semantic constraints for the auto- 
+matic discovery of part-whole relations. In HLT- 
+NAACL-03, pages 1–8, Edmonton,  Canada.
+Marti A. Hearst. 1992. Automatic acquisition of hy- 
+ponyms from large text corpora. In COLING-92, 
+Nantes, France.
+Dekang Lin and Patrick Pantel. 2001. Discovery of in- 
+ference rules for question-answering. Natural Lan- 
+guage Engineering, 7(4):343–360.
+Dekang Lin.  1998. Dependency-based evaluation of 
+minipar. In Workshop on the Evaluation of Parsing 
+Systems.
+
+
+Metaweb. 2008.  Freebase data dumps. http://
+download.freebase.com/datadumps/.
+Alexander A.  Morgan, Lynette Hirschman, Marc
+Colosimo,  Alexander S. Yeh, and Jeff B. Colombe.
+2004. Gene name identification  and normalization 
+using a model organism database. J. of Biomedical 
+Informatics, 37(6):396–410.
+Patrick   Pantel  and Marco Pennacchiotti.	2006.
+Espresso: leveraging generic patterns  for  auto- 
+matically harvesting  semantic relations. In COL- 
+ING/ACL 2006, pages 113–120, Sydney, Australia.
+Marco Pennacchiotti and Patrick Pantel. 2006. A boot- 
+strapping algorithm for automatically harvesting se- 
+mantic relations. In in Proceedings of Inference in 
+Computational  Semantics (ICoS-06), pages 87–96.
+Deepak Ravichandran  and Eduard H. Hovy.	2002.
+Learning surface text patterns for a question answer- 
+ing system.  In ACL-02,  pages 41–47, Philadelphia, 
+PA.
+Ellen Riloff and Rosie  Jones.   1999.  Learning dic- 
+tionaries for information extraction by multi-level 
+bootstrapping. In AAAI-99,  pages 474–479.
+Benjamin Rozenfeld and Ronen Feldman. 2008. Self- 
+supervised relation extraction from the web. Knowl- 
+edge and Information Systems, 17(1):17–33.
+Yusuke Shinyama and Satoshi Sekine. 2006. Preemp- 
+tive information  extraction using unrestricted rela- 
+tion discovery. In HLT-NAACL-06, pages 304–311, 
+New York, NY.
+Rion Snow, Daniel Jurafsky, and Andrew Y. Ng. 2005.
+Learning syntactic patterns for automatic hypernym 
+discovery. In Lawrence K. Saul, Yair Weiss, and 
+Le´on Bottou, editors, NIPS 17, pages 1297–1304. 
+MIT Press.
+Rion Snow, Brendan O’Connor, Daniel Jurafsky, and 
+Andrew Ng. 2008. Cheap and fast – but is it good? 
+evaluating non-expert annotations for natural lan- 
+guage tasks. In EMNLP  2008, pages 254–263, Hon- 
+olulu, HI.
+Mihai Surdeanu and Massimiliano  Ciaramita. 2007.
+Robust information extraction with perceptrons.  In 
+Proceedings of the NIST 2007 Automatic  Content 
+Extraction Workshop (ACE07), March.
+Fei Wu and Daniel S. Weld. 2007. Autonomously  se- 
+mantifying wikipedia. In CIKM ’07: Proceedings 
+of the sixteenth ACM conference on Conference on 
+information and knowledge management, pages 41–
+50, Lisbon, Portugal.
+Guodong Zhou, Jian Su, Jie Zhang, and Min Zhang.
+2005. Exploring various knowledge in relation ex- 
+traction.  In ACL-05,  pages 427–434, Ann Arbor, 
+MI.
+Guodong Zhou, Min Zhang, Donghong Ji, and Qiaom- 
+ing Zhu. 2007. Tree kernel-based relation extrac- 
+tion with context-sensitive  structured parse tree in- 
+formation. In EMNLP/CoNLL 2007.
+

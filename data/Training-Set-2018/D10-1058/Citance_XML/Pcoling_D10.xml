@@ -1,0 +1,275 @@
+<PAPER>
+	<ABSTRACT>
+		<S sid ="1" ssid = "1">We present a new Bayesian HMM word alignment model for statistical machine translation.</S>
+		<S sid ="2" ssid = "2">The model is a mixture of an alignment model and a language model.</S>
+		<S sid ="3" ssid = "3">The alignment component is a Bayesian extension of the standard HMM.</S>
+		<S sid ="4" ssid = "4">The language model component is responsible for the generation of words needed for source fluency reasons from source language context.</S>
+		<S sid ="5" ssid = "5">This allows for untranslatable source words to remain unaligned and at the same time avoids the introduction of artificial NULL words which introduces unusually long alignment jumps.</S>
+		<S sid ="6" ssid = "6">Existing Bayesian word alignment models are unpractically slow because they consider each target position when resampling a given alignment link.</S>
+		<S sid ="7" ssid = "7">The sampling complexity therefore grows linearly in the target sentence length.</S>
+		<S sid ="8" ssid = "8">In order to make our model useful in practice, we devise an auxiliary variable Gibbs sampler that allows us to resample alignment links in constant time independently of the target sentence length.</S>
+		<S sid ="9" ssid = "9">This leads to considerable speed improvements.</S>
+		<S sid ="10" ssid = "10">Experimental results show that our model performs as well as existing word alignment toolkits in terms of resulting BLEU score.</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number = "1">
+			<S sid ="11" ssid = "11">Word alignment is one of the basic problems in statistical machine translation (SMT).</S>
+			<S sid ="12" ssid = "12">The IBM models were originally devised for translation by Brown et al.</S>
+			<S sid ="13" ssid = "13">(1993).</S>
+			<S sid ="14" ssid = "14">Later, when SMT started to employ entire phrases instead of single words (Koehn et al., 2003), the IBM models were repurposed as word alignment models.</S>
+			<S sid ="15" ssid = "15">The alignments they produce guide the phrase extraction heuristics that are used in many modern SMT systems.</S>
+			<S sid ="16" ssid = "16">There are several extensions of the classical IBM models that try to weaken their independence assumptions.</S>
+			<S sid ="17" ssid = "17">Notably, Vogel et al.</S>
+			<S sid ="18" ssid = "18">(1996) introduced Markovian dependencies between individual alignment links.</S>
+			<S sid ="19" ssid = "19">Those links were treated as independent events in IBM models 1, 2 and 3.</S>
+			<S sid ="20" ssid = "20">The model of Vogel et al.</S>
+			<S sid ="21" ssid = "21">(1996) can be viewed as a Hidden Markov Model (HMM) in which the hidden Markov Chain induces a probability distribution over latent alignment links.</S>
+			<S sid ="22" ssid = "22">Besides weakening the independence assumptions of the simpler IBM models, the HMM alignment model has the additional benefit of being tractable.</S>
+			<S sid ="23" ssid = "23">This means that expectations under the HMM aligner can be computed exactly using the forward-backward algorithm.</S>
+			<S sid ="24" ssid = "24">These expectations are then used in the Baum-Welch algorithm (Baum et al., 1970) to compute parameter updates for the model.</S>
+			<S sid ="25" ssid = "25">Crucially, the Baum-Welch algorithm is a special case of the EM algorithm and thus guaranteed to never decrease the model’s likelihood at each parameter update (Dempster et al., 1977).</S>
+			<S sid ="26" ssid = "26">Tractability and convergence (at least to a local optimum) are clear advantages of the HMM aligner over IBM models 3 to 5 which are all intractable.</S>
+			<S sid ="27" ssid = "27">In practice, hill-climbing heuristics are employed to approximate expectations in these more complex models.</S>
+			<S sid ="28" ssid = "28">Unfortunately, all convergence guarantees of the learning algorithm are lost this way.</S>
+			<S sid ="29" ssid = "29">A major problem for the HMM aligner is the handling of NULL words.1 The NULL word is a special This work is licensed under a Creative Commons Attribution 4.0 International Licence.</S>
+			<S sid ="30" ssid = "30">Licence details: http:// creativecommons.org/licenses/by/4.0/ 1 The original work of Vogel et al.</S>
+			<S sid ="31" ssid = "31">(1996) did not use NULL words and instead aligned all source words.</S>
+			<S sid ="32" ssid = "32">Later work by Och and Ney (2003) and Liang et al.</S>
+			<S sid ="33" ssid = "33">(2006) has shown that using NULL words to allow for unaligned words improves performance.</S>
+			<S sid ="34" ssid = "34">lexical item that is hypothesised to stand at the beginning of every target (English) sentence.</S>
+			<S sid ="35" ssid = "35">Since in word alignment the source (French) side is generated given the target side, the NULL word is used to generate source words that do not have lexical translations on the target side.</S>
+			<S sid ="36" ssid = "36">Such untranslatable words are often idiosyncratic to the source language.</S>
+			<S sid ="37" ssid = "37">Examples are prepositions such as de in French.</S>
+			<S sid ="38" ssid = "38">The translation of the English orange juice is jus d’ orange.</S>
+			<S sid ="39" ssid = "39">In that case the (clitic) preposition de would be generated from the NULL word on the English side.</S>
+			<S sid ="40" ssid = "40">For the HMM alignment model the NULL word is troublesome since it stands in the 0th English position and thus induces unusually long jumps which have to be captured by the jump distribution of the HMM.</S>
+			<S sid ="41" ssid = "41">In this work we present a Bayesian HMM aligner that does not make use of artificial NULL words.</S>
+			<S sid ="42" ssid = "42">Instead, untranslatable source words are generated from the words preceding them.</S>
+			<S sid ="43" ssid = "43">This way, our proposed model only needs to account for lexically motivated alignment links.</S>
+			<S sid ="44" ssid = "44">Moreover, since our model is a hierarchical Bayesian model we can bias it towards inducing sparse lexical distributions.</S>
+			<S sid ="45" ssid = "45">This in turn leads to significantly better translation distributions (Mermer and Sarac¸lar, 2011).</S>
+			<S sid ="46" ssid = "46">Moreover, we can even perform inference on the model’s hyperparameters, freeing us of having to choose arbitrary prior distributions.</S>
+			<S sid ="47" ssid = "47">Existing Bayesian word aligners are often too slow to be useful in practice.</S>
+			<S sid ="48" ssid = "48">We overcome this problem by designing an auxiliary variable Gibbs sampler that reduces sampling complexity by an order of magnitude.</S>
+			<S sid ="49" ssid = "49">We also provide a formal proof that this sampler works correctly.</S>
+			<S sid ="50" ssid = "50">We provide several detailed experiments which show that our model performs on par with or better than standardly used alignment toolkits in terms of BLEU score.</S>
+			<S sid ="51" ssid = "51">Notation Throughout this paper we will denote random variables (RVs) by upper case Roman letters.</S>
+			<S sid ="52" ssid = "52">If we want to express the probability of a specific outcome for the RV X we write P (X = x).</S>
+			<S sid ="53" ssid = "53">If we want to leave the value of X underspecified, we simply write P (x).</S>
+			<S sid ="54" ssid = "54">We abbreviate a sequence of RVs X1 to Xn as X n and a sequence of outcomes x1 to xn as xn.</S>
+			<S sid ="55" ssid = "55">We also distinguish notationally between 1 1 probability mass functions (pmfs) and probability density functions (pdfs).</S>
+			<S sid ="56" ssid = "56">We denote pmfs by P (·) and pdfs by p(·).</S>
+			<S sid ="57" ssid = "57">Finally, we use vF and vE to denote the French (source) and English (target) vocabulary sizes.</S>
+	</SECTION>
+	<SECTION title="The HMM Word Alignment Model. " number = "2">
+			<S sid ="58" ssid = "1">The HMM model of Vogel et al.</S>
+			<S sid ="59" ssid = "2">(1996) defines a joint distribution over alignments and source words given a target sentence.2 The source words are observed as part of the parallel corpus whereas the alignments are hidden.</S>
+			<S sid ="60" ssid = "3">An alignment consists of as many alignment links as there are source words.</S>
+			<S sid ="61" ssid = "4">Unlike the IBM models 1 and 2, which assume independence between alignment links, the HMM model assumes a first-order Markov dependency between them.</S>
+			<S sid ="62" ssid = "5">This means that each alignment link depends on its predecessor.</S>
+			<S sid ="63" ssid = "6">We define random variables E ranging over the target vocabulary E , variables F ranging over the source vocabulary F , and variables A modelling alignment links.</S>
+			<S sid ="64" ssid = "7">We use Fj for the variable associated with the source word occupying position j in the source sentence f m. Consequently, Aj is the random variable for the alignment link associated with position j. This random variable ranges over word positions in the target sentence el , where 0 is a special position occupied by the hypothetical NULL word.</S>
+			<S sid ="65" ssid = "8">Finally, we use eaj to denote the target word that position j is aligned to.</S>
+			<S sid ="66" ssid = "9">We can then express the likelihood of the HMM model for a single sentence pair as shown in Equation 1.</S>
+			<S sid ="67" ssid = "10">m l P (f m|el ) = n ) P (Aj = i|aj 1)P (f |e ) (1) 1 0 j=1 i=0 − j i Here, the Markovian dependency of the alignment links is captured by a distribution over alignment jumps.</S>
+			<S sid ="68" ssid = "11">The distance between the current and the previous link can be thought of as a jump from one position to the next.</S>
+			<S sid ="69" ssid = "12">The jump width is then given by i − it where i is the current value of Aj and it 2 The extension to a corpus of parallel sentences is trivial because independence between sentence pairs is assumed.</S>
+			<S sid ="70" ssid = "13">To keep the notation simple we describe all models on the sentence level.</S>
+			<S sid ="71" ssid = "14">is the value of the previous alignment link Aj−1.</S>
+			<S sid ="72" ssid = "15">The distribution over alignment jumps is then simply P (Aj = i|Aj−1 = it) = P (i − it).</S>
+			<S sid ="73" ssid = "16">In practice, we set a0 to a special start token, so as to provide a conditioning event for the first alignment decision.</S>
+			<S sid ="74" ssid = "17">A severe problem for the HMM alignment model is the handling of NULL words.</S>
+			<S sid ="75" ssid = "18">If we did not treat alignments to the NULL position in a special way, those alignments would distort the alignment distribution because they induce unusually long jumps.</S>
+			<S sid ="76" ssid = "19">To solve this problem, we introduce a special jump value for NULL alignments.3 This has the effect that jumps to and from NULL are modelled explicitly and behave just like other jump values.</S>
+			<S sid ="77" ssid = "20">On the other hand, if the preceding alignment is an alignment to NULL, the distribution over jumps becomes uniform.</S>
+			<S sid ="78" ssid = "21">This is because when jumping from NULL a special jump value gets invoked that does not depend on the position that the next jump leads to.</S>
+			<S sid ="79" ssid = "22">This behaviour obviously restricts the expressive power of the model somewhat but provides a clean handling of NULL alignments.</S>
+			<S sid ="80" ssid = "23">The parameters of the standard HMM of Vogel et al.</S>
+			<S sid ="81" ssid = "24">(1996) are estimated through likelihood maximization.</S>
+			<S sid ="82" ssid = "25">Here, we extend their model with prior distributions over parameters.</S>
+			<S sid ="83" ssid = "26">This means that we are turning it into a Bayesian model.</S>
+			<S sid ="84" ssid = "27">The parameters of the alignment HMM are categorical parameters of the following distributions: • A distribution over the source lexicon for each target word.</S>
+			<S sid ="85" ssid = "28">We call this the translation distribution and use Θe as a variable over the corresponding parameter vector.</S>
+			<S sid ="86" ssid = "29">• A distribution over alignment jumps.</S>
+			<S sid ="87" ssid = "30">We call this the alignment distribution and use Θa as a variable over the corresponding parameter vector.</S>
+			<S sid ="88" ssid = "31">Since the model’s distributions are categorical, we impose (symmetric) Dirichlet priors on their parameters.</S>
+			<S sid ="89" ssid = "32">The Dirichlet is a standard choice in this case as it is conjugate to the categorical.4 The variables in the Bayesian HMM aligner are thus generated as follows: Aj |aj−1 ∼ θa Θa ∼ Dir(α) Fj |eaj ∼ θeaj Θe ∼ Dir(β) We describe how to do inference in this model in Section 4.</S>
+	</SECTION>
+	<SECTION title="An HMM Aligner with a Language Model Component. " number = "3">
+			<S sid ="90" ssid = "1">Our model is a mixture between a Bayesian HMM aligner and a Bayesian source language model.</S>
+			<S sid ="91" ssid = "2">It differs from the Bayesian HMM aligner of Section 2 in that the language model component is the one responsible for generating source words from (source) context when those do not have a target translation.</S>
+			<S sid ="92" ssid = "3">These are the words that would otherwise be aligned to NULL under the IBM models and our own Bayesian HMM (Section 2).</S>
+			<S sid ="93" ssid = "4">Formally, we extend the Bayesian HMM alignment model with binary choice variables Z which we are used to indicate collocations.</S>
+			<S sid ="94" ssid = "5">There is one such variable for each source position, thus Zj is the choice variable for position j. We use this variable as an indicator for whether the language model is used.</S>
+			<S sid ="95" ssid = "6">Thus, if Zj = 1, the source word fj is generated from fj−1.</S>
+			<S sid ="96" ssid = "7">Otherwise, if Zj = 0, fj is generated from the target word it is aligned to (eaj ).</S>
+			<S sid ="97" ssid = "8">Since our model is Bayesian, we put priors on all parameters.</S>
+			<S sid ="98" ssid = "9">In particular, the translation parameters (θe), language model parameters (θf ) and jump parameters (θa) are drawn from Dirichlet distributions with parameter vectors α, β and γ.</S>
+			<S sid ="99" ssid = "10">The binary choice variables Z only have one parameter qf which depends on the previous source word and follows a Beta distribution with parameters s and r. Since it is hard to guess reasonable values for the parameters s and r, we further assume that they are independently drawn from a Gamma distribution whose shape and rate parameters we set to 1.</S>
+			<S sid ="100" ssid = "11">This extra level of hierarchy frees us from having to choose arbitrary values for s and r. Empirically, it also improves the performance of our model.</S>
+			<S sid ="101" ssid = "12">3 Conceptually, we add a categorical event TONULL and another FROMNULL to the distribution over alignment jumps..</S>
+			<S sid ="102" ssid = "13">4 Conjugacy in this case means that the posterior over parameters will again be a Dirichlet.</S>
+			<S sid ="103" ssid = "14">This has the advantage that we can analytically integrate with respect to the posterior.</S>
+			<S sid ="104" ssid = "15">To better understand our model, we formulate a generative story: • Draw values for s and r independently from Gamma(1, 1) • Generate qf from Beta(s, r) for each source word f • Draw values for θa, θe and θf from their respective Dirichlet priors • For each source position j 1.</S>
+			<S sid ="105" ssid = "16">Generate an alignment link aj conditional on aj−1.</S>
+			<S sid ="106" ssid = "17">2. Choose a value for Zj conditional on the previous source word fj−1.</S>
+			<S sid ="107" ssid = "18">(a) If Zj = 0, generate source word fj from target word eaj (b) If Zj = 1, generate source word fj from source word fj−1 In terms of variable generation we have to adjust the model description from Section 2.</S>
+			<S sid ="108" ssid = "19">For reasons of clarity, we condition all variables only on those events that they depend on.</S>
+			<S sid ="109" ssid = "20">S ∼ Gamma(1, 1) R ∼ Gamma(1, 1) Zj |fj−1 ∼ Bernoulli(qfj−1 ) Qf ∼ Beta(s, r) Aj |aj−1 ∼ Cat(θa) Θa ∼ Dir(α) Fj |aj , Zj = 0, eaj ∼ Cat(θeaj ) Θe ∼ Dir(β) Fj |aj , Zj = 1, fj−1 ∼ Cat(θfj−1 ) Θf ∼ Dir(γ) Our model as described above defines a joint distribution over French words, collocation and alignment variables and parameters given an English sentence and the hyperparameters.</S>
+	</SECTION>
+	<SECTION title="Inference. " number = "4">
+			<S sid ="110" ssid = "1">In this section we derive a Gibbs sampler for our collocation-based model (Section 3).</S>
+			<S sid ="111" ssid = "2">The sampler for the Bayesian HMM with NULL words (Section 2) follows from that.</S>
+			<S sid ="112" ssid = "3">We also describe how to sample the hyperparameters of the Beta prior on the collocation distributions.</S>
+			<S sid ="113" ssid = "4">4.1 Dirichlet Predictive Posterior.</S>
+			<S sid ="114" ssid = "5">Let us first establish a general useful fact about the Dirichlet distribution.5 Let us call the posterior Dirichlet parameter vector η.6 Then the posterior predictive distribution for a categorical outcome x is given by the following integral: P (x|η) = P (x|θ)p(θ|η)dθ = θxp(θ|η)dθ .</S>
+			<S sid ="115" ssid = "6">( 2) Here, we use θx to denote the categorical parameter for outcome x. Note that the last integral in Equation (2) is in fact equal to the expectation of θx under Dir(η).</S>
+			<S sid ="116" ssid = "7">It is well known that for a k- dimensional Dirichlet distribution this expectation is E[θx|η] = ηx . Thus, the predictive posteriors i=1 for the alignment and collocation variables after integrating over the categorical or Beta parameters take the form of this expectation.</S>
+			<S sid ="117" ssid = "8">4.2 Gibbs Sampling the Hidden Variables.</S>
+			<S sid ="118" ssid = "9">Since we are only interested in the assignments of the alignment and collocation variables, we integrate over the model parameters θe, θa, θf and qf . This gives us a collapsed Gibbs sampler.In general, a Gibbs sampler resamples one variable at a time while conditioning on the current assign ments of all other variables.</S>
+			<S sid ="119" ssid = "10">In our case we are interested in resampling Aj and Zj . This means that we 5 This fact immediately carries over to the Beta distribution which can be viewed as a 2-dimensional Dirichlet distribution..</S>
+			<S sid ="120" ssid = "11">6 Since the categorical is in the exponential family and the Dirichlet is conjugate to it, the posterior Dirichlet parameter η is simply the sum of the prior Dirichlet parameter (which we will call E here) and the sufficient statistics of the categorical likelihood.</S>
+			<S sid ="121" ssid = "12">In our concrete case, these sufficient statistics are simply the number of times an outcome has been observed in the data.</S>
+			<S sid ="122" ssid = "13">Let us denote these counts by c(x) for an outcome x. Thus, for this outcome x, we have ηx = Ex + c(x).</S>
+			<S sid ="123" ssid = "14">will need to derive posterior predictive distributions for these variables.</S>
+			<S sid ="124" ssid = "15">Let us first deal with the posterior predictive for the collocation variables where we assume the Beta parameters r and s as given.</S>
+			<S sid ="125" ssid = "16">To ease notation we introduce the set C = {r, s, α, β, γ} which contains all remaining (hyper-)parameters.</S>
+			<S sid ="126" ssid = "17">th We use xj to denote the set of all outcomes x except the j one.</S>
+			<S sid ="127" ssid = "18">We also introduce the function c(·) as a (conditional) count function for an outcome across the entire corpus, excluding the jth such outcome if necessary.</S>
+			<S sid ="128" ssid = "19">Proportionality in the following equations comes about because we eliminate normalization constants that do not depend on the value of the variable that we sample.</S>
+			<S sid ="129" ssid = "20">m l P (Zj = 0|zj , a1 , fj , e1, C) ∝ P (Zj = 0|fj−1, s, r) × P (fj |aj , eaj , β) = c(z = 0|fj−1) + r c(fj−1) + r + s c(fj |eaj ) + β × c(eaj ) + vF β c(fj |eaj ) + β (3) ∝ (c(z = 0|fj−1) + r) × c(e ) + vF β m l P (Zj = 1|zj , a1 , fj , e1, C) ∝ P (Zj = 1|fj−1, s, r) × P (fj |fj−1, γ) = c(z = 1|fj−1) + s c(fj−1) + r + s × c(fj |fj−1) + γ c(z = 1|fj−1) + vF γ c(fj |fj−1) + γ (4) ∝ (c(z = 1|fj−1) + s) × c(z = 1|f j−1 ) + vF γ When resampling the alignment variables, we need to distinguish between the two cases where the collocation variable is active or not.</S>
+			<S sid ="130" ssid = "21">In case the collocation variable is switched off, inference for the alignment variable is similar to that in the Bayesian HMM aligner.</S>
+			<S sid ="131" ssid = "22">The crucial difference, however, is that in the standard case, the values of the alignment variable range from 0, the NULL position, to the target sentence length l. In our model, however, the possible values for the alignment variable start at 1 as there is no NULL position.</S>
+			<S sid ="132" ssid = "23">m l P (aj |Zj = 0, aj , f1 , e1, C) ∝ P (aj |aj−1, α) × P (aj+1|aj , α) × P (fj |eaj , β) c(aj − aj−1) + α c(aj+1 − aj ) + α c(fj |eaj ) + β = i=1 (c(i − aj−1) + α) × i=1 (c(aj+1 − i) + α) × c(ea ) + vF β (5) c(fj |eaj ) + β ∝ (c(aj − aj−1) + α) × (c(aj+1 − aj ) + α) × c(e ) + vF β Again, let us point out that the predictive posterior in (5) is the one we use for inference in the Bayesian HMM model described in Section 2 with difference that the alignment positions include 0 in that case.</S>
+			<S sid ="133" ssid = "24">If the collocation variable is switched on, i.e. if the jth French word is generated from its predecessor, there is no lexical influence on the alignment posterior and the new link is simply sampled from the alignment distribution.</S>
+			<S sid ="134" ssid = "25">P (aj |Zj = 1, a , f , el , C) ∝ P (a |a , α) × P (a |a , α) = l c(aj − aj−1) + α × l c(aj+1 − aj ) + α (6) i=1 (c(i − aj−1) + α) i=1 (c(aj+1 − i) + α) ∝ (c(aj − aj−1) + α) × (c(aj+1 − aj ) + α) At this point it is important to note that the na¨ıve Gibbs sampler described here considers all target positions as candidate alignment points for a given source position j. This means that the time it takes to re-sample an alignment link grows linearly with the length of the target sentence.</S>
+			<S sid ="135" ssid = "26">In practice this makes the sampler unpractically slow.</S>
+			<S sid ="136" ssid = "27">We address this problem in the following section.</S>
+			<S sid ="137" ssid = "28">4.3 Sampling Alignments Efficiently.</S>
+			<S sid ="138" ssid = "29">We are interested in sampling from P (aj |aj , C), where we conflate all other variables in C to avoid clutter.</S>
+			<S sid ="139" ssid = "30">Note that we know P (aj |aj , C) up to a normalisation constant, thus sampling requires evaluating Equation 5 (or 6) for all 1 ≤ i ≤ l. Naturally, this procedure runs in time proportional to O(l).</S>
+			<S sid ="140" ssid = "31">In this section we present an auxiliary variable sampler that brings this down to constant time.</S>
+			<S sid ="141" ssid = "32">The idea is to evaluate P (aj |aj , C) only for assignments in a subset of target positions.</S>
+			<S sid ="142" ssid = "33">This subset must include at least 2 candidates and it must be such that it contains the current assignment of the variable we are resampling.</S>
+			<S sid ="143" ssid = "34">That is, if we let (a(t), a(t) denote the current state of the Markov chain, j j then we need to select a(t) as well as at least one random candidate from the remaining available positions {1, . . .</S>
+			<S sid ="144" ssid = "35">, l} \ {aj }.</S>
+			<S sid ="145" ssid = "36">We denote a selection of target positions by a vector k ⊆ {0, 1}l such that ki = 1 signifies that i is a reachable candidate.</S>
+			<S sid ="146" ssid = "37">Then, once a selection is made, we sample the next state of the Markov chain, i.e.</S>
+			<S sid ="147" ssid = "38">(a(t), a(t+1) , from a distribution proportional to P (A(t+1) = i|a(t), C(t)) × ki.</S>
+			<S sid ="148" ssid = "39">Note j j j j that, under this distribution, only selected positions have nonzero probability.</S>
+			<S sid ="149" ssid = "40">This makes sampling the next state run in constant time independent of the target sentence length.</S>
+			<S sid ="150" ssid = "41">Formally, this is a case of sampling by data augmentation (Tanner and Wong, 1987).</S>
+			<S sid ="151" ssid = "42">Let K be a random variable taking values in K ⊂ {0, 1}l . We interpret an assignment of K as a random selection of at most l target positions.</S>
+			<S sid ="152" ssid = "43">We define the joint distribution P (aj , k|aj , C) = P (aj |aj , C)×P (k|aj , aj ), ki where we take the conditional P (k|Aj = i, aj ) = k ∈K k to distribute uniformly over all selections in K that contain i. This guarantees that the current state of the Markov chain is part of the selection, a condition necessary for irreducibility.</S>
+			<S sid ="153" ssid = "44">Then, the conditional P (Aj = it|k, aj , C) follows directly: P (Aj = it|k, aj , C) ∝ P (Aj = it|aj , C) × P (k|Aj = it, aj ) ∝ P (Aj = it|aj , C) × ki (7) Claim If K includes at least all subsets of size 2 where one of the elements is the previous state of the Markov chain, then the transition kernel κ(it|i) = k∈K P (it|k) × P (k|i) is strictly positive for every i, it ∈ {1, . . .</S>
+			<S sid ="154" ssid = "45">, l} and, therefore, the resulting Markov chain is Harris ergodic.</S>
+			<S sid ="155" ssid = "46">Proof.</S>
+			<S sid ="156" ssid = "47">t t ) ki k ki × k ∈K k κ(it|i) = ) P (it|k) × P (k|i) = ) P (i ) × P (k|i ) × P (k|i) = P (it) k ∈K i i P (k) k∈K k∈K k∈K (8) In the last term of Equation 8, P (it) is strictly positive because it ∈ {1, . . .</S>
+			<S sid ="157" ssid = "48">, l} by construction, and the sum is strictly positive when K includes at least one subset containing both i and it.</S>
+			<S sid ="158" ssid = "49">This is why we can (t) (t) start the candidate set with {aj } and enlarge it by sampling uniformly from {1, . . .</S>
+			<S sid ="159" ssid = "50">, l} \ {aj } without replacement.</S>
+			<S sid ="160" ssid = "51">We need to do it at least once, but we can also repeat it a fixed number of times.</S>
+			<S sid ="161" ssid = "52">The complete algorithm consists of 2 simulations, K (t+1) ∼ P (·|a(t), a(t)) and A(t+1) ∼ j j j P (·|k(t+1), a(t), C(t)), each feasible in isolation.</S>
+			<S sid ="162" ssid = "53">With this improved sampler we can resample alignment links in constant time whereas the na¨ıve sampler would require time linear in target sentence length.</S>
+			<S sid ="163" ssid = "54">It is easy to see that to resample all alignment links in a source sentence with m words, the na¨ıve sampler would take time O(l × m) ≈ O(l2), whereas our improved auxiliary variable sampler does the same in O(l).</S>
+			<S sid ="164" ssid = "55">This improvement makes our model competitive with maximum-likelihood models.</S>
+			<S sid ="165" ssid = "56">4.4 Sampling of the Beta Parameters.</S>
+			<S sid ="166" ssid = "57">The parameters s and r of the Beta distribution which serves as a prior on the decision variables are random variables in our model.</S>
+			<S sid ="167" ssid = "58">Since there is no easily computable conjugate distribution for these parameters, we can not integrate them out analytically.</S>
+			<S sid ="168" ssid = "59">Instead, we choose to approximate the integral 7 Recall that l is the target sentence length..</S>
+			<S sid ="169" ssid = "60">through repeated sampling of these variables.</S>
+			<S sid ="170" ssid = "61">Since both these variables take on values in the positive reals, we impose a Gamma prior on them as described in Section 3.</S>
+			<S sid ="171" ssid = "62">There are several ways of sampling variables in non-conjugate Bayesian models.</S>
+			<S sid ="172" ssid = "63">Here we use slice sampling (Neal, 2003) as it is fast and easy to implement.</S>
+			<S sid ="173" ssid = "64">The idea of slice sampling is that we augment our sampling distribution with an auxiliary variable U such that the marginal distribution of S (or R) stays unchanged.8 Simulation then follows by Gibbs sampling, whereby we sample U conditioned on S, and S conditioned on U in turn.</S>
+			<S sid ="174" ssid = "65">It can be shown that, with conditionals as shown in (9), the transition kernel underlying this Gibbs sampling procedure is Harris ergodic (Neal, 2003).</S>
+			<S sid ="175" ssid = "66">Thus, the procedure is not only correct but also very efficient as we only sample from uniform distributions.</S>
+			<S sid ="176" ssid = "67">p(u|s) = 1( u &lt; p( s) ) p(s u) p ( s ) 1 if p(s) u (9) 0 ot herwi se The posterior that we slice sample from is simply proportional to the product of likelihood and prior of the Beta distribution: p(s|f m, zm, r) ∝ P (zm|f m, s, r) × p(s).</S>
+			<S sid ="177" ssid = "68">1 1 1 1 Notice that the conditions in Equation (9) guarantee that at least the current point will be in the slice.</S>
+			<S sid ="178" ssid = "69">We will therefore always be able to obtain a new sample.</S>
+			<S sid ="179" ssid = "70">Intuitively, slice sampling works because the marginal distribution p(s) stays unchanged.</S>
+			<S sid ="180" ssid = "71">4.5 Decoding.</S>
+			<S sid ="181" ssid = "72">After we have taken a number of samples, we are ready to decode.</S>
+			<S sid ="182" ssid = "73">We use a version of maximum marginal decoding (Johnson and Goldwater, 2009) in which we assign to each source position j the target position that was most often sampled as a value for Aj . If most of the time the collocation variable Zj was active, however, we leave that source position unaligned.</S>
+	</SECTION>
+	<SECTION title="Experiments and Results. " number = "5">
+			<S sid ="183" ssid = "1">All experiments were run using the Moses phrase-based system (Koehn et al., 2007) with lexicalized reordering.</S>
+			<S sid ="184" ssid = "2">In order to speed up our experiments we used cube pruning with a pop limit of 1000 in both tuning and evaluation.</S>
+			<S sid ="185" ssid = "3">Symmetrised alignments were obtained with the grow-diag-final-and heuristic.</S>
+			<S sid ="186" ssid = "4">Data We used the WMT 2014 news commentary data9 to train our models and the corresponding dev (newstest2013) and test (newstest2014) sets for tuning and evaluation.</S>
+			<S sid ="187" ssid = "5">We use all available monolingual data to train 5-gram language models with KenLM (Heafield, 2011).</S>
+			<S sid ="188" ssid = "6">Models We report results for the Bayesian HMM described in Section 2 (BHMM) and our collocation- based model described in Section 3 (BHMM-Z).</S>
+			<S sid ="189" ssid = "7">To enable comparison with standard alignment toolkits, we also report results with Giza++ and fastAlign (Dyer et al., 2013).</S>
+			<S sid ="190" ssid = "8">Finally, we make a comparison with the collocation-based IBM2 model of Schulz et al.</S>
+			<S sid ="191" ssid = "9">(2016) (BIBM2-Z).</S>
+			<S sid ="192" ssid = "10">Hyperparameters The hyperparameters of our model were set to β = γ = 0.0001 to obtain sparse lexical distributions.</S>
+			<S sid ="193" ssid = "11">For the jump prior we chose α = 1, not giving preference to any particular distribution.</S>
+			<S sid ="194" ssid = "12">The same choices apply for the BIBM2-Z.</S>
+			<S sid ="195" ssid = "13">However, that model does not employ hyperparameter inference and we therefore set s = 1, r = 0.01.</S>
+			<S sid ="196" ssid = "14">Finally, the BHMM uses the same parameters as the previous two models, except those associated with the collocation variable.</S>
+			<S sid ="197" ssid = "15">All samplers were run for 1000 iterations without burn-in and samples were taken after each 25th iteration.</S>
+			<S sid ="198" ssid = "16">The initial state was chosen to be the Viterbi decoding of IBM model 1.</S>
+			<S sid ="199" ssid = "17">For our auxiliary variable sampler we select exactly 2 candidates, thus making inference as fast as possible.</S>
+			<S sid ="200" ssid = "18">Giza++ and fastAlign were run under their standard parameter settings.</S>
+			<S sid ="201" ssid = "19">For Giza++ this means that we ran EM for IBM model 1 and the HMM (5 iterations each) and for IBM models 3 and 4 (3 iterations each).</S>
+			<S sid ="202" ssid = "20">Since 8 In the following exposition we will describe the resampling of S and assume a fixed value r. Resampling R works analogously with a fixed value s. 9 http://statmt.org/wmt14/translation-task.html 21.5 21 20.5 16 15.5 CS-EN ← ↔ EN-CS 21 20.5 20 19.5 16 15.8 15.6 DEEN ← ↔ ENDE 29 28 27 28.5 28 FREN ← ↔ ENFR 23 22.5 22 21.5 21 21 20 R U E N ← ↔ E N R U 15 14.5 14 15.4 15.2 15 27.5 2 7 1 9 26.5 18 ← ↔ ← ↔ ← ↔ ← ↔ G i z a Fa st Ali gn BI B M2 -Z BH M M B H MM Z Figure 1: BLEU scores for each translation direction trained on (←) directional (condition on target and generate source) and (↔) symmetrised alignments (grow-diag-final-and).</S>
+			<S sid ="203" ssid = "21">Observe that the plots are on different scales.</S>
+			<S sid ="204" ssid = "22">This means that results cannot directly be compared across plots.</S>
+			<S sid ="205" ssid = "23">the maximum likelihood HMM is incorporated in the Giza++ pipeline, we do not report separate results for it.</S>
+			<S sid ="206" ssid = "24">Results Figure 1 shows translation quality results in terms of BLEU for different aligners, where BHMM is the Bayesian HMM (Section 2) and BHMM-Z is our novel collocation-based model (Section 3).</S>
+			<S sid ="207" ssid = "25">Furthermore, BIBM2-Z is the model of Schulz et al.</S>
+			<S sid ="208" ssid = "26">(2016).</S>
+			<S sid ="209" ssid = "27">To account for optimiser instability (MERT in this case), we plot average and standard deviation across 5 independent runs.</S>
+			<S sid ="210" ssid = "28">Note that our Bayesian models perform mostly on par with maximum-likelihood models.</S>
+			<S sid ="211" ssid = "29">In the directional case, our Bayesian models lose to Giza++ only in DEEN by a very slim margin.</S>
+			<S sid ="212" ssid = "30">Except for ENDE (symmetrised) our models are never worse than fastAlign.</S>
+			<S sid ="213" ssid = "31">Moreover, our models perform notably well on Czech and Russian outperforming the maximum-likelihood models.</S>
+			<S sid ="214" ssid = "32">Finally, except for ENFR (directional), our collocation-based BHMM-Z improves upon the more basic BHMM.</S>
+			<S sid ="215" ssid = "33">It also often improves upon the BIBM2-Z.</S>
+			<S sid ="216" ssid = "34">That model is only better on the symmetrised English-French data where it outperforms all other models.</S>
+			<S sid ="217" ssid = "35">We also analysed the number of alignment links that our systems set.</S>
+			<S sid ="218" ssid = "36">It is noteworthy that the Bayesian HMM with NULL words consistently sets much fewer links than all other systems.</S>
+			<S sid ="219" ssid = "37">Taking BHMM as baseline other models set additionally (on average across languages and translation direction) 39.5% (our collocation-based model), 39.2% (Giza++), and 36.2% (fastAlign) more links.</S>
+			<S sid ="220" ssid = "38">Setting more links constrains phrase extraction heuristics more and leads to smaller phrase tables.</S>
+			<S sid ="221" ssid = "39">Empirically, the phrase tables of the collocation-based model are roughly three times smaller than those of the Bayesian HMM.</S>
+			<S sid ="222" ssid = "40">Thus, the collocation-based system is at an advantage here.</S>
+			<S sid ="223" ssid = "41">Finally, in terms of speed, Giza++ takes on average (across languages and translation directions) 202 minutes on 2 CPUs, while BHMM and BHMM-Z take respectively 81 and 267 minutes in 1 CPU.10 The slower performance of BHMM-Z in relation to BHMM is not per se due to the sampling of collocation variables, but rather due to hyperparameter inference (see Section 4.4).</S>
+	</SECTION>
+	<SECTION title="Related Work. " number = "6">
+			<S sid ="224" ssid = "1">There are several extensions of the classical IBM models.</S>
+			<S sid ="225" ssid = "2">Dyer et al.</S>
+			<S sid ="226" ssid = "3">(2013) use a log-linear model for the distortion distribution.</S>
+			<S sid ="227" ssid = "4">While they keep the independence assumptions for alignment links, they bias 10 The run times for our models include the computation of the initial state of the sampler with IBM model 1.</S>
+			<S sid ="228" ssid = "5">The run time of the sampler itself is thus slightly lower than the reported times.</S>
+			<S sid ="229" ssid = "6">Also notice that due to its highly optimised posterior computations, fastAlign finishes in under 10 minutes on average.</S>
+			<S sid ="230" ssid = "7">their model to preferably align positions which are close to each other.</S>
+			<S sid ="231" ssid = "8">Using standard results for series, they manage to make the posterior computations in their model extremely fast.</S>
+			<S sid ="232" ssid = "9">Another interesting extension of the HMM alignment is presented in Zhao and Gildea (2010) who added a fertility distribution to the HMM.</S>
+			<S sid ="233" ssid = "10">This made posterior computations in their model intractable, however, they avoided the use of heuristics and instead approximated the posterior using MCMC.</S>
+			<S sid ="234" ssid = "11">The idea of using Bayesian inference together with a Gibbs sampler for word alignment was first presented for IBM model 1 by Mermer and Sarac¸lar (2011).</S>
+			<S sid ="235" ssid = "12">They also gave a more detailed analysis of their method and extended it to IBM model 2 in Mermer et al.</S>
+			<S sid ="236" ssid = "13">(2013).</S>
+			<S sid ="237" ssid = "14">The model presented here is also similar in spirit to Schulz et al.</S>
+			<S sid ="238" ssid = "15">(2016) who proposed to use a language model component together with an alignment model.</S>
+			<S sid ="239" ssid = "16">However, they used IBM models 1 and 2 as alignment components.</S>
+			<S sid ="240" ssid = "17">Apart from the present work, the only other work on Bayesian word alignment that we know of that performed as well as or better than Giza++ was presented in Gal and Blunsom (2013).</S>
+			<S sid ="241" ssid = "18">These authors reformulated IBM models 14 as hierarchical PitmanYor processes.</S>
+			<S sid ="242" ssid = "19">While their models are highly expressive, the Gibbs sampler based on Chinese Restaurant processes that they used is very slow and thus their models are unfortunately not useful in practice.</S>
+	</SECTION>
+	<SECTION title="Discussion and Future  Work. " number = "7">
+			<S sid ="243" ssid = "1">We envision several useful extensions of our model for the future.</S>
+			<S sid ="244" ssid = "2">Firstly, we plan to turn the language model distribution into a hierarchical distribution.</S>
+			<S sid ="245" ssid = "3">We plan to use either a hierarchical Dirichlet process or PitmanYor process for this.</S>
+			<S sid ="246" ssid = "4">The advantage of this technique is that information about untranslatable source words can be shared across preceding source words.</S>
+			<S sid ="247" ssid = "5">Sampling from such a distribution using a Chinese Restaurant Process is potentially time-consuming.</S>
+			<S sid ="248" ssid = "6">However, we are confident that we can maintain a good speed if we apply our auxiliary variable technique and employ efficient samplers as described by Blei and Frazier (2011).</S>
+			<S sid ="249" ssid = "7">Since our model aligns many words and thus restricts the amount of phrases that can be extracted, it may also be a good alignment model for hierarchical phrase-based SMT.</S>
+			<S sid ="250" ssid = "8">We plan to apply our model to this scenario in the future.</S>
+			<S sid ="251" ssid = "9">The code used in our experiments is freely available at https://github.com/philschulz/ Aligner.</S>
+	</SECTION>
+	<SECTION title="Acknowledgements">
+			<S sid ="252" ssid = "10">We would like to thank Stella Frank for helpful discussions about hyperparameter inference.</S>
+			<S sid ="253" ssid = "11">We also thank our reviewers for their excellent feedback.</S>
+			<S sid ="254" ssid = "12">This work was supported by the Dutch Organization for Scientific Research (NWO) VICI Grant nr.</S>
+			<S sid ="255" ssid = "13">27789-002.</S>
+	</SECTION>
+</PAPER>

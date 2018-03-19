@@ -1,0 +1,255 @@
+<PAPER>
+	<ABSTRACT>
+		<S sid ="1" ssid = "1">We present improvements to a greedy decoding algorithm for statistical machine translation that reduce its time complexity from at least cubic ( when applied na¨ıvely) to practically linear time1 without sacrificing translation quality.</S>
+		<S sid ="2" ssid = "2">We achieve this by integrating hypothesis evaluation into hypothesis creation, tiling improvements over the translation hypothesis at the end of each search iteration, and by imposing restrictions on the amount of word reordering during decoding.</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number = "1">
+			<S sid ="3" ssid = "3">Most of the current work in statistical machine translation builds on word replacement models developed at IBM in the early 1990s (Brown et al., 1990, 1993; Berger et al., 1994, 1996).</S>
+			<S sid ="4" ssid = "4">Based on the conventions established in Brown et al.</S>
+			<S sid ="5" ssid = "5">(1993), these models are commonly referred to as the (IBM) Models 15.</S>
+			<S sid ="6" ssid = "6">One of the big challenges in building actual MT systems within this framework is that of decoding: finding the translation candidate that maximizes the translation probability for the given input . Knight (1999) has shown the problem to be NP-complete.</S>
+			<S sid ="7" ssid = "7">Due to the complexity of the task, practical MT systems usually do not employ optimal decoders (that is, decoders that are guaranteed to find an optimal solution within the constraints of the framework), but rely on approximative algorithms instead.</S>
+			<S sid ="8" ssid = "8">Empirical evidence suggests that such algorithms can perform resonably well.</S>
+			<S sid ="9" ssid = "9">For example, Berger et al.</S>
+			<S sid ="10" ssid = "10">(1994), attribute only 5% of the translation errors of their Candide system, which uses 1 Technically, the complexity is still . However, the quadratic component has such a small coefficient that it does not have any noticable effect on the translation speed for all reasonable inputs.</S>
+			<S sid ="11" ssid = "11">a restricted stack search, to search errors.</S>
+			<S sid ="12" ssid = "12">Using the same evaluation metric (but different evaluation data), Wang and Waibel (1997) report search error rates of 7.9% and 9.3%, respectively, for their decoders.</S>
+			<S sid ="13" ssid = "13">Och et al.</S>
+			<S sid ="14" ssid = "14">(2001) and Germann et al.</S>
+			<S sid ="15" ssid = "15">(2001) both implemented optimal decoders and benchmarked approximative algorithms against them.</S>
+			<S sid ="16" ssid = "16">Och et al. report word error rates of 68.68% for optimal search (based on a variant of the A* algorithm), and 69.65% for the most restricted version of a decoder that combines dynamic programming with a beam search (Tillmann and Ney, 2000).</S>
+			<S sid ="17" ssid = "17">Germann et al.</S>
+			<S sid ="18" ssid = "18">(2001) compare translations obtained by a multi-stack decoder and a greedy hill-climbing algorithm against those produced by an optimal integer programming decoder that treats decoding as a variant of the traveling-salesman problem (cf.</S>
+			<S sid ="19" ssid = "19">Knight, 1999).</S>
+			<S sid ="20" ssid = "20">Their overall performance metric is the sentence error rate (SER).</S>
+			<S sid ="21" ssid = "21">For decoding with IBM Model 3, they report SERs of about 57% (6-word sentences) and 76% (8-word sentences) for optimal decoding, 58% and 75% for stack decoding, and 60% and 75% for greedy decoding, which is the focus of this paper.</S>
+			<S sid ="22" ssid = "22">All these numbers suggest that approximative algorithms are a feasible choice for practical applications.</S>
+			<S sid ="23" ssid = "23">The purpose of this paper is to describe speed improvements to the greedy decoder mentioned above.</S>
+			<S sid ="24" ssid = "24">While acceptably fast for the kind of evaluation used in Germann et al.</S>
+			<S sid ="25" ssid = "25">(2001), namely sentences of up to 20 words, its speed becomes an issue for more realistic applications.</S>
+			<S sid ="26" ssid = "26">Brute force translation of the 100 short news articles in Chinese from the TIDES MT evaluation in June 2002 (878 segments; ca.</S>
+			<S sid ="27" ssid = "27">25k tokens) requires, without any of the improvements described in this paper, over 440CPU hours, using the simpler, “faster” algorithm (de scribed below).</S>
+			<S sid ="28" ssid = "28">We will show that this time can be reduced to ca.</S>
+			<S sid ="29" ssid = "29">40 minutes without sacrificing translation quality.</S>
+			<S sid ="30" ssid = "30">In the following, we first describe the underlying IBM initial string: I do not understand the logic of these people . pick fertilities: I not not understand the logic of these people . replace words: Je ne pas comprends la logique de ces gens . reorder: Je ne comprends pas la logique de ces gens . insert spurious words: Je ne comprends pas la logique de ces gens -la` . Figure 1: How the IBM models model the translation process.</S>
+			<S sid ="31" ssid = "31">This is a hypothetical example and not taken from any actual training or decoding logs.</S>
+			<S sid ="32" ssid = "32">model(s) of machine translation (Section 2) and our hill- climbing algorithm (Section 3).</S>
+			<S sid ="33" ssid = "33">In Section 4, we discuss improvements to the algorithm and its implementation, and the effect of restrictions on word reordering.</S>
+	</SECTION>
+	<SECTION title="The IBM Translation Models. " number = "2">
+			<S sid ="34" ssid = "1">Brown et al.</S>
+			<S sid ="35" ssid = "2">(1993) and Berger et al.</S>
+			<S sid ="36" ssid = "3">(1994, 1996) view the problem of translation as that of decoding a message that has been distorted in a noisy channel.</S>
+			<S sid ="37" ssid = "4">Exploiting Bayes’ theorem (1) they recast the problem of finding the best translation for a given input as (2) is constant for any given input and can therefore be ignored.</S>
+			<S sid ="38" ssid = "5">is typically calculated using an n-gram language model.</S>
+			<S sid ="39" ssid = "6">For the sake of simplicity, we assume here and everywhere else in the paper that the ultimate task is to translate from a foreign language into English.</S>
+			<S sid ="40" ssid = "7">The model pictures the conversion from English to a foreign language roughly as follows (cf.</S>
+			<S sid ="41" ssid = "8">Fig.</S>
+			<S sid ="42" ssid = "9">1; note that because of the noisy channel approach, the modeling is “backwards”).</S>
+			<S sid ="43" ssid = "10">For each English word , a fertility (with ) is chosen.</S>
+			<S sid ="44" ssid = "11">is called the fertility of . Each word is replaced by foreign words.</S>
+			<S sid ="45" ssid = "12">After that, the linear order of the foreign words is rearranged.</S>
+			<S sid ="46" ssid = "13">Finally, a certain number of so-called spurious words (words that have no counterpart in the original English) are inserted into the foreign text.</S>
+			<S sid ="47" ssid = "14">The probability of the value of depends on the length of the original English string.</S>
+			<S sid ="48" ssid = "15">As a result, each foreign word is linked, by virtue of the derivation history, to either nothing (the imaginary NULL word), or exactly one word of the English source sentence.</S>
+			<S sid ="49" ssid = "16">The triple with , , and is called a sentence alignment.</S>
+			<S sid ="50" ssid = "17">For all pairs such that , we say that is aligned with , and with , respectively.</S>
+			<S sid ="51" ssid = "18">Since each of the changes occurs with a certain probability, we can calculate the translation model probability of as the product of the individual probabilities of each of the changes.</S>
+			<S sid ="52" ssid = "19">The product of the translation model probability and the language model probability of is called the alignment probability of . Detailed formulas for the calculation of alignment probabilities according to the various models can be found in Brown et al.</S>
+			<S sid ="53" ssid = "20">(1993).</S>
+			<S sid ="54" ssid = "21">It should be noted here that the calculation of the alignment probability of an entire alignment ( ) has linear complexity.</S>
+			<S sid ="55" ssid = "22">Well will show below that by reevaluating only fractions of an alignment ( ), we can reduce the evaluation cost to a constant time factor.</S>
+	</SECTION>
+	<SECTION title="Decoding. " number = "3">
+			<S sid ="56" ssid = "1">3.1 Decoding Algorithm.</S>
+			<S sid ="57" ssid = "2">The task of the decoder is to revert the process just described.</S>
+			<S sid ="58" ssid = "3">In this subsection we recapitulate the greedy hill- climbing algorithm presented in Germann et al.</S>
+			<S sid ="59" ssid = "4">(2001).</S>
+			<S sid ="60" ssid = "5">In contrast to all other decoders mentioned in Sec.</S>
+			<S sid ="61" ssid = "6">1, this algorithm does not process the input one word at a time to incrementally build up a full translation hypothesis.</S>
+			<S sid ="62" ssid = "7">Instead, it starts out with a complete gloss of the input sentence, aligning each input word with the word that maximizes the inverse (with respect to the noisy channel approach) translation probability .</S>
+			<S sid ="63" ssid = "8">(Note that for the calculation of the alignment probability, is used.)</S>
+			<S sid ="64" ssid = "9">The decoder then systematically tries out various types of changes to the alignment: changing the translation of a word, inserting extra words, reordering words, etc. These change operations are described in more detail below.</S>
+			<S sid ="65" ssid = "10">In each search iteration, the algorithm makes a complete pass over the alignment, evaluating all possible changes.</S>
+			<S sid ="66" ssid = "11">The simpler, “faster” version of the algorithm considers only one operation at a time.</S>
+			<S sid ="67" ssid = "12">A more thorough variant applies up to two word translation changes, or inserts one zero fertility word in addition to a word translation change before the effect of these changes is evaluated.</S>
+			<S sid ="68" ssid = "13">At the end of the iteration, the decoder permanently applies that change, or, in the case of , change combination, that leads to the biggest improvement in alignment probability, and then starts the next iteration.</S>
+			<S sid ="69" ssid = "14">This cycle is repeated until no more improvements can be found.</S>
+			<S sid ="70" ssid = "15">The changes to the alignment that the decoder considers are as follows.</S>
+			<S sid ="71" ssid = "16">CHANGE the translation of a word: For a given foreign word , change the English word that is aligned with . If has a fertility of 1, replace it with the new word ; if it has a fertility of more than one, insert the new word in the position that optimizes the alignment probability.</S>
+			<S sid ="72" ssid = "17">The list of candidates for is derived from the inverse translation table ( ).</S>
+			<S sid ="73" ssid = "18">Typically, the top ten words on that list are considered, that is, for an input of length , possible change operations are evaluated during each CHANGE iteration.</S>
+			<S sid ="74" ssid = "19">In theory, a single CHANGE iteration in has a complexity of : for each word , there is a certain probability that changing the word translation of requires a pass over the complete English hypothesis in order to find the best insertion point.</S>
+			<S sid ="75" ssid = "20">This is the case when is currently either spurious (that is, aligned with the NULL word), or aligned with a word with a fertility of more than one.</S>
+			<S sid ="76" ssid = "21">The probability of this happening, however, is fairly small, so that we can assume for all practical purposes that a CHANGE iteration in has a complexity of . Since allows up to two CHANGE operations at a time, the respective complexities for are in theory and in practice.</S>
+			<S sid ="77" ssid = "22">We will argue below that by exploiting the notion of change dependencies, the complexity for CHANGE can be reduced to practically for decoding as well, albeit with a fairly large coefficient.</S>
+			<S sid ="78" ssid = "23">INSERT a so-called zero fertility word (i.e., an English word that is not aligned to any foreign word) into the English string.</S>
+			<S sid ="79" ssid = "24">Since all possible positions in the English hypothesis have to be considered, , assuming a linear correlation between input length and hypothesis length.</S>
+			<S sid ="80" ssid = "25">ERASE a zero fertility word.</S>
+			<S sid ="81" ssid = "26">JOIN two English words.</S>
+			<S sid ="82" ssid = "27">This is an asymmetrical operation: one word, , stays where it is, the other one, , is removed from the English hypothesis.</S>
+			<S sid ="83" ssid = "28">All foreign words originally aligned with are then aligned with . Even though a JOIN iteration has a complexity of ,2 empirical data indicates that its actual time consumption is very small (cf.</S>
+			<S sid ="84" ssid = "29">Fig.</S>
+			<S sid ="85" ssid = "30">6).</S>
+			<S sid ="86" ssid = "31">This is because the chances of success of a join operation can be determined very cheaply without actually performing the operation.</S>
+			<S sid ="87" ssid = "32">Suppose for the sake of simplicity that is aligned with only one word . If the translation probability is zero (which is true most of the time), the resulting alignment probability will be zero.</S>
+			<S sid ="88" ssid = "33">Therefore, we can safely skip such operations.</S>
+			<S sid ="89" ssid = "34">SWAP any two non-overlapping regions and in the English string.</S>
+			<S sid ="90" ssid = "35">The number of possible swap operations in a string of length is Thus, . However, if we limit the size of the swapped regions to a constant and their distance to a constant , we can reduce the number of swaps performed to a linear function of the input length.</S>
+			<S sid ="91" ssid = "36">For each start position (defined as the first word of the first swap region), there are at most swaps that can be performed within these limitations.</S>
+			<S sid ="92" ssid = "37">Therefore, . It is obvious that the baseline version of this algorithm is very inefficient.</S>
+			<S sid ="93" ssid = "38">In the following subsection, we discuss the algorithm’s complexity in more detail.</S>
+			<S sid ="94" ssid = "39">In Sec.</S>
+			<S sid ="95" ssid = "40">4, we show how the decoding complexity can be reduced.</S>
+			<S sid ="96" ssid = "41">3.2 Decoding Complexity.</S>
+			<S sid ="97" ssid = "42">The total decoding complexity of the search algorithm is the number of search iterations (I) times the number of search steps per search iteration (S) times the evaluation cost per search step (E): We now show that the original implementation of the algorithm has a complexity of (practically) for decoding, and for decoding, if swap operations are restricted.</S>
+			<S sid ="98" ssid = "43">With unrestricted swapping, the complexity is . Since our argument is based on some assumptions that cannot be proved formally, we cannot provide a formal complexity proof.</S>
+			<S sid ="99" ssid = "44">In the original implementation of the algorithm, the entire alignment is evaluated after each search step (global evaluation, or ).</S>
+			<S sid ="100" ssid = "45">Therefore, the evaluation cost rises linearly with the length of the hypothesized alignment: The evaluation requires two passes over the English hypothesis (n-grams for the language model; fertility probabilities) and two passes over the input string (translation and distortion probabilities).</S>
+			<S sid ="101" ssid = "46">We assume a high correlation between input length and the hypothesis length.</S>
+			<S sid ="102" ssid = "47">Thus, . 2 There are possible join operations for an English string consisting of nonzero-fertility words.</S>
+			<S sid ="103" ssid = "48">550 500 450 400 350 300 250 200 150 100 50 0 global probability recalculations , no improvement tiling local probability calculations, no improvement tiling global probability calculations, with improvement tiling local probability calculations, with improvement tiling 4 R e d u c t i n g D e c o d e r C o m p l e x i t y Every chang e to the align ment affect s only a few of the indivi dual proba bilitie s that make up the overal l alignment score: the n gram conte xts of those places in the Engli sh hypot hesis where a chang e occur s, plus a few transl ation model proba bilitie s. We call the — not necessarily contig uous — area of an align ment that is affect ed by a chang e the chang e’s local conte xt.</S>
+			<S sid ="104" ssid = "49">Wit h respe ct to an efficie nt imple menta tion of the greed y searc h, we can exploi t the notio n of local contexts in two ways.</S>
+			<S sid ="105" ssid = "50">First, we can limit proba bility recalculati ons to the local conte xt (that is, those proba bilitie s that actual ly are affect ed by the respe ctive chang e), and 0 10 20 30 40 50 60 70 80 sentence length Figure 2: Runtimes for sentences of length 10–80.</S>
+			<S sid ="106" ssid = "51">The graph shows the average runtimes ( ) of 10 different sample sentences of the respective length with swap operations restricted to a maximum swap segment size of 5 and a maximum swap distance of 2.</S>
+			<S sid ="107" ssid = "52">. The original algorithm pursues a highly inefficient search strategy.</S>
+			<S sid ="108" ssid = "53">At the end of each iteration, only the single best improvement is executed; all others, even when independent, are discarded.</S>
+			<S sid ="109" ssid = "54">In other words, the algorithm needs one search iteration per improvement.</S>
+			<S sid ="110" ssid = "55">We assume that there is a linear correlation between input length and the number of improvements — an assumption that is supported by the empirical data in Fig.</S>
+			<S sid ="111" ssid = "56">4.</S>
+			<S sid ="112" ssid = "57">Therefore, .</S>
+			<S sid ="113" ssid = "58">( , restricted swapping) ( , restricted swapping) (no restrictions on swapping).</S>
+			<S sid ="114" ssid = "59">The number of search steps per iteration is the sum of the number of search steps for CHANGE, SWAP, JOIN, INSERT, and ERASE.</S>
+			<S sid ="115" ssid = "60">The highest order term in this sum is unrestricted SWAP with . With restricted swapping, S has a theoretical complexity of (due to JOIN) in decoding, but the contribution of the JOIN operation to overall time consumption is so small that it can be ignored for all practical purposes.</S>
+			<S sid ="116" ssid = "61">Therefore, the average complexity of in practice is , and the total complexity of in practice is In decoding, which combines up to two CHANGE operations or one CHANGE operation and one INSERT operation, has a practical complexity of , so that . We discuss below how can be reduced to practically linear time for decoding as well.</S>
+			<S sid ="117" ssid = "62">secondly, we can develop the notion of change dependencies: Two changes are independent if their local contexts do not overlap.</S>
+			<S sid ="118" ssid = "63">As we will explain below, we can use this notion to devise a scheme of improvement caching and tiling (ICT) that greatly reduces the total number of alignments considered during the search.</S>
+			<S sid ="119" ssid = "64">Our argument is that local probability calculations and ICT each reduce the complexity of the algorithm by practically , that is, from to with . Thus, the complexity for decreases from to . If we limit the search space for the second operation (CHANGE or INSERT) in decoding to its local context, decoding, too, has practically linear complexity, even though with a much higher coefficient (cf Fig.</S>
+			<S sid ="120" ssid = "65">6).</S>
+			<SUBSECTION>4.1 Local Probability Calculations.</SUBSECTION>
+			<S sid ="121" ssid = "66">The complexity of calculating the alignment probability globally (that is, over the entire alignment) is . However, since there is a constant upper bound3 on the size of local contexts, needs to be performed only once for the initial gloss, therafter, recalculation of only those probabilities affected by each change ( ) suffices.</S>
+			<S sid ="122" ssid = "67">This reduces the overall decoding complexity from to with . Even though profoundly trivial, this improvement significantly reduces translation times, especially when improvements are not tiled (cf.</S>
+			<S sid ="123" ssid = "68">below and Fig.</S>
+			<S sid ="124" ssid = "69">2).</S>
+			<SUBSECTION>4.2 Improvement Caching and Tiling4 (ICT).</SUBSECTION>
+			<S sid ="125" ssid = "70">Based on the notions of local contexts and change dependencies, we devised the following scheme of improvement caching and tiling (ICT): During the search, we keep track of the best possible change affecting each local context.</S>
+			<S sid ="126" ssid = "71">(In practice, we maintain a map that maps from 3 In practice, 16 with a trigram language model: a swap of two large segments over a large distance affects four points in the English hypothesis, resulting in trigrams, plus four individual distortion probabilities.</S>
+			<S sid ="127" ssid = "72">4 Thanks to Daniel Marcu for alerting us to this term in this context.</S>
+			<S sid ="128" ssid = "73">initial gloss us localities computer system suffer computer virus attack and refused service attack and there various security loopholes instance everywhere alignments checked: 1430 possible improvements: 28 improvements applied: 5 u.s. localities computer system opposed computer virus attack and rejecting service attack and there are various security loopholes instance everywhere . alignments checked: 1541 possible improvements: 3 improvements applied: 3 u.s. citizens computer system opposed the computer virus attack and rejecting service attack and there are various security loopholes publicize everywhere . alignments checked: 768 possible improvements: 1 improvements applied: 1 alignments checked: 364 possible improvements: 1 improvements applied: 1 alignments checked: 343 possible improvements: 0 improvements applied: 0 u.s. citizens computer system opposed to the computer virus attack and rejecting service attack and there are various security loopholes publicize everywhere . u.s. citizens computer system is opposed to the computer virus attack and rejecting service attack and there are various security loopholes publicize everywhere . u.s. citizens computer system is opposed to the computer virus attack and rejecting service attack and there are various security loopholes publicize everywhere . Figure 3: A decoding trace using improvement caching and tiling (ICT).</S>
+			<S sid ="129" ssid = "74">The search in the second and later iterations is limited to areas where a change has been applied (marked in bold print) — note that the number of alignment checked goes down over time.</S>
+			<S sid ="130" ssid = "75">The higher number of alignments checked in the second iteration is due to the insertion of an additional word, which increases the number of possible swap and insertion operations.</S>
+			<S sid ="131" ssid = "76">Decoding without ICT results in the same translation but requires 11 iterations and checks a total of 17701 alignments as opposed to 5 iterations with a total of 4464 alignments with caching.</S>
+			<S sid ="132" ssid = "77">the local context of each change that has been considered to the best change possible that affects exactly this context.)</S>
+			<S sid ="133" ssid = "78">At the end of the search iteration , we apply a very restricted stack search to find a good tiling of non- overlapping changes, all of which are applied.</S>
+			<S sid ="134" ssid = "79">The goal of this stack search is to find a tiling that maximizes the overal gain in alignment probability.</S>
+			<S sid ="135" ssid = "80">Possible improvements that overlap with higher-scoring ones are ignored.</S>
+			<S sid ="136" ssid = "81">In the following search iteration , we restrict the search to changes that overlap with changes just applied.</S>
+			<S sid ="137" ssid = "82">We can safely assume that there are no improvements to be found that are independent of the changes applied at the end of iteration : If there were such improvements, they would have been found in and applied after iteration . Figure 3 illustrates the procedure..</S>
+			<S sid ="138" ssid = "83">We assume that improvements are, on average, evenly distributed over the input text.</S>
+			<S sid ="139" ssid = "84">Therefore, we can expect the number of places where improvements can be applied to grow with the input length at the same rate as the number of improvements.</S>
+			<S sid ="140" ssid = "85">Without ICT, the number of iterations grows linearly with the input length, as shown in Fig.</S>
+			<S sid ="141" ssid = "86">4.</S>
+			<S sid ="142" ssid = "87">With ICT, we can parallelize the improvement process and thus reduce the number of iterations for each search to a constant upper bound, which will be determined by the average ‘improvement density’ of the domain.</S>
+			<S sid ="143" ssid = "88">One exception to this rule should be noted: since the expected number of spurious words (words with no counterpart in English) in the input is a function of the input length, and since all changes in word translation that involve the NULL word are mutually dependent, we should expect to find a very weak effect of this on the number of search iterations.</S>
+			<S sid ="144" ssid = "89">Indeed, the scatter diagram in Fig.4 suggests a slight increase in the number of iterations as the input length increases.5 At the same time, however, the number of changes considered during each search iteration eventually decreases, because subsequent search iterations are limited to areas where a change was previously performed.</S>
+			<S sid ="145" ssid = "90">Empirical evidence as plotted on the right in Fig.</S>
+			<S sid ="146" ssid = "91">4 suggests that this effect “neutralizes” the increase in iterations in dependence of the input length: the total number of changes considered indeed appears to grow linearly with the input length.</S>
+			<S sid ="147" ssid = "92">It should be noted that ICT, while it does change the course of the search, primarily avoids redundant search steps — it does not necessarily search a smaller search space, but searches it only once.</S>
+			<S sid ="148" ssid = "93">The total number of improvements found is roughly the same (15,299 with ICT, 14,879 without for the entire test corpus with a maximum swap distance of 2 and a maximum swap segment size of 5).</S>
+			<S sid ="149" ssid = "94">5 Another possible explanation for this increase, especially at the left end, is that “improvement clusters” occur rarely enough not to occur at all in shorter sentences.</S>
+			<S sid ="150" ssid = "95">80 without improvement caching and tiling with improvement caching and tiling 60 50 40 30 20 10 1750 1500 1250 1000 750 500 250 without improvement caching and tiling with improvement caching and tiling 0 0 10 20 30 40 50 60 70 80 90 100 input length (in words/tokens) 0 0 10 20 30 40 50 60 70 80 90 100 input length (in words/tokens)Figure 4: Number of search iterations (left) and total number of alignments considered (right) during search in depen dence of input length.</S>
+			<S sid ="151" ssid = "96">The data is taken from the translation of the Chinese testset from the TIDES MT evaluation in June 2002.</S>
+			<S sid ="152" ssid = "97">Translations were performed with a maximum swap distance of 2 and a maximum swap segment size of 5.</S>
+			<SUBSECTION>4.3 Restrictions on Word Reordering.</SUBSECTION>
+			<S sid ="153" ssid = "98">With , unlimited swapping swapping is by far the biggest consumer of processing time during decoding.</S>
+			<S sid ="154" ssid = "99">When translating the Chinese test corpus from the 2002TIDES MT evaluation6 without any limitations on swap ping, swapping operations account for over 98% of the total search steps but for less than 5% of the improvements; the total translation time (with ICT) is about 34 CPU hours.</S>
+			<S sid ="155" ssid = "100">For comparison, translating with a maximum swap segment size of 5 and a maximum swap distance of BLEU score 0.145 0.144 0.143 0.142 0.141 0.140 0.139 0.138 10 10 9 9 8 8 7 7 6 6 5 52 takes ca.</S>
+			<S sid ="156" ssid = "101">40 minutes under otherwise unchanged cir cumstances.</S>
+			<S sid ="157" ssid = "102">maximum swap distance 4 4 3 3 maximum 2 2 swap segment size 1 1 0 0 It should be mentioned that in practice, it is generally not a good idea to run the decoder with without restrictions on swapping.</S>
+			<S sid ="158" ssid = "103">In order to cope with hardware and time limitations, the sentences in the training data are typically limited in length.</S>
+			<S sid ="159" ssid = "104">For example, the models used for the experiments reported here were trained on data with a sentence length limit of 40.</S>
+			<S sid ="160" ssid = "105">Sentence pairs where one of the sentences exceeded this limit were ignored in training.</S>
+			<S sid ="161" ssid = "106">Therefore, any swap that involves a distortion greater than that limit will result in the minimal (smoothed) distortion probability and most likely not lead to an improvement.</S>
+			<S sid ="162" ssid = "107">The question is: How much swapping is enough?</S>
+			<S sid ="163" ssid = "108">Is there any benefit to it at all?</S>
+			<S sid ="164" ssid = "109">This is an interesting question since virtually all efficient MT decoders (e.g. Till- mann and Ney, 2000; Berger et al., 1994; Alshawi et al., 2000; Vidal, 1997) impose limits on word reordering.</S>
+			<S sid ="165" ssid = "110">In order to determine the effect of swap restrictions on decoder performance, we translated the Chinese test cor Figure 5: BLEUscores for the Chinese test set ( decoding) in dependence of maximum swap distance and maximum swap segment size.</S>
+			<S sid ="166" ssid = "111">distance (MSD) and the maximum swap segment size (MSSS) ranging from 0 to 10 and evaluated the translations with the BLEU7 metric (Papineni et al., 2002).</S>
+			<S sid ="167" ssid = "112">The results are plotted in Fig.</S>
+			<S sid ="168" ssid = "113">5.</S>
+			<S sid ="169" ssid = "114">On the one hand, the plot seems to paint a pretty clear picture on the low end: score improvements are comparatively large initially but level off quickly.</S>
+			<S sid ="170" ssid = "115">Furthermore, the slight slope suggests slow but continuous improvements as swap restrictions are eased.</S>
+			<S sid ="171" ssid = "116">For the Arabic test data from the same evaluation, we obtained a similar shape (although with a roughly level plateau).</S>
+			<S sid ="172" ssid = "117">On the other hand, the ‘bumpiness’ of the surface raises the question as to which of these differences are statistically pus 101 times with restrictions on the maximum swap 7 In a nutshell, the BLEU score measures the n-gram overlap.</S>
+			<S sid ="173" ssid = "118">6 100 short news texts; 878 text segments; ca.</S>
+			<S sid ="174" ssid = "119">25K tokens/words.</S>
+			<S sid ="175" ssid = "120">between system-produced test translations and a set of human reference translations.</S>
+			<S sid ="176" ssid = "121">Table 1: Decoder performance on the June 2002 TIDES MT evluation test set with multiple searches from randomized starting points (MSD=2, MSSS=5).</S>
+			<S sid ="177" ssid = "122">searches 11 searches * RSER = relative search error rate; percentage output sentences with suboptimal alignment probability significant.</S>
+			<S sid ="178" ssid = "123">We are aware of several ways to determine the statistical significance of BLEU score differences.</S>
+			<S sid ="179" ssid = "124">One is bootstrap resampling (Efron and Tibshirani, 1993)8 to determine confidence intervals, another one splitting the test corpus into a certain number of subcorpora (e.g. 30) and then using the t-test to compare the average scores over these subcorpora (cf.</S>
+			<S sid ="180" ssid = "125">Papineni et al., 2001).</S>
+			<S sid ="181" ssid = "126">Bootstrap resampling for the various system outputs leads to very similar confidence intervals of about 0.006 to 0.007 for a one-sided test at a confidence level of .95.</S>
+			<S sid ="182" ssid = "127">With the t-score method, differences in score of 0.008 or higher seem to be significant at the same level of confidence.</S>
+			<S sid ="183" ssid = "128">According to these metrics, none of the differences in the plot are significant, although the shape of the plot suggests that moderate swapping probably is a good idea.</S>
+			<S sid ="184" ssid = "129">In addition to limitations of the accuracy of the BLEU method itself, variance in the decoders performance can blur the picture.</S>
+			<S sid ="185" ssid = "130">A third method to determine a confidence corridor is therefore to perform several randomized searches and compare their performance.</S>
+			<S sid ="186" ssid = "131">Following a suggestion by Franz Josef Och (personal communications), we ran the decoder multiple times from randomized starting glosses for each sentence and then used the highest scoring one as the “official” system output.</S>
+			<S sid ="187" ssid = "132">This gives us a lower bound on the price in performance that we pay for search errors.</S>
+			<S sid ="188" ssid = "133">The results for up to ten searches from randomized starting points in addition to the baseline gloss are given in Tab.</S>
+			<S sid ="189" ssid = "134">1.</S>
+			<S sid ="190" ssid = "135">Starting points were randomized by randomly picking one of the top 10 translation candidates (instead of the top candidate) for each input word, and performing a (small) random number of SWAP and INSERT operations before the actual search started.</S>
+			<S sid ="191" ssid = "136">In order to insure consistency across repeated runs, we used a pseudo random function.</S>
+			<S sid ="192" ssid = "137">In our experiments, we did not mix and decoding.</S>
+			<S sid ="193" ssid = "138">The practical reason for this is that decoding takes more than ten times as long as decoding.</S>
+			<S sid ="194" ssid = "139">As the table illustrates, running multiple searches in from randomized starting points is more efficient that running once.</S>
+			<S sid ="195" ssid = "140">8 Thanks to Franz Josef Och for pointing this option out to us.</S>
+			<S sid ="196" ssid = "141">Choosing the best sentences from all decoder runs results in a BLEU score of 0.157.</S>
+			<S sid ="197" ssid = "142">Interestingly, the decoding time from the default starting point is much lower (G1: ca.</S>
+			<S sid ="198" ssid = "143">40 min.</S>
+			<S sid ="199" ssid = "144">vs. ca.</S>
+			<S sid ="200" ssid = "145">1 hour; G2: ca.</S>
+			<S sid ="201" ssid = "146">9.5 hours vs. ca.</S>
+			<S sid ="202" ssid = "147">11.3 hours), and the score, on average, is higher than when searching from a random starting point (G1: 0.143 vs. 0.127 (average); G2: 0.145 vs. 0.139 (average)).</S>
+			<S sid ="203" ssid = "148">This indicates that the default seeding strategy is a good one.</S>
+			<S sid ="204" ssid = "149">From the results of our experiments we conclude the following.</S>
+			<S sid ="205" ssid = "150">First, Tab.</S>
+			<S sid ="206" ssid = "151">1 suggests that there is a good correlation between IBM Model 4 scores and the BLEU metric.</S>
+			<S sid ="207" ssid = "152">Higher alignment probabilities lead to higher BLEU scores.</S>
+			<S sid ="208" ssid = "153">Even though hardly any of the score differences are statistically significant (see confidence intervals above), there seems to be a trend.</S>
+			<S sid ="209" ssid = "154">Secondly, from the swapping experiment we conclude that except for very local word reorderings, neither the IBM models nor the BLEU metric are able to recognize long distance dependencies (such as, for example, accounting for fundamental word order differences when translating from a SOV language into a SVO language).</S>
+			<S sid ="210" ssid = "155">This is hardly surprising, since both the language model for decoding and the BLEU metric rely exclusively on n- grams.</S>
+			<S sid ="211" ssid = "156">This explains why swapping helps so little.</S>
+			<S sid ="212" ssid = "157">For a different approach that is based on dependency tree transformations, see Alshawi et al.</S>
+			<S sid ="213" ssid = "158">(2000).</S>
+			<S sid ="214" ssid = "159">Thirdly, the results of our experiments with randomized searches show that greedy decoding does not perform as well on longer sentences as one might conclude from the findings in Germann et al.</S>
+			<S sid ="215" ssid = "160">(2001).</S>
+			<S sid ="216" ssid = "161">At the same time, the speed improvements presented in this paper make multiple searches feasible, allowing for an overall faster and better decoder.</S>
+			<S sid ="217" ssid = "162">5 Conclusions.</S>
+			<S sid ="218" ssid = "163">In this paper, we have analyzed the complexity of the greedy decoding algorithm originally presented in Germann et al.</S>
+			<S sid ="219" ssid = "164">(2001) and presented improvements that drastically reduce the decoder’s complexity and speed to practically linear time.</S>
+			<S sid ="220" ssid = "165">Experimental data suggests a good correlation between G1 decoding 11 10 9 8 7 6 5 4 3 2 1 JOIN INSERT CHANGE SWAP Lafferty, John D., Mercer, Robert L., Printz, Harry, and Uresˇ, Lubosˇ.</S>
+			<S sid ="221" ssid = "166">1994.</S>
+			<S sid ="222" ssid = "167">The candide system for machine translation.</S>
+			<S sid ="223" ssid = "168">In: Proceedings of the Arpa Workshop on Human Language Technology.</S>
+			<S sid ="224" ssid = "169">Berger, Adam L., Brown, Peter F., Della Pietra, Stephen A., Della Pietra, Vincent J., Kehler, Andrew S., and Mercer, Robert L. 1996.</S>
+			<S sid ="225" ssid = "170">Language translation apparatus and method using context-based translation models.</S>
+			<S sid ="226" ssid = "171">United States Patent 5,510,981.</S>
+			<S sid ="227" ssid = "172">Brown, Peter F., Cocke, John, Della Pietra, Stephen A., 0 10 20 30 40 50 60 70 80 Della Pietra, Vincent J., Jelinek, Fredrick, Lafferty, 170 160 150 140 130 120 110 100 90 80 70 60 50 40 30 20 10 0 G2 decodin g INSERT CHANGE G1 total decoding time SWAP J o h n D ., M er c er , R o b er t L ., a n d R o o ss in , P a ul S . 1 9 9 0.</S>
+			<S sid ="228" ssid = "173">A st at is ti c al a p p r o a c h to m a c hi n e tr a n sl at io n. C o m p u - ta ti o n al L in g ui st ic s, 1 6 ( 2 ): 7 9 – 8 5.</S>
+			<S sid ="229" ssid = "174">Bro w n, P et er F. , D el la P ie tr a, V in c e nt J. , D el la P ie tr a, S te p h e n A ., a n d M er c er , R o b er t L . 1 9 9 3.</S>
+			<S sid ="230" ssid = "175">T h e m at h em at ic s o f st at is ti c al m a c hi n e tr a n sl at io n: P ar a m et er e s- ti m at io n. C o m p ut at io n al L in g ui st ic s, 1 9 ( 2 ): 2 6 3 – 3 1 1.</S>
+			<S sid ="231" ssid = "176">Efr o n, B r a d le y a n d T i b s h ir a n i, R o b e rt J. 1 9 9 3.</S>
+			<S sid ="232" ssid = "177">A n I n tr o - d u ct i o n t o t h e B o o ts tr a p. C h a p m a n &amp; H al l/ C R C . Ger m a n n, U lr ic h, J a h r, M ic h a el , K ni g ht , K e vi n, M ar c u, D a ni el , a n d Y a m a d a, K e nj i. 2 0 0 1.</S>
+			<S sid ="233" ssid = "178">F a st d e c o di n g a n d 10 20 30 40 50 60 70 80 sentence length Figure 6: Time consumption of the various change types inand decoding (with 10 translations per input word con sidered, a list of 498 candidates for INSERT, a maximum swap distance of 2 and a maximum swap segment size of 5).</S>
+			<S sid ="234" ssid = "179">The profiles shown are cumulative, so that the top curve reflects the total decoding time.</S>
+			<S sid ="235" ssid = "180">To put the times for decoding in perspective, the dashed line in the lower plot reflects the total decoding time in decoding.</S>
+			<S sid ="236" ssid = "181">Operations not included in the figures consume so little time that their plots cannot be discerned in the graphs.</S>
+			<S sid ="237" ssid = "182">The times shown are averages of 100 sentences each for length 10, 20, , 80.</S>
+			<S sid ="238" ssid = "183">IBM Model 4 scores and the BLEU metric.</S>
+			<S sid ="239" ssid = "184">The speed improvements discussed in this paper make multiple randomized searches per sentence feasible, leading to a faster and better decoder for machine translation with IBM Model 4.</S>
+			<S sid ="240" ssid = "185">6 Acknowledgements.</S>
+			<S sid ="241" ssid = "186">We are very grateful to Franz Josef Och for various very helpful comments on the work reported in this paper.</S>
+			<S sid ="242" ssid = "187">This work was supported by DARPAITO grant N66001 001-9814.</S>
+	</SECTION>
+</PAPER>

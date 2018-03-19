@@ -1,0 +1,229 @@
+<PAPER>
+	<ABSTRACT>
+		<S sid ="1" ssid = "1">This article delves into the scoring function of the statistical paraphrase generation model.</S>
+		<S sid ="2" ssid = "2">It presents an algorithm for exact computation and two applicative experiments.</S>
+		<S sid ="3" ssid = "3">The first experiment analyses the behaviour of a statistical paraphrase generation decoder, and raises some issues with the ordering of n-best outputs.</S>
+		<S sid ="4" ssid = "4">The second experiment shows that a major boost of performance can be obtained by embedding a true score computation inside a MonteCarlo sampling based paraphrase generator.</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number = "1">
+			<S sid ="5" ssid = "5">A paraphrase generator is a program which, given a source sentence, produces a new sentence with almost the same meaning.</S>
+			<S sid ="6" ssid = "6">The modification place is not imposed but the paraphrase has to differ from the original sentence.</S>
+			<S sid ="7" ssid = "7">Paraphrase generation is useful in applications where it is needed to choose between different forms to keep the most fit.</S>
+			<S sid ="8" ssid = "8">For instance, automatic summary can be seen as a particular paraphrasing task (Barzilay and Lee, 2003) by selecting the shortest paraphrase.</S>
+			<S sid ="9" ssid = "9">They can help human writers by proposing alternatives and having them choose the most appropriate (Max and Zock, 2008).</S>
+			<S sid ="10" ssid = "10">Paraphrases can also be used to improve natural language processing (NLP) systems.</S>
+			<S sid ="11" ssid = "11">In this direction, (CallisonBurch et al., 2006) tried to improve machine translations by enlarging the coverage of patterns that can be translated.</S>
+			<S sid ="12" ssid = "12">In the same way, most NLP systems like information retrieval (Sekine, 2005) or question answering (Duclaye et al., 2003), based on pattern recognition, can be improved by a paraphrase generator.</S>
+			<S sid ="13" ssid = "13">Most of these applications need a n-best set of solutions in order to rerank them according to a task-specific criterion.</S>
+			<S sid ="14" ssid = "14">In order to produce the paraphrases, a promising approach is to see the paraphrase generation problem as a statistical translation problem.</S>
+			<S sid ="15" ssid = "15">In that approach, the target language becomes the same as the source language (Quirk et al., 2004; Bannard and CallisonBurch, 2005; Max and Zock, 2008).</S>
+			<S sid ="16" ssid = "16">The first difficulty of this approach is the need of a paraphrase table.</S>
+			<S sid ="17" ssid = "17">A paraphrase table is a monolingual version of a translation table in the statistical machine translation (SMT) field.</S>
+			<S sid ="18" ssid = "18">In this field, the difficulty is basically overcome by using huge aligned bilingual corpora like the Europarl (Koehn, 2005) corpus.</S>
+			<S sid ="19" ssid = "19">In the paraphrase generation field, one needs a huge aligned monolingual corpus to build a paraphrase table.</S>
+			<S sid ="20" ssid = "20">The low availability of such monolingual corpora nurtures researches in order to find heuristics to produce them (Barzilay and Lee, 2003; Quirk et al., 2004).</S>
+			<S sid ="21" ssid = "21">On the other hand, an interesting method proposed by (Bannard and CallisonBurch, 2005) tries to make a paraphrase table using a translation table learned on bilingual corpora.</S>
+			<S sid ="22" ssid = "22">The method uses a well-known heuristic (Lepage and Denoual, 2005) which says that if two sentences have the same translation, then they should be paraphrases of each others.</S>
+			<S sid ="23" ssid = "23">Another aspect, less studied, is the generation process of paraphrases, i.e. the decoding process in SMT.</S>
+			<S sid ="24" ssid = "24">This process is subject to combinatorial 144 Coling 2010: Poster Volume, pages 144–152, Beijing, August 2010 explosions.</S>
+			<S sid ="25" ssid = "25">Heuristics are then frequently used to drive the exploration process in the a priori intractable high dimensional spaces.</S>
+			<S sid ="26" ssid = "26">On the one hand, these heuristics are used to build a para source and target languages i.e. the paraphrase table.</S>
+			<S sid ="27" ssid = "27">This can be decomposed into: t∗ ≈ arg max P (t) TI P (sI I phrase step by step according to the paraphrase t,I i∈I i |ti , B) table.</S>
+			<S sid ="28" ssid = "28">On the other hand, they try to evaluate the where I is a partition of the source sentence andrelevance of a step according to the global para phrase generation model.</S>
+			<S sid ="29" ssid = "29">The SMT model score xI the ith segment in the sentence x. For a given is related to the path followed to generate a paraphrase.</S>
+			<S sid ="30" ssid = "30">Because of the step-by-step computation, different ways can produce the same paraphrase, but with different scores.</S>
+			<S sid ="31" ssid = "31">Amongst these scores, the best one is the true score of a paraphrase according to the SMT model.</S>
+			<S sid ="32" ssid = "32">Most paraphrase generators use some standard SMT decoding algorithms (Quirk et al., 2004) or some off-the-shelf decoding tools like MOSES.</S>
+			<S sid ="33" ssid = "33">The goal of these decoders is to find the best path in the lattice produced by the paraphrase table.</S>
+			<S sid ="34" ssid = "34">This is basically achieved by using dynamic programming – especially the Viterbi algorithm – and beam searching (Koehn et al., 2007).</S>
+			<S sid ="35" ssid = "35">The best paraphrase proposed by these programs is known not to be the optimal paraphrase.</S>
+			<S sid ="36" ssid = "36">One can even question if the score returned is the true score.</S>
+			<S sid ="37" ssid = "37">We first show in Section 2 that in the particular domain of statistical paraphrase generation, one can compute true a posteriori scores of generated paraphrases.</S>
+			<S sid ="38" ssid = "38">We then explore some applications of the true score algorithm in the paraphrase generation field.</S>
+			<S sid ="39" ssid = "39">In Section 3, we show that scores returned by SMT decoders are not always true scores and they plague the ranking of output n-best solutions.</S>
+			<S sid ="40" ssid = "40">In Section 4, we show that the true score can give a major boost for holistic paraphrases generators which do not rely on decoding approaches.</S>
+	</SECTION>
+	<SECTION title="True Score Computing. " number = "2">
+			<S sid ="41" ssid = "1">2.1 Context.</S>
+			<S sid ="42" ssid = "2">The phrase based SMT model (Koehn et al., 2003) can be transposed to paraphrase generation as follows: t∗ = arg max P (t) × P (s|t, B) where s is the source sentence, t the target sentence i.e. the paraphrase, t∗ the best paraphrase and B a model of the noisy channel between thecouple of s, t sentences, it exists several segmen tations I with different probabilities.</S>
+			<S sid ="43" ssid = "3">This is illustrated in Example 1.</S>
+			<S sid ="44" ssid = "4">Depending on the quality of the paraphrase table, one can find up to thousands of paraphrase segments for a source sentence.</S>
+			<S sid ="45" ssid = "5">Note that the generated paraphrases are not always semantically or even syntactically correct, as in P2.</S>
+			<S sid ="46" ssid = "6">P3 illustrates the score evaluation problem: it can be generated by applying to the source sentence the sequences of transformations {T 1, T 2} , {T 1, T 4, T 5} or even {T 5, T 1, T 4} . . .</S>
+			<S sid ="47" ssid = "7">Example 1 Decoding Source sentence: The dog runs after the young cat.</S>
+			<S sid ="48" ssid = "8">Paraphrase table excerpt: T1: P(the beast | the dog) = 0.8 T2: P(the kitten | the young cat) = 0.7 T3: P(after it | after the) = 0.4 T4: P(the | the young) = 0.05 T5: P(cat | kitten) = 0.1 Some possible generated paraphrases: P1: the beast runs after the young cat.</S>
+			<S sid ="49" ssid = "9">P2: *the dog runs after it young cat.</S>
+			<S sid ="50" ssid = "10">P3: the beast runs after the kitten.</S>
+			<S sid ="51" ssid = "11">We define the score of a potential paraphrase t following a segmentation I as: Zt = P (t) TI P (si |ti , B) I I I i∈I The true score of a potential paraphrase t is defined as: Z ∗ I t = max Zt I Because of high-dimension problems, decoders apply sub-optimal algorithms to search for t∗.</S>
+			<S sid ="52" ssid = "12">They produce estimated solutions over all possible paraphrases t and over all possible segmentations I . Actually, for a given paraphrase t, they con A2: no reordering model is applied during the paraphrasing transformation.</S>
+			<S sid ="53" ssid = "13">Under this set of assumptions, the sequence (ordered) of transformation rules becomes a set (un sider only some Z I Z ∗ where they should estimate ordered) of transformation rules.</S>
+			<S sid ="54" ssid = "14">One can there fore easily determine all the sets of transformaI . SMT decoders are overlooking the partition ing step in their computations.</S>
+			<S sid ="55" ssid = "15">There is no reason for the decoder solution to reach the true score.</S>
+			<S sid ="56" ssid = "16">Troubles arise when one needs the scores of generated paraphrases, for instance when the system must produce an ordered n-best solution.</S>
+			<S sid ="57" ssid = "17">What is the relevance of the estimated scores – and orders – with respect to the true scores – and orders – of the model?</S>
+			<S sid ="58" ssid = "18">Is the true score able to help the generation process?</S>
+			<S sid ="59" ssid = "19">2.2 Algorithm.</S>
+			<S sid ="60" ssid = "20">Let us first adopt the point of view proposed in (Chevelu et al., 2009).</S>
+			<S sid ="61" ssid = "21">The paraphrase generation problem can be seen as an exploration problem.</S>
+			<S sid ="62" ssid = "22">We seek the best paraphrase according to a scoring function in a space to search by applying successive transformations.</S>
+			<S sid ="63" ssid = "23">This space is composed of states connected by actions.</S>
+			<S sid ="64" ssid = "24">An action is a transformation rule with a place where it applies in the sentence.</S>
+			<S sid ="65" ssid = "25">States are a sentence with a set of possible actions.</S>
+			<S sid ="66" ssid = "26">Applying an action in a given state consists in transforming the sentence of the state and removing all rules that are no more applicable.</S>
+			<S sid ="67" ssid = "27">In this framework, each state, except the root, can be a final state.</S>
+			<S sid ="68" ssid = "28">The SMT approach fits within this point of view.</S>
+			<S sid ="69" ssid = "29">However, generation and evaluation need not to be coupled any longer.</S>
+			<S sid ="70" ssid = "30">Computing the true score of a generated paraphrase is in reality a task computationally easier than generating the best para tion rules from the source sentence to the target paraphrase: they are a subset of the cross- product set of every transformation rule with a source included in the source sentence and with a result included in the target paraphrase.</S>
+			<S sid ="71" ssid = "31">And this cross-product set remains computationally tractable.</S>
+			<S sid ="72" ssid = "32">Note that to guarantee a solution, the corpus of all rules should be augmented with an identity rule for each word of the source sentence (with an associated probability of applicability set to 1) missing in the paraphrase table.</S>
+			<S sid ="73" ssid = "33">The algorithm for computing ex post the true score is given on algorithm 1.</S>
+			<S sid ="74" ssid = "34">Algorithm 1 Algorithm for true score Let S be the source sentence.</S>
+			<S sid ="75" ssid = "35">Let T be the target sentence.</S>
+			<S sid ="76" ssid = "36">Let R : sR → tR be a transformation rule Let map : (S, T ) → C be a function Let C = {∅} ∀shead|S = shead.stail , ∀R ∈ {Ω|sR = shead, T = tR.ttail } C = C ∪ ({R} ⊗ map(Stail , Ttail )) return C Let score be the scoring function for a transformation rule set phrases.</S>
+			<S sid ="77" ssid = "37">Once the target result is fixed, the number of sequences transforming the source sentence into the target paraphrase becomes computationally tractable under a reasonable set of assump truescoreS,Ω(T ) = arg max c∈map(S,T ) (score(c)) tions: A1: the transformation rules have disjoint supports (meaning that no rule in the sequence should transform a segment of the sentence already transformed by one of of the previous applied rules) ; For our toy example, we would get the steps shown in Example 2.</S>
+	</SECTION>
+	<SECTION title="True Score of SMT  Decoders. " number = "3">
+			<S sid ="78" ssid = "1">We have shown that it is possible to compute the true score according to the paraphrase model.</S>
+			<S sid ="79" ssid = "2">We now evaluate scores from a state-of-the-art Example 2 True Score Computation Generated sets: {R1}, {R1, R3}, {R1, R2}, {R1, R4}, {R1, R4, R5}, {R3}, {R2}, {R4}, {R4, R5}, {R5} For a better readability, all identity rules are omitted.</S>
+			<S sid ="80" ssid = "3">The true scores are computed as in the following examples: score( ”the dog runs after the small cat.” → ”the beast runs after it small cat”) = score({R1}) score( ”the dog runs after the small cat.” → ”the beast runs after the kitten”) = max(score({R1, R2}), score({R1, R4, R5})) paraphrased by a phrase sti in the same language is estimated by the sum of each round-trip from si to sti through any phrase ti of a pivot language.</S>
+			<S sid ="81" ssid = "4">The construction of this table is very simple.</S>
+			<S sid ="82" ssid = "5">Given a bilingual translation table sorted by pivot phrases, the algorithm retrieves all the phrases linked with the same pivot (named a pivot cluster).</S>
+			<S sid ="83" ssid = "6">For each ordered pair of phrases, the program assigns a probability that is the product of there probabilities.</S>
+			<S sid ="84" ssid = "7">This process realizes a self-join of the bilingual translation table.</S>
+			<S sid ="85" ssid = "8">It produces a paraphrase table composed of tokens, instead of items.</S>
+			<S sid ="86" ssid = "9">The program just needs to sum up all probabilities for all entries with identical paraphrase tokens to produce the final paraphrase table.</S>
+			<S sid ="87" ssid = "10">Three heuristics are used to prune the paraphrase table.</S>
+			<S sid ="88" ssid = "11">The first heuristic prunes any entry in the paraphrase table composed of tokens with a probability lower than a threshold E. The second, called pruning pivot heuristic, consists in deleting all pivot clusters larger than a threshold τ . The last heuristic keeps only the κ most probable para decoder against this baseline.</S>
+			<S sid ="89" ssid = "12">In particular, we are interested in the order of n-best outputs.</S>
+			<S sid ="90" ssid = "13">We use the MOSES decoder (Koehn et al., 2007) as a representative SMT decoder inside the system described below.</S>
+			<S sid ="91" ssid = "14">3.1 System description.</S>
+			<S sid ="92" ssid = "15">Paraphrase generation tools based on SMT methods need a language model and a paraphrase table.</S>
+			<S sid ="93" ssid = "16">Both are computed on a training corpus.</S>
+			<S sid ="94" ssid = "17">The language models we use are n-gram language models with back-off.</S>
+			<S sid ="95" ssid = "18">We use SRILM (Stolcke, 2002) with its default parameters for this purpose.</S>
+			<S sid ="96" ssid = "19">The length of the n-grams is five.</S>
+			<S sid ="97" ssid = "20">To build a paraphrase table, we use a variant of the construction method via a pivot language proposed in (Bannard and CallisonBurch, 2005).</S>
+			<S sid ="98" ssid = "21">The first step consists in building a bilingual translation table from the aligned corpus.</S>
+			<S sid ="99" ssid = "22">Given a source phrase si and another phrase ti in a different language, a bilingual translation table provides the two probabilities p(si|ti) and p(ti|si).</S>
+			<S sid ="100" ssid = "23">We useGIZA++ (Och and Ney, 2003) with its default pa rameters to produce phrase alignments.</S>
+			<S sid ="101" ssid = "24">The paraphrase table is then built from the phrase translation table.</S>
+			<S sid ="102" ssid = "25">The probability for a phrase si to be phrases for each source phrase in the final paraphrase table.</S>
+			<S sid ="103" ssid = "26">For this study, we empirically fix E = 10−5, τ = 200 and κ = 20.</S>
+			<S sid ="104" ssid = "27">The MOSES scoring function is set by four weighting factors αΦ, αLM , αD , αW . Conventionally, these four weights are adjusted during a tuning step on a training corpus.</S>
+			<S sid ="105" ssid = "28">The tuning step is inappropriate for paraphrasing because there is no such tuning corpus available.</S>
+			<S sid ="106" ssid = "29">We empirically set αΦ = 1, αLM = 1, αD = 10 and αW = 0.</S>
+			<S sid ="107" ssid = "30">This means that the paraphrase table and the language model are given the same weight, no reordering is allowed and no specific sentence length is favored.</S>
+			<S sid ="108" ssid = "31">3.2 Experimental Protocol.</S>
+			<S sid ="109" ssid = "32">For experiments reported in this paper, we use one of the largest, multilingual, freely available aligned corpus, Europarl (Koehn, 2005).</S>
+			<S sid ="110" ssid = "33">It consists of European parliament debates.</S>
+			<S sid ="111" ssid = "34">We choose French as the language for paraphrases and English as the pivot language.</S>
+			<S sid ="112" ssid = "35">For this pair of languages, the corpus consists of 1,723,705 sentences.</S>
+			<S sid ="113" ssid = "36">Note that the sentences in this corpus are long, with an average length of 30 words per French sentence and 27.8 for English.</S>
+			<S sid ="114" ssid = "37">We randomly extract 100 French sentences as a test cor pus.</S>
+			<S sid ="115" ssid = "38">For each source sentence from the test corpus, the SMT decoder tries to produce a 100-best distinct paraphrase sequence.</S>
+			<S sid ="116" ssid = "39">Using the algorithm 1, we compute the true score of each paraphrase and rerank them.</S>
+			<S sid ="117" ssid = "40">We then compare orders output by the decoder with the true score order by using the Kendall rank correlation coefficient (τA) (Kendall,1938).</S>
+			<S sid ="118" ssid = "41">In this context, the Kendall rank corre lation coefficient considers each couple of paraphrases and checks if their relative order is preserved by the reranking.</S>
+			<S sid ="119" ssid = "42">The τA formula is: np − ni 0.95 0.9 0.85 0.8 0.75 τA = 2 n(n − 1) 0.7 where np the number of preserved orders, nd thenumber of inverted orders and n the number of el ements in the sequence.</S>
+			<S sid ="120" ssid = "43">The coefficient provides a score – between -1 and 1 – that can be interpreted as a correlation coefficient between the two orders.</S>
+			<S sid ="121" ssid = "44">In order to compare same length sequences, we filter out source sentences when MOSES can not produce enough distinct paraphrases.</S>
+			<S sid ="122" ssid = "45">The test corpus is therefore reduced to 94 sentences.</S>
+			<S sid ="123" ssid = "46">3.3 Results.</S>
+			<S sid ="124" ssid = "47">The evolution of τA means relative to the length of the n-best sequence is given Figure 1.</S>
+			<S sid ="125" ssid = "48">The τA means drops to 0.73 with a standard deviation of 0.41 for a 5-best sequence which means that the orders are clearly different but not decorrelated.</S>
+			<S sid ="126" ssid = "49">A finer study of the results reveals that amongst the generated paraphrases, 32% have seen their score modified.</S>
+			<S sid ="127" ssid = "50">18% of the MOSES 1-best paraphrases were not optimal anymore after the true score reranking.</S>
+			<S sid ="128" ssid = "51">After reranking, the old top best solutions have dropped to a mean rank of 2.0 ± 17.7 (40th rank at worse).</S>
+			<S sid ="129" ssid = "52">When considering only the paraphrases no longer optimal, they have dropped to a mean rank of 6.8 ± 12.9.</S>
+			<S sid ="130" ssid = "53">From the opposite point of view, new top paraphrases after reranking have come from a mean rank of 4.4 ± 12.1.</S>
+			<S sid ="131" ssid = "54">When considering only the paraphrases that were not optimal, they have come from a mean rank of 21.2±23.5.</S>
+			<S sid ="132" ssid = "55">Some have come from the 67th rank.</S>
+			<S sid ="133" ssid = "56">Even an a posteriori reranking would not have retrieved this top solution if the size of MOSES n-best list were too short.</S>
+			<S sid ="134" ssid = "57">This 10 20 30 40 50 60 70 80 90 100 n-best paraphrase sequence size Figure 1: Evolution of τA means relative to the length of the n-best sequence advocates for a direct embedding of the true score function inside the generation process.</S>
+			<S sid ="135" ssid = "58">In this section we have shown that MOSES scores are not consistent with the true score as expected from the paraphrase model.</S>
+			<S sid ="136" ssid = "59">In particular, the n-best paraphrase sequence computed by MOSES is not trustworthy while it is an input for the task system.</S>
+	</SECTION>
+	<SECTION title="True Score to boost Monte-Carlo. " number = "4">
+			<S sid ="137" ssid = "1">based Paraphrase Generation There exist other less common approaches more lenient than the Viterbi algorithm, which are holistic, i.e. they work on the whole sentence rather than step-by-step.</S>
+			<S sid ="138" ssid = "2">The MonteCarlo based Paraphrase Generation algorithm (MCPG) proposed in (Chevelu et al., 2009) turns out to be an interesting algorithm for the study of paraphrase generation.</S>
+			<S sid ="139" ssid = "3">It does not constraint the scoring function to be incremental.</S>
+			<S sid ="140" ssid = "4">In this section, we embed the non incremental true score function in MCPG to drive the generation step and produce n-best orders compliant with the paraphrase model, and show that the true score function can be used to provide a major boost to the performance of such an algorithm.</S>
+			<S sid ="141" ssid = "5">4.1 Description.</S>
+			<S sid ="142" ssid = "6">The MCPG algorithm is a derivative of the Upper Confidence bound applied to Tree algorithm (UCT).</S>
+			<S sid ="143" ssid = "7">UCT (Kocsis and Szepesva´ri, 2006), a MonteCarlo planning algorithm, has recently become popular in two-player game problems.</S>
+			<S sid ="144" ssid = "8">UCT has some interesting properties: • it expands the search tree non-uniformly and favours the most promising sequences, without pruning branch; • it can deal with high branching factors; Source sentence Sampling step Exploration/exploitation compromise State • it is an anytime algorithm and returns best solutions found so far when interrupted; • it does not require expert domain knowledge to evaluate states.</S>
+			<S sid ="145" ssid = "9">already explored?</S>
+			<S sid ="146" ssid = "10">No Yes These properties make it ideally suited for problems with high branching factors and for which there is no strong evaluation function.</S>
+			<S sid ="147" ssid = "11">For the same reasons, this algorithm is interesting for paraphrase generation.</S>
+			<S sid ="148" ssid = "12">In particular, it does not put constraint on the scoring function.</S>
+			<S sid ="149" ssid = "13">A diagram of the MCPG algorithm is presented Figure 2.</S>
+			<S sid ="150" ssid = "14">The main part of the algorithm is the sampling Yes MonteCarlo sampling Enough iterations?</S>
+			<S sid ="151" ssid = "15">No step.</S>
+			<S sid ="152" ssid = "16">An episode of this step is a sequence of states and actions, s1, a1, s2, a2, . . .</S>
+			<S sid ="153" ssid = "17">, sT , from the root state to a final state.</S>
+			<S sid ="154" ssid = "18">Basically, a state is a partially generated paraphrase associated with a set of available actions.</S>
+			<S sid ="155" ssid = "19">A final state is a potential paraphrase.</S>
+			<S sid ="156" ssid = "20">An action is a transformation rule from the paraphrase table.</S>
+			<S sid ="157" ssid = "21">During an episode construction, there are two ways to select the action ai to perform from a state si.</S>
+			<S sid ="158" ssid = "22">If the current state was already explored in a previous episode, the action is selected according to a compromise between exploration and exploitation.</S>
+			<S sid ="159" ssid = "23">This compromise is computed using the UCBTunned formula (Auer et al., 2001) associated with the RAVE heuristic (Gelly and Silver, 2007).</S>
+			<S sid ="160" ssid = "24">If the current state is explored for the first time, its score is estimated using MonteCarlo sampling.</S>
+			<S sid ="161" ssid = "25">In other words, to complete the New root selection step Final No state?</S>
+			<S sid ="162" ssid = "26">Yes Output paraphrase Figure 2: The MCPG algorithm.</S>
+			<S sid ="163" ssid = "27">episode, the actions ai, ai+1, . . .</S>
+			<S sid ="164" ssid = "28">, aT −1, aT are selected randomly until reaching a final state.</S>
+			<S sid ="165" ssid = "29">At the end of each episode, a reward is computed for the final state sT using a scoring function, and the value of each (state, action) pair of the episode is updated.</S>
+			<S sid ="166" ssid = "30">Then, the algorithm computes another episode with the new values.</S>
+			<S sid ="167" ssid = "31">Periodically, the sampling step is stopped and the best action at the root state is selected.</S>
+			<S sid ="168" ssid = "32">This action is then definitively applied and a sampling is restarted from the new root state.</S>
+			<S sid ="169" ssid = "33">The action sequence is incrementally built and selected after being sufficiently sampled.</S>
+			<S sid ="170" ssid = "34">For our experiment, we have chosen to stop sampling regularly after a fixed amount η of episodes.</S>
+			<S sid ="171" ssid = "35">0100 -200300 -400500 20 40 60 80 100 1-best paraphrase index (ordered by M O S E S reranked scores) The adaptation of the original algorithm takes place in the (state, action) value updating procedure.</S>
+			<S sid ="172" ssid = "36">Since the goal of the algorithm is to maximise a scoring function, it uses the maximum reachable score from a state as value instead of the score expectation.</S>
+			<S sid ="173" ssid = "37">This algorithm suits the paradigm recalled in Section 2 for paraphrase generation.</S>
+			<S sid ="174" ssid = "38">To provide scores comparable with the paraphrase model scores, the standard version of MCPG has to apply rules until the whole source sentence is covered.</S>
+			<S sid ="175" ssid = "39">With this behaviour, MCPG acts in a monolingual “translator” mode.</S>
+			<S sid ="176" ssid = "40">The embedding of the true score algorithm in MCPG has given meaningful scores to all states.</S>
+			<S sid ="177" ssid = "41">The algorithm needs not to “translate” the whole sentence to get a potential paraphrase and its score.</S>
+			<S sid ="178" ssid = "42">This MCPG algorithm in “true-score” mode can choose to stop its processing with segments still unchanged, which solves, amongst others, out-of-vocabulary questions found in decoder- based approaches.</S>
+			<S sid ="179" ssid = "43">4.2 Experimental Protocol.</S>
+			<S sid ="180" ssid = "44">For this experiment, we reuse the paraphrase table and the corpora generated for the experiment presented in Section 3.2; We compare the 1-best outputs from MOSES reranked by the true score function and from MCPG in both “translator” and “true-score” modes.</S>
+			<S sid ="181" ssid = "45">For MCPG systems, we set the following parameters: η = 100,000 iterations.</S>
+			<S sid ="182" ssid = "46">Figure 3: Comparison of paraphrase generators.</S>
+			<S sid ="183" ssid = "47">Top: the MOSES baseline; middle and bold: the “true-score” MCPG; down: the “translator” MCPG.</S>
+			<S sid ="184" ssid = "48">The use of “true-score” improves the MCPG performances.</S>
+			<S sid ="185" ssid = "49">MCPG reaches MOSES performance level.</S>
+			<S sid ="186" ssid = "50">4.3 Results.</S>
+			<S sid ="187" ssid = "51">Figure 3 presents a comparison between the scores from each systems, ordered by MOSES reranked scores.</S>
+			<S sid ="188" ssid = "52">The boost of performance gained by using true scores inside the MCPG algorithm reaches a means of 28.79 with a standard deviation of 34.19.</S>
+			<S sid ="189" ssid = "53">The mean difference between “true-score” MCPG andMOSES is −14.13 (standard deviation 19.99).</S>
+			<S sid ="190" ssid = "54">Al though the performance remains inferior to the MOSES true score baseline, it still leads to an improvement over the “translator” MCPG system.</S>
+			<S sid ="191" ssid = "55">The later system has a mean difference of perfor mance with MOSES of −42.92 (standard deviation of 40.14).</S>
+			<S sid ="192" ssid = "56">The true score reduces the number of transformations needed to generate a paraphrase, which simplifies the exploration task.</S>
+			<S sid ="193" ssid = "57">Moreover, it reduces the number of states in the exploration space: two sets of transformations producing the same paraphrase now leads to the same state.</S>
+			<S sid ="194" ssid = "58">These points explain why MCPG has become more efficient.</S>
+			<S sid ="195" ssid = "59">Although MCPG is improved by embedding the true score algorithm, there is still room for improvement.</S>
+			<S sid ="196" ssid = "60">In its current version, MCPG does not adapt the number of exploration episodes to the input sentence.</S>
+	</SECTION>
+	<SECTION title="Conclusion and perspectives. " number = "5">
+			<S sid ="197" ssid = "1">In this paper, we have developed a true scoring algorithm adapted to the statistical paraphrase generation model.</S>
+			<S sid ="198" ssid = "2">We have studied its impacts on a common SMT decoder and a MonteCarlo sampling based paraphrase generator.</S>
+			<S sid ="199" ssid = "3">It has revealed that the n-best outputs by SMT decoders were not viable.</S>
+			<S sid ="200" ssid = "4">It has also proved useful in simplifying the exploration task and in improving holistic paraphrase generators.</S>
+			<S sid ="201" ssid = "5">Thanks to the boost introduced by the true score algorithm in holistic paraphrase generators, their performances are now on a par with scores produced by statistical translation decoders.</S>
+			<S sid ="202" ssid = "6">Moreover, they produce guaranteed ordering, and enable the integration of a global task scoring function, which seems still out of reach for decoder- based systems.</S>
+			<S sid ="203" ssid = "7">A more general problem remains open: what do the scores and the orders output by the model mean when compared to a human subjective evaluation?</S>
+			<S sid ="204" ssid = "8">In preliminary results on our test corpus, less than 37% of the MOSES generated paraphrases can be considered both syntactically correct and semantically a paraphrase of their original sentence.</S>
+			<S sid ="205" ssid = "9">One could study the relations between scores from the model and subjective evaluations to create predictive regression models.</S>
+			<S sid ="206" ssid = "10">The true score algorithm can autonomously score existing paraphrase corpora which could be used to adapt the SMT tuning step for paraphrase generation.</S>
+			<S sid ="207" ssid = "11">We note that the hundredth best paraphrases from MOSES have a score close to the best paraphrase: the mean difference is 5.9 (standard deviation 4.5) on our test corpus.</S>
+			<S sid ="208" ssid = "12">This is smaller than the mean difference score between MOSES and MCPG.</S>
+			<S sid ="209" ssid = "13">In (Chevelu et al., 2009), both systems were rated similar by a subjective evaluation.</S>
+			<S sid ="210" ssid = "14">One could question the relevance of small score differences and why the best paraphrase should be selected instead of the hundred next ones.</S>
+			<S sid ="211" ssid = "15">Given the current state of the art, the next step to improve paraphrase generation does not lie in score optimisation but in refining the model and its components: the language model and the paraphrase table.</S>
+			<S sid ="212" ssid = "16">Human based evaluations reveal that the current most important issue of paraphrase generation lies in the syntax (Chevelu et al., 2009).</S>
+			<S sid ="213" ssid = "17">It seems difficult to assess the syntax of a potential paraphrase while not considering it as a whole, which is impossible with a local scoring function inherent to the SMT decoding paradigm.</S>
+			<S sid ="214" ssid = "18">Holistic paraphrase generators have now reached a level of performance comparable to SMT decoders, without suffering from their limitations.</S>
+			<S sid ="215" ssid = "19">They are paving the way for experiments with more complex semantic and linguistic models to improve paraphrase generation.</S>
+	</SECTION>
+</PAPER>
