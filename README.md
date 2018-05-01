@@ -72,7 +72,7 @@ with generous support from Microsoft Research Asia.
  
 This file.
 
-    ./FAQ2017
+    ./FAQ2018
 	
 Frequently asked questions on the 2017 shared task including updates to the corpus, 
 annotation format from the previous edition.
