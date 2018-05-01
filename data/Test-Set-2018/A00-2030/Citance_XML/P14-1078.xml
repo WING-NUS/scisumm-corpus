@@ -1,0 +1,269 @@
+<PAPER>
+  <S sid="0">Medical Relation Extraction with Manifold Models</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">In this paper, we present a manifold model for medical relation extraction.</S>
+    <S sid="2" ssid="2">Our model is built upon a medical corpus containing 80M sentences (11 gigabyte text) and designed to accurately and efficiently detect the key medical relations that can facilitate clinical decision making.</S>
+    <S sid="3" ssid="3">Our approach integrates domain specific parsing and typing systems, and can utilize labeled as well as unlabeled examples.</S>
+    <S sid="4" ssid="4">To provide users with more flexibility, we also take label weight into consideration.</S>
+    <S sid="5" ssid="5">Effectiveness of our model is demonstrated both theoretically with a proof to show that the solution is a closed-form solution and experimentally with positive results in experiments.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="6" ssid="1">There exists a vast amount of knowledge sources and ontologies in the medical domain.</S>
+    <S sid="7" ssid="2">Such information is also growing and changing extremely quickly, making the information difficult for people to read, process and remember.</S>
+    <S sid="8" ssid="3">The combination of recent developments in information extraction and the availability of unparalleled medical resources thus offers us the unique opportunity to develop new techniques to help healthcare professionals overcome the cognitive challenges they face in clinical decision making.</S>
+    <S sid="9" ssid="4">Relation extraction plays a key role in information extraction.</S>
+    <S sid="10" ssid="5">Using question answering as an example (Wang et al., 2012): in question analysis, the semantic relations between the question focus and each term in the clue can be used to identify the weight of each term so that better search queries can be generated.</S>
+    <S sid="11" ssid="6">In candidate answer generation, relations enable the background knowledge base to be used for potential candidate answer generation.</S>
+    <S sid="12" ssid="7">In candidate answer scoring, relation-based matching algorithms can go beyond explicit lexical and syntactic information to detect implicit semantic relations shared across the question and passages.</S>
+    <S sid="13" ssid="8">To construct a medical relation extraction system, several challenges have to be addressed: &#8226; The first challenge is how to identify a set of relations that has sufficient coverage in the medical domain.</S>
+    <S sid="14" ssid="9">To address this issue, we study a real-world diagnosis related question set and identify a set of relations that has a good coverage of the clinical questions.</S>
+    <S sid="15" ssid="10">&#8226; The second challenge is how to efficiently detect relations in a large amount of medical text.</S>
+    <S sid="16" ssid="11">The medical corpus underlying our relation extraction system contains 80M sentences (11 gigabytes pure text).</S>
+    <S sid="17" ssid="12">To extract relations from a dataset at this scale, the relation detectors have to be fast.</S>
+    <S sid="18" ssid="13">In this paper, we speed up relation detectors through parsing adaptation and replacing non-linear classifiers with linear classifiers.</S>
+    <S sid="19" ssid="14">&#8226; The third challenge is that the labeled relation examples are often insufficient due to the high labeling cost.</S>
+    <S sid="20" ssid="15">When we build a naive model to detect relations, the model tends to overfit for the labeled data.</S>
+    <S sid="21" ssid="16">To address this issue, we develop a manifold model (Belkin et al., 2006) that encourages examples (including both labeled and unlabeled examples) with similar contents to be assigned with similar scores.</S>
+    <S sid="22" ssid="17">Our model goes beyond regular regression models in that it applies constraints to those coefficients, such that the topology of the given data manifold will be respected.</S>
+    <S sid="23" ssid="18">Computing the optimal weights in a regression model and preserving manifold topology are conflicting objectives, we present a closed-form solution to ideally balance these two goals.</S>
+    <S sid="24" ssid="19">The contributions of this paper on medical relation extraction are three-fold: &#8226; The problem setup is new.</S>
+    <S sid="25" ssid="20">There is a &#8220;fundamental&#8221; difference between our problem setup and the conventional setups, like i2b2 (Uzuner et al., 2011).</S>
+    <S sid="26" ssid="21">In i2b2 relation extraction task, entity mentions are manually labeled, and each mention has 1 of 3 concepts: &#8216;treatment&#8217;, &#8216;problem&#8217;, and &#8216;test&#8217;.</S>
+    <S sid="27" ssid="22">To resemble real-world medical relation extraction challenges where perfect entity mentions do not exist, our new setup requires the entity mentions to be automatically detected.</S>
+    <S sid="28" ssid="23">The most well-known tool to detect medical entity mentions is MetaMap (Aronson, 2001), which considers all terms as entities and automatically associates each term with a number of concepts from UMLS CUI dictionary (Lindberg et al., 1993) with more than 2.7 million distinct concepts (compared to 3 in i2b2).</S>
+    <S sid="29" ssid="24">The huge amount of entity mentions, concepts and noisy concept assignments provide a tough situation that people have to face in real-world applications.</S>
+    <S sid="30" ssid="25">&#8226; From the perspective of relation extraction applications, we identify &#8220;super relations&#8221;the key relations that can facilitate clinical decision making (Table 1).</S>
+    <S sid="31" ssid="26">We also present approaches to collect training data for these relations with a small amount of labeling effort.</S>
+    <S sid="32" ssid="27">&#8226; From the perspective of relation extraction methodologies, we present a manifold model for relation extraction utilizing both labeled and unlabeled data.</S>
+    <S sid="33" ssid="28">Our approach can also take the label weight into consideration.</S>
+    <S sid="34" ssid="29">The experimental results show that our relation detectors are fast and outperform the state-of-theart approaches on medical relation extraction by a large margin.</S>
+    <S sid="35" ssid="30">We also apply our model to build a new medical relation knowledge base as a complement to the existing knowledge bases.</S>
+  </SECTION>
+  <SECTION title="2 Background" number="2">
+    <S sid="36" ssid="1">Medical domain has a huge amount of natural language content found in textbooks, encyclopedias, guidelines, electronic medical records, and many other sources.</S>
+    <S sid="37" ssid="2">It is also growing at an extremely high speed.</S>
+    <S sid="38" ssid="3">Substantial understanding of the medical domain has already been included in the Unified Medical Language System (UMLS) (Lindberg et al., 1993), which includes medical concepts, relations, definitions, etc.</S>
+    <S sid="39" ssid="4">The 2012 version of the UMLS contains information about more than 2.7 million concepts from over 160 source vocabularies.</S>
+    <S sid="40" ssid="5">Softwares for using this knowledge also exist: MetaMap (Aronson, 2001) is able to identify concepts in text.</S>
+    <S sid="41" ssid="6">SEMREP (Rindflesch and Fiszman, 2003) can detect some relations using hand-crafted rules.</S>
+    <S sid="42" ssid="7">To extract semantic relations from text, three types of approaches have been applied.</S>
+    <S sid="43" ssid="8">Rule-based methods (Miller et al., 2000) employ a number of linguistic rules to capture relation patterns.</S>
+    <S sid="44" ssid="9">Feature-based methods (Kambhatla, 2004; Zhao and Grishman, 2005) transform relation instances into a large amount of linguistic features like lexical, syntactic and semantic features, and capture the similarity between these feature vectors.</S>
+    <S sid="45" ssid="10">Recent results mainly rely on kernel-based methods.</S>
+    <S sid="46" ssid="11">Many of them focus on using tree kernels to learn parse tree structure related features (Collins and Duffy, 2001; Culotta and Sorensen, 2004; Bunescu and Mooney, 2005).</S>
+    <S sid="47" ssid="12">Other researchers study how different approaches can be combined to improve the extraction performance.</S>
+    <S sid="48" ssid="13">For example, by combining tree kernels and convolution string kernels, (Zhang et al., 2006) achieved the state of the art performance on ACE data (ACE, 2004).</S>
+    <S sid="49" ssid="14">Recently, &#8220;distant supervision&#8221; has emerged to be a popular choice for training relation extractors without using manually labeled data (Mintz et al., 2009; Jiang, 2009; Chan and Roth, 2010; Wang et al., 2011; Riedel et al., 2010; Ji et al., 2011; Hoffmann et al., 2011; Surdeanu et al., 2012; Takamatsu et al., 2012; Min et al., 2013).</S>
+    <S sid="50" ssid="15">Various relation extraction approaches have been adapted to the medical domain, most of which focus on designing heuristic rules targeted for diagnosis and integrating the medical ontology in the existing extraction approaches.</S>
+    <S sid="51" ssid="16">Results of some of these approaches are reported on the i2b2 data (Uzuner et al., 2011).</S>
+  </SECTION>
+  <SECTION title="3 Identifying Key Medical Relations" number="3">
+    <S sid="52" ssid="1">The first step in building a relation extraction system for medical domain is to identify the relations that are important for clinical decision making.</S>
+    <S sid="53" ssid="2">Four main clinical tasks that physicians engage in are discussed in (Demner-Fushman and Lin, 2007).</S>
+    <S sid="54" ssid="3">They are Therapy- select treatments to offer a patient, taking consideration of effectiveness, risk, cost and other factors (prevention is under the general category of Therapy), Diagnosis (including differential diagnosis based on findings and diagnostic test), Etiology- identify the factors that cause the disease and Prognosis- estimate the patient&#8217;s likely course over time.</S>
+    <S sid="55" ssid="4">These activities can be translated into &#8220;search tasks&#8221;.</S>
+    <S sid="56" ssid="5">For example, the search for therapy is usually the therapy selection given a disease.</S>
+    <S sid="57" ssid="6">We did an independent study regarding what clinical questions usually ask for on a set of 5,000 Doctor Dilemma (DD) questions from the American College of Physicians (ACP).</S>
+    <S sid="58" ssid="7">This set includes questions about diseases, treatments, lab tests, and general facts1.</S>
+    <S sid="59" ssid="8">Our analysis shows that about 15% of these questions ask for treatments, preventions or contraindicated drugs for a disease or another way around, 4% are about diagnosis tests, 6% are about the causes of a disease, 1% are about the locations of a disease, 25% are about the symptoms of a disease, 8% are asking for definitions, 7% are about guidelines and the remaining 34% questions either express no relations or some relations that are not very popular.</S>
+    <S sid="60" ssid="9">Based on the analysis in (Demner-Fushman and Lin, 2007) and our own results, we decided to focus on seven key relations in the medical domain, which are described in Table 1.</S>
+    <S sid="61" ssid="10">We call these relations &#8220;super relations&#8221;, since they cover most questions in the DD question set and align well with the analysis result in (Demner-Fushman and Lin, 2007).</S>
+    <S sid="62" ssid="11">This section presents how we collect training data for each relation.</S>
+    <S sid="63" ssid="12">The overall procedure is illustrated in Figure 1.</S>
+    <S sid="64" ssid="13">Our medical corpus has incorporated a set of medical books/journals2 and MEDLINE abstracts.</S>
+    <S sid="65" ssid="14">We also complemented these sources with Wikipedia articles.</S>
+    <S sid="66" ssid="15">In total, the corpus contains 80M sentences (11 gigabyte pure text).</S>
+    <S sid="67" ssid="16">The UMLS 2012 Release contains more than 600 relations and 50M relation instances under around 15 categories.</S>
+    <S sid="68" ssid="17">The RO category (RO stands for &#8220;has Relationship Other than synonymous, narrower, or broader&#8221;) is the most interesting one, and covers relations like &#8220;may treat&#8221;, &#8220;has finding site&#8221;, etc.</S>
+    <S sid="69" ssid="18">Each relation has a certain number of Concept Unique Identifier (CUI) pairs that are known to bear that relation.</S>
+    <S sid="70" ssid="19">In UMLS, some relation information is redundant.</S>
+    <S sid="71" ssid="20">Firstly, half of these relations are simply inverse of each other (e.g. the relation &#8220;may treat&#8221; and &#8220;may be treated by&#8221;).</S>
+    <S sid="72" ssid="21">Secondly, there is a significant amount of redundancy even among non-inverse relations (e.g. the relation &#8220;has manifestation&#8221; and &#8220;disease has finding&#8221;).</S>
+    <S sid="73" ssid="22">From UMLS relations, we manually chose a subset of them that are directly related to the super relations discussed in Section 3.1.</S>
+    <S sid="74" ssid="23">The correspondences between them are given in Table 1.</S>
+    <S sid="75" ssid="24">One thing to note is that super relations are more general than the UMLS relations, and one super relation might integrate multiple UMLS relations.</S>
+    <S sid="76" ssid="25">Using the CUI pairs in the UMLS relation knowl2This is a full list of the books and journals used in our corpus: ACP-Medical Knowledge Self-Assessment Program, EBSCO-Dynamed, EBSCO-Quick Lessons, EBSCOEBCS, EBSCO-Clinical Review, Wiley-Essential Evidence Plus: EBMG Guidelines, Wiley-Essential Evidence Topics, Wiley-Essential Evidence Plus: EBMG Summaries, WileyPOEMs, Wiley-The Breast Journal, New England Journal of Medicine, Journal Watch, NCCN-CME, NCCN-GUS, NCCN-Compendium, NCCN-Templates, NCCN-Guidelines for Patients, NCCN-Physician Guidelines, Merck Manual of Diagnosis and Therapy, and UpToDate.</S>
+    <S sid="77" ssid="26">Super Relations Argument 1 Argument 2 UMLS Sources Noise% in Annotation Data treats disease treatments may treat, treats 16% prevents disease treatments may prevent 49% contraindicates disease treatments contraindicated drug 97% diagnoses disease tests may diagnose 63% causes disease causes cause of, causative agent of 66% location of disease locations has finding site 41% disease has primary anatomic site symptom of disease symptoms disease has finding 66% disease may have finding has manifestation has definitional manifestation edge base, we associate each super relation with a set of CUI pairs.</S>
+    <S sid="78" ssid="27">To collect the training data for each super relation, we need to collect sentences that express the relation.</S>
+    <S sid="79" ssid="28">To achieve this, we parsed all 80M sentences in our medical corpus, looking for the sentences containing the terms that are associated with the CUI pairs in the knowledge base.</S>
+    <S sid="80" ssid="29">This (distant supervision) approach resulted in a huge amount of sentences that contain the desired relations, but also brought in a lot of noise in the form of false positives.</S>
+    <S sid="81" ssid="30">For example, we know from the knowledge base that &#8220;antibiotic drug&#8221; may treat &#8220;Lyme disease&#8221;.</S>
+    <S sid="82" ssid="31">However the sentence &#8220;This paper studies the relationship between antibiotic drug and Lyme disease&#8221; contains both terms but does not express the &#8220;treats&#8221; relation.</S>
+    <S sid="83" ssid="32">The most reliable way to clean the training data is to ask annotators to go through the sentences and assign the sentences with positive/negative labels.</S>
+    <S sid="84" ssid="33">However, it will not work well when we have millions of sentences to vet.</S>
+    <S sid="85" ssid="34">To minimize the human labeling effort, we ran a K-medoids clustering on the sentences associated with each super relation and kept the cluster centers as the most representative sentences for annotation.</S>
+    <S sid="86" ssid="35">Depending on the number of the sentences we collected for each relation, the #clusters was chosen from 3,000 - 6,000.</S>
+    <S sid="87" ssid="36">The similarity of two sentences is defined as the bag-of-words similarity of the dependency paths connecting arguments.</S>
+    <S sid="88" ssid="37">Part of the resulting data was manually vetted by our annotators, and the remaining was held as unlabeled data for further experiments.</S>
+    <S sid="89" ssid="38">Our relation annotation task is quite straightforward, since both arguments are given and the decision is a Yes-or-No decision.</S>
+    <S sid="90" ssid="39">The noise rate of each relation (#sentences expressing the relation / #sentences) is reported in Table 1 based on the annotation results.</S>
+    <S sid="91" ssid="40">The noise rates differ significantly from one relation to another.</S>
+    <S sid="92" ssid="41">For &#8220;treats&#8221; relation, only 16% of the sentences are false positives.</S>
+    <S sid="93" ssid="42">For &#8220;contraindicates&#8221; relation, the noise rate is 97%.</S>
+    <S sid="94" ssid="43">To grow the size of the negative training set for each super relation, we also added a small amount of the most representative examples (also coming from K-medoids clustering) from each unrelated UMLS relation to the training set as negative examples.</S>
+    <S sid="95" ssid="44">This resulted in more than 10,000 extra negative examples for each relation.</S>
+    <S sid="96" ssid="45">The most well-known tool to detect medical entity mentions is MetaMap (Aronson, 2001), which considers all terms as entities and automatically associates each term with a number of concepts from UMLS CUI dictionary (Lindberg et al., 1993) with 2.7 million distinct concepts.</S>
+    <S sid="97" ssid="46">The parser used in our system is MedicalESG, an adaptation of ESG (English Slot Grammar) (McCord et al., 2012) to the medical domain with extensions of medical lexicons integrated in the UMLS 2012 Release.</S>
+    <S sid="98" ssid="47">Compared to MetaMap, MedicalESG is based on the same medical lexicons, 10 times faster and produces very similar parsing results.</S>
+    <S sid="99" ssid="48">We use the semantic types defined in UMLS (Lindberg et al., 1993) to categorize argument types.</S>
+    <S sid="100" ssid="49">The UMLS consists of a set of 133 subject categories, or semantic types, that provide a consistent categorization of more than 2M concepts represented in the UMLS Metathesaurus.</S>
+    <S sid="101" ssid="50">Our system assigns each relation argument with one or more UMLS semantic types through a two step process.</S>
+    <S sid="102" ssid="51">Firstly, we use MedicalESG to process the input sentence, identify segments of text that correspond to concepts in the UMLS Metathesaurus and associate each of them with one or more UMLS CUIs (Concept Unique Identifier).</S>
+    <S sid="103" ssid="52">Then we do a CUI lookup in UMLS to find the corresponding semantic types for each CUI.</S>
+    <S sid="104" ssid="53">Most relation arguments are associated with multiple semantic types.</S>
+    <S sid="105" ssid="54">For example, the term &#8220;tetracycline hydrochloride&#8221; has two types: &#8220;Organic Chemical&#8221; and &#8220;Antibiotic&#8221;.</S>
+    <S sid="106" ssid="55">Sometimes, the semantic types are noisy due to ambiguity of terms.</S>
+    <S sid="107" ssid="56">For example, the term &#8220;Hepatitis b&#8221; is associated with both &#8220;Pharmacologic Substance&#8221; and &#8220;Disease or Syndrome&#8221; based on UMLS.</S>
+    <S sid="108" ssid="57">The reason for this is that people use &#8220;Hepatitis b&#8221; to represent both &#8220;the disease of Hepatitis b&#8221; and &#8220;Hepatitis b vaccine&#8221;, so UMLS assigns both types to it.</S>
+    <S sid="109" ssid="58">This is a concern for relation extraction, since two types bear opposite meanings.</S>
+    <S sid="110" ssid="59">Our current strategy is to integrate all associated types, and rely on the relation detector trained with the labeled data to decide how to weight different types based upon the context.</S>
+    <S sid="111" ssid="60">Here is an illustrative example.</S>
+    <S sid="112" ssid="61">Consider the sentence: &#8220;Antibiotics are the standard therapy for Lyme disease&#8221;: MedicalESG first generates a dependency parse tree (Figure 2) to represent grammatical relations between the words in the sentence, and then associates the words with CUIs.</S>
+    <S sid="113" ssid="62">For example, &#8220;Antibiotics&#8221; is associated with CUI &#8220;C0003232&#8221; and &#8220;Lyme disease&#8221; is associated with two CUIs: &#8220;C0024198&#8221; and &#8220;C0717360&#8221;.</S>
+    <S sid="114" ssid="63">CUI lookup will assign &#8220;Antibiotics&#8221; with a semantic type &#8220;Antibiotic&#8221;, and &#8220;Lyme disease&#8221; with three semantic types: &#8220;Disease or Syndrome&#8221;, &#8220;Pharmacologic Substance&#8221; and &#8220;Immunologic Factor&#8221;.</S>
+    <S sid="115" ssid="64">This sentence expresses a &#8220;treats&#8221; relation between &#8220;Antibiotics&#8221; and &#8220;Lyme disease&#8221;.</S>
+  </SECTION>
+  <SECTION title="4 Relation Extraction with Manifold Models" number="4">
+    <S sid="116" ssid="1">Given a few labeled examples and many unlabeled examples for a relation, we want to build a relation detector leveraging both labeled and unlabeled data.</S>
+    <S sid="117" ssid="2">Following the manifold regularization idea (Belkin et al., 2006), our strategy is to learn a function that assigns a score to each example.</S>
+    <S sid="118" ssid="3">Scores are fit so that examples (both labeled and unlabeled) with similar content get similar scores, and scores of labeled examples are close to their labels.</S>
+    <S sid="119" ssid="4">Integration of the unlabeled data can help solve overfitting problems when the labeled data is not sufficient.</S>
+  </SECTION>
+  <SECTION title="4.2 Features" number="5">
+    <S sid="120" ssid="1">We use 8 groups of features to represent each relation example.</S>
+    <S sid="121" ssid="2">These features are commonly used for relation extraction. going links of both arguments.</S>
+    <S sid="122" ssid="3">These features are useful to determine if a relation goes from argument 1 to argument 2 or vice versa.</S>
+    <S sid="123" ssid="4">&#8226; (5) Topic features modeling the words in the dependency path.</S>
+    <S sid="124" ssid="5">In the example given in Figure 2, the dependency path contains the following words: &#8220;be&#8221;, &#8220;standard therapy&#8221; and &#8220;for&#8221;.</S>
+    <S sid="125" ssid="6">These features as well as the features in (6) are achieved by projecting the words onto a 100 dimensional LSI topic space (Deerwester et al., 1990) constructed from our medical corpus.</S>
+  </SECTION>
+  <SECTION title="Notations:" number="6">
+    <S sid="126" ssid="1">The input dataset X = {x1, &#183; &#183; &#183; , xm} is represented as a feature-instance matrix.</S>
+    <S sid="127" ssid="2">The desired label vector Y = {y1, &#183; &#183; &#183; , yl} represents the labels of {x1, &#183; &#183; &#183; , xl}, where l &lt; m. W is a weight matrix, where Wi,j = e&#8722;kxi&#8722;xjk2 models the similarity of xi and xj.</S>
+    <S sid="128" ssid="3">I Ixi &#8722; xjI I stands for the Euclidean distance between xi and xj in the vector space.</S>
+    <S sid="129" ssid="4">D is a diagonal matrix: Di,i = Ej Wi,j. graph Laplacian matrix.</S>
+    <S sid="130" ssid="5">A is a user defined l x l diagonal matrix, where Ai represents the weight of label yi. p is a weight scalar.</S>
+    <S sid="131" ssid="6">()+ represents pseudo inverse.</S>
+  </SECTION>
+  <SECTION title="Algorithm:" number="7">
+    <S sid="132" ssid="1">&#8226; (8) Bag-of-words features modeling the whole sentence.</S>
+    <S sid="133" ssid="2">In relation extraction, many recent approaches use non-linear kernels to get the similarity of two relation examples.</S>
+    <S sid="134" ssid="3">To classify a relation example, a lot of dot product computations are required.</S>
+    <S sid="135" ssid="4">This is very time consuming and becomes a bottleneck in using relation extraction to facilitate clinical decision making.</S>
+    <S sid="136" ssid="5">To speed up the classifier during the apply time, we decided to use a linear classifier instead of non-linear classifiers.</S>
+    <S sid="137" ssid="6">We represent all features in a single feature space.</S>
+    <S sid="138" ssid="7">For example, we use a vector of 133 entries (UMLS contains 133 semantic types) to represent the types of argument 1.</S>
+    <S sid="139" ssid="8">If argument 1 is associated with two types: &#8220;Organic Chemical&#8221; and &#8220;Antibiotic&#8221;, we set the two corresponding entries to 1 and all the other entries to 0.</S>
+    <S sid="140" ssid="9">Similar approaches are used to represent the other features.</S>
+    <S sid="141" ssid="10">The problem we want to solve is formalized as follows: given a relation dataset X = {x1, &#183; &#183; &#183; , xm}, and the desired label Y = {y1, &#183; &#183; &#183; , yl} for {x1, &#183; &#183; &#183; , xl}, where l &lt; m, we want to construct a mapping function f to project any example xi to a new space, where fT xi matches xi&#8217;s desired label yi.</S>
+    <S sid="142" ssid="11">In addition, we also want f to preserve the manifold topology of the dataset, such that similar examples (both labeled and unlabeled) get similar scores.</S>
+    <S sid="143" ssid="12">Here, the label is &#8216;+1&#8217; for positive examples, and &#8216;-1&#8217; for negative examples.</S>
+    <S sid="144" ssid="13">Notations and the main algorithm to construct f for each relation are given in Figure 3.</S>
+    <S sid="145" ssid="14">The solution to the problem defined in Section 4.3 is given by the mapping function f to minimize the following cost function: The first term of C(f) is based on labeled examples, and penalizes the difference between the mapping result of xi and its desired label yi. &#945;i is a user specified parameter, representing the weight of label yi.</S>
+    <S sid="146" ssid="15">The second term of C(f) does not take label information into account.</S>
+    <S sid="147" ssid="16">It encourages the neighborhood relationship (geometry of the manifold) within X to be preserved in the mapping.</S>
+    <S sid="148" ssid="17">When xi and xj are similar, the corresponding Wi,j is big.</S>
+    <S sid="149" ssid="18">If f maps xi and xj to different positions, f will be penalized.</S>
+    <S sid="150" ssid="19">The second term is useful to bound the mapping function f and prevents overfitting from happening.</S>
+    <S sid="151" ssid="20">Here p is the weight of the second term.</S>
+    <S sid="152" ssid="21">When p = 0, the model disregards the unlabeled data, and the data manifold topology is not respected.</S>
+    <S sid="153" ssid="22">Compared to manifold regularization (Belkin et al., 2006), we do not include the RKHS norm term.</S>
+    <S sid="154" ssid="23">Instead, we associate each labeled example with an extra weight for label confidence.</S>
+    <S sid="155" ssid="24">This weight is particularly useful when the training data comes from &#8220;Crowdsourcing&#8221;, where we ask multiple workers to complete the same task to correct errors.</S>
+    <S sid="156" ssid="25">In that scenario, weights can be assigned to labels based upon annotator agreement.</S>
+    <S sid="157" ssid="26">Theorem 1: f = (X(A + &#181;L)XT)+XAV T minimizes the cost function C(f).</S>
+    <S sid="158" ssid="27">Proof: Given the input X, we want to find the optimal mapping function f such that C(f) is minimized: Using the Lagrange multiplier trick to differentiate C(f) with respect to f, we have where &#8220;+&#8221; represents pseudo inverse.</S>
+    <S sid="159" ssid="28">Our algorithm offers the following advantages:</S>
+  </SECTION>
+  <SECTION title="5 Experiments" number="8">
+    <S sid="160" ssid="1">We use a cross-validation testa with the relation data generated in Section 3.2 to compare our approaches against the state-of-the-art approaches.</S>
+    <S sid="161" ssid="2">The task is to classify the examples into positive or negative for each relation.</S>
+    <S sid="162" ssid="3">We applied a 5-fold cross-validation.</S>
+    <S sid="163" ssid="4">In each round of validation, we used 20% of the data for training and 80% for testing.</S>
+    <S sid="164" ssid="5">The F1 scores reported here are the average of all 5 rounds.</S>
+    <S sid="165" ssid="6">We used MedicalESG to process the input text for all approaches.</S>
+    <S sid="166" ssid="7">This dataset includes 7 relations.</S>
+    <S sid="167" ssid="8">We do not consider the relation of &#8220;contraindicates&#8221; in this test, since it has too few positive examples.</S>
+    <S sid="168" ssid="9">On average, each relation contains about 800 positive examples and more than 13,000 negative examples.</S>
+    <S sid="169" ssid="10">To eliminate the examples that are trivial to classify, we removed the negative examples that do not bear the valid argument types.</S>
+    <S sid="170" ssid="11">This removed the examples that can be easily classified by a type filter, resulting in 3,000 negatives on average per relation.</S>
+    <S sid="171" ssid="12">For each relation, we also collected 5,000 unlabeled examples and put them into two sets: unlabeled set 1 and 2 (2,500 examples in each set).</S>
+    <S sid="172" ssid="13">No parameter tuning was taken and no relation specific heuristic rules were applied in all tests.</S>
+    <S sid="173" ssid="14">In all manifold models, &#181; = 1.</S>
+    <S sid="174" ssid="15">In SVM implementations, the trade-off parameter between training error and margin was set to 1 for all experiments.</S>
+    <S sid="175" ssid="16">We compare our approaches to three state-of-theart approaches including SVM with convolution tree kernels (Collins and Duffy, 2001), linear regression and SVM with linear kernels (Sch&#168;olkopf and Smola, 2002).</S>
+    <S sid="176" ssid="17">To adapt the tree kernel to medical domain, we followed the approach in (Nguyen et al., 2009) to take the syntactic structures into consideration.</S>
+    <S sid="177" ssid="18">We also added the argument types as features to the tree kernel.</S>
+    <S sid="178" ssid="19">In the tree kernel implementation, we assigned the tree structure and the vector corresponding to the argument types 3If we take the perfect entity mentions and the associated concepts provided by i2b2 (Uzuner et al., 2011) as the input, our system can directly apply to i2b2 relation extraction data.</S>
+    <S sid="179" ssid="20">However, the i2b2 data has a tough data use agreement.</S>
+    <S sid="180" ssid="21">Our legal team held several rounds of negotiations with the i2b2 data owner and then decided we should not use it due to the high legal risks.</S>
+    <S sid="181" ssid="22">We are not aware of other available medical relation extraction datasets that fit for our evaluations. with equal weights.</S>
+    <S sid="182" ssid="23">The SVM with linear kernels and the linear regression model used the same features as the manifold models.</S>
+    <S sid="183" ssid="24">We tested our manifold model for each relation under three different settings: ting, we gave a label estimation to all the examples in the unlabeled set 2 based on the noise rate (Noise%) from Table 1.</S>
+    <S sid="184" ssid="25">The label of all unlabeled examples was set to &#8220;+1&#8221; when 100% &#8722; 2 &#183; Noise% &gt; 0, or &#8220;-1&#8221; otherwise.</S>
+    <S sid="185" ssid="26">Two weighting strategies were applied: combination of setting (1) and (2).</S>
+    <S sid="186" ssid="27">In this setting, the data from unlabeled set 1 was used as unlabeled data and the data from unlabeled set 2 was used as labeled data (With Weights).</S>
+  </SECTION>
+  <SECTION title="5.1.4 Results" number="9">
+    <S sid="187" ssid="1">The results are summarized in Table 2.</S>
+    <S sid="188" ssid="2">The tree kernel-based approach and linear regression achieved similar F1 scores, while linear SVM made a 5% improvement over them.</S>
+    <S sid="189" ssid="3">One thing to note is that the results from these approaches vary significantly.</S>
+    <S sid="190" ssid="4">The reason for this is that the labeled training data is not sufficient.</S>
+    <S sid="191" ssid="5">So the approaches that completely depend on the labeled data are likely to run into overfitting.</S>
+    <S sid="192" ssid="6">Linear SVM performed better than the other two, since the large-margin constraint together with the linear model constraint can alleviate overfitting.</S>
+    <S sid="193" ssid="7">By integrating unlabeled data, the manifold model under setting (1) made a 15% improvement over linear regression model on F1 score, where the improvement was significant across all relations.</S>
+    <S sid="194" ssid="8">Under setting (2), the With Weights strategy achieved a slightly worse F1 score than the previous setting but much better result than the baseline approaches.</S>
+    <S sid="195" ssid="9">This tells us that estimating the label of unlabeled examples based upon the sampling result is one way to utilize unlabeled data and may help improve the relation extraction results.</S>
+    <S sid="196" ssid="10">The results also show that the label weight is important for this setting, since the Without Weights strategy did not perform very well.</S>
+    <S sid="197" ssid="11">Compared to setting (1) and (2), setting (3) made use of 2,500 more unlabeled examples, and achieved the best performance among all approaches.</S>
+    <S sid="198" ssid="12">On one hand, this result shows that using more unlabeled data can further improve the result.</S>
+    <S sid="199" ssid="13">On the other hand, the insignificant improvement over (1) and (2) strongly indicates that how to utilize more unlabeled data to achieve a significant improvement is non-trivial and deserves more attention.</S>
+    <S sid="200" ssid="14">To what extensions the unlabeled data can help the learning process is an open problem.</S>
+    <S sid="201" ssid="15">Generally speaking, when the existing data is sufficient to characterize the dataset geometry, adding more unlabeled data will not help (Singh et al., 2008).</S>
+    <S sid="202" ssid="16">We tested the tree kernel-based approach without integrating the medical types as well.</S>
+    <S sid="203" ssid="17">That resulted in very poor performance: the average F1 score was below 30%.</S>
+    <S sid="204" ssid="18">We also applied the rules used in SEMREP (Rindflesch and Fiszman, 2003) to this dataset.</S>
+    <S sid="205" ssid="19">Since the relations detected by SEMREP rules cannot be perfectly aligned with super relations, we cannot directly compare the results.</S>
+    <S sid="206" ssid="20">Overall speaking, SEMREP rules are very conservative and detect very few relations from the same text.</S>
+    <S sid="207" ssid="21">The UMLS Metathesaurus (Lindberg et al., 1993) contains a large amount of manually extracted relation knowledge.</S>
+    <S sid="208" ssid="22">Such knowledge is invaluable for people to collect training data to build new relation detectors.</S>
+    <S sid="209" ssid="23">One downside of using this KB is its incompleteness.</S>
+    <S sid="210" ssid="24">For example, it only contains the treatments for about 8,000 diseases, which are far from sufficient.</S>
+    <S sid="211" ssid="25">Further, the medical knowledge is changing extremely quickly, making people hard to understand it, and update it in the knowledge base in a timely manner.</S>
+    <S sid="212" ssid="26">To address these challenges, we constructed our own relation KB as a complement to the UMLS relation KB.</S>
+    <S sid="213" ssid="27">We directly ran our relation detectors (trained with all labeled and unlabeled examples) on our medical corpus to extract relations.</S>
+    <S sid="214" ssid="28">Then we combined the results and put them in a new KB.</S>
+    <S sid="215" ssid="29">The new KB covers all super relations and stores the knowledge in the format of (relation name, argument 1, argument 2, confidence), where the confidence is computed based on the relation detector confidence score and relation popularity in the corpus.</S>
+    <S sid="216" ssid="30">The most recent version of our relation KB contains 3.4 million such entries.</S>
+    <S sid="217" ssid="31">We compared this new KB against UMLS KB using an answer generation task on a set of 742 Doctor Dilemma questions.</S>
+    <S sid="218" ssid="32">We first ran our relation detectors to detect the relation(s) in the question clue involving question focus (what the question asks for).</S>
+    <S sid="219" ssid="33">Then we searched against both KBs using the relation name and the non-focus argument for the missing argument.</S>
+    <S sid="220" ssid="34">The search results were then generated as potential answers.</S>
+    <S sid="221" ssid="35">We used the same relations to do KB lookup, so the results are directly comparable.</S>
+    <S sid="222" ssid="36">Since most questions only have one correct answer, the precision number is not very important in this experiment.</S>
+    <S sid="223" ssid="37">If we detect multiple relations in the question, and the same answer is generated from more than one relations, we sum up all those confidence scores to make such answers more preferable.</S>
+    <S sid="224" ssid="38">Sometimes, we may generate too many answers from KBs.</S>
+    <S sid="225" ssid="39">For example, if the detected relation is &#8220;location of&#8221; and the non-focus argument is &#8220;skin&#8221;, then thousands of answers can be generated.</S>
+    <S sid="226" ssid="40">In this scenario, we sort the answers based upon the confidence scores and only consider up to p answers for each question.</S>
+    <S sid="227" ssid="41">In our test, we considered three numbers for p: 20, 50 and 3,000.</S>
+    <S sid="228" ssid="42">From Table 3, we can see that the new KB outperforms the most popularly-used UMLS KB at all recall levels by a large margin.</S>
+    <S sid="229" ssid="43">This result indicates that the new KB has a much better knowledge coverage.</S>
+    <S sid="230" ssid="44">The UMLS KB is manually created and thus more precise.</S>
+    <S sid="231" ssid="45">In our experiment, the UMLS KB generated fewer answers than the new KB.</S>
+    <S sid="232" ssid="46">For example, when up to 20 answers were generated for each question, the UMLS KB generated around 4,700 answers for the whole question set, while the new KB generated about 7,600 answers.</S>
+    <S sid="233" ssid="47">Construction of the new KB cost 16 machines (using 4x2.8G cores per machine) 8 hours.</S>
+    <S sid="234" ssid="48">The reported computation time is for the whole corpus with 11G pure text.</S>
+  </SECTION>
+  <SECTION title="6 Conclusions" number="10">
+    <S sid="235" ssid="1">In this paper, we identify a list of key relations that can facilitate clinical decision making.</S>
+    <S sid="236" ssid="2">We also present a new manifold model to efficiently extract these relations from text.</S>
+    <S sid="237" ssid="3">Our model is developed to utilize both labeled and unlabeled examples.</S>
+    <S sid="238" ssid="4">It further provides users with the flexibility to take label weight into consideration.</S>
+    <S sid="239" ssid="5">Effectiveness of the new model is demonstrated both theoretically and experimentally.</S>
+    <S sid="240" ssid="6">We apply the new model to construct a relation knowledge base (KB), and use it as a complement to the existing manually created KBs.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="11">
+    <S sid="241" ssid="1">We thank Siddharth Patwardhan for help on tree kernels, Sugato Bagchi and Dr. Herbert Chase&#8217;s team for categorizing the Doctor Dilemma questions.</S>
+    <S sid="242" ssid="2">We also thank Anthony Levas, Karen Ingraffea, Mark Mergen, Katherine Modzelewski, Jonathan Hodax, Matthew Schoenfeld and Adarsh Thaker for vetting the training data.</S>
+  </SECTION>
+</PAPER>

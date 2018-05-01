@@ -1,0 +1,227 @@
+<PAPER>
+  <S sid="0">Enhancing Unlexicalized Parsing Performance Using a Wide Coverage Lexicon Fuzzy Tag-Set Mapping and EM-HMM-Based Lexical Probabilities</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present a framework for interfacing a PCFG parser with lexical information from an external resource following a different tagging scheme than the treebank.</S>
+    <S sid="2" ssid="2">This is achieved by defining a stochastic mapping layer between the two resources.</S>
+    <S sid="3" ssid="3">Lexical probabilities for rare events are estimated in a semi-supervised manner from a lexicon and large unannotated corpora.</S>
+    <S sid="4" ssid="4">We show that this solution greatly enhances the performance of an unlexicalized Hebrew PCFG parser, resulting in state-of-the-art Hebrew parsing results both when a segmentation oracle is assumed, and in a real-word parsing scenario of parsing unsegmented tokens.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="5" ssid="1">The intuition behind unlexicalized parsers is that the lexicon is mostly separated from the syntax: specific lexical items are mostly irrelevant for accurate parsing, and can be mediated through the use of POS tags and morphological hints.</S>
+    <S sid="6" ssid="2">This same intuition also resonates in highly lexicalized formalism such as CCG: while the lexicon categories are very fine grained and syntactic in nature, once the lexical category for a lexical item is determined, the specific lexical form is not taken into any further consideration.</S>
+    <S sid="7" ssid="3">Despite this apparent separation between the lexical and the syntactic levels, both are usually estimated solely from a single treebank.</S>
+    <S sid="8" ssid="4">Thus, while PCFGs can be accurate, they suffer from vocabulary coverage problems: treebanks are small and lexicons induced from them are limited.</S>
+    <S sid="9" ssid="5">The reason for this treebank-centric view in PCFG learning is 3-fold: the English treebank is fairly large and English morphology is fairly simple, so that in English, the treebank does provide mostly adequate lexical coverage1; Lexicons enumerate analyses, but don&#8217;t provide probabilities for them; and, most importantly, the treebank and the external lexicon are likely to follow different annotation schemas, reflecting different linguistic perspectives.</S>
+    <S sid="10" ssid="6">On a different vein of research, current POS tagging technology deals with much larger quantities of training data than treebanks can provide, and lexicon-based unsupervised approaches to POS tagging are practically unlimited in the amount of training data they can use.</S>
+    <S sid="11" ssid="7">POS taggers rely on richer knowledge than lexical estimates derived from the treebank, have evolved sophisticated strategies to handle OOV and can provide distributions p(t|w, context) instead of &#8220;best tag&#8221; only.</S>
+    <S sid="12" ssid="8">Can these two worlds be combined?</S>
+    <S sid="13" ssid="9">We propose that parsing performance can be greatly improved by using a wide coverage lexicon to suggest analyses for unknown tokens, and estimating the respective lexical probabilities using a semisupervised technique, based on the training procedure of a lexicon-based HMM POS tagger.</S>
+    <S sid="14" ssid="10">For many resources, this approach can be taken only on the proviso that the annotation schemes of the two resources can be aligned.</S>
+    <S sid="15" ssid="11">We take Modern Hebrew parsing as our case study.</S>
+    <S sid="16" ssid="12">Hebrew is a Semitic language with rich morphological structure.</S>
+    <S sid="17" ssid="13">This rich structure yields a large number of distinct word forms, resulting in a high OOV rate (Adler et al., 2008a).</S>
+    <S sid="18" ssid="14">This poses a serious problem for estimating lexical probabilities from small annotated corpora, such as the Hebrew treebank (Sima&#8217;an et al., 2001).</S>
+    <S sid="19" ssid="15">Hebrew has a wide coverage lexicon / morphological-analyzer (henceforth, KC Analyzer) available2, but its tagset is different than the one used by the Hebrew Treebank.</S>
+    <S sid="20" ssid="16">These are not mere technical differences, but derive from different perspectives on the data.</S>
+    <S sid="21" ssid="17">The Hebrew TB tagset is syntactic in nature, while the KC tagset is lexicographic.</S>
+    <S sid="22" ssid="18">This difference in perspective yields different performance for parsers induced from tagged data, and a simple mapping between the two schemes is impossible to define (Sec.</S>
+    <S sid="23" ssid="19">2).</S>
+    <S sid="24" ssid="20">A naive approach for combining the use of the two resources would be to manually re-tag the Treebank with the KC tagset, but we show this approach harms our parser&#8217;s performance.</S>
+    <S sid="25" ssid="21">Instead, we propose a novel, layered approach (Sec.</S>
+    <S sid="26" ssid="22">2.1), in which syntactic (TB) tags are viewed as contextual refinements of the lexicon (KC) tags, and conversely, KC tags are viewed as lexical clustering of the syntactic ones.</S>
+    <S sid="27" ssid="23">This layered representation allows us to easily integrate the syntactic and the lexicon-based tagsets, without explicitly requiring the Treebank to be re-tagged.</S>
+    <S sid="28" ssid="24">Hebrew parsing is further complicated by the fact that common prepositions, conjunctions and articles are prefixed to the following word and pronominal elements often appear as suffixes.</S>
+    <S sid="29" ssid="25">The segmentation of prefixes and suffixes can be ambiguous and must be determined in a specific context only.</S>
+    <S sid="30" ssid="26">Thus, the leaves of the syntactic parse trees do not correspond to space-delimited tokens, and the yield of the tree is not known in advance.</S>
+    <S sid="31" ssid="27">We show that enhancing the parser with external lexical information is greatly beneficial, both in an artificial scenario where the token segmentation is assumed to be known (Sec.</S>
+    <S sid="32" ssid="28">4), and in a more realistic one in which parsing and segmentation are handled jointly by the parser (Goldberg and Tsarfaty, 2008) (Sec.</S>
+    <S sid="33" ssid="29">5).</S>
+    <S sid="34" ssid="30">External lexical information enhances unlexicalized parsing performance by as much as 6.67 F-points, an error reduction of 20% over a Treebank-only parser.</S>
+    <S sid="35" ssid="31">Our results are not only the best published results for parsing Hebrew, but also on par with state-of-the-art lexicalized Arabic parsing results assuming goldstandard fine-grained Part-of-Speech (Maamouri et al., 2008).3</S>
+  </SECTION>
+  <SECTION title="2 A Tale of Two Resources" number="2">
+    <S sid="36" ssid="1">Modern Hebrew has 2 major linguistic resources: the Hebrew Treebank (TB), and a wide coverage Lexicon-based morphological analyzer developed and maintained by the Knowledge Center for Processing Hebrew (KC Analyzer).</S>
+    <S sid="37" ssid="2">The Hebrew Treebank consists of sentences manually annotated with constituent-based syntactic information.</S>
+    <S sid="38" ssid="3">The most recent version (V2) (Guthmann et al., 2009) has 6,219 sentences, and covers 28,349 unique tokens and 17,731 unique segments4.</S>
+    <S sid="39" ssid="4">The KC Analyzer assigns morphological analyses (prefixes, suffixes, POS, gender, person, etc.) to Hebrew tokens.</S>
+    <S sid="40" ssid="5">It is based on a lexicon of roughly 25,000 word lemmas and their inflection patterns.</S>
+    <S sid="41" ssid="6">From these, 562,439 unique word forms are derived.</S>
+    <S sid="42" ssid="7">These are then prefixed (subject to constraints) by 73 prepositional prefixes.</S>
+    <S sid="43" ssid="8">It is interesting to note that even with these numbers, the Lexicon&#8217;s coverage is far from complete.</S>
+    <S sid="44" ssid="9">Roughly 1,500 unique tokens from the Hebrew Treebank cannot be assigned any analysis by the KC Lexicon, and Adler et al. (2008a) report that roughly 4.5% of the tokens in a 42M tokens corpus of news text are unknown to the Lexicon.</S>
+    <S sid="45" ssid="10">For roughly 400 unique cases in the Treebank, the Lexicon provides some analyses, but not a correct one.</S>
+    <S sid="46" ssid="11">This goes to emphasize the productive nature of Hebrew morphology, and stress that robust lexical probability estimates cannot be derived from an annotated resource as small as the Treebank.</S>
+    <S sid="47" ssid="12">Lexical vs. Syntactic POS Tags The analyses produced by the KC Analyzer are not compatible with the Hebrew TB.</S>
+    <S sid="48" ssid="13">The KC tagset (Adler et al., 2008b; Netzer et al., 2007; Adler, 2007) takes a lexical approach to POS tagging (&#8220;a word can assume only POS tags that would be assigned to it in a dictionary&#8221;), while the TB takes a syntactic one (&#8220;if the word in this particular positions functions as an Adverb, tag it as an Adverb, even though it is listed in the dictionary only as a Noun&#8221;).</S>
+    <S sid="49" ssid="14">We present 2 cases that emphasize the difference: Adjectives: the Treebank treats any word in an adjectivial position as an Adjective.</S>
+    <S sid="50" ssid="15">This includes also demonstrative pronouns m -r5, (this boy).</S>
+    <S sid="51" ssid="16">However, from the KC point of view, the fact that a pronoun can be used to modify a noun does not mean it should appear in a dictionary as an adjective.</S>
+    <S sid="52" ssid="17">The MOD tag: similarly, the TB has a special POS-tag for words that perform syntactic modification.</S>
+    <S sid="53" ssid="18">These are mostly adverbs, but almost any Adjective can, in some circumstances, belong to that class as well.</S>
+    <S sid="54" ssid="19">This category is highly syntactic, and does not conform to the lexicon based approach.</S>
+    <S sid="55" ssid="20">In addition, many adverbs and prepositions in Hebrew are lexicalized instances of a preposition followed by a noun (e.g., m5rz, &#8220;in+softness&#8221;, softly).</S>
+    <S sid="56" ssid="21">These can admit both the lexicalized and the compositional analyses.</S>
+    <S sid="57" ssid="22">Indeed, many words admit the lexicalized analyses in one of the resource but not in the other (e.g., rztv5 &#8220;for+benefit&#8221; is Prep in the TB but only Prep+Noun in the KC, while for -ren &#8220;from+side&#8221; it is the other way around).</S>
+    <S sid="58" ssid="23">While the syntactic POS tags annotation of the TB is very useful for assigning the correct tree structure when the correct POS tag is known, there are clear benefits to an annotation scheme that can be easily backed by a dictionary.</S>
+    <S sid="59" ssid="24">We created a unified resource, in which every word occurrence in the Hebrew treebank is assigned a KC-based analysis.</S>
+    <S sid="60" ssid="25">This was done in a semi-automatic manner &#8211; for most cases the mapping could be defined deterministically.</S>
+    <S sid="61" ssid="26">The rest (less than a thousand instances) were manually assigned.</S>
+    <S sid="62" ssid="27">Some Treebank tokens had no analyses in the KC lexicon, and some others did not have a correct analysis.</S>
+    <S sid="63" ssid="28">These were marked as &#8220;UNKNOWN&#8221; and &#8220;MISSING&#8221; respectively.5 The result is a Treebank which is morphologically annotated according to two different schemas.</S>
+    <S sid="64" ssid="29">On average, each of the 257 TB tags is mapped to 2.46 of the 273 KC tags.6 While this resource can serve as a basis for many linguistically motivated inquiries, the rest of this paper is 5Another solution would be to add these missing cases to the KC Lexicon.</S>
+    <S sid="65" ssid="30">In our view this act is harmful: we don&#8217;t want our Lexicon to artificially overfit our annotated corpora.</S>
+    <S sid="66" ssid="31">6A &#8220;tag&#8221; in this context means the complete morphological information available for a morpheme in the Treebank: its part of speech, inflectional features and possessive suffixes, but not prefixes or nominative and accusative suffixes, which are taken to be separate morphemes. devoted to using it for constructing a better parser.</S>
+    <S sid="67" ssid="32">Tagsets Comparison In (Adler et al., 2008b), we hypothesized that due to its syntax-based nature, the Treebank morphological tagset is more suitable than the KC one for syntax related tasks.</S>
+    <S sid="68" ssid="33">Is this really the case?</S>
+    <S sid="69" ssid="34">To verify it, we simulate a scenario in which the complete gold morphological information is available.</S>
+    <S sid="70" ssid="35">We train 2 PCFG grammars, one on each tagged version of the Treebank, and test them on the subset of the development set in which every token is completely covered by the KC Analyzer (351 sentences).7 The input to the parser is the yields and disambiguated pre-terminals of the trees to be parsed.</S>
+    <S sid="71" ssid="36">The parsing results are presented in Table 1.</S>
+    <S sid="72" ssid="37">Note that this scenario does not reflect actual parsing performance, as the gold information is never available in practice, and surface forms are highly ambiguous.</S>
+    <S sid="73" ssid="38">With gold morphological information, the TB tagging scheme is more informative for the parser.</S>
+    <S sid="74" ssid="39">The syntax-oriented annotation scheme of the TB is more informative for parsing than the lexicographic KC scheme.</S>
+    <S sid="75" ssid="40">Hence, we would like our parser to use this TB tagset whenever possible, and the KC tagset only for rare or unseen words.</S>
+    <S sid="76" ssid="41">A Layered Representation It seems that learning a treebank PCFG assuming such a different tagset would require a treebank tagged with the alternative annotation scheme.</S>
+    <S sid="77" ssid="42">Rather than assuming the existence of such an alternative resource, we present here a novel approach in which we view the different tagsets as corresponding to different aspects of the morphosyntactic representation of pre-terminals in the parse trees.</S>
+    <S sid="78" ssid="43">Each of these layers captures subtleties and regularities in the data, none of which we would want to (and sometimes, cannot) reduce to the other.</S>
+    <S sid="79" ssid="44">We, therefore, propose to retain both tagsets and learn a fuzzy mapping between them.</S>
+    <S sid="80" ssid="45">In practice, we propose an integrated representation of the tree in which the bottommost layer represents the yield of the tree, the surface forms are tagged with dictionary-based KC POS tags, and syntactic TB POS tags are in turn mapped onto the KC ones (see Figure 1).</S>
+    <S sid="81" ssid="46">This representation helps to retain the information both for the syntactic and the morphological POS tagsets, and can be seen as capturing the interaction between the morphological and syntactic aspects, allowing for a seamless integration of the two levels of representation.</S>
+    <S sid="82" ssid="47">We refer to this intermediate layer of representation as a morphosyntactic-transfer layer and we formally depict it as p(tKC|tTB).</S>
+    <S sid="83" ssid="48">This layered representation naturally gives rise to a generative model in which a phrase level constituent first generates a syntactic POS tag (tTB), and this in turn generates the lexical POS tag(s) (tKC).</S>
+    <S sid="84" ssid="49">The KC tag then ultimately generates the terminal symbols (w).</S>
+    <S sid="85" ssid="50">We assume that a morphological analyzer assigns all possible analyses to a given terminal symbol.</S>
+    <S sid="86" ssid="51">Our terminal symbols are, therefore, pairs: (w, t), and our lexical rules are of the form t &#8212;* (w, t).</S>
+    <S sid="87" ssid="52">This gives rise to the following equivalence: p((w, tKC)|tTB) = p(tKC|tTB)p((w, tKC)|tKC) In Sections (4, 5) we use this layered generative process to enable a smooth integration of a PCFG treebank-learned grammar, an external wide-coverage lexicon, and lexical probabilities learned in a semi-supervised manner.</S>
+  </SECTION>
+  <SECTION title="3 Semi-supervised Lexical Probability Estimations" number="3">
+    <S sid="88" ssid="1">A PCFG parser requires lexical probabilities of the form p(w|t) (Charniak et al., 1996).</S>
+    <S sid="89" ssid="2">Such information is not readily available in the lexicon.</S>
+    <S sid="90" ssid="3">However, it can be estimated from the lexicon and large unannotated corpora, by using the well-known Baum-Welch (EM) algorithm to learn a trigram HMM tagging model of the form p(t1, ... , tn, w1, ... , wn) = argmax H p(ti|ti_1, ti_2)p(wi|ti), and taking the emission probabilities p(w|t) of that model.</S>
+    <S sid="91" ssid="4">In Hebrew, things are more complicated, as each emission w is not a space delimited token, but rather a smaller unit (a morphological segment, henceforth a segment).</S>
+    <S sid="92" ssid="5">Adler and Elhadad (2006) present a lattice-based modification of the BaumWelch algorithm to handle this segmentation ambiguity.</S>
+    <S sid="93" ssid="6">Traditionally, such unsupervised EM-trained HMM taggers are thought to be inaccurate, but (Goldberg et al., 2008) showed that by feeding the EM process with sufficiently good initial probabilities, accurate taggers (&gt; 91% accuracy) can be learned for both English and Hebrew, based on a (possibly incomplete) lexicon and large amount of raw text.</S>
+    <S sid="94" ssid="7">They also present a method for automatically obtaining these initial probabilities.</S>
+    <S sid="95" ssid="8">As stated in Section 2, the KC Analyzer (Hebrew Lexicon) coverage is incomplete.</S>
+    <S sid="96" ssid="9">Adler et al. (2008a) use the lexicon to learn a Maximum Entropy model for predicting possible analyses for unknown tokens based on their orthography, thus extending the lexicon to cover (even if noisily) any unknown token.</S>
+    <S sid="97" ssid="10">In what follows, we use KCAnalyzer to refer to this extended version.</S>
+    <S sid="98" ssid="11">Finally, these 3 works are combined to create a state-of-the-art POS-tagger and morphological disambiguator for Hebrew (Adler, 2007): initial lexical probabilities are computed based on the MaxEnt-extended KC Lexicon, and are then fed to the modified Baum-Welch algorithm, which is used to fit a morpheme-based tagging model over a very large corpora.</S>
+    <S sid="99" ssid="12">Note that the emission probabilities P(W|T) of that model cover all the morphemes seen in the unannotated training corpus, even those not covered by the KC Analyzer.8 We hypothesize that such emission probabilities are good estimators for the morpheme-based P(T &#8212;* W) lexical probabilities needed by a PCFG parser.</S>
+    <S sid="100" ssid="13">To test this hypothesis, we use it to estimate p(tKC &#8212;* w) in some of our models.</S>
+  </SECTION>
+  <SECTION title="4 Parsing with a Segmentation Oracle" number="4">
+    <S sid="101" ssid="1">We now turn to describing our first set of experiments, in which we assume the correct segmentation for each input sentence is known.</S>
+    <S sid="102" ssid="2">This is a strong assumption, as the segmentation stage is ambiguous, and segmentation information provides very useful morphological hints that greatly constrain the search space of the parser.</S>
+    <S sid="103" ssid="3">However, the setting is simpler to understand than the one in which the parser performs both segmentation and POS tagging, and the results show some interesting trends.</S>
+    <S sid="104" ssid="4">Moreover, some recent studies on parsing Hebrew, as well as all studies on parsing Arabic, make this oracle assumption.</S>
+    <S sid="105" ssid="5">As such, the results serve as an interesting comparison.</S>
+    <S sid="106" ssid="6">Note that in real-world parsing situations, the parser is faced with a stream of ambiguous unsegmented tokens, making results in this setting not indicative of real-world parsing performance.</S>
+    <S sid="107" ssid="7">The main question we address is the incorporation of an external lexical resource into the parsing process.</S>
+    <S sid="108" ssid="8">This is challenging as different resources follow different tagging schemes.</S>
+    <S sid="109" ssid="9">One way around it is re-tagging the treebank according to the new tagging scheme.</S>
+    <S sid="110" ssid="10">This will serve as a baseline in our experiment.</S>
+    <S sid="111" ssid="11">The alternative method uses the Layered Representation described above (Sec.</S>
+    <S sid="112" ssid="12">2.1).</S>
+    <S sid="113" ssid="13">We compare the performance of the two approaches, and also compare them against the performance of the original treebank without external information.</S>
+    <S sid="114" ssid="14">We follow the intuition that external lexical resources are needed only when the information contained in the treebank is too sparse.</S>
+    <S sid="115" ssid="15">Therefore, we use treebank-derived estimates for reliable events, and resort to the external resources only in the cases of rare or OOV words, for which the treebank distribution is not reliable.</S>
+    <S sid="116" ssid="16">Grammar and Notation For all our experiments, we use the same grammar, and change only the way lexical probabilities are implemented.</S>
+    <S sid="117" ssid="17">The grammar is an unlexicalized treebank-estimated PCFG with linguistically motivated state-splits.9 In what follows, a lexical event is a word segment which is assigned a single POS thereby functioning as a leaf in a syntactic parse tree.</S>
+    <S sid="118" ssid="18">A rare 9Details of the grammar: all functional information is removed from the non-terminals, finite and non-finite verbs, as well as possessive and other PPs are distinguished, definiteness structure of constituents is marked, and parent annotation is employed.</S>
+    <S sid="119" ssid="19">It is the same grammar as described in (Goldberg and Tsarfaty, 2008).</S>
+    <S sid="120" ssid="20">(lexical) event is an event occurring less than K times in the training data, and a reliable (lexical) event is one occurring at least K times in the training data.</S>
+    <S sid="121" ssid="21">We use OOV to denote lexical events appearing 0 times in the training data. count(&#183;) is a counting function over the training data, rare stands for any rare event, and wrare is a specific rare event.</S>
+    <S sid="122" ssid="22">KCA(&#183;) is the KC Analyzer function, mapping a lexical event to a set of possible tags (analyses) according to the lexicon.</S>
+    <S sid="123" ssid="23">All our models use relative frequency estimated probabilities for reliable lexical events: p(t &#8594; ment of rare (including OOV) events.</S>
+    <S sid="124" ssid="24">In our Baseline, no external resource is used.</S>
+    <S sid="125" ssid="25">We smooth for rare and OOV events using a pertag probability distribution over rare segments, which we estimate using relative frequency over rare segments in the training data: p(wrare|t) = in treebank grammars are usually estimated.</S>
+    <S sid="126" ssid="26">We experiment with two flavours of lexical models.</S>
+    <S sid="127" ssid="27">In the first, LexFilter, the KC Analyzer is consulted for rare events.</S>
+    <S sid="128" ssid="28">We estimate rare events using the same per-tag distribution as in the baseline, but use the KC Analyzer to filter out any incompatible cases, that is, we force to 0 the probability of any analysis not supported by the lexicon: Our second flavour of lexical models, LexProbs, the KC Analyzer is consulted to propose analyses for rare events, and the probability of an analysis is estimated via the HMM emission function described in Section 3, which we denote B: In both LexFilter and LexProbs, we resort to the relative frequency estimation in case the event is not covered in the KC Analyzer.</S>
+    <S sid="129" ssid="29">In this work, we are comparing 3 different representations: TB, which is the original Treebank, KC which is the Treebank converted to use the KC Analyzer tagset, and Layered, which is the layered representation described above.</S>
+    <S sid="130" ssid="30">The details of the lexical models vary according to the representation we choose to work with.</S>
+    <S sid="131" ssid="31">For the TB setting, our lexical rules are of the form ttb &#8594; w. Only the Baseline models are relevant here, as the tagset is not compatible with that of the external lexicon.</S>
+    <S sid="132" ssid="32">For the KC setting, our lexical rules are of the form tkc &#8594; w, and their probabilities are estimated as described above.</S>
+    <S sid="133" ssid="33">Note that this setting requires our trees to be tagged with the new (KC) tagset, and parsed sentences are also tagged with this tagset.</S>
+    <S sid="134" ssid="34">For the Layered setting, we use lexical rules of the form ttb &#8594; w. Reliable events are estimated as usual, via relative frequency over the original treebank.</S>
+    <S sid="135" ssid="35">For rare events, we estimate p(ttb &#8594; w|ttb) = p(ttb &#8594; tkc|ttb)p(tkc &#8594; w|tkc), where the transfer probabilities p(ttb &#8594; tkc) are estimated via relative frequencies over the layered trees, and the emission probabilities are estimated either based on other rare events (LexFilter) or based on the semi-supervised method described in Section 3 (LexProbs).</S>
+    <S sid="136" ssid="36">The layered setting has several advantages: First, the resulting trees are all tagged with the original TB tagset.</S>
+    <S sid="137" ssid="37">Second, the training procedure does not require a treebank tagged with the KC tagset: Instead of learning the transfer layer from the treebank we could alternatively base our counts on a different parallel resource, estimate it from unannotated data using EM, define it heuristically, or use any other estimation procedure.</S>
+    <S sid="138" ssid="38">We perform all our experiments on Version 2 of the Hebrew Treebank, and follow the train/test/dev split introduced in (Tsarfaty and Sima&#8217;an, 2007): section 1 is used for development, sections 2-12 for training, and section 13 is the test set, which we do not use in this work.</S>
+    <S sid="139" ssid="39">All the reported results are on the development set.10 After removal of empty sentences, we have 5241 sentences for training, and 483 for testing.</S>
+    <S sid="140" ssid="40">Due to some changes in the Treebank11, our results are not directly comparable to earlier works.</S>
+    <S sid="141" ssid="41">However, our baseline models are very similar to the models presented in, e.g.</S>
+    <S sid="142" ssid="42">(Goldberg and Tsarfaty, 2008).</S>
+    <S sid="143" ssid="43">In order to compare the performance of the model on the various tagset representations (TB tags, KC tags, Layered), we remove from the test set 51 sentences in which at least one token is marked as not having any correct segmentation in the KC Analyzer.</S>
+    <S sid="144" ssid="44">This introduces a slight bias in favor of the KC-tags setting, and makes the test somewhat easier for all the models.</S>
+    <S sid="145" ssid="45">However, it allows for a relatively fair comparison between the various models.12</S>
+  </SECTION>
+  <SECTION title="Results and Discussion" number="5">
+    <S sid="146" ssid="1">As expected, all the results are much lower than those with gold fine-grained POS (Table 1).</S>
+    <S sid="147" ssid="2">When not using any external knowledge (Baseline), the TB tagset performs slightly better than the converted treebank (KC).</S>
+    <S sid="148" ssid="3">Note, however, that the difference is less pronounced than in the gold morphology case.</S>
+    <S sid="149" ssid="4">When varying the rare words threshold from 2 to 10, performance drops considerably.</S>
+    <S sid="150" ssid="5">Without external knowledge, the parser is facing difficulties coping with unseen events.</S>
+    <S sid="151" ssid="6">The incorporation of an external lexical knowledge in the form of pruning illegal tag assignments for unseen words based on the KC lexicon (LexFilter) substantially improves the results (&#8764; 72 to &#8764; 77).</S>
+    <S sid="152" ssid="7">The additional lexical knowledge clearly improves the parser.</S>
+    <S sid="153" ssid="8">Moreover, varying the rare words threshold in this setting hardly affects the parser performance: the external lexicon suffices to guide the parser in the right direction.</S>
+    <S sid="154" ssid="9">Keeping the rare words threshold high is desirable, as it reduces overfitting to the treebank vocabulary.</S>
+    <S sid="155" ssid="10">We expected the addition of the semisupervised p(t &#8594; w) distribution (LexProbs) to improve the parser, but found it to have an insignificant effect.</S>
+    <S sid="156" ssid="11">The correct segmentation seems to remove enough ambiguity as to let the parser base its decisions on the generic tag distribution for rare events.</S>
+    <S sid="157" ssid="12">In all the settings with a Segmentation Oracle, there is no significant difference between the KC and the Layered representation.</S>
+    <S sid="158" ssid="13">We prefer the layered representation as it provides more flexibility, does not require trees tagged with the KC tagset, and produces parse trees with the original TB POS tags at the leaves.</S>
+    <S sid="159" ssid="14">5 Parsing without a Segmentation Oracle When parsing real world data, correct token segmentation is not known in advance.</S>
+    <S sid="160" ssid="15">For methodological reasons, this issue has either been setaside (Tsarfaty and Sima&#8217;an, 2007), or dealt with in a pipeline model in which a morphological disambiguator is run prior to parsing to determine the correct segmentation.</S>
+    <S sid="161" ssid="16">However, Tsarfaty (2006) argues that there is a strong interaction between syntax and morphological segmentation, and that the two tasks should be modeled jointly, and not in a pipeline model.</S>
+    <S sid="162" ssid="17">Several studies followed this line, (Cohen and Smith, 2007) the most recent of which is Goldberg and Tsarfaty (2008), who presented a model based on unweighted lattice parsing for performing the joint task.</S>
+    <S sid="163" ssid="18">This model uses a morphological analyzer to construct a lattice over all possible morphological analyses of an input sentence.</S>
+    <S sid="164" ssid="19">The arcs of the lattice are (w, t) pairs, and a lattice parser is used to build a parse over the lattice.</S>
+    <S sid="165" ssid="20">The Viterbi parse over the lattice chooses a lattice path, which induces a segmentation over the input sentence.</S>
+    <S sid="166" ssid="21">Thus, parsing and segmentation are performed jointly.</S>
+    <S sid="167" ssid="22">Lexical rules in the model are defined over the lattice arcs (t &#8212;* (w, t)|t), and smoothed probabilities for them are estimated from the treebank via relative frequency over terminal/preterminal pairs.</S>
+    <S sid="168" ssid="23">The lattice paths themselves are unweighted, reflecting the intuition that all morphological analyses are a-priori equally likely, and that their perspective strengths should come from the segments they contain and their interaction with the syntax.</S>
+    <S sid="169" ssid="24">Goldberg and Tsarfaty (2008) use a data-driven morphological analyzer derived from the treebank.</S>
+    <S sid="170" ssid="25">Their better models incorporated some external lexical knowledge by use of an Hebrew spell checker to prune some illegal segmentations.</S>
+    <S sid="171" ssid="26">In what follows, we use the layered representation to adapt this joint model to use as its morphological analyzer the wide coverage KC Analyzer in enhancement of a data-driven one.</S>
+    <S sid="172" ssid="27">Then, we further enhance the model with the semisupervised lexical probabilities described in Sec 3.</S>
+    <S sid="173" ssid="28">The model of Goldberg and Tsarfaty (2008) uses a morphological analyzer to constructs a lattice for each input token.</S>
+    <S sid="174" ssid="29">Then, the sentence lattice is built by concatenating the individual token lattices.</S>
+    <S sid="175" ssid="30">The morphological analyzer used in that work is data driven based on treebank observations, and employs some well crafted heuristics for OOV tokens (for details, see the original paper).</S>
+    <S sid="176" ssid="31">Here, we use instead a morphological analyzer which uses the KC Lexicon for rare and OOV tokens.</S>
+    <S sid="177" ssid="32">We begin by adapting the rare vs. reliable events distinction from Section 4 to cover unsegmented tokens.</S>
+    <S sid="178" ssid="33">We define a reliable token to be a token from the training corpus, which each of its possible segments according to the training corpus was seen in the training corpus at least K times.14 All other tokens are considered to be rare.</S>
+    <S sid="179" ssid="34">Our morphological analyzer works as follows: For reliable tokens, it returns the set of analyses seen for this token in the treebank (each analysis is a sequence of pairs of the form (w, tTB)).</S>
+    <S sid="180" ssid="35">For rare tokens, it returns the set of analyses returned by the KC analyzer (here, analyses are sequences of pairs of the form (w, tKC)).</S>
+    <S sid="181" ssid="36">The lattice arcs, then, can take two possible forms, either (w, tTB) or (w, tKC).</S>
+    <S sid="182" ssid="37">Lexical rules of the form tTB &#8212;* (w, tTB) are reliable, and their probabilities estimated via relative frequency over events seen in training.</S>
+    <S sid="183" ssid="38">Lexical rules of the form tTB &#8212;* (w, tKC) are estimated in accordance with the transfer layer introduced above: p(tTB &#8212;* (w, tKC)) _ p(tKC|tTB)p((w, tKC)|tKC).</S>
+    <S sid="184" ssid="39">The remaining question is how to estimate p((w, tKC)|tKC).</S>
+    <S sid="185" ssid="40">Here, we use either the LexFilter (estimated over all rare events) or LexProbs (estimated via the semisupervised emission probabilities)models, as defined in Section 4.1 above.</S>
+    <S sid="186" ssid="41">As our Baseline, we take the best model of (Goldberg and Tsarfaty, 2008), run against the current version of the Treebank.15 This model uses the same grammar as described in Section 4.1 above, and use some external information in the form of a spell-checker wordlist.</S>
+    <S sid="187" ssid="42">We compare this Baseline with the LexFilter and LexProbs models over the Layered representation.</S>
+    <S sid="188" ssid="43">We use the same test/train splits as described in Section 4.</S>
+    <S sid="189" ssid="44">Contrary to the Oracle segmentation setting, here we evaluate against all sentences, including those containing tokens for which the KC Analyzer does not contain any correct analyses.</S>
+    <S sid="190" ssid="45">Due to token segmentation ambiguity, the resulting parse yields may be different than the gold ones, and evalb can not be used.</S>
+    <S sid="191" ssid="46">Instead, we use the evaluation measure of (Tsarfaty, 2006), also used in (Goldberg and Tsarfaty, 2008), which is an adaptation of parseval to use characters instead of space-delimited tokens as its basic units.</S>
+  </SECTION>
+  <SECTION title="Results and Discussion" number="6">
+    <S sid="192" ssid="1">The results are expectedly lower than with the segmentation Oracle, as the joint task is much harder, but the external lexical information greatly benefits the parser also in the joint setting.</S>
+    <S sid="193" ssid="2">While significant, the improvement from the Baseline to LexFilter is quite small, which is due to the Baseline&#8217;s own rather strong illegal analyses filtering heuristic.</S>
+    <S sid="194" ssid="3">However, unlike the oracle segmentation case, here the semisupervised lexical probabilities (LexProbs) have a major effect on the parser performance (&#8212; 69 to &#8212; 73.5 F-score), an overall improvement of &#8212; 6.6 F-points over the Baseline, which is the previous state-of-the art for this joint task.</S>
+    <S sid="195" ssid="4">This supports our intuition that rare lexical events are better estimated using a large unannotated corpus, and not using a generic treebank distribution, or sparse treebank based counts, and that lexical probabilities have a crucial role in resolving segmentation ambiguities.</S>
+    <S sid="196" ssid="5">15While we use the same software as (Goldberg and Tsarfaty, 2008), the results reported here are significantly lower.</S>
+    <S sid="197" ssid="6">This is due to differences in annotation scheme between V1 and V2 of the Hebrew TB The parsers with the extended lexicon were unable to assign a parse to about 10 of the 483 test sentences.</S>
+    <S sid="198" ssid="7">We count them as having 0-Fscore in the table results.16 The Baseline parser could not assign a parse to more than twice that many sentences, suggesting its lexical pruning heuristic is quite harsh.</S>
+    <S sid="199" ssid="8">In fact, the unparsed sentences amount to most of the difference between the Baseline and LexFilter parsers.</S>
+    <S sid="200" ssid="9">Here, changing the rare tokens threshold has a significant effect on parsing accuracy, which suggests that the segmentation for rare tokens is highly consistent within the corpus.</S>
+    <S sid="201" ssid="10">When an unknown token is encountered, a clear bias should be taken toward segmentations that were previously seen in the same corpus.</S>
+    <S sid="202" ssid="11">Given that that effect is remedied to some extent by introducing the semi-supervised lexical probabilities, we believe that segmentation accuracy for unseen tokens can be further improved, perhaps using resources such as (Gabay et al., 2008), and techniques for incorporating some document, as opposed to sentence level information, into the parsing process.</S>
+  </SECTION>
+  <SECTION title="6 Conclusions" number="7">
+    <S sid="203" ssid="1">We present a framework for interfacing a parser with an external lexicon following a different annotation scheme.</S>
+    <S sid="204" ssid="2">Unlike other studies (Yang Huang et al., 2005; Szolovits, 2003) in which such interfacing is achieved by a restricted heuristic mapping, we propose a novel, stochastic approach, based on a layered representation.</S>
+    <S sid="205" ssid="3">We show that using an external lexicon for dealing with rare lexical events greatly benefits a PCFG parser for Hebrew, and that results can be further improved by the incorporation of lexical probabilities estimated in a semi-supervised manner using a wide-coverage lexicon and a large unannotated corpus.</S>
+    <S sid="206" ssid="4">In the future, we plan to integrate this framework with a parsing model that is specifically crafted to cope with morphologically rich, free-word order languages, as proposed in (Tsarfaty and Sima&#8217;an, 2008).</S>
+    <S sid="207" ssid="5">Apart from Hebrew, our method is applicable in any setting in which there exist a small treebank and a wide-coverage lexical resource.</S>
+    <S sid="208" ssid="6">For example parsing Arabic using the Arabic Treebank and the Buckwalter analyzer, or parsing English biomedical text using a biomedical treebank and the UMLS Specialist Lexicon.</S>
+  </SECTION>
+</PAPER>

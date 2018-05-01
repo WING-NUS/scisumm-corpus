@@ -1,0 +1,249 @@
+<PAPER>
+  <S sid="0">Syntactic Reordering Integrated with Phrase-Based SMT</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present a novel approach to word reordering which successfully integrates syntactic structural knowledge with phrase-based SMT.</S>
+    <S sid="2" ssid="2">This is done by constructing a lattice of alternatives based on automatically learned probabilistic syntactic rules.</S>
+    <S sid="3" ssid="3">In decoding, the alternatives are scored based on the output word order, not the order of the input.</S>
+    <S sid="4" ssid="4">Unlike previous approaches, this makes it possible to successfully integrate syntactic reordering with phrase-based SMT.</S>
+    <S sid="5" ssid="5">On an English- Danish task, we achieve an absolute improvement in translation quality of 1.1 % BLEU.</S>
+    <S sid="6" ssid="6">Manual evaluation supports the claim that the present approach is significantly superior to previous approaches.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="7" ssid="1">The emergence of phrase-based statistical machine translation (PSMT) (Koehn et al., 2003) has been one of the major developments in statistical approaches to translation.</S>
+    <S sid="8" ssid="2">Allowing translation of word sequences (phrases) instead of single words provides SMT with a robustness in word selection and local word reordering.</S>
+    <S sid="9" ssid="3">PSMT has two means of reordering the words.</S>
+    <S sid="10" ssid="4">Either a phrase pair has been learned where the target word order differs from the source (phrase internal reordering), or distance penalized orderings of target phrases are attempted in decoding (phrase external reordering).</S>
+    <S sid="11" ssid="5">The first solution is strong, the second is weak.</S>
+    <S sid="12" ssid="6">The second solution is necessary for reorderings within a previously unseen sequence or over distances greater than the maximal phrase length.</S>
+    <S sid="13" ssid="7">In this case, the system in essence relies on the target side language model to get the correct word order.</S>
+    <S sid="14" ssid="8">The choice is made without knowing what the source is.</S>
+    <S sid="15" ssid="9">Basically, it is a bias against phrase external reordering.</S>
+    <S sid="16" ssid="10">It seems clear that reordering often depends on higher level linguistic information, which is absent from PSMT.</S>
+    <S sid="17" ssid="11">In recent work, there has been some progress towards integrating syntactic information with the statistical approach to reordering.</S>
+    <S sid="18" ssid="12">In works such as (Xia and McCord, 2004; Collins et al., 2005; Wang et al., 2007; Habash, 2007), reordering decisions are done &#8220;deterministically&#8221;, thus placing these decisions outside the actual PSMT system by learning to translate from a reordered source language.</S>
+    <S sid="19" ssid="13">(Crego and Mari&#732;no, 2007; Zhang et al., 2007; Li et al., 2007) are more in the spirit of PSMT, in that multiple reorderings are presented to the PSMT system as (possibly weighted) options.</S>
+    <S sid="20" ssid="14">Still, there remains a basic conflict between the syntactic reordering rules and the PSMT system: one that is most likely due to the discrepancy between the translation units (phrases) and units of the linguistic rules, as (Zhang et al., 2007) point out.</S>
+    <S sid="21" ssid="15">In this paper, we proceed in the spirit of the nondeterministic approaches by providing the decoder with multiple source reorderings.</S>
+    <S sid="22" ssid="16">But instead of scoring the input word order, we score the order of the output.</S>
+    <S sid="23" ssid="17">By doing this, we avoid the integration problems of previous approaches.</S>
+    <S sid="24" ssid="18">It should be noted that even though the experiments are conducted within a source reordering approach, this scoring is also compatible with other approach.</S>
+    <S sid="25" ssid="19">We will, however, not look further into this possiblity in the present paper.</S>
+    <S sid="26" ssid="20">In addition, we automatically learn reordering rules based on several levels of linguistic information from word form to subordination and syntactic structure to produce reordering rules that are not restricted to operations on syntactic tree structure nodes.</S>
+    <S sid="27" ssid="21">In the next section, we discuss and contrast related work.</S>
+    <S sid="28" ssid="22">Section 3 describes aspects of English and Danish structure that are relevant to reordering.</S>
+    <S sid="29" ssid="23">Section 4 describes the automatic induction of reordering rules and its integration in PSMT.</S>
+    <S sid="30" ssid="24">In section 5, we describe the SMT system used in the experiments.</S>
+    <S sid="31" ssid="25">Section 6 evaluates and discusses the present approach.</S>
+  </SECTION>
+  <SECTION title="2 Related Work" number="2">
+    <S sid="32" ssid="1">While several recent authors have achieved positive results, it has been difficult to integrate syntactic information while retaining the strengths of the statistical approach.</S>
+    <S sid="33" ssid="2">Several approaches do deterministic reordering.</S>
+    <S sid="34" ssid="3">These do not integrate the reordering in the PSMT system; instead they place it outside the system by first reordering the source language, and then having a PSMT system translate from reordered source language to target language.</S>
+    <S sid="35" ssid="4">(Collins et al., 2005; Wang et al., 2007) do this using manually created rules, and (Xia and McCord, 2004) and (Habash, 2007) use automatically extracted rules.</S>
+    <S sid="36" ssid="5">All use rules extracted from syntactic parses.</S>
+    <S sid="37" ssid="6">As mentioned by (Al-Onaizan and Papineni, 2006), it can be problematic that these deterministic choices are beyond the scope of optimization and cannot be undone by the decoder.</S>
+    <S sid="38" ssid="7">That is, there is no way to make up for bad information in later translation steps.</S>
+    <S sid="39" ssid="8">Another approach is non-deterministic.</S>
+    <S sid="40" ssid="9">This provides the decoder with both the original and the reordered source sentence.</S>
+    <S sid="41" ssid="10">(Crego and Mari&#732;no, 2007) operate within Ngram-based SMT.</S>
+    <S sid="42" ssid="11">They make use of syntactic structure to reorder the input into a word lattice.</S>
+    <S sid="43" ssid="12">Since the paths are not weighted, the lattice merely narrows down the size of the search space.</S>
+    <S sid="44" ssid="13">The decoder is not given reason to trust one path (reordering) over another.</S>
+    <S sid="45" ssid="14">(Zhang et al., 2007) assign weights to the paths of their input word lattice.</S>
+    <S sid="46" ssid="15">Instead of hierarchical linguistic structure, they use reordering rules based on POS and syntactic chunks, and train the system with both original and reordered source word order on a restricted data set (&lt;500K words).</S>
+    <S sid="47" ssid="16">Their system does not out-perform a standard PSMT system.</S>
+    <S sid="48" ssid="17">As they themselves point out, a reason for this might be that their reordering approach is not fully integrated with PSMT.</S>
+    <S sid="49" ssid="18">This is one of the main problems addressed in the present work.</S>
+    <S sid="50" ssid="19">(Li et al., 2007) use weighted n-best lists as input for the decoder.</S>
+    <S sid="51" ssid="20">They use rules based on a syntactic parse, allowing children of a tree node to swap place.</S>
+    <S sid="52" ssid="21">This is excessively restrictive.</S>
+    <S sid="53" ssid="22">For example, a common reordering in English-Danish translation has the subject change place with the finite verb.</S>
+    <S sid="54" ssid="23">Since the verb is often embedded in a VP containing additional words that should not be moved, such rules cannot be captured by local reordering on tree nodes.</S>
+    <S sid="55" ssid="24">In many cases, the exact same word order that is obtained through a source sentence reordering, is also accessible through a phrase internal reordering.</S>
+    <S sid="56" ssid="25">A negative consequence of source order (SO) scoring as done by (Zhang et al., 2007) and (Li et al., 2007) is that they bias against the valuable phrase internal reorderings by only promoting the source sentence reordering.</S>
+    <S sid="57" ssid="26">As described in section 4.3, we solve this problem by reordering the input string, but scoring the output string, thus allowing the strengths of PSMT to co-exist with rule-based reordering.</S>
+  </SECTION>
+  <SECTION title="3 Language comparison" number="3">
+    <S sid="58" ssid="1">The two languages examined in this investigation, English and Danish, are very similar from a structural point of view.</S>
+    <S sid="59" ssid="2">A word alignment will most often display an almost one-to-one correlation.</S>
+    <S sid="60" ssid="3">In the hand-aligned data, only 39% of the sentences contain reorderings (following the notion of reordering as defined in 4.1).</S>
+    <S sid="61" ssid="4">On average, a sentence contains 0.66 reorderings.</S>
+    <S sid="62" ssid="5">One of the main differences between English and Danish word order is that Danish is a verb-second language: the finite verb of a declarative main clause must always be the second constituent.</S>
+    <S sid="63" ssid="6">Since this is not the case for English, a reordering rule should move the subject of an English sentence to the right of the finite verb, if the first position is filled by something other than the subject.</S>
+    <S sid="64" ssid="7">This is exemplified by (1) (examples are annotated with English gloss and translation), where &#8217;they&#8217; should move to the right of &#8217;come&#8217; to get the Danish word order as seen in the gloss.</S>
+    <S sid="65" ssid="8">&#8217;here they come&#8217; Another difference is that Danish sentence adverbials in a subordinate clause move to the left of the finite verb.</S>
+    <S sid="66" ssid="9">This is illustrated in example (2).</S>
+    <S sid="67" ssid="10">This example also shows the difficulty for a PSMT system.</S>
+    <S sid="68" ssid="11">Since the trigram &#8217;han kan ikke&#8217; is frequent in Danish main clauses, and &#8217;han ikke kan&#8217; is frequent in subordinate clauses, we need information on subordination to get the correct word order.</S>
+    <S sid="69" ssid="12">This information can be obtained from the conjunction &#8217;that&#8217;.</S>
+    <S sid="70" ssid="13">A trigram PSMT system would not be able to handle the reordering in (2), since &#8217;that&#8217; is beyond the scope of &#8217;not&#8217;.</S>
+    <S sid="71" ssid="14">[ han siger at han ikke kan se he says that he not can see ] &#8217;he says that he can not see&#8217; In the main clause, on the other hand, Danish prefers the sentence adverbial to appear to the right of the finite verb.</S>
+    <S sid="72" ssid="15">Therefore, if the English adverbial appears to the left of the finite verb in a main clause, it should move right as exemplified by example (3).</S>
+    <S sid="73" ssid="16">&#8217;she never saw the ship&#8217; Other differences are of a more conventionalized nature.</S>
+    <S sid="74" ssid="17">E.g. address numbers are written after the street in Danish (example (4)). nygade nygade &#8217;he lives at 14 nygade&#8217;</S>
+  </SECTION>
+  <SECTION title="4 Reordering rules" number="4">
+    <S sid="75" ssid="1">In this experiment, reordering is defined as two word sequences exchanging positions.</S>
+    <S sid="76" ssid="2">These two sequences are restricted by the following conditions: The sequences are not restricted in length, making both short and long distance reordering possible.</S>
+    <S sid="77" ssid="3">Furthermore, they need not be phrases in the sense that they appear as an entry in the phrase table.</S>
+    <S sid="78" ssid="4">Table 1 illustrates reordering in a word alignment matrix.</S>
+    <S sid="79" ssid="5">The table contains reorderings between the light grey sequences (s32 and s64)1 and the dark grey sequences (s5 5 and s66).</S>
+    <S sid="80" ssid="6">On the other hand, the sequences s3 3 and s5 4 are e.g. not considered reordered, since neither are maximal, and s54 is not consecutive on the target side.</S>
+    <S sid="81" ssid="7">In section 3, we pointed out that subordination is very important for word order differences between English and Danish.</S>
+    <S sid="82" ssid="8">In addition, the sentence position of constituents plays a role.</S>
+    <S sid="83" ssid="9">All this information is present in a syntactic sentence parse.</S>
+    <S sid="84" ssid="10">A subordinate clause is defined as inside an SBAR con1Notation: s'Y means the consecutive source sequence covering words x to y. stituent; otherwise it is a main clause.</S>
+    <S sid="85" ssid="11">The constituent position can be extracted from the sentence start tag and the following syntactic phrases.</S>
+    <S sid="86" ssid="12">POS and word form are also included to allow for more specific/lexicalized rules.</S>
+    <S sid="87" ssid="13">Besides including this information for the candidate reordering sequences (left sequence (LS) and right sequence (RS)), we also include it for the set of possible left (LC) and right (RC) contexts of these.</S>
+    <S sid="88" ssid="14">The span of the contexts varies from a single word to all the way to the sentence border.</S>
+    <S sid="89" ssid="15">Table 2 contains an example of the information available to the learning algorithm.</S>
+    <S sid="90" ssid="16">In the example, LS and RS should change place, since the first position is occupied by something other than the subject in a main clause.</S>
+    <S sid="91" ssid="17">In order to minimize the training data, word and POS sequences are limited to 4 words, and phrase structure (PS) sequences are limited to 3 constituents.</S>
+    <S sid="92" ssid="18">In addition, an entry is only used if at least one of these three levels is not too long for both LS and RS, and too long contexts are not included in the set.</S>
+    <S sid="93" ssid="19">This does not constrain the possible length of a reordering, since a PS sequence of length 1 can cover an entire sentence.</S>
+    <S sid="94" ssid="20">In order to extract rules from the annotated data, we use a rule-based classifier, Ripper (Cohen, 1996).</S>
+    <S sid="95" ssid="21">The motivation for using Ripper is that it allows features to be sets of strings, which fits well with our representation of the context, and it produces easily readable rules that allow better understanding of the decisions being made.</S>
+    <S sid="96" ssid="22">In section 6.2, extracted rules are exemplified and analyzed.</S>
+    <S sid="97" ssid="23">The probabilities of the rules are estimated using Maximum Likelihood Estimation based on the information supplied by Ripper on the performance of the individual rules on the training data.</S>
+    <S sid="98" ssid="24">These logarithmic probabilities are easily integratable in the log-linear PSMT model as an additional parameter by simple addition.</S>
+    <S sid="99" ssid="25">The rules are extracted from the hand-aligned, Copenhagen Danish-English Dependency Treebank (Buch-Kromann et al., 2007).</S>
+    <S sid="100" ssid="26">5478 sentences from the news paper domain containing 111,805 English words and 100,185 Danish words.</S>
+    <S sid="101" ssid="27">The English side is parsed using a state-of-the-art statistical English parser (Charniak, 2000).</S>
+    <S sid="102" ssid="28">The integration of the rule-based reordering in our PSMT system is carried out in two separate stages: Stage 1) is done in a non-deterministic fashion by generating a word lattice as input in the spirit of e.g.</S>
+    <S sid="103" ssid="29">(Zens et al., 2002; Crego and Mari&#732;no, 2007; Zhang et al., 2007).</S>
+    <S sid="104" ssid="30">This way, the system has both the original word order, and the reorderings predicted by the rule set.</S>
+    <S sid="105" ssid="31">The different paths of the word lattice are merely given as equal suggestions to the decoder.</S>
+    <S sid="106" ssid="32">They are in no way individually weighted.</S>
+    <S sid="107" ssid="33">Separating stage 2) from stage 1) is motivated by the fact that reordering can have two distinct origins.</S>
+    <S sid="108" ssid="34">They can occur because of stage 1), i.e. the lattice reordering of the original English word order (phrase external reordering), and they can occur inside a single phrase (phrase internal reordering).</S>
+    <S sid="109" ssid="35">We are, however, interested in doing phraseindependent, word reordering.</S>
+    <S sid="110" ssid="36">We want to promote rule-predicted reorderings, regardless of whether they owe their existence to a syntactic rule or a phrase table entry.</S>
+    <S sid="111" ssid="37">This is accomplished by letting the actual scoring of the reordering focus on the target string.</S>
+    <S sid="112" ssid="38">The decoder is informed of where a rule has predicted a reordering, how much it costs to do the reordering, and how much it costs to avoid it.</S>
+    <S sid="113" ssid="39">This is then checked for each hypothezised target string by keeping track of what source position target order (SPTO) it corresponds to.</S>
+    <S sid="114" ssid="40">The SPTO is a representation of which source position the word in each target position originates from.</S>
+    <S sid="115" ssid="41">Putting it differently, the hypotheses contain two parallel strings; a target word string and its SPTO string.</S>
+    <S sid="116" ssid="42">In order to access this information, each phrase table entry is annotated with its internal word alignment, which is available as an intermediate product from phrase table creation.</S>
+    <S sid="117" ssid="43">If a phrase pair has multiple word alignments, the most frequent is chosen.</S>
+    <S sid="118" ssid="44">Table 3 exemplifies the SPTO scoring.</S>
+    <S sid="119" ssid="45">The source sentence is &#8217;today he was late&#8217;, and a rule has predicted that word 3 and 4 should change place.</S>
+    <S sid="120" ssid="46">When the decoder has covered the first four input words, two of the hypothesis target strings might be H1 and H2.</S>
+    <S sid="121" ssid="47">At this point, it becomes apparent that H2 contains the desired SPTO (namely &#8217;4 3&#8217;), and it get assigned the reordering cost.</S>
+    <S sid="122" ssid="48">H1 does not contain the rule-suggested SPTO (in stead, the words are in the order &#8217;3 4&#8217;), and it gets the violation cost.</S>
+    <S sid="123" ssid="49">Both these scorings are performed in a phraseindependent manner.</S>
+    <S sid="124" ssid="50">The decoder assigns the reordering cost to H2 without knowing whether the reordering is internal (due to a phrase table entry) or external (due to a syntactic rule).</S>
+    <S sid="125" ssid="51">Phrase internal reorderings at other points of the sentence, i.e. points that are not covered by a rule, are not judged by the reordering model.</S>
+    <S sid="126" ssid="52">Our rule extraction does not learn every possible reordering between the two languages, but only the most general ones.</S>
+    <S sid="127" ssid="53">If no rule has an opinion at a certain point in a sentence, the decoder is free to chose the phrase translation it prefers without reordering cost.</S>
+    <S sid="128" ssid="54">Separating the scoring from the source language reordering also has the advantage that the SPTO scoring in essence is compatible with other approaches such as a traditional PSMT system.</S>
+    <S sid="129" ssid="55">We will, however, not examine this possibility further in the present paper.</S>
+  </SECTION>
+  <SECTION title="5 The PSMT system" number="5">
+    <S sid="130" ssid="1">The baseline is the PSMT system used for the 2006 NAACL SMT workshop (Koehn and Monz, 2006) with phrase length 3 and a trigram language model (Stolcke, 2002).</S>
+    <S sid="131" ssid="2">The system was trained on the English and Danish part of the Europarl corpus version 3 (Koehn, 2005).</S>
+    <S sid="132" ssid="3">Fourth quarter of 2000 was removed in order to use the common test set of 11369 sentences (330,082 English words and 309,942 Danish words with one reference) for testing.</S>
+    <S sid="133" ssid="4">In addition, fourth quarter of 2001 was removed for development purposes.</S>
+    <S sid="134" ssid="5">Of these, 10194 were used for various analysis purposes, thereby keeping the test data perfectly unseen.</S>
+    <S sid="135" ssid="6">500 sentences were taken from the development set for tuning the decoder parameters.</S>
+    <S sid="136" ssid="7">This was done using the Downhill Simplex algorithm.</S>
+    <S sid="137" ssid="8">In total, 1,137,088 sentences containing 31,376,034 English words and 29,571,518 Danish words were left for training the phrase table and language model.</S>
+    <S sid="138" ssid="9">The decoder used for the baseline system is Pharaoh (Koehn, 2004) with its distance-penalizing reordering model.</S>
+    <S sid="139" ssid="10">For the experiments, we use our own decoder which &#8212; except for the reordering model &#8212; uses the same knowledge sources as Pharaoh, i.e. bidirectional phrase translation model and lexical weighting model, phrase and word penalty, and target language model.</S>
+    <S sid="140" ssid="11">Its behavior is comparable to Pharaoh when doing monotone decoding.</S>
+    <S sid="141" ssid="12">The search algorithm of our decoder is similar to the RG graph decoder of (Zens et al., 2002).</S>
+    <S sid="142" ssid="13">It expects a word lattice as input.</S>
+    <S sid="143" ssid="14">Figure 1 shows the word lattice for the example in table 3.</S>
+    <S sid="144" ssid="15">Since the input format defines all possible word orders, a simple monotone search is sufficient.</S>
+    <S sid="145" ssid="16">Using a language model of order n, for each hypothezised target string ending in the same n-1gram, we only have to extend the highest scoring hypothesis.</S>
+    <S sid="146" ssid="17">None of the others can possibly outperform this one later on.</S>
+    <S sid="147" ssid="18">This is because the maximal context evaluating a phrase extending this hypothesis, is the history (n-1-gram) of the first word of that phrase.</S>
+    <S sid="148" ssid="19">The decoder is not able to look any further back at the preceeding string.</S>
+  </SECTION>
+  <SECTION title="6 Evaluation" number="6">
+    <S sid="149" ssid="1">The SPTO reordering approach is evaluated on the 11369 sentences of the common test set.</S>
+    <S sid="150" ssid="2">Results are listed in table 4 along with results on the development set.</S>
+    <S sid="151" ssid="3">We also report on the swap subset.</S>
+    <S sid="152" ssid="4">These are the 3853 sentences where the approach actually motivated reorderings in the test set, internal or external.</S>
+    <S sid="153" ssid="5">The remaining 7516 sentences were not influenced by the SPTO reordering approach.</S>
+    <S sid="154" ssid="6">We report on 1) the baseline PSMT system, 2) a system provided with a rule reordered word lattice but no scoring, 3) the same system but with an SO scoring in the spirit of (Zhang et al., 2007; Li et al., 2007), and finally 4) the same system but with the SPTO scoring.</S>
+    <S sid="155" ssid="7">The SPTO approach gets an increase over the baseline PSMT system of 0.6 % BLEU.</S>
+    <S sid="156" ssid="8">The swap subset, however, shows that the extracted rules are somewhat restricted, only resulting in swap in s of the sentences.</S>
+    <S sid="157" ssid="9">The relevant set, i.e. the set where the present approach actually differs from the baseline, is therefore the swap subset.</S>
+    <S sid="158" ssid="10">This way, we concentrate on the actual focus of the paper, namely the syntactically motivated SPTO reordering.</S>
+    <S sid="159" ssid="11">Here we achieve an increase in performance of 1.1 % BLEU.</S>
+    <S sid="160" ssid="12">Comparing to the other scoring approaches does not show much improvement.</S>
+    <S sid="161" ssid="13">A possible explanation is that the rules do not apply very often, in combination with the fact that the SO and SPTO scoring mechanisms most often behave alike.</S>
+    <S sid="162" ssid="14">The difference in SO and SPTO scoring only leads to a difference in translation in 10% of the sentences where reordering is done.</S>
+    <S sid="163" ssid="15">This set is interesting, since it provides a focus on the difference between the SO and the SPTO approaches.</S>
+    <S sid="164" ssid="16">In table 5, we evaluate on this set.</S>
+    <S sid="165" ssid="17">The BLEU scores on the entire set indicate that SPTO is a superior scoring method.</S>
+    <S sid="166" ssid="18">To back this observation, the 100 first sentences are manually evaluated by two native speakers of Danish.</S>
+    <S sid="167" ssid="19">(CallisonBurch et al., 2007) show that ranking sentences gives higher inter-annotator agreement than scoring adequacy and fluency.</S>
+    <S sid="168" ssid="20">We therefore employ this evaluation method, asking the evaluators to rank sentences from the four systems given the input sentence.</S>
+    <S sid="169" ssid="21">Ties are allowed.</S>
+    <S sid="170" ssid="22">The annotators had reasonable inter-annotator agreement (n = 0.523, P(A) = 0.69, P(E) = 0.35).</S>
+    <S sid="171" ssid="23">Table 5 shows the average ratings of the systems.</S>
+    <S sid="172" ssid="24">This clearly shows the SPTO scoring to be significantly superior to the other methods (p &lt; 0.05).</S>
+    <S sid="173" ssid="25">Most of the cases (55) where SPTO outperforms SO are cases where SPTO knows that a phrase pair contains the desired reordering, but SO does not.</S>
+    <S sid="174" ssid="26">Therefore, SO has to use an external reordering which brings poorer translation than the internal reordering, because the words are translated individually rather than by a single phrase (37 cases), or it has to reject the desired reordering (18 cases), which also hurts translation, since it does not get the correct word order.</S>
+    <S sid="175" ssid="27">Table 6 shows the effect of SO and SPTO scoring in decoding.</S>
+    <S sid="176" ssid="28">Most noticeable is that the SO scoring is strongly biased against phrase internal reorderings; SPTO uses nearly four times as many phrase internal reorderings as SO.</S>
+    <S sid="177" ssid="29">In addition, SPTO is a little less likely to reject a rule proposed reordering.</S>
+    <S sid="178" ssid="30">The rule induction resulted in a rule set containing 27 rules.</S>
+    <S sid="179" ssid="31">Of these, 22 concerned different ways of identifying contexts where a reordering should occur due to the verb second nature of Danish.</S>
+    <S sid="180" ssid="32">4 rules had to do with adverbials in main and in subordinate clauses, and the remaining rule expressed that currency is written after the amount in Danish, while it is the other way around in English.</S>
+    <S sid="181" ssid="33">Since the training data however only includes Danish Crowns, the rule was lexicalized to &#8217;DKK&#8217;.</S>
+    <S sid="182" ssid="34">Table 7 shows a few of the most frequently used rules.</S>
+    <S sid="183" ssid="35">The first three rules deal with the verb second phenomenon.</S>
+    <S sid="184" ssid="36">The only difference among these is the left context.</S>
+    <S sid="185" ssid="37">Either it is a prepositional phrase, a subordinate clause or an adverbial.</S>
+    <S sid="186" ssid="38">These are three ways that the algorithm has learned to identify the verb second phenomenon conditions.</S>
+    <S sid="187" ssid="39">Rule 3 is interesting in that it is lexicalized.</S>
+    <S sid="188" ssid="40">In the learning data, the Danish correspondent to &#8217;however&#8217; is most often not topicalized, and the subject is therefore not forced from the initial position.</S>
+    <S sid="189" ssid="41">As a consequence, the rule states that it should only apply, if &#8217;however&#8217; is not included in the left context of the reordering.</S>
+    <S sid="190" ssid="42">Rule 4 handles the placement of adverbials in a subordinate clause.</S>
+    <S sid="191" ssid="43">Since the right context is subordinate and a verb phrase, the current sequences must also be subordinate.</S>
+    <S sid="192" ssid="44">In contrast, the fifth rule deals with adverbials in a main clause, since the left context noun phrase is in a main clause.</S>
+    <S sid="193" ssid="45">A problem with the hand-aligned data used for rule-induction is that it is out of domain compared to the Europarl data used to train the SMT system.</S>
+    <S sid="194" ssid="46">The hand-aligned data is news paper texts, and Europarl is transcribed spoken language from the European Parliament.</S>
+    <S sid="195" ssid="47">Due to its spoken nature, Europarl contains frequent sentence-initial forms of address.</S>
+    <S sid="196" ssid="48">That is, left adjacent elements that are not integrated parts of the sentence as illustrated by example (5).</S>
+    <S sid="197" ssid="49">This is not straightforward, because on the surface these look a lot like topicalized constructions, as in example (6).</S>
+    <S sid="198" ssid="50">In topicalized constructions, it is an integrated part of the sentence that is moved to the front in order to affect the flow of discourse information.</S>
+    <S sid="199" ssid="51">This difference is crucial for the reordering rules, since &#8217;i&#8217; and &#8217;have&#8217; should reorder in (6), but not in (5), in order to get Danish word order.</S>
+    <S sid="200" ssid="52">(5) mr president, i have three points .</S>
+    <S sid="201" ssid="53">(6) as president, i have three points .</S>
+    <S sid="202" ssid="54">When translating the development set, it became clear that many constructions like (5) were reordered by a rule.</S>
+    <S sid="203" ssid="55">Since these constructions were not present in the hand-aligned data, the learning algorithm did not have the data to learn this difference.</S>
+    <S sid="204" ssid="56">We therefore included a manual, lexicalized rule stating that if the left context contained one of a set of titles (mr, mrs, ms, madam, gentlemen), the reordering should not take place.</S>
+    <S sid="205" ssid="57">Since the learning includes word form information, this is a rule that the learning algorithm is able to learn.</S>
+    <S sid="206" ssid="58">To a great extent, the rule eliminates the problem.</S>
+    <S sid="207" ssid="59">The above examples also illustrate that local reordering (in this case as local as two neighboring words) can be a problem for PSMT, since even though the reordering is local, the information about whether to reorder or not is not necessarily local.</S>
+    <S sid="208" ssid="60">In this section, we will show and discuss a few examples of the reorderings made by the SPTO approach.</S>
+    <S sid="209" ssid="61">Table 8 contain two translations taken from the test set.</S>
+    <S sid="210" ssid="62">In translation 1), the subject (bold) is correctly moved to the right of the finite verb (italics), which the baseline system fails to do.</S>
+    <S sid="211" ssid="63">Moving the finite verb away from the infinite verb &#8217;feature&#8217;, however, leads to incorrect agreement between these.</S>
+    <S sid="212" ssid="64">While the baseline correctly retains the infinite form (&#8217;st&#730;a&#8217;), the language model forces another finite form (the past tense &#8217;stod&#8217;) in the SPTO reordering approach.</S>
+    <S sid="213" ssid="65">Translation 2) illustrates the handling of adverbials.</S>
+    <S sid="214" ssid="66">The first reordering is in a main clause, therefore, the adverbial is moved to the right of the finite verb.</S>
+    <S sid="215" ssid="67">The second reordering occurs in a subordinate clause, and the adverbial is moved to the left of the finite verb.</S>
+    <S sid="216" ssid="68">Neither of these are handled successfully by the baseline system.</S>
+    <S sid="217" ssid="69">In this case, the reordering leads to better word selection.</S>
+    <S sid="218" ssid="70">The English &#8217;aims to&#8217; corresponds to the Danish &#8217;sigter mod&#8217;, which the SPTO approach gets correct.</S>
+    <S sid="219" ssid="71">However, the baseline system translates &#8217;to&#8217; to its much more common translation &#8217;at&#8217;, because &#8217;to&#8217; is separated from &#8217;aims&#8217; by the adverbial &#8217;principally&#8217;.</S>
+  </SECTION>
+  <SECTION title="7 Conclusion and Future Plans" number="7">
+    <S sid="220" ssid="1">We have described a novel approach to word reordering in SMT, which successfully integrates syntactically motivated reordering in phrase-based SMT.</S>
+    <S sid="221" ssid="2">This is achieved by reordering the input string, but scoring on the output string.</S>
+    <S sid="222" ssid="3">As opposed to previous approaches, this neither biases against phrase internal nor external reorderings.</S>
+    <S sid="223" ssid="4">We achieve an absolute improvement in translation quality of 1.1 % BLEU.</S>
+    <S sid="224" ssid="5">A result that is supported by manual evaluation, which shows that the SPTO approach is significantly superior to previous approaches.</S>
+    <S sid="225" ssid="6">In the future, we plan to apply this approach to English-Arabic translation.</S>
+    <S sid="226" ssid="7">We expect greater gains, due to the higher need for reordering between these less-related languages.</S>
+    <S sid="227" ssid="8">We also want to examine the relation between word alignment method and the extracted rules and the relationship between reordering and word selection.</S>
+    <S sid="228" ssid="9">Finally, a limitation of the current experiments is that they only allow rule-based external reorderings.</S>
+    <S sid="229" ssid="10">Since the SPTO scoring is not tied to a source reordering approach, we want to examine the effect of simply adding it as an additional parameter to the baseline PSMT system.</S>
+    <S sid="230" ssid="11">This way, all external reorderings are made possible, but only the rule-supported ones get promoted.</S>
+  </SECTION>
+</PAPER>

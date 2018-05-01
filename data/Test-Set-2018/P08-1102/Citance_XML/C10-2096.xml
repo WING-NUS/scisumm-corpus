@@ -1,0 +1,268 @@
+<PAPER>
+	<S sid="0">Machine Translation with Lattices and Forests</S><ABSTRACT>
+		<S sid="1" ssid="1">Traditional 1-best translation pipelinessuffer a major drawback: the errors of 1 best outputs, inevitably introduced by each module, will propagate and accumulate along the pipeline.</S>
+		<S sid="2" ssid="2">In order to alleviate this problem, we use compact structures, lattice and forest, in each module insteadof 1-best results.</S>
+		<S sid="3" ssid="3">We integrate both lat tice and forest into a single tree-to-stringsystem, and explore the algorithms of lattice parsing, lattice-forest-based rule ex traction and decoding.</S>
+		<S sid="4" ssid="4">More importantly,our model takes into account all the probabilities of different steps, such as segmen tation, parsing, and translation.</S>
+		<S sid="5" ssid="5">The main advantage of our model is that we can make global decision to search for the best segmentation, parse-tree and translation in one step.</S>
+		<S sid="6" ssid="6">Medium-scale experiments show an improvement of +0.9 BLEU points over a state-of-the-art forest-based baseline.</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number="1">
+			<S sid="7" ssid="7">Statistical machine translation (SMT) has witnessed promising progress in recent years.</S>
+			<S sid="8" ssid="8">Typically, conventional SMT is characterized as a 1best pipeline system (Figure 1(a)), whose mod ules are independent of each other and only take as input 1-best results from the previous module.</S>
+			<S sid="9" ssid="9">Though this assumption is convenient to reduce the complexity of SMT systems.</S>
+			<S sid="10" ssid="10">It also bring a major drawback of error propagation.</S>
+			<S sid="11" ssid="11">The errors of 1-best outputs, introduced inevitably in each phase, will propagate and accumulate along the pipeline.</S>
+			<S sid="12" ssid="12">Not recoverable in the final decoding (b)source segmentation lattice parse forest target source 1-best segmentation 1-best tree target (a)Figure 1: The pipeline of tree-based system: (a) 1 best (b) lattice-forest.</S>
+			<S sid="13" ssid="13">step.</S>
+			<S sid="14" ssid="14">These errors will severely hurt the translationquality.</S>
+			<S sid="15" ssid="15">For example, if the accuracy of each mod ule is 90%, the final accuracy will drop to 73% after three separate phases.</S>
+			<S sid="16" ssid="16">To alleviate this problem, an obvious solution is to widen the pipeline with k-best lists rather than 1-best results.</S>
+			<S sid="17" ssid="17">For example Venugopal et al.</S>
+			<S sid="18" ssid="18">(2008) use k-best alignments and parses in the training phase.</S>
+			<S sid="19" ssid="19">However, with limited scope and too many redundancies, it is inefficient to search separately on each of these similar lists (Huang, 2008).</S>
+			<S sid="20" ssid="20">Another efficient method is to use compact data structures instead of k-best lists.</S>
+			<S sid="21" ssid="21">A lattice or forest,compactly encoded exponentially many deriva tions, have proven to be a promising technique.</S>
+			<S sid="22" ssid="22">For example, Mi and Huang (2008), Mi et al (2008), Liu et al (2009) and Zhang et al (2009) use forests in rule extraction and decoding phasesto extract more general rules and weaken the influ ence of parsing errors; Dyer et al (2008) use word lattice in Chinese word segmentation and Arabicmorphological variation phases to weaken the in fluence of segmentation errors; Huang (2008) and 837 0 1 2 3 4 5 6 7 8 9c0:Bu` c1:sh??</S>
+			<S sid="23" ssid="23">c2:yu?</S>
+			<S sid="24" ssid="24">c3:Sha?</S>
+			<S sid="25" ssid="25">c4:lo?ng c5:ju?</S>
+			<S sid="26" ssid="26">c6:x??ng c7:ta?o c8:lu`n (0, 2, NR) (2, 3, CC) (3, 5, NR) (5, 6, VV) (6, 8, NN) (8, 9, NN) (5, 7, VV) (7, 9, NN)(2, 3, P) Figure 2: The lattice of the example:?</S>
+			<S sid="27" ssid="27">Bu` sh??</S>
+			<S sid="28" ssid="28">yu?</S>
+			<S sid="29" ssid="29">Sha?</S>
+			<S sid="30" ssid="30">lo?ng ju?</S>
+			<S sid="31" ssid="31">x??ng ta?o lu`n.?</S>
+			<S sid="32" ssid="32">The solid lines show the 1-best result, which is wrong.Jiang et al (2008b) stress the problems in reranking phase.</S>
+			<S sid="33" ssid="33">Both lattices and forests have be come popular in machine translation literature.</S>
+			<S sid="34" ssid="34">However, to the best of our knowledge, previous work only focused on one module at a time.</S>
+			<S sid="35" ssid="35">In this paper, we investigate the combination of lattice and forest (Section 2), as shown in Figure 1(b).We explore the algorithms of lattice parsing (Section 3.2), rule extraction (Section 4) and decod ing (Section 5).</S>
+			<S sid="36" ssid="36">More importantly, in the decoding step, our model can search among not only more parse-trees but also more segmentations encoded in the lattice-forests and can take into account all the probabilities of segmentations and parse-trees.In other words, our model postpones the disambi guition of segmentation and parsing into the final translation step, so that we can do global searchfor the best segmentation, parse-tree and transla tion in one step.</S>
+			<S sid="37" ssid="37">When we integrate a lattice intoa forest system, medium-scale experiments (Sec tion 6) show another improvement of +0.9 BLEU points over a state-of-the-art forest-based system.</S>
+	</SECTION>
+	<SECTION title="Compact Structures. " number="2">
+			<S sid="38" ssid="1">A word lattice (Figure 2) is a compact representa tion of all the possible of segmentations and POS tags, while a parse forest (Figure 5) is a compact representation of all parse trees.</S>
+			<S sid="39" ssid="2">2.1 Word Lattice.</S>
+			<S sid="40" ssid="3">For a given input sentence C = c0..cn?1, where ci denotes a character at position i, and n is the length of the sentence.</S>
+			<S sid="41" ssid="4">A word lattice (Figure 2), or lattice in short, is a set of edges L, where each edge is in the formof (i, j, X), which denotes a word of tag X , cov ering characters ci through cj?1.</S>
+			<S sid="42" ssid="5">For example, inFigure 2, (7, 9, NN) is a noun ?ta?olu`n? of two char acters.The lattice in Figure 2 shows result of the ex ample:?</S>
+			<S sid="43" ssid="6">Bu` sh??</S>
+			<S sid="44" ssid="7">yu?</S>
+			<S sid="45" ssid="8">Sha?</S>
+			<S sid="46" ssid="9">lo?ng ju?</S>
+			<S sid="47" ssid="10">x??ng ta?o lu`n ?.</S>
+			<S sid="48" ssid="11">One ambiguity comes from the POS tag of word ?yu??</S>
+			<S sid="49" ssid="12">(preposition (P) or conjunction (CC)).</S>
+			<S sid="50" ssid="13">The other one is the segmentation ambiguity of the last four characters, we can segment into either ?ju?x??ngta?o lu`n?</S>
+			<S sid="51" ssid="14">(solid lines), which means lift, beg ging and argument separately for each word or ?ju?x??ng ta?olu`n?</S>
+			<S sid="52" ssid="15">(dashed lines), which means hold a discussion.</S>
+			<S sid="53" ssid="16">lift begging argument 5 ju?</S>
+			<S sid="54" ssid="17">6 x??ng 7 ta?o 8 lu`n 9 hold a discussion The solid lines above (and also in Figure 2) show the 1-best result, which is obviously wrong.</S>
+			<S sid="55" ssid="18">If we feed it into the next modules in the SMT pipeline, parsing and translation will be become much more difficult, since the segmentation is notrecoverable.</S>
+			<S sid="56" ssid="19">So it is necessary to postpone er ror segmentation decisions to the final translation step.</S>
+			<S sid="57" ssid="20">2.2 Parse Forest.</S>
+			<S sid="58" ssid="21">In parsing scenario, a parse forest (Figrure 5), orforest for short, can be formalized as a hyper graph H , a pair ?V, E?, where node v ? V is in the form of Xi,j , which denotes the recognition of nonterminal X spanning the substring ci:j?1 from positions ci through cj?1.</S>
+			<S sid="59" ssid="22">Each hyperedge e ? E is a pair ?tails(e), head(e)?, where head(e) ? Vis the consequent node in an instantiated deductive step, and tails(e) ?</S>
+			<S sid="60" ssid="23">(V )?</S>
+			<S sid="61" ssid="24">is the list of an tecedent nodes.</S>
+			<S sid="62" ssid="25">For the following deduction: NR0,2 CC2,3 NR3,5 NP0,5 (*) 838 its hyperedge e?</S>
+			<S sid="63" ssid="26">is notated: ?(NR0,2, CC2,3, NR3,5), NP0,5?.</S>
+			<S sid="64" ssid="27">where head(e?) = {NP0,5}, and tails(e?) = {NR0,2,CC2,3,NR3,5}.</S>
+			<S sid="65" ssid="28">We also denote IN (v) to be the set of incominghyperedges of node v, which represents the dif ferent ways of deriving v. For simplicity, we onlyshow a tree in Figure 5(a) over 1-best segmenta tion and POS tagging result in Figure 2.</S>
+			<S sid="66" ssid="29">So the IN (NP0,5) is {e?}.</S>
+	</SECTION>
+	<SECTION title="Lattice Parsing. " number="3">
+			<S sid="67" ssid="1">In this section, we first briefly review the con ventional CYK parsing, and then extend to latticeparsing.</S>
+			<S sid="68" ssid="2">More importantly, we propose a more ef ficient parsing paradigm in Section 3.3.</S>
+			<S sid="69" ssid="3">3.1 Conventional Parsing.</S>
+			<S sid="70" ssid="4">The conventional CYK parsing algorithm in Fig ure 3(a) usually takes as input a single sequence of words, so the CYK cells are organized over words.</S>
+			<S sid="71" ssid="5">This algorithm consists of two steps: initialization and parsing.</S>
+			<S sid="72" ssid="6">The first step is to initialize the CYKcells, whose span size is one, with POS tags pro duced by a POS tagger or defined by the input string1.</S>
+			<S sid="73" ssid="7">For example, the top line in Figure 3(a) is initialized with a series of POS tags in 1-best segmentation.</S>
+			<S sid="74" ssid="8">The second step is to search for the best syntactic tree under a context-free grammar.</S>
+			<S sid="75" ssid="9">For example, the tree composed by the solid lines in Figure 5(a) shows the parsing tree for the 1-best segmentation and POS tagging results.</S>
+			<S sid="76" ssid="10">3.2 Lattice Parsing.</S>
+			<S sid="77" ssid="11">The main differences of our lattice parsing in Fig ure 3(b) from conventional approach are listed in following: First, the CYK cells are organized overcharacters rather than words.</S>
+			<S sid="78" ssid="12">Second, in the ini tialization step, we only initialize the cells with all edges L in the lattice.</S>
+			<S sid="79" ssid="13">Take the edge (7, 9, NN) in Figure 2 for example, the corresponding cell should be (7, 9), then we add a leaf nodev = NN7,9 with a word ta?olu`n. The final initial ization is shown in Figure 3(b), which shows that1For simplicity, we assume the input of a parser is a seg mentation and POS tagging result 0 Bu` 1 sh??</S>
+			<S sid="80" ssid="14">2 yu?</S>
+			<S sid="81" ssid="15">3Sha?</S>
+			<S sid="82" ssid="16">4lo?ng 5 ju?</S>
+			<S sid="83" ssid="17">6x??ng 7ta?o 8 lu`n 9.</S>
+			<S sid="84" ssid="18">NR CC NR VV NN NN NP VPB IP O(n3w) (a): Parsing over 1-best segmentation 0 Bu` 1 sh??</S>
+			<S sid="85" ssid="19">2 yu?</S>
+			<S sid="86" ssid="20">3Sha?</S>
+			<S sid="87" ssid="21">4lo?ng 5 ju?</S>
+			<S sid="88" ssid="22">6x??ng 7ta?o 8 lu`n 9.</S>
+			<S sid="89" ssid="23">NR CC,P NR VV VV NN NN NN NP VPB IP PP VP O(n3) (b): Parsing over characters 0 Bu` 1 sh??</S>
+			<S sid="90" ssid="24">2 yu?</S>
+			<S sid="91" ssid="25">3Sha?</S>
+			<S sid="92" ssid="26">4lo?ng 5 ju?</S>
+			<S sid="93" ssid="27">6x??ng 7ta?o 8 lu`n 9.</S>
+			<S sid="94" ssid="28">NR CC,P NR VV VV NN NN NN NP VPB IP PP VP O(n3r) (c): Parsing over most-refined segmentation Figure 3: CKY parsing charts (a): Conventional parsing over 1-best segmentation.</S>
+			<S sid="95" ssid="29">(b): Latticeparsing over characters of input sentence.</S>
+			<S sid="96" ssid="30">(c): Lattice parsing over most-refined segmentation of lat tice.</S>
+			<S sid="97" ssid="31">nw and nr denotes the number of tokens overthe 1-best segmentation and the most-refined seg menation respectively, and nw ? nr ? n. lattice parsing can initialize the cells, whose span size is larger than one.</S>
+			<S sid="98" ssid="32">Third, in the deduction stepof the parsing algorithm i, j, k are the indexes be tween characters rather than words.</S>
+			<S sid="99" ssid="33">We formalize our lattice parser as a deductive proof system (Shieber et al, 1994) in Figure 4.Following the definitions of the previous Sec 839tion, given a set of edges L of a lattice for an in put sentence C = c0..cn?1 and a PCFG grammar:a 4-tuple ?N, ?, P, S?, where N is a set of non terminals, ? is a set of terminal symbols, P is a set of inference rules, each of which is in the form of X ? ?</S>
+			<S sid="100" ssid="34">: p for X ? N , ? ?</S>
+			<S sid="101" ssid="35">(N ? ?)?</S>
+			<S sid="102" ssid="36">and p is the probability, and S ? N is the start symbol.</S>
+			<S sid="103" ssid="37">Thedeductive proof system (Figure 4) consists of ax ioms, goals and inference rules.</S>
+			<S sid="104" ssid="38">The axioms areconverted by edges in L. Take the (5, 7, NN) associated with a weight p1 for example, the corre sponding axiom is NN ? ta?olu`n : p1.</S>
+			<S sid="105" ssid="39">All axioms converted from the lattice are shown in Figure 3(b) exclude the italic non-terminals.</S>
+			<S sid="106" ssid="40">Please note that all the probabilities of the edges L in a lattice are taken into account in the parsing step.</S>
+			<S sid="107" ssid="41">The goalsare the recognition X0,n ? S of the whole sen tence.</S>
+			<S sid="108" ssid="42">The inference rules are the deductions in parsing.</S>
+			<S sid="109" ssid="43">Take the deduction (*) for example, it will prove a new item NP0,5 (italic NP in Figure 3(b)) and generate a new hyper-edge e?</S>
+			<S sid="110" ssid="44">(in Figure 5(b)).</S>
+			<S sid="111" ssid="45">So the parsing algorithm starts with the axioms, and then applies the inference rules to prove new items until a goal item is proved.</S>
+			<S sid="112" ssid="46">The final whole forest for the input lattice (Figure 2) is shown in Figure 5(b).</S>
+			<S sid="113" ssid="47">The extra hyper-edges of lattice-forestare highlighted with dashed lines, which can in ference the input sentence correctly.</S>
+			<S sid="114" ssid="48">For example: ?yu??</S>
+			<S sid="115" ssid="49">is tagged into P rather than CC.</S>
+			<S sid="116" ssid="50">3.3 Faster Parsing with Most-refined Lattice.</S>
+			<S sid="117" ssid="51">However, our statistics show that the average num ber of characters n in a sentence is 1.6 times thanthe number of words nw in its 1-best segmentation.</S>
+			<S sid="118" ssid="52">As a result, the parsing time over the charac ters will grow more than 4 times than parsing over the 1-best segmentation, since the time complexityis O(n3).</S>
+			<S sid="119" ssid="53">In order to alleviate this problem, we reduce the parsing time by using most-refined seg mentation for a lattice, whose number of tokens is nr and has the property nw ? nr ? n. Given a lattice with its edges L over indexes (0, .., n), a index i is a split point, if and only if there exists some edge (i, j, X) ? L or (k, i, X) ? L. The most-refined segmentation, or ms for short, is the segmentation result by using all split points in a lattice.</S>
+			<S sid="120" ssid="54">For example, the corresponding ms of the example is ?Bu`sh??</S>
+			<S sid="121" ssid="55">yu?</S>
+			<S sid="122" ssid="56">Sha?lo?ng ju?</S>
+			<S sid="123" ssid="57">x??ng ta?o lu`n? since points 1 and 4 are not split points.</S>
+			<S sid="124" ssid="58">Item form: Xi,j Axioms: Xi,j : p(i, j, X) (i, j, X) ? L Infer.</S>
+			<S sid="125" ssid="59">rules: Xi,k : p1 Yk,j : p2 Zi,j : pp1p2 Z ? XY : p ? P Goals: X0,nFigure 4: Lattice parsing as deductive proof sys tem.</S>
+			<S sid="126" ssid="60">The i, j, k are the indexes between characters.</S>
+			<S sid="127" ssid="61">Figure 3(c) shows the CKY parsing cells over most-refined segmentation, the average number of tokens nr is reduced by combining columns,which are shown with red dashed boxes.</S>
+			<S sid="128" ssid="62">As a re sult, the search space is reduced without losing any derivations.</S>
+			<S sid="129" ssid="63">Theoretically, the parsing over fs will speed up in O((n/nr)3).</S>
+			<S sid="130" ssid="64">And our experiments in Section 6 show the efficiency of our new approach.</S>
+			<S sid="131" ssid="65">It turns out that the parsing algorithm developed in lattice-parsing Section 3.2 can be used here without any change.</S>
+			<S sid="132" ssid="66">The non-terminals inducted are also shown in Figure 3(c) in italic style.</S>
+	</SECTION>
+	<SECTION title="Rule Extraction with Lattice &amp; Forest. " number="4">
+			<S sid="133" ssid="1">We now explore the extraction algorithm from aligned source lattice-forest and target string2, which is a tuple ?F, ?, a?</S>
+			<S sid="134" ssid="2">in Figure 5(b).</S>
+			<S sid="135" ssid="3">Following Mi and Huang (2008), we extract minimal rules from a lattice-forest also in two steps: (1) frontier set computation (2) fragmentation Following the algorithms developed by Mi and Huang (2008) in Algorithm 1, all the nodes infrontier set (fs) are highlighted with gray in Fig ure 5(b).</S>
+			<S sid="136" ssid="4">Our process of fragmentation (lines 1- 13) is to visit each frontier node v and initial a queue (open) of growing fragments with a pair of emptyfragment and node v (line 3).</S>
+			<S sid="137" ssid="5">Each fragment is as sociated with a list of expansion sites (front) being 2For simplicity and consistency, we use character-based lattice-forest for the running example.</S>
+			<S sid="138" ssid="6">The ?Bu`?</S>
+			<S sid="139" ssid="7">and ?sh???</S>
+			<S sid="140" ssid="8">are aligned to the same word ?Bush?.</S>
+			<S sid="141" ssid="9">In our experiment, we use most-refined segmentation to run lattice-parsing and word alignment.</S>
+			<S sid="142" ssid="10">840 IP0,9 NP0,5 VPB5,9 (a) 0 1 2 3 4 5 6 7 8 9.Bu` .sh??</S>
+			<S sid="143" ssid="11">.yu?</S>
+			<S sid="144" ssid="12">.Sha?</S>
+			<S sid="145" ssid="13">.lo?ng .ju?</S>
+			<S sid="146" ssid="14">.x??ng .ta?o .lu`n .NR0,2 .CC2,3 .NR3,5 .VV5,6 .NN6,8 .NN8,9 e?</S>
+			<S sid="147" ssid="15">IP0,9 NP0,5 VP2,9 PP2,5 VPB5,9 (b) 0 1 2 3 4 5 6 7 8 9.Bu` .sh??</S>
+			<S sid="148" ssid="16">.yu?</S>
+			<S sid="149" ssid="17">.Sha?</S>
+			<S sid="150" ssid="18">.lo?ng .ju?</S>
+			<S sid="151" ssid="19">.x??ng .ta?o .lu`n . NR0,2 . CC2,3 . NR3,5 .VV5,6 .NN6,8 .NN8,9.</S>
+			<S sid="152" ssid="20">VV5,7 . NN7,9.</S>
+			<S sid="153" ssid="21">P2,3.</S>
+			<S sid="154" ssid="22">e?</S>
+			<S sid="155" ssid="23">Bush held a discussion with Sharon Forest only (Minimal rules) Lattice &amp; forest (Extra minimal rules) (c) IP(NP(x1:NR x2:CC x3:NR) x4:VPB) IP(x1:NR x2:VP) ? x1 x2 ? x1 x4 x2 x3 VP(x1:PP x2:VPB) ? x2 x1 CC(yu?)</S>
+			<S sid="156" ssid="24">?with PP(x1:P x2:NR) ? x1 x2 NR(Sha?lo?ng) ?Sharon P(yu?)</S>
+			<S sid="157" ssid="25">?with NR(Bu`sh??)</S>
+			<S sid="158" ssid="26">?Bush VPB(x1:VV x2:NN) ? x1 x2 VPB(VV(ju?)</S>
+			<S sid="159" ssid="27">NN(x??ngta?o) NN(lu`n)) VV(ju?x??ng) ?held ?held a discussion NN(ta?olu`n) ?a discussion Figure 5: (a): The parse forest over the 1-best segmentation and POS tagging result.</S>
+			<S sid="160" ssid="28">(b): Word-aligned tuple ?F, ?, a?: the lattice-forest F , the target string ? and the word alingment a. The solid hyperedges form the forest in (a).</S>
+			<S sid="161" ssid="29">The dashed hyperedges are the extra hyperedges introduced by the lattice-forest.</S>
+			<S sid="162" ssid="30">(c): The minimal rules extracted on forest-only (left column), and the extra minimal rules extracted on lattice-forest (right column).</S>
+			<S sid="163" ssid="31">the subset of leaf nodes of the current fragment that are not in the fs except for the initial node v. Then we keep expanding fragments in open in following way.</S>
+			<S sid="164" ssid="32">If current fragment is complete, whose expansion sites is empty, we extract rule corresponding to the fragment and its target string 841 Code 1 Rule Extraction (Mi and Huang, 2008).</S>
+			<S sid="165" ssid="33">Input: lattice-forest F , target sentence ? , and alignment a Output: minimal rule set R 1: fs ? FROSET(F, ?, a)  frontier set 2: for each v ? fs do 3: open ? {??, {v}?}</S>
+			<S sid="166" ssid="34"> initial queue 4: while open 6= ? do 5: ?frag , front?</S>
+			<S sid="167" ssid="35">open.pop() 6: if front = ? then  finished?</S>
+			<S sid="168" ssid="36">7: generate a rule r using frag 8: R.append(r) 9: else  incomplete: further expand 10: u ? front .pop()  expand frontier 11: for each e ? IN (u) do 12: f ? front ?</S>
+			<S sid="169" ssid="37">(tails(e) \ fs) 13: open .append(?frag ? {e}, f ?)</S>
+			<S sid="170" ssid="38">(line 7) . Otherwise we pop one expansion node u to grow and spin-off new fragments by IN (u), adding new expansion sites (lines 11- 13), until all active fragments are complete and open queue is empty.The extra minimal rules extracted on lattice forest are listed at the right bottom of Figure 5(c).</S>
+			<S sid="171" ssid="39">Compared with the forest-only approach, we can extract smaller and more general rules.After we get al the minimal rules, we com pose two or more minimal rules into composed rules (Galley et al, 2006), which will be used in our experiments.For each rule r extracted, we also assign a fractional count which is computed by using inside outside probabilities: c(r) = ?(root(r)) ? P(lhs(r)) ? Qv?yield(root(r)) ?(v) ?(TOP) , (1) where root(r) is the root of the rule, lhs(r) isthe left-hand-side of rule, rhs(r) is the right hand-side of rule, P(lhs(r)) is the product of all probabilities of hyperedges involved in lhs(r), yield(root(r)) is the leave nodes, TOP is the root node of the forest, ?(v) and ?(v) are outside and inside probabilities, respectively.Then we compute three conditional probabili ties for each rule: P(r | lhs(r)) = c(r)?</S>
+			<S sid="172" ssid="40">r?:lhs(r?)=lhs(r) c(r?)</S>
+			<S sid="173" ssid="41">(2) P(r | rhs(r)) = c(r)?</S>
+			<S sid="174" ssid="42">r?:rhs(r?)=rhs(r) c(r?)</S>
+			<S sid="175" ssid="43">(3) P(r | root(r)) = c(r)?</S>
+			<S sid="176" ssid="44">r?:root(r?)=root(r) c(r?) .</S>
+			<S sid="177" ssid="45">(4) All these probabilities are used in decoding step(Section 5).</S>
+			<S sid="178" ssid="46">For more detail, we refer to the algo rithms of Mi and Huang (2008).</S>
+	</SECTION>
+	<SECTION title="Decoding with Lattice &amp; Forest. " number="5">
+			<S sid="179" ssid="1">Given a source-side lattice-forest F , our decoder searches for the best derivation d?</S>
+			<S sid="180" ssid="2">among the set of all possible derivation D, each of which converts a tree in lattice-forest into a target string ? : d?</S>
+			<S sid="181" ssid="3">= argmax d?D,T?F P (d|T )?0 ? e?1|d| ? LM(?(d))?2 ? e?3|?(d)|, (5) where |d| is the penalty term on the number of rules in a derivation, LM(?(d)) is the language model and e?3|?(d)| is the length penalty term on target translation.</S>
+			<S sid="182" ssid="4">The P (d|T ) decomposes into the product of rule probabilities P (r), each of which is decomposed further into P (d|T ) = ? r?d P (r).</S>
+			<S sid="183" ssid="5">(6) Each P (r) in Equation 6 is decomposed further into the production of five probabilities: P(r) = P(r|lhs(r))?4 ? P(r|rhs(r))?5 ? P(r|root(lhs(r))?6 ? Plex(lhs(r)|rhs(r))?7 ? Plex(rhs(r)|lhs(r))?8 , (7)where the last two are the lexical probabilities be tween the terminals of lhs(r) and rhs(r).</S>
+			<S sid="184" ssid="6">All theweights of those features are tuned by using Min imal Error Rate Training (Och, 2003).</S>
+			<S sid="185" ssid="7">Following Mi et al (2008), we first convert the lattice-forest into lattice translation forest with the conversion algorithm proposed byMi et al (2008), 842 and then the decoder finds the best derivation on the lattice translation forest.</S>
+			<S sid="186" ssid="8">For 1-best search, we use the cube pruning technique (Chiang, 2007; Huang and Chiang, 2007) which approximately intersects the translation forest with the LM.</S>
+			<S sid="187" ssid="9">For k-best search after getting 1-best derivation, we use the lazy Algorithm 3 of Huang and Chiang (2005) to incrementally compute the second, third, through the kth best alternatives.</S>
+			<S sid="188" ssid="10">For more detail, we refer to the algorithms of Mi et al (2008).</S>
+	</SECTION>
+	<SECTION title="Experiments. " number="6">
+			<S sid="189" ssid="1">6.1 Data Preparation.</S>
+			<S sid="190" ssid="2">Our experiments are on Chinese-to-English trans lation.</S>
+			<S sid="191" ssid="3">Our training corpus is FBIS corpus withabout 6.9M/8.9M words in Chinese/English re spectively.We use SRI Language Modeling Toolkit (Stol cke, 2002) to train a 4-gram language model withKneser-Ney smoothing on the first 1/3 of the Xin hua portion of Gigaword corpus.</S>
+			<S sid="192" ssid="4">We use the 2002 NIST MT Evaluation test setas development set and the 2005 NIST MT Evaluation test set as test set.</S>
+			<S sid="193" ssid="5">We evaluate the trans lation quality using the case-insensitive BLEU-4 metric (Papineni et al, 2002).</S>
+			<S sid="194" ssid="6">We use the standard MERT (Och, 2003) to tune the weights.</S>
+			<S sid="195" ssid="7">6.1.1 Baseline Forest-based System We first segment the Chinese sentences into the1-best segmentations using a state-of-the-art sys tem (Jiang et al, 2008a), since it is not necessary for a conventional parser to take as input the POS tagging results.</S>
+			<S sid="196" ssid="8">Then we parse the segmentation results into forest by using the parser of Xiong et al.</S>
+			<S sid="197" ssid="9">(2005).</S>
+			<S sid="198" ssid="10">Actually, the parser will assign multiple POS tags to each word rather than one.</S>
+			<S sid="199" ssid="11">As a result, our baseline system has already postponed the POS tagging disambiguition to the decoding step.Forest is pruned by using a marginal probability based pruning algorithm similar to Huang (2008).</S>
+			<S sid="200" ssid="12">The pruning threshold are pf = 5 and pf = 10 at rule extraction and decoding steps respectively.We word-align the strings of 1-best segmenta tions and target strings with GIZA++ (Och and Ney, 2000) and apply the refinement method ?grow-diag-final-and?</S>
+			<S sid="201" ssid="13">(Koehn et al, 2003) to get the final alignments.</S>
+			<S sid="202" ssid="14">Following Mi and Huang (2008) and Mi et al (2008), we also extract rules from forest-string pairs and translate forest to string.</S>
+			<S sid="203" ssid="15">6.1.2 Lattice-forest SystemWe first segment and POS tag the Chinese sentences into word lattices using the same system (Jiang et al, 2008a), and prune each lat tice into a reasonable size using the marginal probability-based pruning algorithm.</S>
+			<S sid="204" ssid="16">Then, as current GIZA++ (Och and Ney, 2000) can only handle alignment between string-stringpairs, and word-alingment with the pairs of Chinese characters and target-string will obviously re sult in worse alignment quality.</S>
+			<S sid="205" ssid="17">So a much better way to utilize GIZA++ is to use the most-refinedsegmentation for each lattice instead of the char acter sequence.</S>
+			<S sid="206" ssid="18">This approach can be viewed as acompromise between character-string and latticestring word-alignment paradigms.</S>
+			<S sid="207" ssid="19">In our experiments, we construct the most-refined segmen tations for lattices and word-align them againstthe English sentences.</S>
+			<S sid="208" ssid="20">We again apply the refine ment method ?grow-diag-final-and?</S>
+			<S sid="209" ssid="21">(Koehn et al, 2003) to get the final alignments.In order to get the lattice-forests, we modi fied Xiong et al (2005)?s parser into a lattice parser, which produces the pruned lattice forests for both training, dev and test sentences.</S>
+			<S sid="210" ssid="22">Finally, we apply the rule extraction algorithm proposed in this paper to obtain the rule set.</S>
+			<S sid="211" ssid="23">Both lattices andforests are pruned using a marginal probability based pruning algorithm similar to Huang (2008).</S>
+			<S sid="212" ssid="24">The pruning threshold of lattice is pl = 20 at boththe rule extraction and decoding steps, the thresh olds for the latice-forests are pf = 5 and pf = 10 at rule extraction and decoding steps respectively.</S>
+			<S sid="213" ssid="25">6.2 Results and Analysis.</S>
+			<S sid="214" ssid="26">Table 1 shows results of two systems.</S>
+			<S sid="215" ssid="27">Our lattice forest (LF) system achieves a BLEU score of 29.65, which is an absolute improvement of 0.9 points over the forest (F) baseline system, and the improvement is statistically significant at p  0.01 using the sign-test of Collins et al (2005).</S>
+			<S sid="216" ssid="28">The average number of tokens for the 1-bestand most-refined segmentations are shown in sec ond column.</S>
+			<S sid="217" ssid="29">The average number of charactersis 46.7, which is not shown in Table 1.</S>
+			<S sid="218" ssid="30">Com 843 Sys Avg # of Rules BLEU tokens links All devtst F 28.7 35.1 29.6M 3.3M 28.75 LF 37.1 37.1 23.5M 3.4M 29.65 Table 1: Results of forest (F) and lattice-forest (LF) systems.</S>
+			<S sid="219" ssid="31">Please note that lattice-forest system only extracts 23.5M rules, which is only 79.4% of the rules extracted by forest system.</S>
+			<S sid="220" ssid="32">However, in decoding step, lattice-forest system can use more rules after filtered on dev and test sets.</S>
+			<S sid="221" ssid="33">pared with the characters-based lattice parsing, our most-refined lattice parsing speeds up parsing by (37.1/46.7)3 ? 2 times, since parsing complexity is O(n3).</S>
+			<S sid="222" ssid="34">More interestingly, our lattice-forest model only extracts 23.5M rules, which is 79.4% percent of the rules extracted by the baseline system.</S>
+			<S sid="223" ssid="35">The main reason lies in the larger average numberof words for most-refined segmentations over lat tices being 37.1 words vs 28.7 words over 1-best segmentations.</S>
+			<S sid="224" ssid="36">With much finer granularity, more word aligned links and restrictions are introducedduring the rule extraction step by GIZA++.</S>
+			<S sid="225" ssid="37">How ever, more rules can be used in the decoding step for the lattice-forest system, since the lattice-forest is larger than the forest over 1-best segmentation.</S>
+			<S sid="226" ssid="38">We also investigate the question of how oftenthe non 1-best segmentations are picked in the final translation.</S>
+			<S sid="227" ssid="39">The statistic on our dev set suggests 33% of sentences choose non 1-best segmen tations.</S>
+			<S sid="228" ssid="40">So our lattice-forest model can do global search for the best segmentation and parse-tree to direct the final translation.</S>
+			<S sid="229" ssid="41">More importantly, we can use more translation rules in the translation step.</S>
+	</SECTION>
+	<SECTION title="Related Works. " number="7">
+			<S sid="230" ssid="1">Compactly encoding exponentially many deriva tions, lattice and forest have been used in someprevious works on SMT.</S>
+			<S sid="231" ssid="2">To alleviate the problem of parsing error in 1-best tree-to-string trans lation model, Mi et al (2008) first use forest to direct translation.</S>
+			<S sid="232" ssid="3">Then Mi and Huang (2008) use forest in rule extraction step.</S>
+			<S sid="233" ssid="4">Following the samedirection, Liu et al (2009) use forest in tree to-tree model, and improve 1-best system by 3 BLEU points.</S>
+			<S sid="234" ssid="5">Zhang et al (2009) use forest in tree-sequence-to-string model and also achieve apromising improvement.</S>
+			<S sid="235" ssid="6">Dyer et al (2008) com bine multiple segmentations into word lattice andthen use lattice to direct a phrase-based transla tion decoder.</S>
+			<S sid="236" ssid="7">Then Dyer (2009) employ a singleMaximum Entropy segmentation model to gen erate more diverse lattice, they test their model on the hierarchical phrase-based system.</S>
+			<S sid="237" ssid="8">Lattices and forests can also be used in Minimal ErrorRate Training and Minimum Bayes Risk Decod ing phases (Macherey et al, 2008; Tromble et al, 2008; DeNero et al, 2009; Kumar et al, 2009; Li and Eisner, 2009).</S>
+			<S sid="238" ssid="9">Different from the works listed above, we mainly focus on how to combine lattice and forest into a single tree-to-string system.</S>
+	</SECTION>
+	<SECTION title="Conclusion and Future Work. " number="8">
+			<S sid="239" ssid="1">In this paper, we have proposed a lattice-forestbased model to alleviate the problem of error propagation in traditional single-best pipeline frame work.</S>
+			<S sid="240" ssid="2">Unlike previous works, which only focus onone module at a time, our model successfully integrates lattice into a state-of-the-art forest tree-to string system.</S>
+			<S sid="241" ssid="3">We have explored the algorithms of lattice parsing, rule extraction and decoding.</S>
+			<S sid="242" ssid="4">Ourmodel postpones the disambiguition of segmenta tion and parsing into the final translation step, so that we can make a more global decision to searchfor the best segmentation, parse-tree and transla tion in one step.</S>
+			<S sid="243" ssid="5">The experimental results showthat our lattice-forest approach achieves an abso lute improvement of +0.9 points in term of BLEU score over a state-of-the-art forest-based model.</S>
+			<S sid="244" ssid="6">For future work, we would like to pay more attention to word alignment between lattice pairs and forest pairs, which would be more principledthan our current method of word alignment be tween most-refined segmentation and string.</S>
+			<S sid="245" ssid="7">AcknowledgementWe thank Steve DeNeefe and the three anonymous reviewers for comments.</S>
+			<S sid="246" ssid="8">The work is sup ported by National Natural Science Foundation of China, Contracts 90920004 and 60736014, and 863 State Key Project No. 2006AA010108 (H. M and Q. L.), and in part by DARPA GALE Contract No.</S>
+			<S sid="247" ssid="9">HR0011-06-C-0022, and DARPA under DOI-NBC Grant N10AP20031 (L. H and H. M).</S>
+			<S sid="248" ssid="10">844</S>
+	</SECTION>
+</PAPER>

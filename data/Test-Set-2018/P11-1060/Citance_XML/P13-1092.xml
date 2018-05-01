@@ -1,0 +1,250 @@
+<PAPER>
+  <S sid="0">Grounded Unsupervised Semantic Parsing</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present the first unsupervised approach for semantic parsing that rivals the accuracy of supervised approaches in translating natural-language questions to database queries.</S>
+    <S sid="2" ssid="2">Our GUSP system produces a semantic parse by annotating the dependency-tree nodes and edges with latent states, and learns a probabilistic grammar using EM.</S>
+    <S sid="3" ssid="3">To compensate for the lack of example annotations or question-answer pairs, GUSP adopts a novel grounded-learning approach to leverage database for indirect supervision.</S>
+    <S sid="4" ssid="4">On the challenging ATIS dataset, GUSP attained an accuracy of 84%, effectively tying with the best published results by supervised approaches.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="5" ssid="1">Semantic parsing maps text to a formal meaning representation such as logical forms or structured queries.</S>
+    <S sid="6" ssid="2">Recently, there has been a burgeoning interest in developing machine-learning approaches for semantic parsing (Zettlemoyer and Collins, 2005; Zettlemoyer and Collins, 2007; Mooney, 2007; Kwiatkowski et al., 2011), but the predominant paradigm uses supervised learning, which requires example annotations that are costly to obtain.</S>
+    <S sid="7" ssid="3">More recently, several groundedlearning approaches have been proposed to alleviate the annotation burden (Chen and Mooney, 2008; Kim and Mooney, 2010; B&#168;orschinger et al., 2011; Clarke et al., 2010; Liang et al., 2011).</S>
+    <S sid="8" ssid="4">In particular, Clarke et al. (2010) and Liang et al.</S>
+    <S sid="9" ssid="5">(2011) proposed methods to learn from questionanswer pairs alone, which represents a significant advance.</S>
+    <S sid="10" ssid="6">However, although these methods exonerate annotators from mastering specialized logical forms, finding the answers for complex questions still requires non-trivial effort.</S>
+    <S sid="11" ssid="7">1 Poon &amp; Domingos (2009, 2010) proposed the USP system for unsupervised semantic parsing, which learns a parser by recursively clustering and composing synonymous expressions.</S>
+    <S sid="12" ssid="8">While their approach completely obviates the need for direct supervision, their target logic forms are selfinduced clusters, which do not align with existing database or ontology.</S>
+    <S sid="13" ssid="9">As a result, USP can not be used directly to answer complex questions against an existing database.</S>
+    <S sid="14" ssid="10">More importantly, it misses the opportunity to leverage database for indirect supervision.</S>
+    <S sid="15" ssid="11">In this paper, we present the GUSP system, which combines unsupervised semantic parsing with grounded learning from a database.</S>
+    <S sid="16" ssid="12">GUSP starts with the dependency tree of a sentence and produces a semantic parse by annotating the nodes and edges with latent semantic states derived from the database.</S>
+    <S sid="17" ssid="13">Given a set of natural-language questions and a database, GUSP learns a probabilistic semantic grammar using EM.</S>
+    <S sid="18" ssid="14">To compensate for the lack of direct supervision, GUSP constrains the search space using the database schema, and bootstraps learning using lexical scores computed from the names and values of database elements.</S>
+    <S sid="19" ssid="15">Unlike previous grounded-learning approaches, GUSP does not require ambiguous annotations or oracle answers, but rather focuses on leveraging database contents that are readily available.</S>
+    <S sid="20" ssid="16">Unlike USP, GUSP predetermines the target logical forms based on the database schema, which alleviates the difficulty in learning and ensures that the output semantic parses can be directly used in querying the database.</S>
+    <S sid="21" ssid="17">To handle syntax-semantics mismatch, GUSP introduces a novel dependency-based meaning representation by augmenting the state space to represent semantic relations beyond immediate dependency neighborhood.</S>
+    <S sid="22" ssid="18">This representation also factorizes over nodes and edges, enabling linear-time exact inference in GUSP.</S>
+    <S sid="23" ssid="19">We evaluated GUSP on end-to-end question answering using the ATIS dataset for semantic parsing (Zettlemoyer and Collins, 2007).</S>
+    <S sid="24" ssid="20">Compared to other standard datasets such as GEO and JOBS, ATIS features a database that is an order of magnitude larger in the numbers of relations and instances, as well as a more irregular language (ATIS questions were derived from spoken dialogs).</S>
+    <S sid="25" ssid="21">Despite these challenges, GUSP attains an accuracy of 84% in end-to-end question answering, effectively tying with the stateof-the-art supervised approaches (85% by Zettlemoyer &amp; Collins (2007), 83% by Kwiatkowski et al. (2011)).</S>
+  </SECTION>
+  <SECTION title="2 Background" number="2">
+    <S sid="26" ssid="1">The goal of semantic parsing is to map text to a complete and detailed meaning representation (Mooney, 2007).</S>
+    <S sid="27" ssid="2">This is in contrast with semantic role labeling (Carreras and Marquez, 2004) and information extraction (Banko et al., 2007; Poon and Domingos, 2007), which have a more restricted goal of identifying local semantic roles or extracting selected information slots.</S>
+    <S sid="28" ssid="3">The standard language for meaning representation is first-order logic or a sublanguage, such as FunQL (Kate et al., 2005; Clarke et al., 2010) and lambda calculus (Zettlemoyer and Collins, 2005; Zettlemoyer and Collins, 2007).</S>
+    <S sid="29" ssid="4">Poon &amp; Domingos (2009, 2010) induce a meaning representation by clustering synonymous lambda-calculus forms stemming from partitions of dependency trees.</S>
+    <S sid="30" ssid="5">More recently, Liang et al. (2011) proposed DCS for dependency-based compositional semantics, which represents a semantic parse as a tree with nodes representing database elements and operations, and edges representing relational joins.</S>
+    <S sid="31" ssid="6">In this paper, we focus on semantic parsing for natural-language interface to database (Grosz et al., 1987).</S>
+    <S sid="32" ssid="7">In this problem setting, a naturallanguage question is first translated into a meaning representation by semantic parsing, and then converted into a structured query such as SQL to obtain answer from the database.</S>
+    <S sid="33" ssid="8">Unsupervised semantic parsing was first proposed by Poon &amp; Domingos (2009, 2010) with their USP system.</S>
+    <S sid="34" ssid="9">USP defines a probabilistic model over the dependency tree and semantic parse using Markov logic (Domingos and Lowd, 2009), and recursively clusters and composes synonymous dependency treelets using a hard EM-like procedure.</S>
+    <S sid="35" ssid="10">Since USP uses nonlocal features (e.g., the argument-number feature) and operates over partitions, exact inference is intractable, and USP resorts to a greedy approach to find the MAP parse by searching over partitions.</S>
+    <S sid="36" ssid="11">Titov &amp; Klementiev (2011) proposed a Bayesian version of USP and Titov &amp; Klementiev (2012) adapted it for semantic role induction.</S>
+    <S sid="37" ssid="12">In USP, the meaning is represented by self-induced clusters.</S>
+    <S sid="38" ssid="13">Therefore, to answer complex questions against a database, it requires an additional ontology matching step to resolve USP clusters with database elements.</S>
+    <S sid="39" ssid="14">Popescu et al. (2003, 2004) proposed the PRECISE system, which does not require labeled examples and can be directly applied to question answering with a database.</S>
+    <S sid="40" ssid="15">The PRECISE system, however, requires substantial amount of engineering, including a domain-specific lexicon that specifies the synonyms for names and values of database elements, a restricted set of potential interpretations for domain verbs and prepositions, as well as a set of domain questions with manually labeled POS tags for retraining the tagger and parser.</S>
+    <S sid="41" ssid="16">It also focuses on the subset of easy questions (&#8220;semantically tractable&#8221; questions), and sidesteps the problem of dealing with complex and nested structures, as well as ambiguous interpretations.</S>
+    <S sid="42" ssid="17">Remarkably, while PRECISE can be very accurate on easy questions, it does not try to learn from these interpretations.</S>
+    <S sid="43" ssid="18">In contrast, Goldwasser et al. (2011) proposed a self-supervised approach, which iteratively chose high-confidence parses to retrain the parser.</S>
+    <S sid="44" ssid="19">Their system, however, still required a lexicon manually constructed for the given domain.</S>
+    <S sid="45" ssid="20">Moreover, it was only applied to a small domain (a subset of GEO), and the result still trailed supervised systems by a wide margin.</S>
+    <S sid="46" ssid="21">Grounded learning is motivated by alleviating the burden of direct supervision via interaction with the world, where the indirect supervision may take the form as ambiguous annotations (Chen GUSP for sentence get flight from toronto to san diego stopping in dtw.</S>
+    <S sid="47" ssid="22">Top: the dependency tree of the sentence is annotated with latent semantic states by GUSP.</S>
+    <S sid="48" ssid="23">For brevity, we omit the edge states.</S>
+    <S sid="49" ssid="24">Raising occurs from flight to get and sinking occurs from get to diego.</S>
+    <S sid="50" ssid="25">Bottom: the semantic tree is deterministically converted into SQL to obtain answer from the database. and Mooney, 2008; Kim and Mooney, 2010; B&#168;orschinger et al., 2011) or example questionanswer pairs (Clarke et al., 2010; Liang et al., 2011).</S>
+    <S sid="51" ssid="26">In general, however, such supervision is not always available or easy to obtain.</S>
+    <S sid="52" ssid="27">In contrast, databases are often abundantly available, especially for important domains.</S>
+    <S sid="53" ssid="28">The database community has considerable amount of work on leveraging databases in various tasks such as entity resolution, schema matching, and others.</S>
+    <S sid="54" ssid="29">To the best of our knowledge, this approach is still underexplored in the NLP community.</S>
+    <S sid="55" ssid="30">One notable exception is distant supervision (Mintz et al., 2009; Riedel et al., 2010; Hoffmann et al., 2011; Krishnamurthy and Mitchell, 2012; Heck et al., 2013), which used database instances to derive training examples for relation extraction.</S>
+    <S sid="56" ssid="31">This approach, however, still has considerable limitations.</S>
+    <S sid="57" ssid="32">For example, it only handles binary relations, and the quality of the training examples is inherently noisy and hard to control.</S>
+    <S sid="58" ssid="33">Moreover, this approach is not applicable to the questionanswering setting considered in this paper, since entity pairs in questions need not correspond to valid relational instances in the database.</S>
+  </SECTION>
+  <SECTION title="3 Grounded Unsupervised Semantic" number="3">
+    <S sid="59" ssid="1">In this section, we present the GUSP system for grounded unsupervised semantic parsing.</S>
+    <S sid="60" ssid="2">GUSP is unsupervised and does not require example logical forms or question-answer pairs.</S>
+    <S sid="61" ssid="3">Figure 1 shows an example of end-to-end question answering using GUSP.</S>
+    <S sid="62" ssid="4">GUSP produces a semantic parse of the question by annotating its dependency tree with latent semantic states.</S>
+    <S sid="63" ssid="5">The semantic tree can then be deterministically converted into SQL to obtain answer from the database.</S>
+    <S sid="64" ssid="6">Given a set of natural-language questions and a database, GUSP learns a probabilistic semantic grammar using EM.</S>
+    <S sid="65" ssid="7">To compensate for the lack of annotated examples, GUSP derives indirect supervision from a novel combination of three key sources.</S>
+    <S sid="66" ssid="8">First, GUSP leverages the target database to constrain the search space.</S>
+    <S sid="67" ssid="9">Specifically, it defines the semantic states based on the database schema, and derives lexical-trigger scores from database elements to bootstrap learning.</S>
+    <S sid="68" ssid="10">Second, in contrast to most existing approaches for semantic parsing, GUSP starts directly from dependency trees and focuses on translating them into semantic parses.</S>
+    <S sid="69" ssid="11">While syntax may not always align perfectly with semantics, it is still highly informative about the latter.</S>
+    <S sid="70" ssid="12">In particular, dependency edges are often indicative of semantic relations.</S>
+    <S sid="71" ssid="13">On the other hand, syntax and semantic often diverge, and synactic parsing errors abound.</S>
+    <S sid="72" ssid="14">To combat this problem, GUSP introduces a novel dependency-based meaning representation with an augmented state space to account for semantic relations that are nonlocal in the dependency tree.</S>
+    <S sid="73" ssid="15">GUSP&#8217;s approach of starting directly from dependency tree is inspired by USP.</S>
+    <S sid="74" ssid="16">However, GUSP uses a different meaning representation defined over individual nodes and edges, rather than partitions, which enables linear-time exact inference.</S>
+    <S sid="75" ssid="17">GUSP also handles complex linguistic phenomena and syntax-semantics mismatch by explicitly augmenting the state space, whereas USP&#8217;s capability in handling such phenomena is indirect and more limited.</S>
+    <S sid="76" ssid="18">GUSP represents meaning by a semantic tree, which is similar to DCS (Liang et al., 2011).</S>
+    <S sid="77" ssid="19">Their approach to semantic parsing, however, differs from GUSP in that it induced the semantic tree directly from a sentence, rather than starting from a dependency tree and annotating it.</S>
+    <S sid="78" ssid="20">Their approach alleviates some complexity in the meaning representation for handling syntax-semantics mismatch, but it has to search over a much larger search space involving exponentially many candidate trees.</S>
+    <S sid="79" ssid="21">This might partially explain why it has not yet been scaled up to the ATIS dataset.</S>
+    <S sid="80" ssid="22">Finally, GUSP recognizes that certain aspects in semantic parsing may not be worth learning using precious annotated examples.</S>
+    <S sid="81" ssid="23">These are domain-independent and closed-class expressions, such as times and dates (e.g., before 5pm and July seventeenth), logical connectives (e.g., and, or, not), and numerics (e.g., 200 dollars).</S>
+    <S sid="82" ssid="24">GUSP preprocesses the text to detect such expressions and restricts their interpretation to database elements of compatible types (e.g., before 5pm vs. flight.departure time or flight.arrival time).</S>
+    <S sid="83" ssid="25">Short of training examples, GUSP also resolves quantifier scoping ambiguities deterministically by a fixed ordering.</S>
+    <S sid="84" ssid="26">For example, in the phrase cheapest flight to Seattle, the scope of cheapest can be either flight or flight to seattle.</S>
+    <S sid="85" ssid="27">GUSP always chooses to apply the superlative at last, amounting to choosing the most restricted scope (flight to seattle), which is usually the correct interpretation.</S>
+    <S sid="86" ssid="28">In the remainder of this section, we first formalize the problem setting and introduce the GUSP meaning representation.</S>
+    <S sid="87" ssid="29">We then present the GUSP model and learning and inference algorithms.</S>
+    <S sid="88" ssid="30">Finally, we describe how to convert a GUSP semantic parse into SQL.</S>
+    <S sid="89" ssid="31">Let d be a dependency tree, N(d) and E(d) be its nodes and edges.</S>
+    <S sid="90" ssid="32">In GUSP, a semantic parse of d is an assignment z : N(d) U E(d) &#8594; S that maps its nodes and edges to semantic states in S. For example, in the example in Figure 1, z(flight) = E : flight.</S>
+    <S sid="91" ssid="33">At the core of GUSP is a joint probability distribution PB(d, z) over the dependency tree and the semantic parse.</S>
+    <S sid="92" ssid="34">Semantic parsing in GUSP amounts to finding the most probable parse z* = arg maxz PB(d, z).</S>
+    <S sid="93" ssid="35">Given a set of sentences and their dependency trees D, learning in GUSP maximizes the log-likelihood of D while summing out the latent parses z: Node states GUSP creates a state E:X (E short for entity) for each database entity X (i.e., a database table), a state P:Y (P short for property) and V:Y (V short for value) for each database attribute Y (i.e., a database column).</S>
+    <S sid="94" ssid="36">Node states are assigned to dependency nodes.</S>
+    <S sid="95" ssid="37">Intuitively, they represent database entities, properties, and values.</S>
+    <S sid="96" ssid="38">For example, the ATIS domain contains entities such as flight and fare, which may contain properties such as the departure time flight.departure time or ticket price fare.one direction cost.</S>
+    <S sid="97" ssid="39">The mentions of entities and properties are represented by entity and property states, whereas constants such as 9:25am or 120 dollars are represented by value states.</S>
+    <S sid="98" ssid="40">In the semantic parse in Figure 1, for example, flight is assigned to entity state E:flight, where toronto is assigned to value state V:city.name.</S>
+    <S sid="99" ssid="41">There is a special node state NULL, which signifies that the subtree headed by the word contributes no meaning to the semantic parse (e.g., an auxilliary verb).</S>
+    <S sid="100" ssid="42">Edge states GUSP creates an edge state for each valid relational join paths connecting two node states.</S>
+    <S sid="101" ssid="43">Edge states are assigned to dependency edges.</S>
+    <S sid="102" ssid="44">GUSP enforces the constraints that the node states of the dependency parent and child must agree with the node states in the edge state.</S>
+    <S sid="103" ssid="45">For example, E:flight-V:flight.departure time represents a natural join between the flight entity and the property value departure time.</S>
+    <S sid="104" ssid="46">For a dependency edge e : a &#8594; b, the assignment to E:flight-V:flight.departure time signifies that a represents a flight entity, and b represents the value of its departure time.</S>
+    <S sid="105" ssid="47">An edge state may also represent a relational path consisting of a serial of joins.</S>
+    <S sid="106" ssid="48">For example, Zettlemoyer and Collins (2007) used a predicate from(f,c) to signify that flight f starts from city c. In the ATIS database, however, this amounts to a path of three joins: flight.from airport-airport airport-airport service airport service-city In GUSP, this is represented by the edge state flight-flight.from airport-airport-airport service-city.</S>
+    <S sid="107" ssid="49">GUSP only creates edge states for relational join paths up to length four, as longer paths rarely correspond to meaningful semantic relations.</S>
+    <S sid="108" ssid="50">Composition To handle compositions such as American Airlines and New York City, it helps to distinguish the head words (Airlines and City) from the rest.</S>
+    <S sid="109" ssid="51">In GUSP, this is handled by introducing, for each node state such as E:airline, a new node state such as E:airline:C, where C signifies composition.</S>
+    <S sid="110" ssid="52">For example, in Figure 1, diego is assigned to V:city.name, whereas san is assigned to V:city.name:C, since san diego forms a single meaning unit, and should be translated into SQL as a whole.</S>
+    <S sid="111" ssid="53">These are for handling special linguistic phenomena that are not domain-specific, such as negation, superlatives, and quantifiers.</S>
+    <S sid="112" ssid="54">Operator states GUSP create node states for the logical and comparison operators (OR, AND, NOT, MORE, LESS, EQ).</S>
+    <S sid="113" ssid="55">Additionally, to handle the cases when prepositions and logical connectives are collapsed into the label of a dependency edge, as in Stanford dependency, GUSP introduces an edge state for each triple of an operator and two node states, such as E:flight-AND-E:fare.</S>
+    <S sid="114" ssid="56">Quantifier states GUSP creates a node state for each of the standard SQL functions: argmin, argmax, count, sum.</S>
+    <S sid="115" ssid="57">Additionally, it creates a node state for each pair of compatible function and property.</S>
+    <S sid="116" ssid="58">For example, argmin can be applied to any numeric property, in particular flight.departure time, and so the node state P:flight.departure time:argmin is created and can be assigned to superlatives such as earliest.</S>
+    <S sid="117" ssid="59">For sentences with a correct dependency tree and well-aligned syntax and semantics, the simple semantic states suffice for annotating the correct semantic parse.</S>
+    <S sid="118" ssid="60">However, in complex sentences, syntax and semantic often diverge, either due to their differing goals or simply stemming from syntactic parsing errors.</S>
+    <S sid="119" ssid="61">In Figure 1, the dependency tree contains multiple errors: from toronto and to san diego are mistakenly attached to get, which has no literal meaning here; stopping in dtw is also wrongly attached to diego rather than flight.</S>
+    <S sid="120" ssid="62">Annotating such a tree with only simple states will lead to incorrect semantic parses, e.g., by joining V:city:san diego with V:airport:dtw via E:airport service, rather than joining E:flight with V:airport:dtw via E:flight stop.</S>
+    <S sid="121" ssid="63">To overcome these challenges, GUSP introduces three types of complex states to handle syntax-semantics divergence.</S>
+    <S sid="122" ssid="64">Figure 1 shows the correct semantic parse for the above sentence using the complex states.</S>
+    <S sid="123" ssid="65">Raising For each simple node state N, GUSP creates a &#8220;raised&#8221; state N:R (R short for raised).</S>
+    <S sid="124" ssid="66">A raised state signifies a word that has little or none of its own meaning, but effectively takes one of its child states to be its own (&#8220;raises&#8221;).</S>
+    <S sid="125" ssid="67">Correspondingly, GUSP creates a &#8220;raising&#8221; edge state N-R-N, which signifies that the parent is a raised state and its meaning is derived from the dependency child of state N. For all other children, the parent behaves just as state N. For example, in Figure 1, get is assigned to the raised state E:flight:R, and the edge between get and flight is assigned to the raising edge state E:flight-R-E:flight.</S>
+    <S sid="126" ssid="68">Sinking For simple node states A, B and an edge state E connecting the two, GUSP creates a &#8220;sinking&#8221; node state A+E+B:S (S for sinking).</S>
+    <S sid="127" ssid="69">When a node n is assigned to such a sinking state, n can behave as either A or B for its children (i.e., the edge states can connect to either one), and n&#8217;s parent must be of state B.</S>
+    <S sid="128" ssid="70">In Figure 1, for example, diego is assigned to a sinking state V:city.name + E:flight (the edge state is omitted for brevity).</S>
+    <S sid="129" ssid="71">E:flight comes from its parent get.</S>
+    <S sid="130" ssid="72">For child san, diego behaves as in state V:city.name, and their edge state is a simple compositional join.</S>
+    <S sid="131" ssid="73">For the other child stopping, diego behaves as in state E:flight, and their edge state is a relational join connecting flight with flight stop.</S>
+    <S sid="132" ssid="74">Effectively, this connects stopping with get and eventually with flight (due to raising), virtually correcting the syntax-semantics mismatch stemming from attachment errors.</S>
+    <S sid="133" ssid="75">Implicit For simple node states A, B and an edge state E connecting the two, GUSP also creates a node state A+E+B:I (I for implicit) with the &#8220;implicit&#8221; state B.</S>
+    <S sid="134" ssid="76">In natural languages, an entity is often introduced implicitly, which the reader infers from shared world knowledge.</S>
+    <S sid="135" ssid="77">For example, to obtain the correct semantic parse for Give me the fare from Seattle to Boston, one needs to infer the existence of a flight entity, as in Give me the fare (of a flight) from Seattle to Boston.</S>
+    <S sid="136" ssid="78">Implicit states offer candidates for addressing such needs.</S>
+    <S sid="137" ssid="79">As in sinking, child nodes have access to either of the two simple states, but the implicit state is not visible to the parent node.</S>
+    <S sid="138" ssid="80">GUSP uses the database elements to automatically derive a simple scoring scheme for lexical triggers.</S>
+    <S sid="139" ssid="81">If a database element has a name of k words, each word is assigned score 1/k for the corresponding node state.</S>
+    <S sid="140" ssid="82">Similarly for property values and value node states.</S>
+    <S sid="141" ssid="83">In a sentence, if a word w triggers a node state with score s, its dependency children and left and right neighbors all get a trigger score of 0.1&#183;s for the same state.</S>
+    <S sid="142" ssid="84">To score relevant words not appearing in the database (due to incompleteness of the database or lexical variations), GUSP uses DASH (Pantel et al., 2009) to provide additional word-pair scoring based on lexical distributional similarity computed over general text corpora (Wikipedia in this case).</S>
+    <S sid="143" ssid="85">In the case of multiple score assignments for the same word, the maximum score is used.</S>
+    <S sid="144" ssid="86">For multi-word values of property Y , and for a dependency edge connecting two collocated words, GUSP assigns a score 1.0 to the edge state joining the value node state V:Y to its composition state V:Y:C, as well as the edge state joining two composition states V:Y:C. GUSP also uses a domain-independent list of superlatives with the corresponding data types and polarity (e.g., first, last, earliest, latest, cheapest) and assigns a trigger score of 1.0 for each property of a compatible data type (e.g., cheapest for properties of type MONEY).</S>
+    <S sid="145" ssid="87">In a nutshell, the GUSP model resembles a treeHMM, which models the emission of words and dependencies by node and edge states, as well as transition between an edge state and the parent and child node states.</S>
+    <S sid="146" ssid="88">In preliminary experiments on the development set, we found that the naive model (with multinomials as conditional probabilities) did not perform well in EM.</S>
+    <S sid="147" ssid="89">We thus chose to apply feature-rich EM (Berg-Kirkpatrick et al., 2010) in GUSP, which enabled the use of more generalizable features.</S>
+    <S sid="148" ssid="90">Specifically, GUSP defines a probability distribution over dependency tree d and semantic parse z by where fi and wi are features and their weights, and Z is the normalization constant that sums over all possible d, z (over the same unlabeled tree).</S>
+    <S sid="149" ssid="91">The features of GUSP are as follows: Lexical-trigger scores These are implemented as emission features with fixed weights.</S>
+    <S sid="150" ssid="92">For example, given a token t that triggers node state N with score s, there is a corresponding features 1(lemma = t, state = N) with weight &#945;&#183;s, where &#945; is a parameter.</S>
+    <S sid="151" ssid="93">Emission features for node states GUSP uses two templates for emission of node states: for raised states, 1(token = &#183;), i.e., the emission weights for all raised states are tied; for non-raised states, 1(lemma = &#183;, state = N).</S>
+    <S sid="152" ssid="94">Emission features for edge states GUSP uses the following templates for emission of edge states: Child node state is NULL, dependency= &#183;; Edge state is RAISING, dependency= &#183;; Parent node state is same as the child node state, Otherwise, parent node state= &#183;, child node state= &#183;, edge state type= &#183;, dependency= &#183;.</S>
+    <S sid="153" ssid="95">Transition features GUSP uses the following templates for transition features, which are similar to the edge emission features except for the dependency label: Child node state is NULL; Edge state is RAISING; Parent node state is same as the child node state; Otherwise, parent node state= &#183;, child node state= &#183;, edge state type= &#183;.</S>
+    <S sid="154" ssid="96">Complexity Prior To favor simple semantic parses, GUSP imposes an exponential prior with weight &#946; on nodes states that are not null or raised, and on each relational join in an edge state.</S>
+    <S sid="155" ssid="97">Since the GUSP model factors over nodes and edges, learning and inference can be done efficiently using EM and dynamic programming.</S>
+    <S sid="156" ssid="98">Specifically, the MAP parse and expectations can be computed by tree-Viterbi and inside-outside (Petrov and Klein, 2008).</S>
+    <S sid="157" ssid="99">The parameters can be estimated by feature-rich EM (Berg-Kirkpatrick et al., 2010).</S>
+    <S sid="158" ssid="100">Because the Viterbi and inside-outside are applied to a fixed tree (i.e., the input dependency tree), their running times are only linear in the sentence length in GUSP.</S>
+    <S sid="159" ssid="101">Given a semantic parse, GUSP generates the SQL by a depth-first traversal that recursively computes the denotation of a node from the denotations of its children and its node state and edge states.</S>
+    <S sid="160" ssid="102">Each denotation is a structured query that contains: a list of entities for projection (corresponding to the FROM statement in SQL); a computation tree where the leaves are simple joins or value comparisons, and the internal nodes are logical or quantifier operators (the WHERE statement); the salient database elements (the SELECT statement).</S>
+    <S sid="161" ssid="103">Below, we illustrate this procedure using the semantic parse in Figure 1 as a running example.</S>
+    <S sid="162" ssid="104">Value node state GUSP creates a semantic object of the given type with a unique index and the word constant.</S>
+    <S sid="163" ssid="105">For example, the denotation for node toronto is a city.name object with a unique index and constant &#8220;toronto&#8221;.</S>
+    <S sid="164" ssid="106">The unique index is necessary in case the SQL involves multiple instances of the same entity.</S>
+    <S sid="165" ssid="107">For example, the SQL in Figure 1 involves two instances of the entity city, corresponding to the departure and arrival cities, respectively.</S>
+    <S sid="166" ssid="108">By default, such a semantic object will be translated into an equality constraint, such as city.name = toronto.</S>
+    <S sid="167" ssid="109">Entity or property node state GUSP creates a semantic object of the given type with a unique relation index.</S>
+    <S sid="168" ssid="110">For example, the denotation for node flight is simply a flight object with a unique index.</S>
+    <S sid="169" ssid="111">By default, such an object will contribute to the list of entities in SQL projection (the FROM statement), but not any constraints.</S>
+    <S sid="170" ssid="112">NULL state GUSP returns an empty denotation.</S>
+    <S sid="171" ssid="113">Simple edge state GUSP appends the child denotation to that of the parent, and appends equality constraints corresponding to the relational join path.</S>
+    <S sid="172" ssid="114">In the case of composition, such as the join between diego and san, GUSP simply keeps the parent object, while adding to it the words from the child.</S>
+    <S sid="173" ssid="115">In the case of a more complex join, such as that between stopping and dtw, GUSP adds the relational constraints that join flight stop with airport: flight stop.stop airport = airport.airport id.</S>
+    <S sid="174" ssid="116">Raising edge state GUSP simply takes the child denotation and sets that to the parent.</S>
+    <S sid="175" ssid="117">Implicit and sinking states GUSP maintains two separate denotations for the two simple states in the complex state, and processes their respective edge states accordingly.</S>
+    <S sid="176" ssid="118">For example, the node diego contains two denotations, one for V:city.name, and one for E:flight, with the corresponding child being san and stopping, respectively.</S>
+    <S sid="177" ssid="119">Domain-independent states For comparator states such as MORE or LESS, GUSP changes the default equality constraints to an inequality one, such as flight.depart time &lt; 600 for before 6am.</S>
+    <S sid="178" ssid="120">For logical connectives, GUSP combines the projection and constraints accordingly.</S>
+    <S sid="179" ssid="121">For quantifier states, GUSP applies the given function to the query.</S>
+    <S sid="180" ssid="122">Resolve scoping ambiguities GUSP delays applying quantifiers until the child semantic object differs from the parent one or when reaching the root.</S>
+    <S sid="181" ssid="123">GUSP employs the following fixed ordering in evaluating quantifiers and operators: superlatives and other quantifiers are evaluated at last (i.e., after evaluating all other joins or operators for the given object), whereas negation is evaluated first, conjunctions and disjunctions are evaluated in their order of appearance.</S>
+  </SECTION>
+  <SECTION title="4 Experiments" number="4">
+    <S sid="182" ssid="1">We evaluated GUSP on the ATIS travel planning domain, which has been studied in He &amp; Young (2005, 2006) and adapted for evaluating semantic parsing by Zettlemoyer &amp; Collins (2007) (henceforth ZC07).</S>
+    <S sid="183" ssid="2">The ZC07 dataset contains annotated logical forms for each sentence, which we do not use.</S>
+    <S sid="184" ssid="3">Since our goal is not to produce a specific logical form, we directly evaluate on the end-to-end task of translating questions into database queries and measure question-answering accuracy.</S>
+    <S sid="185" ssid="4">The ATIS distrbution contains the original SQL annotations, which we used to compute gold answers for evaluation only.</S>
+    <S sid="186" ssid="5">The dataset is split into training, development, and test, containing 4500, 478, and 449 sentences, respectively.</S>
+    <S sid="187" ssid="6">We used the development set for initial development and tuning hyperparameters.</S>
+    <S sid="188" ssid="7">At test time, we ran GUSP over the test set to learn a semantic parser and output the MAP parses.2 The ATIS sentences were originally derived from spoken dialog and were therefore in lower cases.</S>
+    <S sid="189" ssid="8">Since case information is important for parsers and taggers, we first truecased the sentences using DASH (Pantel et al., 2009), which stores the case for each phrase in Wikipedia.</S>
+    <S sid="190" ssid="9">We then ran the sentences through SPLAT, a state-of-the-art NLP toolkit (Quirk et al., 2012), to conduct tokenization, part-of-speech tagging, and constituency parsing.</S>
+    <S sid="191" ssid="10">Since SPLAT does not output dependency trees, we ran the Stanford parser over SPLAT parses to generate the dependency trees in Stanford dependency (de Marneffe et al., 2006).</S>
+    <S sid="192" ssid="11">For the GUSP system, we set the hyperparameters from initial experiments on the development set, and used them in all subsequent experiments.</S>
+    <S sid="193" ssid="12">Specifically, we set &#945; = 50 and &#946; = &#8722;0.1, and ran three iterations of feature-rich EM with an L2 prior of 10 over the feature weights.</S>
+    <S sid="194" ssid="13">To evaluate the importance of complex states, we considered two versions of GUSP : GUSPSIMPLE and GUSP-FULL, where GUSPSIMPLE only admits simple states, whereas GUSP-FULL admits all states.</S>
+    <S sid="195" ssid="14">During development, we found that some questions are inherently ambiguous that cannot be solved except with some domain knowledge or labeled examples.</S>
+    <S sid="196" ssid="15">In Section 3.2, we discuss an edge state that joins a flight with its starting city: flight-flight.from airport-airport-airport service-city.</S>
+    <S sid="197" ssid="16">The ATIS database also contains another path of the same length: flight-flight.from airport-airport-ground service-city.</S>
+    <S sid="198" ssid="17">The only difference is that air service is replaced by ground service.</S>
+    <S sid="199" ssid="18">In some occasions, the racy on the ATIS test dataset.</S>
+    <S sid="200" ssid="19">Both ZC07 and FUBL used annotated logical forms in training, whereas GUSP-FULL and GUSP++ did not.</S>
+    <S sid="201" ssid="20">The numbers for GUSP-FULL and GUSP++ are endto-end question answering accuracy, whereas the numbers for ZC07 and FUBL are recall on exact match in logical forms. answers are identical whereas in others they are different.</S>
+    <S sid="202" ssid="21">Without other information, neither the complexity prior nor EM can properly discriminate one against another.</S>
+    <S sid="203" ssid="22">(Note that this ambiguity is not present in the ZC07 logical forms, which use a single predicate from(f,c) for the entire relation paths.</S>
+    <S sid="204" ssid="23">In other words, to translate ZC07 logical forms into SQL, one also needs to decide on which path to use.)</S>
+    <S sid="205" ssid="24">Another type of domain-specific ambiguities involves sentences such as give me information on flights after 4pm on wednesday.</S>
+    <S sid="206" ssid="25">There is no obvious information to disambiguate between flight.departure time and flight.arrival time for 4pm.</S>
+    <S sid="207" ssid="26">Such ambiguities suggest opportunities for interactive learning,3 but this is clearly out of the scope of this paper.</S>
+    <S sid="208" ssid="27">Instead, we incorporated a simple disambiguation feature with a small weight of 0.01 that fires over the simple states of flight.departure time and airport service.</S>
+    <S sid="209" ssid="28">We named the resulting system GUSP++.</S>
+    <S sid="210" ssid="29">To gauge the difficulty of the task and the quality of lexical-trigger scores, we also considered a deterministic baseline LEXICAL, which computed semantic parses using lexical-trigger scores alone.</S>
+    <S sid="211" ssid="30">We first compared the results of GUSP-FULL and GUSP++ with ZC07 and FUBL (Kwiatkowski et al., 2011).4 Note that ZC07 and FUBL were evaluated on exact match in logical forms.</S>
+    <S sid="212" ssid="31">We used their recall numbers which are the percentages of sentences with fully correct logical forms.</S>
+    <S sid="213" ssid="32">Given that the questions are quite specific and generally admit nonzero number of answers, the questionanswer accuracy should be quite comparable with these numbers.</S>
+    <S sid="214" ssid="33">Table 1 shows the comparison.</S>
+    <S sid="215" ssid="34">Surprisingly, even without the additional disambiguation feature, GUSP-FULL already attained an accuracy broadly in range with supervised results.</S>
+    <S sid="216" ssid="35">With the feature, GUSP++ effectively tied with the best supervised approach.</S>
+    <S sid="217" ssid="36">To evaluate the importance of various components in GUSP, we conducted ablation test to compare the variants of GUSP.</S>
+    <S sid="218" ssid="37">Table 2 shows the results.</S>
+    <S sid="219" ssid="38">LEXICAL can parse more than one third of the sentences correctly, which is quite remarkable in itself, considering that it only used the lexical scores.</S>
+    <S sid="220" ssid="39">On the other hand, roughly two-third of the sentences cannot be correctly parsed in this way, suggesting that the lexical scores are noisy and ambiguous.</S>
+    <S sid="221" ssid="40">In comparison, all GUSP variants achieved significant gains over LEXICAL.</S>
+    <S sid="222" ssid="41">Additionally, GUSP-FULL substantially outperformed GUSP-SIMPLE, highlighting the challenges of syntax-semantics mismatch in ATIS, and demonstrating the importance and effectiveness of complex states for handling such mismatch.</S>
+    <S sid="223" ssid="42">All three types of complex states produced significant contributions.</S>
+    <S sid="224" ssid="43">For example, compared to GUSP++, Upon manual inspection, many of the remaining errors are due to syntactic parsing errors that are too severe to fix.</S>
+    <S sid="225" ssid="44">This is partly due to the fact that ATIS sentences are out of domain compared to the newswired text on which the syntactic parsers were trained.</S>
+    <S sid="226" ssid="45">For example, show, list were regularly parsed as nouns, whereas round (as in round trip) were often parsed as a verb and northwest were parsed as an auxilliary verb.</S>
+    <S sid="227" ssid="46">Another reason is that ATIS sentences are typically less formal or grammatical, which exacerbates the difficulty in parsing.</S>
+    <S sid="228" ssid="47">In this paper, we used the 1-best dependency tree to produce semantic parse.</S>
+    <S sid="229" ssid="48">An interesting future direction is to consider joint syntacticsemantic parsing, using k-best trees or even the parse forest as input and reranking the top parse using semantic information.5</S>
+  </SECTION>
+  <SECTION title="5 Conclusion" number="5">
+    <S sid="230" ssid="1">This paper introduces grounded unsupervised semantic parsing, which leverages available database for indirect supervision and uses a grounded meaning representation to account for syntax-semantics mismatch in dependency-based semantic parsing.</S>
+    <S sid="231" ssid="2">The resulting GUSP system is the first unsupervised approach to attain an accuracy comparable to the best supervised systems in translating complex natural-language questions to database queries.</S>
+    <S sid="232" ssid="3">Directions for future work include: joint syntactic-semantic parsing, developing better features for learning; interactive learning in a dialog setting; generalizing distant supervision; application to knowledge extraction from database-rich domains such as biomedical sciences.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="6">
+    <S sid="233" ssid="1">We would like to thank Kristina Toutanova, Chris Quirk, Luke Zettlemoyer, and Yoav Artzi for useful discussions, and Patrick Pantel and Michael Gammon for help with the datasets.</S>
+  </SECTION>
+</PAPER>

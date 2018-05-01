@@ -1,0 +1,187 @@
+<PAPER>
+  <S sid="0">Uptraining for Accurate Deterministic Question Parsing</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">It is well known that parsing accuracies drop significantly on out-of-domain data.</S>
+    <S sid="2" ssid="2">What is less known is that some parsers suffer more from domain shifts than others.</S>
+    <S sid="3" ssid="3">We show that dependency parsers have more difficulty parsing questions than constituency parsers.</S>
+    <S sid="4" ssid="4">In particular, deterministic shift-reduce dependency parsers, which are of highest interest for practical applications because of their linear running time, drop to 60% labeled accuracy on a question test set.</S>
+    <S sid="5" ssid="5">We propose an in which a deterministic parser is trained on the output of a more accurate, but slower, latent variable constituency parser (converted to dependencies).</S>
+    <S sid="6" ssid="6">Uptraining with 100K unlabeled questions achieves results comparable to having 2K labeled questions for training.</S>
+    <S sid="7" ssid="7">With 100K unlabeled and 2K labeled questions, uptraining is able to improve parsing accuracy to 84%, closing the gap between in-domain and out-of-domain performance.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="8" ssid="1">Parsing accuracies on the popular Section 23 of the Wall Street Journal (WSJ) portion of the Penn Treebank have been steadily improving over the past decade.</S>
+    <S sid="9" ssid="2">At this point, we have many different parsing models that reach and even surpass 90% dependency or constituency accuracy on this test set (McDonald et al., 2006; Nivre et al., 2007; Charniak and Johnson, 2005; Petrov et al., 2006; Carreras et al., 2008; Koo and Collins, 2010).</S>
+    <S sid="10" ssid="3">Quite impressively, models based on deterministic shift-reduce parsing algorithms are able to rival the other computationally more expensive models (see Nivre (2008) and references therein for more details).</S>
+    <S sid="11" ssid="4">Their linear running time makes them ideal candidates for large scale text processing, and our model of choice for this paper.</S>
+    <S sid="12" ssid="5">Unfortunately, the parsing accuracies of all models have been reported to drop significantly on outof-domain test sets, due to shifts in vocabulary and grammar usage (Gildea, 2001; McClosky et al., 2006b; Foster, 2010).</S>
+    <S sid="13" ssid="6">In this paper, we focus our attention on the task of parsing questions.</S>
+    <S sid="14" ssid="7">Questions pose interesting challenges for WSJ-trained parsers because they are heavily underrepresented in the training data (there are only 334 questions among the 39,832 training sentences).</S>
+    <S sid="15" ssid="8">At the same time, questions are of particular interest for user facing applications like question answering or web search, which necessitate parsers that can process questions in a fast and accurate manner.</S>
+    <S sid="16" ssid="9">We start our investigation in Section 3 by training several state-of-the-art (dependency and constituency) parsers on the standard WSJ training set.</S>
+    <S sid="17" ssid="10">When evaluated on a question corpus, we observe dramatic accuracy drops exceeding 20% for the deterministic shift-reduce parsers.</S>
+    <S sid="18" ssid="11">In general, dependency parsers (McDonald et al., 2006; Nivre et al., 2007), seem to suffer more from this domain change than constituency parsers (Charniak and Johnson, 2005; Petrov et al., 2006).</S>
+    <S sid="19" ssid="12">Overall, the latent variable approach of Petrov et al. (2006) appears to generalize best to this new domain, losing only about 5%.</S>
+    <S sid="20" ssid="13">Unfortunately, the parsers that generalize better to this new domain have time complexities that are cubic in the sentence length (or even higher), rendering them impractical for web-scale text processing.</S>
+    <S sid="21" ssid="14">We therefore propose an uptraining method, in which a deterministic shift-reduce parser is trained on the output of a more accurate, but slower parser (Section 4).</S>
+    <S sid="22" ssid="15">This type of domain adaptation is reminiscent of self-training (McClosky et al., 2006a; Huang and Harper, 2009) and co-training (Blum and Mitchell, 1998; Sagae and Lavie, 2006), except that the goal here is not to further improve the performance of the very best model.</S>
+    <S sid="23" ssid="16">Instead, our aim is to train a computationally cheaper model (a linear time dependency parser) to match the performance of the best model (a cubic time constituency parser), resulting in a computationally efficient, yet highly accurate model.</S>
+    <S sid="24" ssid="17">In practice, we parse a large amount of unlabeled data from the target domain with the constituency parser of Petrov et al. (2006) and then train a deterministic dependency parser on this noisy, automatically parsed data.</S>
+    <S sid="25" ssid="18">The accuracy of the linear time parser on a question test set goes up from 60.06% (LAS) to 76.94% after uptraining, which is comparable to adding 2,000 labeled questions to the training data.</S>
+    <S sid="26" ssid="19">Combining uptraining with 2,000 labeled questions further improves the accuracy to 84.14%, fully recovering the drop between in-domain and out-of-domain accuracy.</S>
+    <S sid="27" ssid="20">We also present a detailed error analysis in Section 5, showing that the errors of the WSJ-trained model are primarily caused by sharp changes in syntactic configurations and only secondarily due to lexical shifts.</S>
+    <S sid="28" ssid="21">Uptraining leads to large improvements across all error metrics and especially on important dependencies like subjects (nsubj).</S>
+  </SECTION>
+  <SECTION title="2 Experimental Setup" number="2">
+    <S sid="29" ssid="1">We used the following experimental protocol throughout the paper.</S>
+    <S sid="30" ssid="2">Our main training set consists of Sections 02-21 of the Wall Street Journal portion of the Penn Treebank (Marcus et al., 1993), with Section 22 serving as development set for source domain comparisons.</S>
+    <S sid="31" ssid="3">For our target domain experiments, we evaluate on the QuestionBank (Judge et al., 2006), which includes a set of manually annotated questions from a TREC question answering task.</S>
+    <S sid="32" ssid="4">The questions in the QuestionBank are very different from our training data in terms of grammatical constructions and vocabulary usage, making this a rather extreme case of domainadaptation.</S>
+    <S sid="33" ssid="5">We split the 4,000 questions contained in this corpus in three parts: the first 2,000 questions are reserved as a small target-domain training set; the remaining 2,000 questions are split in two equal parts, the first serving as development set and the second as our final test set.</S>
+    <S sid="34" ssid="6">We report accuracies on the developments sets throughout this paper, and test only at the very end on the final test set.</S>
+    <S sid="35" ssid="7">We convert the trees in both treebanks from constituencies to labeled dependencies (see Figure 1) using the Stanford converter, which produces 46 types of labeled dependencies1 (de Marneffe et al., 2006).</S>
+    <S sid="36" ssid="8">We evaluate on both unlabeled (UAS) and labeled dependency accuracy (LAS).2 Additionally, we use a set of 2 million questions collected from Internet search queries as unlabeled target domain data.</S>
+    <S sid="37" ssid="9">All user information was anonymized and only the search query string was retained.</S>
+    <S sid="38" ssid="10">The question sample is selected at random after passing two filters that select queries that are similar in style to the questions in the QuestionBank: (i) the queries must start with an English function word that can be used to start a question (what, who when, how, why, can, does, etc.</S>
+    <S sid="39" ssid="11">), and (ii) the queries have a maximum length of 160 characters.</S>
+    <S sid="40" ssid="12">We use multiple publicly available parsers, as well as our own implementation of a deterministic shiftreduce parser in our experiments.</S>
+    <S sid="41" ssid="13">The dependency parsers that we compare are the deterministic shift-reduce MaltParser (Nivre et al., 2007) and the second-order minimum spanning tree algorithm based MstParser (McDonald et al., 2006).</S>
+    <S sid="42" ssid="14">Our shiftreduce parser is a re-implementation of the MaltParser, using a standard set of features and a linear kernel SVM for classification.</S>
+    <S sid="43" ssid="15">We also train and evaluate the generative lexicalized parser of Charniak (2000) on its own, as well as in combination with the discriminative reranker of Charniak and Johnson (2005).</S>
+    <S sid="44" ssid="16">Finally, we run the latent variable parser (a.k.a.</S>
+    <S sid="45" ssid="17">BerkeleyParser) of Petrov et al. (2006), as well as the recent product of latent variable grammars version (Petrov, 2010).</S>
+    <S sid="46" ssid="18">To facilitate comparisons between constituency and dependency parsers, we convert the output of the constituency parsers to labeled dependencies using the same procedure that is applied to the treebanks.</S>
+    <S sid="47" ssid="19">We also report their F1 scores for completeness.</S>
+    <S sid="48" ssid="20">While the constituency parsers used in our experiments view part-of-speech (POS) tagging as an integral part of parsing, the dependency parsers require the input to be tagged with a separate POS tagger.</S>
+    <S sid="49" ssid="21">We use the TnT tagger (Brants, 2000) in our experiments, because of its efficiency and ease of use.</S>
+    <S sid="50" ssid="22">Tagger and parser are always trained on the same data.</S>
+  </SECTION>
+  <SECTION title="3 Parsing Questions" number="3">
+    <S sid="51" ssid="1">We consider two domain adaptation scenarios in this paper.</S>
+    <S sid="52" ssid="2">In the first scenario (sometimes abbreviated as WSJ), we assume that we do not have any labeled training data from the target domain.</S>
+    <S sid="53" ssid="3">In practice, this will always be the case when the target domain is unknown or very diverse.</S>
+    <S sid="54" ssid="4">The second scenario (abbreviated as WSJ+QB) assumes a small amount of labeled training data from the target domain.</S>
+    <S sid="55" ssid="5">While this might be expensive to obtain, it is certainly feasible for narrow domains (e.g. questions), or when a high parsing accuracy is really important.</S>
+    <S sid="56" ssid="6">We first trained all parsers on the WSJ training set and evaluated their performance on the two domain specific evaluation sets (newswire and questions).</S>
+    <S sid="57" ssid="7">As can be seen in the left columns of Table 1, all parsers perform very well on the WSJ development set.</S>
+    <S sid="58" ssid="8">While there are differences in the accuracies, all scores fall within a close range.</S>
+    <S sid="59" ssid="9">The table also confirms the commonly known fact (Yamada and Matsumoto, 2003; McDonald et al., 2005) that constituency parsers are more accurate at producing dependencies than dependency parsers (at least when the dependencies were produced by a deterministic transformation of a constituency treebank, as is the case here).</S>
+    <S sid="60" ssid="10">This picture changes drastically when the performance is measured on the QuestionBank development set (right columns in Table 1).</S>
+    <S sid="61" ssid="11">As one might have expected, the accuracies are significantly lower, however, the drop for some of the parsers is shocking.</S>
+    <S sid="62" ssid="12">Most notably, the deterministic shiftreduce parsers lose almost 25% (absolute) on labeled accuracies, while the latent variable parsers lose around 12%.3 Note also that even with gold POS tags, LAS is below 70% for our deterministic shift-reduce parser, suggesting that the drop in accuracy is primarily due to a syntactic shift rather than a lexical shift.</S>
+    <S sid="63" ssid="13">These low accuracies are especially disturbing when one considers that the average question in the evaluation set is only nine words long and therefore potentially much less ambiguous than WSJ sentences.</S>
+    <S sid="64" ssid="14">We will examine the main error types more carefully in Section 5.</S>
+    <S sid="65" ssid="15">Overall, the dependency parsers seem to suffer more from the domain change than the constituency parsers.</S>
+    <S sid="66" ssid="16">One possible explanation is that they lack the global constraints that are enforced by the (context-free) grammars.</S>
+    <S sid="67" ssid="17">Even though the MstParser finds the globally best spanning tree, all constraints are local.</S>
+    <S sid="68" ssid="18">This means for example, that it is not possible to require the final parse to contain a verb (something that can be easily expressed by a top-level production of the form S -* NP VP in a context free grammar).</S>
+    <S sid="69" ssid="19">This is not a limitation of dependency parsers in general.</S>
+    <S sid="70" ssid="20">For example, it would be easy to enforce such constraints in the Eisner (1996) algorithm or using Integer Linear Programming approaches (Riedel and Clarke, 2006; Martins et al., 2009).</S>
+    <S sid="71" ssid="21">However, such richer modeling capacity comes with a much higher computational cost.</S>
+    <S sid="72" ssid="22">Looking at the constituency parsers, we observe that the lexicalized (reranking) parser of Charniak and Johnson (2005) loses more than the latent variable approach of Petrov et al. (2006).</S>
+    <S sid="73" ssid="23">This difference doesn&#8217;t seem to be a difference of generative vs. discriminative estimation.</S>
+    <S sid="74" ssid="24">We suspect that the latent variable approach is better able to utilize the little evidence in the training data.</S>
+    <S sid="75" ssid="25">Intuitively speaking, some of the latent variables seem to get allocated for modeling the few questions present in the training data, while the lexicalization contexts are not able to distinguish between declarative sentences and questions.</S>
+    <S sid="76" ssid="26">To verify this hypothesis, we conducted two additional experiments.</S>
+    <S sid="77" ssid="27">In the first experiment, we collapsed the question specific phrasal categories SQ and SBARQ to their declarative sentence equivalents S and SBAR.</S>
+    <S sid="78" ssid="28">When the training and test data are processed this way, the lexicalized parser loses 1.5% F1, while the latent variable parser loses only 0.7%.</S>
+    <S sid="79" ssid="29">It is difficult to examine the grammars, but one can speculate that some of the latent variables were used to model the question specific constructions and the model was able to re-learn the distinctions that we purposefully collapsed.</S>
+    <S sid="80" ssid="30">In the second experiment, we removed all questions from the WSJ training set and retrained both parsers.</S>
+    <S sid="81" ssid="31">This did not make a significant difference when evaluating on the WSJ development set, but of course resulted in a large performance drop when evaluating on the QuestionBank.</S>
+    <S sid="82" ssid="32">The lexicalized parser came out ahead in this experiment,4 confirming our hypothesis that the latent variable model is better able to pick up the small amount of relevant evidence that is present in the WSJ training data (rather than being systematically better suited for modeling questions).</S>
+    <S sid="83" ssid="33">In the above experiments, we considered a situation where we have no labeled training data from the target domain, as will typically be the case.</S>
+    <S sid="84" ssid="34">We now consider a situation where a small amount of labeled data (2,000 manually parsed sentences) from the domain of interest is available for training.</S>
+    <S sid="85" ssid="35">We experimented with two different ways of utilizing this additional training data.</S>
+    <S sid="86" ssid="36">In a first experiment, we trained models on the concatenation of the WSJ and QuestionBank training sets (we did not attempt to weight the different corpora).</S>
+    <S sid="87" ssid="37">As Table 2 shows (left columns), even a modest amount of labeled data from the target domain can significantly boost parsing performance, giving double-digit improvements in some cases.</S>
+    <S sid="88" ssid="38">While not shown in the table, the parsing accuracies on the WSJ development set where largely unaffected by the additional training data.</S>
+    <S sid="89" ssid="39">Alternatively, one can also train models exclusively on the QuestionBank data, resulting in question specific models.</S>
+    <S sid="90" ssid="40">The parsing accuracies of these domain-specific models are shown in the right columns of Table 2, and are significantly lower than those of models trained on the concatenated training sets.</S>
+    <S sid="91" ssid="41">They are often times even lower than the results of parsers trained exclusively on the WSJ, indicating that 2,000 sentences are not sufficient to train accurate parsers, even for quite narrow domains.</S>
+  </SECTION>
+  <SECTION title="4 Uptraining for Domain-Adaptation" number="4">
+    <S sid="92" ssid="1">The results in the previous section suggest that parsers without global constraints have difficulties dealing with the syntactic differences between declarative sentences and questions.</S>
+    <S sid="93" ssid="2">A possible explanation is that similar word configurations can appear in both types of sentences, but with very different syntactic interpretation.</S>
+    <S sid="94" ssid="3">Local models without global constraints are therefore mislead into deadend interpretations from which they cannot recover (McDonald and Nivre, 2007).</S>
+    <S sid="95" ssid="4">Our approach will therefore be to use a large amount of unlabeled data to bias the model towards the appropriate distribution for the target domain.</S>
+    <S sid="96" ssid="5">Rather than looking for feature correspondences between the domains (Blitzer et al., 2006), we propose to use automatically labeled target domain data to learn the target domain distribution directly.</S>
+    <S sid="97" ssid="6">The idea of training parsers on their own output has been around for as long as there have been statistical parsers, but typically does not work well at all (Charniak, 1997).</S>
+    <S sid="98" ssid="7">Steedman et al. (2003) and Clark et al.</S>
+    <S sid="99" ssid="8">(2003) present co-training procedures for parsers and taggers respectively, which are effective when only very little labeled data is available.</S>
+    <S sid="100" ssid="9">McClosky et al. (2006a) were the first to improve a state-of-the-art constituency parsing system by utilizing unlabeled data for self-training.</S>
+    <S sid="101" ssid="10">In subsequent work, they show that the same idea can be used for domain adaptation if the unlabeled data is chosen accordingly (McClosky et al., 2006b).</S>
+    <S sid="102" ssid="11">Sagae and Tsujii (2007) co-train two dependency parsers by adding automatically parsed sentences for which the parsers agree to the training data.</S>
+    <S sid="103" ssid="12">Finally, Suzuki et al. (2009) present a very effective semi-supervised approach in which features from multiple generative models estimated on unlabeled data are combined in a discriminative system for structured prediction.</S>
+    <S sid="104" ssid="13">All of these approaches have in common that their ultimate goal is to improve the final performance.</S>
+    <S sid="105" ssid="14">Our work differs in that instead of improving the performance of the best parser, we want to build a more efficient parser that comes close to the accuracy of the best parser.</S>
+    <S sid="106" ssid="15">To do this, we parse the unlabeled data with our most accurate parser and generate noisy, but fairly accurate labels (parse trees) for the unlabeled data.</S>
+    <S sid="107" ssid="16">We refer to the parser used for producing the automatic labels as the base parser (unless otherwise noted, we used the latent variable parser of Petrov et al. (2006) as our base parser).</S>
+    <S sid="108" ssid="17">Because the most accurate base parsers are constituency parsers, we need to convert the parse trees to dependencies using the Stanford converter (see Section 2).</S>
+    <S sid="109" ssid="18">The automatically parsed sentences are appended to the labeled training data, and the shift-reduce parser (and the part-of-speech tagger) are trained on this new training set.</S>
+    <S sid="110" ssid="19">We did not increase the weight of the WSJ training data, but weighted the QuestionBank training data by a factor of ten in the WSJ+QB experiments.</S>
+    <S sid="111" ssid="20">Figure 2 shows the efficacy of uptraining as a function of the size of the unlabeled data.</S>
+    <S sid="112" ssid="21">Both labeled (LAS) and unlabeled accuracies (UAS) improve sharply when automatically parsed sentences from the target domain are added to the training data, and level off after 100,000 sentences.</S>
+    <S sid="113" ssid="22">Comparing the end-points of the dashed lines (models having access only to labeled data from the WSJ) and the starting points of the solid lines (models that have access to both WSJ and QuestionBank), one can see that roughly the same improvements (from 72% to 86% UAS and from 60% to 77% LAS) can be obtained by having access to 2,000 labeled sentences from the target domain or uptraining with a large amount of unlabeled data from the target domain.</S>
+    <S sid="114" ssid="23">The benefits seem to be complementary and can be combined to give the best results.</S>
+    <S sid="115" ssid="24">The final accuracy of 88.63 / 84.14 (UAS / LAS) on the question evaluation set is comparable to the in-domain performance on newswire data (88.24 / 84.69).</S>
+    <S sid="116" ssid="25">Table 3 then compares uptraining on the output of different base parsers to pure self-training.</S>
+    <S sid="117" ssid="26">In these experiments, the same set of 500,000 questions was parsed by different base parsers.</S>
+    <S sid="118" ssid="27">The automatic parses were then added to the labeled training data and the parser was retrained.</S>
+    <S sid="119" ssid="28">As the results show, self-training provides only modest improvements of less than 2%, while uptraining gives double-digit improvements in some cases.</S>
+    <S sid="120" ssid="29">Interestingly, there seems to be no substantial difference between uptraining on the output of a single latent variable parser (Petrov et al., 2006) and a product of latent variable grammars (Petrov, 2010).</S>
+    <S sid="121" ssid="30">It appears that the roughly 1% accuracy difference between the two base parsers is not important for uptraining.</S>
+    <S sid="122" ssid="31">Our uptraining procedure improves parse quality on out-of-domain data to the level of in-domain accuracy.</S>
+    <S sid="123" ssid="32">However, looking closer at Table 3, one can see that the POS accuracy is still relatively low (93.53%), potentially limiting the final accuracy.</S>
+    <S sid="124" ssid="33">To remove this limitation (and also the dependence on a separate POS tagger), we experimented with word cluster features.</S>
+    <S sid="125" ssid="34">As shown in Koo et al. (2008), word cluster features can be used in conjunction with POS tags to improve parsing accuracy.</S>
+    <S sid="126" ssid="35">Here, we use them instead of POS tags in order to further reduce the domain-dependence of our model.</S>
+    <S sid="127" ssid="36">Similar to Koo et al. (2008), we use the Brown clustering algorithm (Brown et al., 1992) to produce a deterministic hierarchical clustering of our input vocabulary.</S>
+    <S sid="128" ssid="37">We then extract features based on varying cluster granularities (6 and 10 bits in our experiments).</S>
+    <S sid="129" ssid="38">Table 4 shows that roughly the same level of accuracy can be achieved with cluster based features instead of POS tag features.</S>
+    <S sid="130" ssid="39">This change makes our parser completely deterministic and enables us to process sentences in a single left-to-right pass.</S>
+  </SECTION>
+  <SECTION title="5 Error Analysis" number="5">
+    <S sid="131" ssid="1">To provide a better understanding of the challenges involved in parsing questions, we analyzed the errors made by our WSJ-trained shift-reduce parser and also compared them to the errors that are left after uptraining.</S>
+    <S sid="132" ssid="2">Many parsing errors can be traced back to POS tagging errors, which are much more frequent on outof-domain data than on in-domain data (88.8% on the question data compared to above 95.0% on WSJ data).</S>
+    <S sid="133" ssid="3">Part of the reason for the lower POS tagging accuracy is the higher unknown word ratio (7.3% on the question evaluation set, compared to 3.4% on the WSJ evaluation set).</S>
+    <S sid="134" ssid="4">Another reason is a change in the lexical distribution.</S>
+    <S sid="135" ssid="5">For example, wh-determiners (WDT) are quite rare in the WSJ training data (relative frequency 0.45%), but five times more common in the QuestionBank training data (2.49%).</S>
+    <S sid="136" ssid="6">In addition to this frequency difference, 52.43% of the WDTs in the WSJ are the word &#8220;which&#8221; and 46.97% are&#8220;that&#8221;.</S>
+    <S sid="137" ssid="7">In the QuestionBank on the other hand, &#8220;what&#8221; is by far the most common WDT word (81.40%), while &#8220;which&#8221; and &#8220;that&#8221; account only for 13.65% and 4.94% respectively.</S>
+    <S sid="138" ssid="8">Not surprisingly the most common POS error involves wh-determiners (typically the word &#8220;what&#8221;) being incorrectly labeled as Whpronouns (WP), resulting in head and label errors like the one shown in Figure 3(a).</S>
+    <S sid="139" ssid="9">To separate out POS tagging errors from parsing errors, we also ran experiments with correct (gold) POS tags.</S>
+    <S sid="140" ssid="10">The parsing accuracies of our shift-reduce parser using gold POS tags are listed in the last rows of Tables 1 and 2.</S>
+    <S sid="141" ssid="11">Even with gold POS tags, the deterministic shift-reduce parser falls short of the accuracies of the constituency parsers (with automatic tags), presumably because the shift-reduce model is making only local decisions and is lacking the global constraints provided by the context-free grammar.</S>
+    <S sid="142" ssid="12">To find the main error types, we looked at the most frequent labels in the QuestionBank development set, and analyzed the ones that benefited the most from uptraining.</S>
+    <S sid="143" ssid="13">Table 5 has the frequency and Fscores of the dependency types that we are going to discuss in the following.</S>
+    <S sid="144" ssid="14">We also provide examples which are illustrated in Figure 3. nsubj: The WSJ-trained model is often producing parses that are missing a subject (nsubj).</S>
+    <S sid="145" ssid="15">Questions like &#8220;What is the oldest profession?&#8221; and &#8220;When was Ozzy Osbourne born?&#8221; should have &#8220;profession&#8221; and &#8220;Osbourne&#8221; as nsubjs, but in both cases the WSJ-trained parser did not label any subj (see Figures 3(b) and 3(c)).</S>
+    <S sid="146" ssid="16">Another common error is to mislabel nsubj.</S>
+    <S sid="147" ssid="17">For example, the nsubj of &#8220;What are liver enzymes?&#8221; should be enzymes, but the WSJtrained parser labels &#8220;What&#8221; as the nsubj, which makes sense in a statement but not in a question. amod: The model is overpredicting &#8220;amod&#8221;, resulting in low precision figures for this label.</S>
+    <S sid="148" ssid="18">An example is &#8220;How many points make up a perfect fivepin bowling score?&#8221;.</S>
+    <S sid="149" ssid="19">The Stanford dependency uses &#8220;How&#8221; as the head of &#8220;many&#8221; in noun phrases like &#8220;How many points&#8221;, and the relation is a generic &#8220;dep&#8221;.</S>
+    <S sid="150" ssid="20">But in the WSJ model prediction, &#8220;many&#8217;s&#8221; head is &#8220;points,&#8221; and the relation mislabeled as amod.</S>
+    <S sid="151" ssid="21">Since it&#8217;s an adjective preceding the noun, the WSJ model often makes this mistake and therefore the precision is much lower when it doesn&#8217;t see more questions in the training data. dobj: The WSJ model doesn&#8217;t predict object extraction well.</S>
+    <S sid="152" ssid="22">For example, in &#8220;How many people did Randy Craft kill?&#8221; (Figure 3(d)), the direct object of kill should be &#8220;How many people.&#8221; In the Stanford dependencies, the correct labels for this noun phrase are &#8220;dobj dep dep,&#8221; but the WSJ model predicts &#8220;compl amod nsubj.&#8221; This is a common error caused by the different word order in questions.</S>
+    <S sid="153" ssid="23">The uptrained model is much better at handling these type of constructions. attr: An attr (attributive) is a wh-noun phrase (WHNP) complement of a copular verb.</S>
+    <S sid="154" ssid="24">In the WSJ training data, only 4,641 out of 950,028 dependencies are attr (0.5%); in the QuestionBank training data, 1,023 out of 17,069 (6.0%) are attr.</S>
+    <S sid="155" ssid="25">As a consequence, the WSJ model cannot predict this label in questions very well. aux: &#8220;What does the abbreviation AIDS stand for?&#8221; should have &#8220;stand&#8221; as the main head of the sentence, and &#8220;does&#8221; as its aux.</S>
+    <S sid="156" ssid="26">However, the WSJ model labeled &#8220;does&#8221; as the main head.</S>
+    <S sid="157" ssid="27">Similar patterns occur in many questions, and therefore the WSJ has a very low recall rate.</S>
+    <S sid="158" ssid="28">In contrast, mostly local labels (that are not related to question/statement structure differences) have a consistently high accuracy.</S>
+    <S sid="159" ssid="29">For example: det has an accuracy of 98.86% with the WSJ-trained model, and 99.24% with the uptrained model.</S>
+  </SECTION>
+  <SECTION title="6 Conclusions" number="6">
+    <S sid="160" ssid="1">We presented a method for domain adaptation of deterministic shift-reduce parsers.</S>
+    <S sid="161" ssid="2">We evaluated multiple state-of-the-art parsers on a question corpus and showed that parsing accuracies degrade substantially on this out-of-domain task.</S>
+    <S sid="162" ssid="3">Most notably, deterministic shift-reduce parsers have difficulty dealing with the modified word order and lose more than 20% in accuracy.</S>
+    <S sid="163" ssid="4">We then proposed a simple, yet very effective uptraining method for domainadaptation.</S>
+    <S sid="164" ssid="5">In a nutshell, we trained a deterministic shift-reduce parser on the output of a more accurate, but slower parser.</S>
+    <S sid="165" ssid="6">Uptraining with large amounts of unlabeled data gives similar improvements as having access to 2,000 labeled sentences from the target domain.</S>
+    <S sid="166" ssid="7">With 2,000 labeled questions and a large amount of unlabeled questions, uptraining is able to close the gap between in-domain and out-of-domain accuracy.</S>
+  </SECTION>
+  <SECTION title="Acknowledgements" number="7">
+    <S sid="167" ssid="1">We would like to thank Ryan McDonald for running the MstParser experiments and for many fruitful discussions on this topic.</S>
+    <S sid="168" ssid="2">We would also like to thank Joakim Nivre for help with the MatlParser and Marie-Catherine de Marneffe for help with the Stanford Dependency Converter.</S>
+  </SECTION>
+</PAPER>

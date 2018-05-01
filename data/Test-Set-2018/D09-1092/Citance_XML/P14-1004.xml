@@ -1,0 +1,208 @@
+<PAPER>
+  <S sid="0">Discovering Latent Structure in Task-Oriented Dialogues</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">A key challenge for computational conversation models is to discover latent structure in task-oriented dialogue, since it provides a basis for analysing, evaluating, and building conversational systems.</S>
+    <S sid="2" ssid="2">We propose three new unsupervised models to discover latent structures in task-oriented dialogues.</S>
+    <S sid="3" ssid="3">Our methods synthesize hidden Markov models (for underlying state) and topic models (to connect words to states).</S>
+    <S sid="4" ssid="4">We apply them to two real, non-trivial datasets: human-computer spoken dialogues in bus query service, and humanhuman text-based chats from a live technical support service.</S>
+    <S sid="5" ssid="5">We show that our models extract meaningful state representations and dialogue structures consistent with human annotations.</S>
+    <S sid="6" ssid="6">Quantitatively, we show our models achieve superior performance on held-out log likelihood evaluation and an ordering task.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="7" ssid="1">Modeling human conversation is a fundamental scientific pursuit.</S>
+    <S sid="8" ssid="2">In addition to yielding basic insights into human communication, computational models of conversation underpin a host of real-world applications, including interactive dialogue systems (Young, 2006), dialogue summarization (Murray et al., 2005; Daum&#180;e III and Marcu, 2006; Liu et al., 2010), and even medical applications such as diagnosis of psychological conditions (DeVault et al., 2013).</S>
+    <S sid="9" ssid="3">Computational models of conversation can be broadly divided into two genres: modeling and control.</S>
+    <S sid="10" ssid="4">Control is concerned with choosing actions in interactive settings&#8212;for example to maximize task completion&#8212;using reinforcement learn&#8727;Work done at Microsoft Research. ing (Levin et al., 2000), supervised learning (Hurtado et al., 2010), hand-crafted rules (Larsson and Traum, 2000), or mixtures of these (Henderson and Lemon, 2008).</S>
+    <S sid="11" ssid="5">By contrast, modeling&#8212;the genre of this paper&#8212;is concerned with inferring a phenomena in an existing corpus, such as dialogue acts in two-party conversations (Stolcke et al., 2000) or topic shifts in multi-party dialogues (Galley et al., 2003; Purver et al., 2006; Hsueh et al., 2006; Banerjee and Rudnicky, 2006).</S>
+    <S sid="12" ssid="6">Many past works rely on supervised learning or human annotations, which usually requires manual labels and annotation guidelines (Jurafsky et al., 1997).</S>
+    <S sid="13" ssid="7">It constrains scaling the size of training examples, and application domains.</S>
+    <S sid="14" ssid="8">By contrast, unsupervised methods operate only on the observable signal (e.g. words) and are estimated without labels or their attendant limitations (Crook et al., 2009).</S>
+    <S sid="15" ssid="9">They are particularly relevant because conversation is a temporal process where models are trained to infer a latent state which evolves as the dialogue progresses (Bangalore et al., 2006; Traum and Larsson, 2003).</S>
+    <S sid="16" ssid="10">Our basic approach is to assume that each utterance in the conversation is in a latent state, which has a causal effect on the words the conversants produce.</S>
+    <S sid="17" ssid="11">Inferring this model yields basic insights into the structure of conversation and also has broad practical benefits, for example, speech recognition (Williams and Balakrishnan, 2009), natural language generation (Rieser and Lemon, 2010), and new features for dialogue policy optimization (Singh et al., 2002; Young, 2006).</S>
+    <S sid="18" ssid="12">There has been limited past work on unsupervised methods for conversation modeling.</S>
+    <S sid="19" ssid="13">Chotimongkol (2008) studies task-oriented conversation and proposed a model based on a hidden Markov model (HMM).</S>
+    <S sid="20" ssid="14">Ritter et al. (2010) extends it by introducing additional word sources, and applies to non-task-oriented conversations&#8212; social interactions on Twitter, where the subjects discussed are very diffuse.</S>
+    <S sid="21" ssid="15">The additional word sources capture the subjects, leaving the statespecific models to express common dialogue flows such as question/answer pairs.</S>
+    <S sid="22" ssid="16">In this paper, we retain the underlying HMM, but assume words are emitted using topic models (TM), exemplified by latent Dirichlet allocation (Blei et al., 2003, LDA).</S>
+    <S sid="23" ssid="17">LDA assumes each word in an utterance is drawn from one of a set of latent topics, where each topic is a multinomial distribution over the vocabulary.</S>
+    <S sid="24" ssid="18">The key idea is that the set of topics is shared across all states, and each state corresponds to a mixture of topics.</S>
+    <S sid="25" ssid="19">We propose three model variants that link topics and states in different ways.</S>
+    <S sid="26" ssid="20">Sharing topics across states is an attractive property in task-oriented dialogue, where a single concept can be discussed at many points in a dialogue, yet different topics often appear in predictable sequences.</S>
+    <S sid="27" ssid="21">Compared to past works, the decoupling of states and topics gives our models more expressive power and the potential to be more data efficient.</S>
+    <S sid="28" ssid="22">Empirically, we find that our models outperform past approaches on two realworld corpora of task-oriented dialogues.</S>
+    <S sid="29" ssid="23">This paper is organized as follows: Section 2 introduces two task-oriented domains and corpora; Section 3 details three new unsupervised generative models which combine HMMs and LDA and efficient inference schemes; Section 4 evaluates our models qualitatively and quantitatively, and finally conclude in Section 5.</S>
+  </SECTION>
+  <SECTION title="2 Data" number="2">
+    <S sid="30" ssid="1">To test the generality of our models, we study two very different datasets: a set of human-computer spoken dialogues in quering bus timetable (BusTime), and a set of human-human text-based dialogues in the technical support domain (TechSupport).</S>
+    <S sid="31" ssid="2">In BusTime, the conversational structure is known because the computer followed a deterministic program (Williams, 2012), making it possible to directly compare an inferred model to ground truth on this corpus.1 In TechSupport, there is no known flowchart,2 making this a realistic application of unsupervised methods.</S>
+    <S sid="32" ssid="3">BusTime This corpus consists of logs of telephone calls between a spoken dialogue system and real bus users in Pittsburgh, USA (Black et al., 2010).</S>
+    <S sid="33" ssid="4">For the user side, the words logged are the words recognized by the automatic speech recognizer.</S>
+    <S sid="34" ssid="5">The vocabulary of the recognizer was constrained to the bus timetable task, so only words known to the recognizer in advance are output.</S>
+    <S sid="35" ssid="6">Even so, the word error rate is approximately 3040%, due to the challenging audio conditions of usage&#8212;with traffic noise and extraneous speech.</S>
+    <S sid="36" ssid="7">The system asked users sequentially for a bus route, origin and destination, and optionally date and time.</S>
+    <S sid="37" ssid="8">The system confirmed low-confidence speech recognition results.</S>
+    <S sid="38" ssid="9">Due to the speech recognition channel, system and user turns always alternate.</S>
+    <S sid="39" ssid="10">An example dialogue is given below: We discard dialogues with fewer than 20 utterances.</S>
+    <S sid="40" ssid="11">We also map all named entities (e.g., &#8220;downtown&#8221; and &#8220;28X&#8221;) to their semantic types (resp.</S>
+    <S sid="41" ssid="12">(location) and (bus-route)) to reduce vocabulary size.</S>
+    <S sid="42" ssid="13">The corpus we use consists of approximately 850 dialogue sessions or 30, 000 utterances.</S>
+    <S sid="43" ssid="14">It contains 370, 000 tokens (words or semantic types) with vocabulary size 250.</S>
+    <S sid="44" ssid="15">TechSupport This corpus consists of logs of real web-based human-human text &#8220;chat&#8221; conversations between clients and technical support agents at a large corporation.</S>
+    <S sid="45" ssid="16">Usually, clients and agents first exchange names and contact information; after that, dialogues are quite free-form, as agents ask questions and suggest fixes.</S>
+    <S sid="46" ssid="17">Most dialogues ultimately end when the client&#8217;s issue has been resolved; some clients are provided with a reference number for future follow-up.</S>
+    <S sid="47" ssid="18">An example dialogue is given below: &#8220;Enter&#8221; on a keyboard.</S>
+    <S sid="48" ssid="19">Therefore, clients&#8217; input and agents&#8217; responses do not necessarily alternate different states.</S>
+    <S sid="49" ssid="20">For instance, the second block tm of client inputs clearly comes from two different states which should not be merged together.</S>
+    <S sid="50" ssid="21">We discard dialogues with fewer than 30 utterances.</S>
+    <S sid="51" ssid="22">We map named entities to their semantic types, apply stemming, and remove stop words.3 The corpus we use contains approximately 2, 000 dialogue sessions or 80, 000 conversation utterances.</S>
+    <S sid="52" ssid="23">It consists of 770, 000 tokens, with a a vocabulary size of 6,600.</S>
+  </SECTION>
+  <SECTION title="3 Latent Structure in Dialogues" number="3">
+    <S sid="53" ssid="1">In this work, our goal is to infer latent structure presented in task-oriented conversation.</S>
+    <S sid="54" ssid="2">We assume that the structure can be encoded in a probabilistic state transition diagram, where the dialogue is in one state at each utterance, and states have a causal effect on the words observed.</S>
+    <S sid="55" ssid="3">We assume the boundaries between utterances are given, which is trivial in many corpora.</S>
+    <S sid="56" ssid="4">The simplest formulation we consider is an HMM where each state contains a unigram language model (LM), proposed by Chotimongkol (2008) for task-oriented dialogue and originally developed for discourse analysis by Barzilay and Lee (2004).</S>
+    <S sid="57" ssid="5">We call it LM-HMM as in Figure 1(a).</S>
+    <S sid="58" ssid="6">For a corpus of M dialogues, the m-th dialogue contains n utterances, each of which contains Nn words (we omit index m from terms because it will be clear from context).</S>
+    <S sid="59" ssid="7">At n-th utterance, we assume the dialogue is in some latent state sn.</S>
+    <S sid="60" ssid="8">Words in n-th utterance wn,1, ... , wn,Nn are generated (independently) according to the LM.</S>
+    <S sid="61" ssid="9">When an utterance is complete, the next state is drawn ri r1i according to HMM, i.e., P(s'|s).</S>
+    <S sid="62" ssid="10">While LM-HMM captures the basic intuition of conversation structure, it assumes words are conditioned only on state.</S>
+    <S sid="63" ssid="11">Ritter et al. (2010) extends every word in an utterance, first draw a source indicator r from &#960;, and then generate the word from the corresponding source.</S>
+    <S sid="64" ssid="12">We call it LM-HMMS (Figure 1(b)).</S>
+    <S sid="65" ssid="13">Ritter et al. (2010) finds these alternate sources are important in non-task-oriented domains, where events are diffuse and fleeting.</S>
+    <S sid="66" ssid="14">For example,Twitter exchanges often focus on a help to distinguish conversational states in social media.</S>
+    <S sid="67" ssid="15">We also explore similar variants.</S>
+    <S sid="68" ssid="16">In this paper, these two models form our baselines.</S>
+    <S sid="69" ssid="17">For all models, we use Markov chain Monte Carlo (MCMC) inference (Neal, 2000) to find latent variables that best fit observed data.</S>
+    <S sid="70" ssid="18">We also assume symmetric Dirichlet priors on all multinomial distributions and apply collapsed Gibbs sampling.</S>
+    <S sid="71" ssid="19">In the rest of this section, we present our models and their inference algorithms in turn.</S>
+    <S sid="72" ssid="20">Our approach is to modify the emission probabilities of states to be distributions over topics rather than distributions over words.</S>
+    <S sid="73" ssid="21">In other words, instead of generating words via a LM, we generate words from a topic model (TM), where each state maps to a mixture of topics.</S>
+    <S sid="74" ssid="22">The key benefit of this additional layer of abstraction is to enable states to express higher-level concepts through pooling of topics across states.</S>
+    <S sid="75" ssid="23">For example, topics might be inferred for content like &#8220;bus-route&#8221; or &#8220;lothen be combinations of these, e.g., a state might express &#8220;askbus route&#8221; or &#8220;confirm location&#8221;. ics from the number of states.</S>
+    <S sid="76" ssid="24">Throughout this padialogues in the same ways as baseline models.</S>
+    <S sid="77" ssid="25">We develop three generative models.</S>
+    <S sid="78" ssid="26">In the first variant (TM-HMM, Figure 2(a)), we assume every states), akin to the LM-HMMS model.</S>
+    <S sid="79" ssid="27">TM-HMM generates a dialogue as following: over topicsz93n conditioned on sn, then generate word w from the topic-specified distribuWe assume &#952;&#8217;s and &#966;&#8217;s are drawn from correwhere &#945;, &#946;, &#947; are symmetric Dirichlet priors on distribution &#966;t&#8217;s and state transition multinomials, respectively.</S>
+    <S sid="80" ssid="28">All probabilities can be computed gk using collapsed Gibbs sampler for LDA (Griffiths and Steyvers, 2004) and HMM (Goldwater and dialogue.</S>
+    <S sid="81" ssid="29">Therefore, the topic distribution is often stable throughout,the entire dialogue, and does not vary from turn to turn.</S>
+    <S sid="82" ssid="30">For example, in the troubleshooting domain, dialogues about each dialogue and selects the expected fraction of words generated from different sources.</S>
+    <S sid="83" ssid="31">Again, we impose Dirichlet priors on distributions over topics &#952;&#8217;s and distributions over words &#966;&#8217;s as in LDA.</S>
+    <S sid="84" ssid="32">We also assume the distributions over sources &#964;&#8217;s are governed by a Beta distribution.</S>
+    <S sid="85" ssid="33">The session-wide topics is slightly different from that used in LM-HMMS: LM-HMMS was developed for social chats on Twitter where topics are very diffuse and unlikely to repeat; hence often unique to each dialogue.</S>
+    <S sid="86" ssid="34">By contrast, our models are designed for task-oriented dialogues which pertain to a given domain where topics are more tightly clustered; thus, in TM-HMMS session-wide topics are shared across the corpus.</S>
+    <S sid="87" ssid="35">The posterior distributions of state assignment sn, word source rn,i and topic assignment zn,i are where &#960; is a symmetric Dirichlet prior on sessionwise word source distribution &#964;m&#8217;s, and other symbols are defined above.</S>
+    <S sid="88" ssid="36">All these probabilities are Dirichlet-multinomial distributions and therefore can be computed efficiently.</S>
+    <S sid="89" ssid="37">The TM-HMMSS (Figure 2(c)) model modifies TM-HMMS to re-sample the distribution over word sources &#964; at every utterance, instead of once at the beginning of each session.</S>
+    <S sid="90" ssid="38">This modification allows the fraction of words drawn from the session-wide topics to vary over the course of the dialogue.</S>
+    <S sid="91" ssid="39">This is attractive in task-oriented dialogue, where some sections of the dialogue always follow a similar script, regardless of session topic&#8212;for example, the opening, closing, or asking the user if they will take a survey.</S>
+    <S sid="92" ssid="40">To support these patterns, TM-HMMSS conditions the source generator distribution on the current state.</S>
+    <S sid="93" ssid="41">The generative story of TM-HMMSS is very similar to TM-HMMS, except the distribution over word sources &#964;&#8217;s are sampled at every state.</S>
+    <S sid="94" ssid="42">A dialogue is generated as following: As in TM-HMMS, we assume multinomial distributions &#952;&#8217;s and &#966;&#8217;s are drawn from Dirichlet priors; and &#964;&#8217;s are governed by Beta distributions.</S>
+    <S sid="95" ssid="43">The inference for TM-HMMSS is exactly same as the inference for TM-HMMS, except the posterior distributions over word source rn,i is now where the first term is integrated over all sessions and conditioned on the state assignment.</S>
+    <S sid="96" ssid="44">Since our primary focus is task-oriented dialogues between two parties, we assume every word source is associated with two sets of LMs&#8212; one for system/agent and another for user/client.</S>
+    <S sid="97" ssid="45">This configuration is similar to PolyLDA (Mimno et al., 2009) or LinkLDA (Yano et al., 2009), such that utterances from different parties are treated as different languages or blog-post and comments pairs.</S>
+    <S sid="98" ssid="46">In this work, we implement all models under this setting, but omit details in plate diagrams for the sake of simplicity.</S>
+    <S sid="99" ssid="47">In settings where the agent and client always alternate, each state emits both text before transitioning to the next state.</S>
+    <S sid="100" ssid="48">This is the case in the BusTime dataset, where the spoken dialogue system enforces strict turn-taking.</S>
+    <S sid="101" ssid="49">In settings where agents or client may produce more than one utterance in a row, each state emits either agent text or client text, then transitions to the next state.</S>
+    <S sid="102" ssid="50">This is the case in the TechSupport corpus, where either conversant may send a message at any time.</S>
+    <S sid="103" ssid="51">To evaluate performance across different models, we compute the likelihood on held-out test set.</S>
+    <S sid="104" ssid="52">For TM-HMM model, there are no local dependencies, and we therefore compute the marginal likelihood using the forward algorithm.</S>
+    <S sid="105" ssid="53">However, for TM-HMMS and TM-HMMSS models, the latent topic distribution &#952; creates local dependencies, rendering computation of marginal likelihoods intractable.</S>
+    <S sid="106" ssid="54">Hence, we use a Chib-style estimator (Wallach et al., 2009).</S>
+    <S sid="107" ssid="55">Although it is computationally more expensive, it gives less biased approximation of marginal likelihood, even for finite samples.</S>
+    <S sid="108" ssid="56">This ensures likelihood measurements are comparable across models.</S>
+  </SECTION>
+  <SECTION title="4 Experiments" number="4">
+    <S sid="109" ssid="1">In this section, we examine the effectiveness of our models.</S>
+    <S sid="110" ssid="2">We first evaluate our models qualitatively by exploring the inferred state diagram.</S>
+    <S sid="111" ssid="3">We then perform quantitative analysis with log likelihood measurements and an ordering task on a held-out test set.</S>
+    <S sid="112" ssid="4">We train all models with 80% of the entire dataset and use the rest for testing.</S>
+    <S sid="113" ssid="5">We run the Gibbs samplers for 1000 iterations and update all hyper-parameters using slice sampling (Neal, 2003; Wallach, 2008) every 10 iterations.</S>
+    <S sid="114" ssid="6">The training likelihood suggest all models converge within 500&#8722;800 iterations.</S>
+    <S sid="115" ssid="7">For all Chib-style estimators, we collect 100 samples along the Markov chain to approximate the marginal likelihood.</S>
+    <S sid="116" ssid="8">Figure 3 shows the state diagram for BusTime corpus inferred by TM-HMM without any supervision.5 Every dialogue is opened by asking the user to say a bus route, or to say &#8220;I&#8217;m not sure.&#8221; It then transits to a state about location, e.g., origin and destination.</S>
+    <S sid="117" ssid="9">Both these two states may continue to a confirmation step immediately after.</S>
+    <S sid="118" ssid="10">After verifying all the necessary information, the system asks if the user wants &#8220;the next few buses&#8221;.6 Otherwise, the system follows up with the user on the particular date and time information.</S>
+    <S sid="119" ssid="11">After system reads out bus times, the user has options to &#8220;repeat&#8221; or ask for subsequent schedules.</S>
+    <S sid="120" ssid="12">In addition, we also include the humanannotated dialogue flow in Figure 4 for reference (Williams, 2012).</S>
+    <S sid="121" ssid="13">It only illustrates the most common design of system actions, without showing edge cases.</S>
+    <S sid="122" ssid="14">Comparing these two figures, the dialogue flow inferred by our model along the most probable path (highlighted in bold red in Figure 3) is consistent with underlying design.</S>
+    <S sid="123" ssid="15">Furthermore, our models are able to capture edge cases&#8212;omitted for space&#8212;through a more general and probabilistic fashion.</S>
+    <S sid="124" ssid="16">In summary, our models yield a very similar flowchart to the underlying design in a completely unsupervised way.7 Figure 5 shows part of the flowchart for the TechSupport corpus, generated by the TMHMMSS model.8 A conversation usually starts with a welcome message from a customer support agent.</S>
+    <S sid="125" ssid="17">Next, clients sometimes report a problem; otherwise, the agent gathers the client&#8217;s identity.</S>
+    <S sid="126" ssid="18">After these preliminaries, the agent usually checks the system version or platform settings.</S>
+    <S sid="127" ssid="19">Then, information about the problem is exchanged, and a cycle ensues where agents propose solutions, and clients attempt them, reporting results.</S>
+    <S sid="128" ssid="20">Usually, a conversation loops among these states until either the problem is resolved (as the case shown in the figure) or the client is left with a reference number for future follow-up (not shown due to space limit).</S>
+    <S sid="129" ssid="21">Although technical support is taskoriented, the scope of possible issues is vast and not prescribed.</S>
+    <S sid="130" ssid="22">The table in Figure 5 lists the top ranked words of selected topics&#8212;the categories clients often report problems in.</S>
+    <S sid="131" ssid="23">It illustrates that, qualitatively, TM-HMMSS discovers both problem categories and conversation structures on our data.</S>
+    <S sid="132" ssid="24">As one of the baseline model, we also include a part of flowchart generated by LM-HMM model with similar settings of T = 20 states.</S>
+    <S sid="133" ssid="25">Illustrated by the highlighted states in 6, LM-HMM model conflates interactions that commonly occur at the beginning and end of a dialogue&#8212;i.e., &#8220;acknowledge agent&#8221; and &#8220;resolve problem&#8221;, since their underlying language models are likely to produce similar probability distributions over words.</S>
+    <S sid="134" ssid="26">By incorporating topic information, our proposed models (e.g., TM-HMMSS in Figure 5) are able to enforce the state transitions towards more frequent flow patterns, which further helps to overcome the weakness of language model.</S>
+    <S sid="135" ssid="27">In this section, we evaluate our models using log likelihood and an ordering task on a held-out test set.</S>
+    <S sid="136" ssid="28">Both evaluation metrics measure the predictive power of a conversation model. state: ask for bus route state: read out bus timetables Log Likelihood The likelihood metric measures the probability of generating the test set under a specified model.</S>
+    <S sid="137" ssid="29">As shown in Figure 7, our models yield as good or better likelihood than LM-HMM and LM-HMMS models on both datasets under all settings.</S>
+    <S sid="138" ssid="30">For our proposed models, TM-HMMS and TM-HMMSS perform better than TM-HMM on TechSupport, but not necessarily on BusTime.</S>
+    <S sid="139" ssid="31">In addition, we notice that the marginal benefit of TM-HMMSS over TM-HMM is greater on TechSupport dataset, where each dialogue focuses on one of many possible tasks.</S>
+    <S sid="140" ssid="32">This coincides with our belief that topics are more conversation dependent and shared across the entire corpus in customer support data&#8212;i.e., different clients in different sessions might ask about similar issues.</S>
+    <S sid="141" ssid="33">Ordering Test Ritter et al. (2010) proposes an evaluation based on rank correlation coefficient, which measures the degree of similarity between any two orderings over sequential data.</S>
+    <S sid="142" ssid="34">They use Kendall&#8217;s r as evaluation metric, which is based on the agreement between pairwise orderings of two sequences (Kendall, 1938).</S>
+    <S sid="143" ssid="35">It ranges from &#8722;1 to +1, where +1 indicates an identical ordering and &#8722;1 indicates a reverse ordering.</S>
+    <S sid="144" ssid="36">The idea is to generate all permutations of the utterances in a dialogue (including true ordering), and compute the log likelihood for each under the model.</S>
+    <S sid="145" ssid="37">Then, Kendall&#8217;s r is computed between the most probable permutation and true ordering.</S>
+    <S sid="146" ssid="38">The result is the average of r values for all dialogues in test corpus.</S>
+    <S sid="147" ssid="39">Ritter et al. (2010) limits their dataset by choosing Twitter dialogues containing 3 to 6 posts (utterances), making it tractable to enumerate all permutations.</S>
+    <S sid="148" ssid="40">However, our datasets are much larger, and enumerating all possible permutations of dialogues with more than 20 or 30 utterances is infeasible.</S>
+    <S sid="149" ssid="41">Instead, we incrementally build up the permutation set by adding one random permutation at a time, and taking the most probable permutation after each addition.</S>
+    <S sid="150" ssid="42">If this process were continued (intractably!) until all permutations are enumerated, the true value of Kendall&#8217;s r test would be reached.</S>
+    <S sid="151" ssid="43">In practice, the value appears to plateau after a few dozen measurements.</S>
+    <S sid="152" ssid="44">We present our results in Figure 8.</S>
+    <S sid="153" ssid="45">Our models consistently perform as good or better than Agent: conversation opening + identity check help, answer, desk, may, &lt;agent-name&gt;, welcom, name, number, phone, ... e.g.</S>
+    <S sid="154" ssid="46">: welcome to answer desk, i'm &lt;agentname&gt;, how can i help you, may i have tri, get, comput, cant, window, message, error, problem, instal, say, ... e.g.</S>
+    <S sid="155" ssid="47">: get problem in windows, cant install on computer, it says error message thank, minut, pleas, let, &lt;client-name&gt;, check, give, moment, ok, wait, ... e.g.</S>
+    <S sid="156" ssid="48">: thank you, &lt;client-name&gt;, please thank, answer, desk, &lt;client-name&gt;, contact, help, chat, day, welcom, ... e.g.</S>
+    <S sid="157" ssid="49">: thank you for contacting answer desk, you are welcome, have a nice day Agent: conversation closure thank, ok, help, great, good, much, &lt;agent-name&gt;, ye(s), day, bye, ... e.g.</S>
+    <S sid="158" ssid="50">: great, thanks &lt;agent-name&gt; so much for your help, good day, bye instal, comput, program, tri, issu, system, file, work, run, see, ... e.g.</S>
+    <S sid="159" ssid="51">: try to install file or run program and see the issue goes away Agent: acknowledge problem error, messag, see, issu, sorri, help, get, thank, &lt;client-name&gt;, oh, ... e.g.</S>
+    <S sid="160" ssid="52">: sorry to hear that, thanks for error message, i see, let me help you on issue Agent: conversation opening + identity check answer, desk, help, &lt;agent-name&gt;, welcom, today, may, name, number, ... e.g.</S>
+    <S sid="161" ssid="53">: welcome to answer desk, i'm &lt;agentname&gt;, how can i help you, may i have your name, case/phone number, account?</S>
+    <S sid="162" ssid="54">Client: confirm identity call, number, phone, case, &lt;time&gt;, would, &lt;agent-name&gt;, pleas, &lt;phone&gt;, time, ... e.g.</S>
+    <S sid="163" ssid="55">: &lt;agent-time&gt;, my phone number is &lt;phone&gt;. would you pleas call number... give, minut, pleas, check, let, thank, moment, 3, one, 5, ... e.g.</S>
+    <S sid="164" ssid="56">: thanks, one moment please, give me 3 minutes, let me check Agent: conversation closure anyth, els, welcom, help, &lt;client-name&gt;, today, assist, question, would, answer, ... e.g.</S>
+    <S sid="165" ssid="57">: you are welcome, anything else today i would help/assist you, &lt;client-name&gt;?</S>
+    <S sid="166" ssid="58">Client: report problem updat, window, install, &lt;agent-name&gt;, hello, error, get, problem, download, message, ... e.g.</S>
+    <S sid="167" ssid="59">: hello, &lt;agent-name&gt;, i get problem/error when install/update/download in windows Client: acknowledge agent / resolved problem thank, ok, help, much, good, great, &lt;agent-name&gt;, day, appreci, bye, ... e.g.</S>
+    <S sid="168" ssid="60">: ok, thanks, great, &lt;agent-name&gt; appreciate your help, good day, bye 0.14 Agent: conversation closure answer, desk, thank, contact, day, chat, great, session, com, help, ... e.g.</S>
+    <S sid="169" ssid="61">: thank you for contacting answer desk, you are welcome, have a nice day Agent: acknowledge problem issu, sorri, call, help, number, suport, concern, &lt;client-name&gt;, &lt;phone&gt;, best, ... e.g.</S>
+    <S sid="170" ssid="62">: sorry to hear that, let me help with your concern, &lt;client-name&gt; state 085 user responses.</S>
+    <S sid="171" ssid="63">In every block, the upper state 19 0 (4, pay) 0 cell shows the top ranked words, and the 19 iss) 0.0736645 (4 #doaramt# lower cell shows example word sequences (19, troubleshoot) 0.0553393 (4, dont) 0</S>
+  </SECTION>
+  <SECTION title="4 fi" number="5">
+    <S sid="172" ssid="1">or string patterns of that state.</S>
+    <S sid="173" ssid="2">Transition (, suport) 0.07 ( step 564 p is highlighted,which seems to conflate ( help) 0035826 (4 cost) 0 the &#8220;acknowledge agent&#8221; and &#8220;resolve (19, reso 0.0285103 (4, issu) 0. problem&#8221; states, and TM-HMMSS model (19, vanc) 00240787 (4 money) has properly disentangled (Figure 5).</S>
+    <S sid="174" ssid="3">(19, option) 0.0230008 the baseline models.</S>
+    <S sid="175" ssid="4">For BusTime data, all models perform relatively well except LM-HMM which only indicates weak correlations.</S>
+    <S sid="176" ssid="5">TMHMM out-performs all other models under all settings.</S>
+    <S sid="177" ssid="6">This is also true for TechSupport dataset.</S>
+    <S sid="178" ssid="7">LM-HMMS, TM-HMMS and TM-HMMSS models perform considerably well on BusTime, but not on TechSupport data.</S>
+    <S sid="179" ssid="8">These three models allow words to be generated from additional sources other than states.</S>
+    <S sid="180" ssid="9">Although this improves log likelihood, it is possible these models encode less information about the state sequences, at least in the more diffuse TechSupport data.</S>
+    <S sid="181" ssid="10">In summary, under both quantitative evaluation measures, our models advance state-of-the-art, however which of our models is best depends on the application.</S>
+  </SECTION>
+  <SECTION title="5 Conclusion and Future Work" number="6">
+    <S sid="182" ssid="1">We have presented three new unsupervised models to discover latent structures in task-oriented dialogues.</S>
+    <S sid="183" ssid="2">We evaluated on two very different corpora&#8212;logs from spoken, human-computer dialogues about bus time, and logs of textual, humanhuman dialogues about technical support.</S>
+    <S sid="184" ssid="3">We have shown our models yield superior performance both qualitatively and quantitatively.</S>
+    <S sid="185" ssid="4">One possible avenue for future work is scalability.</S>
+    <S sid="186" ssid="5">Parallelization (Asuncion et al., 2012) or online learning (Doucet et al., 2001) could significantly speed up inference.</S>
+    <S sid="187" ssid="6">In addition to MCMC, another class of inference method is variational Bayesian analysis (Blei et al., 2003; Beal, 2003), which is inherently easier to distribute (Zhai et al., 2012) and online update (Hoffman et al., 2010).</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="7">
+    <S sid="188" ssid="1">We would like to thank anonymous reviewers and Jordan Boyd-Graber for their valuable comments.</S>
+    <S sid="189" ssid="2">We are also grateful to Alan Ritter and Bill Dolan for their helpful discussions; and Kai (Anthony) Lui for providing TechSupport dataset.</S>
+  </SECTION>
+</PAPER>

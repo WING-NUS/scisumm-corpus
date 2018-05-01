@@ -1,0 +1,157 @@
+<PAPER>
+  <S sid="0">Semantic Parsing with Bayesian Tree Transducers</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Many semantic parsing models use tree transformations to map between natural language and meaning representation.</S>
+    <S sid="2" ssid="2">However, while tree transformations are central to several state-of-the-art approaches, little use has been made of the rich literature on tree automata.</S>
+    <S sid="3" ssid="3">This paper makes the connection concrete with a tree transducer based semantic parsing model and suggests that other models can be interpreted in a similar framework, increasing the generality of their contributions.</S>
+    <S sid="4" ssid="4">In particular, this paper further introduces a variational Bayesian inference algorithm that is applicable to a wide class of tree transducers, producing state-of-the-art semantic parsing results while remaining applicable to any domain employing probabilistic tree transducers.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="5" ssid="1">Semantic parsing is the task of mapping natural language sentences to a formal representation of meaning.</S>
+    <S sid="6" ssid="2">Typically, a system is trained on pairs of natural language sentences (NLs) and their meaning representation expressions (MRs), as in figure 1(a), and the system must generalize to novel sentences.</S>
+    <S sid="7" ssid="3">Most semantic parsing models rely on an assumption of structural similarity between MR and NL.</S>
+    <S sid="8" ssid="4">Since strict isomorphism is overly restrictive, this assumption is often relaxed by applying transformations.</S>
+    <S sid="9" ssid="5">Several approaches assume a tree structure to the NL, MR, or both (Ge and Mooney, 2005; Kate and Mooney, 2006; Wong and Mooney, 2006; Lu et al., 2008; B&#168;orschinger et al., 2011), and often involve tree transformations either between two trees or a tree and a string.</S>
+    <S sid="10" ssid="6">The tree transducer, a formalism from automata theory which has seen interest in machine translation (Yamada and Knight, 2001; Graehl et al., 2008) and has potential applications in many other areas, is well suited to formalizing such tree transformation based models.</S>
+    <S sid="11" ssid="7">Yet, while many semantic parsing systems resemble the formalism, each was proposed as an independent model requiring custom algorithms, leaving it unclear how developments in one line of inquiry relate to others.</S>
+    <S sid="12" ssid="8">We argue for a unifying theory of tree transformation based semantic parsing by presenting a tree transducer model and drawing connections to other similar systems.</S>
+    <S sid="13" ssid="9">We make a further contribution by bringing to tree transducers the benefits of the Bayesian framework for principled handling of data sparsity and prior knowledge.</S>
+    <S sid="14" ssid="10">Graehl et al. (2008) present an EM training procedure for top down tree transducers, but while there are Bayesian approaches to string transducers (Chiang et al., 2010) and PCFGs (Kurihara and Sato, 2006), there has yet to be a proposal for Bayesian inference in tree transducers.</S>
+    <S sid="15" ssid="11">Our variational algorithm produces better semantic parses than EM while remaining general to a broad class of transducers appropriate for other domains.</S>
+    <S sid="16" ssid="12">In short, our contributions are three-fold: we present a new state-of-the-art semantic parsing model, propose a broader theory for tree transformation based semantic parsing, and present a general inference algorithm for the tree transducer framework.</S>
+    <S sid="17" ssid="13">We recommend the last of these as just one benefit of working within a general theory: contributions are more broadly applicable.</S>
+  </SECTION>
+  <SECTION title="2 Meaning representations and regular tree grammars" number="2">
+    <S sid="18" ssid="1">In semantic parsing, an MR is typically an expression from a machine interpretable language (e.g., a database query language or a logical language like Prolog).</S>
+    <S sid="19" ssid="2">In this paper we assume MRs can be represented as trees, either by pre-parsing or because they are already trees (often the case for functional languages like LISP).1 More specifically, we assume the MR language is a regular tree language.</S>
+    <S sid="20" ssid="3">A regular tree grammar (RTG) closely resembles a context free grammar (CFG), and is a way of describing a language of trees.</S>
+    <S sid="21" ssid="4">Formally, define TE as the set of trees with symbols from alphabet E, and TE(A) as the set of all trees in TEUA where symbols from A only occur at the leaves.</S>
+    <S sid="22" ssid="5">Then an RTG is a tuple (Q, E, qstart, R), where Q is a set of states, E is an alphabet, qstart &#8712; Q is the initial state, and R is a set of grammar rules of the form q &#8594; t, where q is a state from Q and t is a tree from TE(Q).</S>
+    <S sid="23" ssid="6">A rule typically consists of a parent state (left) and its child states and output symbol (right).</S>
+    <S sid="24" ssid="7">We indicate states using all capital letters: NUM &#8594; population(PLACE).</S>
+    <S sid="25" ssid="8">Intuitively, an RTG is a CFG where the yield of every parse is itself a tree.</S>
+    <S sid="26" ssid="9">In fact, for any CFG G, it is straightforward to produce a corresponding RTG that generates the set of parses of G. Consequently, while we assume we have an RTG for the MR language, there is no loss of generality if the MR language is actually context free.</S>
+  </SECTION>
+  <SECTION title="3 Weighted root-to-frontier, linear, non-deleting tree-to-string transducers" number="3">
+    <S sid="27" ssid="1">Tree transducers (Rounds, 1970; Thatcher, 1970) are generalizations of finite state machines that operate on trees.</S>
+    <S sid="28" ssid="2">Mirroring the branching nature of its input, the transducer may simultaneously transition to several successor states, assigning a separate state to each subtree.</S>
+    <S sid="29" ssid="3">There are many classes of transducer with different formal properties (Knight and Greahl, 2005; Maletti et al., 2009).</S>
+    <S sid="30" ssid="4">Figure 1(c) is an example of a root-to-frontier, linear, non-deleting tree-to-string transducer.</S>
+    <S sid="31" ssid="5">It is defined using rules where the left hand side identifies a state of the transducer and a fragment of the input tree, and the right hand side describes a portion of the output string.</S>
+    <S sid="32" ssid="6">Variables xi stand for entire sub-trees, and state-variable pairs qj.xi stand for strings produced by applying the transducer starting at state qj to subtree xi.</S>
+    <S sid="33" ssid="7">Figure 1(b) illustrates an application of the transducer, taking the tree on the left as input and outputting the string on the right.</S>
+    <S sid="34" ssid="8">Formally, a weighted root-to-frontier, tree-tostring transducer is a 5-tuple (Q, E, A, qstart, R).</S>
+    <S sid="35" ssid="9">Q is a finite set of states, E and A are the input and output alphabets, qstart is the start state, and R is the set of rules.</S>
+    <S sid="36" ssid="10">Denote a pair of symbols, a and b by a.b, the cross product of two sets A and B by A.B, and let X be the set of variables {x0, x1, ...}.</S>
+    <S sid="37" ssid="11">Then, each rule r &#8712; R is of the form [q.t &#8594; u].v, where v &#8712; &#8476;&#8805;0 is the rule weight, q &#8712; Q, t &#8712; TE(X), and u is a string in (A &#8746; Q.X)&#8727; such that every x &#8712; X in u also occurs in t. We say q.t is the left hand side of rule r and u its right hand side.</S>
+    <S sid="38" ssid="12">The transducer is linear iff no variable appears more than once on the right hand side.</S>
+    <S sid="39" ssid="13">It is non-deleting iff all variables on the left hand side also occur on the right hand side.</S>
+    <S sid="40" ssid="14">In this paper we assume that every tree t on the left hand side is either a single variable x0 or of the form &#963;(x0, ...xr,,), where &#963; &#8712; E (i.e., it is a tree of depth &#8804; 1).</S>
+    <S sid="41" ssid="15">A weighted tree transducer may define a probability distribution, either a joint distribution over input and output pairs or a conditional distribution of the output given the input.</S>
+    <S sid="42" ssid="16">Here, we will use joint distributions, which can be defined by ensuring that the weights of all rules with the same state on the lefthand side sum to one.</S>
+    <S sid="43" ssid="17">In this case, it can be helpful to view the transducer as simultaneously generating both the input and output, rather than the usual view of mapping input trees into output strings.</S>
+    <S sid="44" ssid="18">A joint distribution allows us to model with a single machine both the input and output languages, which is important during decoding when we want to infer the input given the output.</S>
+  </SECTION>
+  <SECTION title="4 A generative model of semantic parsing" number="4">
+    <S sid="45" ssid="1">Like the hybrid tree semantic parser (Lu et al., 2008) and the synchronous grammar based WASP (Wong and Mooney, 2006), our model simultaneously generates the input MR tree and the output NL string.</S>
+    <S sid="46" ssid="2">The MR tree is built up according to the provided MR grammar, one grammar rule at a time.</S>
+    <S sid="47" ssid="3">Coupled with the application of the MR rule, similar CFGlike productions are applied to the NL side, repeated until both the MR and NL are fully generated.</S>
+    <S sid="48" ssid="4">In each step, we select an MR rule and then build the NL by first choosing a pattern with which to expand it and then filling out that pattern with words drawn from a unigram distribution.</S>
+    <S sid="49" ssid="5">This kind of coupled generative process can be naturally formalized with tree transducer rules, where the input tree fragment on the left side of each rule describes the derivation of the MR and the right describes the corresponding NL derivation.</S>
+    <S sid="50" ssid="6">For a simple example of a tree-to-string transducer rule consider which simultaneously generates tree fragment population(x1) on the left and sub-string &#8220;population of q.x1&#8221; on the right.</S>
+    <S sid="51" ssid="7">Variable x1 stands for an MR subtree under population, and, on the right, state-variable pair q.x1 stands for the NL substring generated while processing subtree x1 starting from q.</S>
+    <S sid="52" ssid="8">While this rule can serve as a single step of an MR-to-NL map such as the example transducer shown in Figure 1(c), such rules do not model the grammaticality of the MR and lack flexibility since sub-strings corresponding to a given tree fragment must be completely pre-specified.</S>
+    <S sid="53" ssid="9">Instead, we break transductions down into a three stage process of choosing the (i) MR grammar rule, (ii) NL expansion pattern, and (iii) individual words according to a unigram distribution.</S>
+    <S sid="54" ssid="10">Such a decomposition incorporates independence assumptions that improve generalizability.</S>
+    <S sid="55" ssid="11">See Figure 2 for example rules from our transducer and Figure 3 for a derivation.</S>
+    <S sid="56" ssid="12">To ensure that only grammatical MRs are generated, each state of our transducer encodes the identity of exactly one MR grammar rule.</S>
+    <S sid="57" ssid="13">Transitions between qMR and qNL states implicitly select the embedded rule.</S>
+    <S sid="58" ssid="14">For instance, rule 2 in Figure 2 selects MR grammar rule r to expand the ith child of the parent produced by rule m. Aside from ensuring the grammaticality of the generated MR, rules of this type also model the probability of the MR, conditioning the probability of a rule both on the parent rule and the index of the child being expanded.</S>
+    <S sid="59" ssid="15">Thus, parent state qMR &#65533;&#65533;1 encodes not only the identity of rule m, but also the child index, 1 in this case.</S>
+    <S sid="60" ssid="16">Once the MR rule is selected, qNL states are applied to select among rules such as 3 and 4 to generate the MR entity and choose the NL expansion pattern.</S>
+    <S sid="61" ssid="17">These rules determine the word order of the language by deciding (i) whether or not to generate words in a given location and (ii) where to insert the result of processing each MR subtree.</S>
+    <S sid="62" ssid="18">Decision (i) is made by either transitioning to state qW&#65533; to generate words or to qEND to generate the empty string.</S>
+    <S sid="63" ssid="19">Decision (ii) is made with the order of xi&#8217;s on the right hand side.</S>
+    <S sid="64" ssid="20">Rule 4 illustrates the case where portland and maine in cityid(portland, maine) would be realized in reverse order as &#8220;maine ... portland&#8221;.</S>
+    <S sid="65" ssid="21">The particular set of patterns that appear on the right of rules such as 3 embodies the binary word attachment decisions and the particular permutation of xi in the NL.</S>
+    <S sid="66" ssid="22">We allow words to be generated at the beginning and end of each pattern and between the xis.</S>
+    <S sid="67" ssid="23">Thus, rule 4 is just one of 16 such possible patterns (3 binary decisions and 2 permutations), while rule 3 is one of 4.</S>
+    <S sid="68" ssid="24">We instantiate all such rules and allow the system to learn weights for them according to the language of the training data.</S>
+    <S sid="69" ssid="25">Finally, the NL is filled out with words chosen according to a unigram distribution, implemented in a PCFG-like fashion, using a different rule for each word which recursively chooses the next word until a string termination rule is reached.2 Generating word sequence &#8220;population of&#8221; entails first choosing rule 5 in Figure 2.</S>
+    <S sid="70" ssid="26">State qW&#65533; is then recursively applied to choose rule 6, generating &#8220;of&#8221; at the same time as deciding to terminate the string by transitioning to a new state qEND which deterministically concludes by writing the empty string e. On the MR side, rules 5-7 do very little: the tree on the left side of rules 5 and 6 consists entirely of a 2There are roughly 25,000 rules in the transducers in our experiments, and the majority of these implement the unigram word distributions since every entity in the MR may potentially produce any of the words it is paired with in training. subtree variable wl, indicating that nothing is generated in the MR. Rule 7 subsequently generates these subtrees as W symbols, marking corresponding locations where words might be produced in the NL, which are later removed during post processing.3 Figure 3(b) illustrates the coupled generative process.</S>
+    <S sid="71" ssid="27">At each step of the derivation, an MR rule is chosen to expand a node of the MR tree, and then a corresponding part of the NL is expanded.</S>
+    <S sid="72" ssid="28">Step 1.1 of the example chooses MR rule m, NUM &#8594; population(PLACE).</S>
+    <S sid="73" ssid="29">Transducer rule 3 then generates population in the MR (shown in the left column) at the same time as choosing an NL expansion pattern (Step 1.2) which is subsequently filled out with specific words &#8220;population&#8221; (1.3) and &#8220;of&#8221; (1.4).</S>
+    <S sid="74" ssid="30">This coupled derivation can be represented by a tree, shown in Figure 3(c), which explicitly represents the dependency structure of the coupled MR and NL (a simplified version is shown in (d) for clarity).</S>
+    <S sid="75" ssid="31">In our transducer, which defines a joint distribution over both the MR and NL, the probability of a rule is conditioned on the parent state.</S>
+    <S sid="76" ssid="32">Since each state encodes an MR rule, MR rule specific distributions are learned for both the words and their order.</S>
+  </SECTION>
+  <SECTION title="5 Relation to existing models" number="5">
+    <S sid="77" ssid="1">The tree transducer model can be viewed either as a generative procedure for building up two separate structures or as a transformative machine that takes one as input and produces another as output.</S>
+    <S sid="78" ssid="2">Different semantic parsing approaches have taken one or the other view, and both can be captured in this single framework.</S>
+    <S sid="79" ssid="3">WASP (Wong and Mooney, 2006) is an example of the former perspective, coupling the generation of the MR and NL with a synchronous grammar, a formalism closely related to tree transducers.</S>
+    <S sid="80" ssid="4">The most significant difference from our approach is that they use machine translation techniques for automatically extracting rules from parallel corpora; similar techniques can be applied to tree transducers (Galley et al., 2004).</S>
+    <S sid="81" ssid="5">In fact, synchronous grammars and tree transducers can be seen as instances of the same more general class of automata (Shieber, 2004).</S>
+    <S sid="82" ssid="6">Rather than argue for one or the other, we suggest that other approaches could also be interpreted in terms of general model classes, grounding them in a broader base of theory.</S>
+    <S sid="83" ssid="7">The hybrid tree model (Lu et al., 2008) takes a transformative perspective that is in some ways more similar to our model.</S>
+    <S sid="84" ssid="8">In fact, there is a oneto-one relationship between the multinomial parameters of the two models.</S>
+    <S sid="85" ssid="9">However, they represent the MR and NL with a single tree and apply tree walking algorithms to extract them.</S>
+    <S sid="86" ssid="10">Furthermore, they implement a custom training procedure for searching over the potential MR transformations.</S>
+    <S sid="87" ssid="11">The tree transducer, on the other hand, naturally captures the same probabilistic dependencies while maintaining the separation between MR and NL, and further allows us to build upon a larger body of theory.</S>
+    <S sid="88" ssid="12">KRISP (Kate and Mooney, 2006) uses string classifiers to label substrings of the NL with entities from the MR. To focus search, they impose an ordering constraint based on the structure of the MR tree, which they relax by allowing the re-ordering of sibling nodes and devise a procedure for recovering the MR from the permuted tree.</S>
+    <S sid="89" ssid="13">This procedure corresponds to backward-application in tree transducers, identifying the most likely input tree given a particular output string.</S>
+    <S sid="90" ssid="14">SCISSOR (Ge and Mooney, 2005) takes syntactic parses rather than NL strings and attempts to translate them into MR expressions.</S>
+    <S sid="91" ssid="15">While few semantic parsers attempt to exploit syntactic information, there are techniques from machine translation for using tree transducers to map between parsed parallel corpora, and these techniques could likely be applied to semantic parsing.</S>
+    <S sid="92" ssid="16">B&#168;orschinger et al. (2011) argue for the PCFG as an alternative model class, permitting conventional grammar induction techniques, and tree transducers are similar enough that many techniques are applicable to both.</S>
+    <S sid="93" ssid="17">However, the PCFG is less amenable to conceptualizing correspondences between parallel structures, and their model is more restrictive, only applicable to domains with finite MR languages, since their non-terminals encode entire MRs.</S>
+    <S sid="94" ssid="18">The tree transducer framework, on the other hand, allows us to condition on individual MR rules.</S>
+  </SECTION>
+  <SECTION title="6 Variational Bayes for tree transducers" number="6">
+    <S sid="95" ssid="1">As seen in the example in Figure 3(c), tree transducers not only operate on trees, their derivations are themselves trees, making them amenable to dynamic programming and an EM training procedure resembling inside-outside (Graehl et al., 2008).</S>
+    <S sid="96" ssid="2">EM assigns zero probability to events not seen in the training data, however, limiting the ability to generalize to novel items.</S>
+    <S sid="97" ssid="3">The Bayesian framework offers an elegant solution to this problem, introducing a prior over rule weights which simultaneously ensures that all rules receive non-zero probability and allows the incorporation of prior knowledge and intuitions.</S>
+    <S sid="98" ssid="4">Unfortunately, the introduction of a prior makes exact inference intractable, so we use an approximate method, variational Bayesian inference (Bishop, 2006), deriving an algorithm similar to that for PCFGs (Kurihara and Sato, 2006).</S>
+    <S sid="99" ssid="5">The tree transducer defines a joint distribution over the input y, output w, and their derivation x as the product of the weights of the rules appearing in x.</S>
+    <S sid="100" ssid="6">That is, where &#952; is the set of multinomial parameters, r is a transducer rule, &#952;(r) is its weight, and cr(x) is the number of times r appears in x.</S>
+    <S sid="101" ssid="7">In EM, we are interested in the point estimate for &#952; that maximizes p(Y, W|&#952;), where Y and W are the N input-output pairs in the training data.</S>
+    <S sid="102" ssid="8">In the Bayesian setting, however, we place a symmetric Dirichlet prior over &#952; and estimate a posterior distribution over both X and &#952;.</S>
+    <S sid="103" ssid="9">Since the integral in the denominator is intractable, we look for an appropriate approximation q(&#952;, X) &#8776; p(&#952;, X|Y, W).</S>
+    <S sid="104" ssid="10">In particular, we assume the rule weights and the derivations are independent, i.e., q(&#952;, X) = q(&#952;)q(X).</S>
+    <S sid="105" ssid="11">The basic idea is then to define a lower bound F &#8804; lnp(Y, W) in terms of q and then apply the calculus of variations to find a q that maximizes F. Applying our independence assumption, we arrive at the following expression for F, where &#952;t is the particular parameter vector corresponding to the rules with parent state t: We find the q(&#952;t) and q(xi) that maximize F by taking derivatives of the Lagrangian, setting them to zero, and solving, which yields: where The parameters of q(Bt) are defined with respect to q(xi) and the parameters of q(xi) with respect to the parameters of q(Bt). q(xi) can be computed efficiently using inside-outside.</S>
+    <S sid="106" ssid="12">Thus, we can perform an EM-like alternation between calculating &#945;&#65533; and &#65533;B.4 It is also possible to estimate the hyperparameters &#945; from data, a practice known as empirical Bayes, by optimizing T. We explore learning separate hyper-parameters &#945;t for each Bt, using a fixed point update described by Minka (2000), where kt is the number of rules with parent state t:</S>
+  </SECTION>
+  <SECTION title="7 Training and decoding" number="7">
+    <S sid="107" ssid="1">We implement our VB training algorithm inside the tree transducer package Tiburon (May and Knight, 2006), and experiment with both manually set and automatically estimated priors.</S>
+    <S sid="108" ssid="2">For our manually set priors, we explore different hyper-parameter settings for three different priors, one for each of the main decision types: MR rule, NL pattern, and word generation.</S>
+    <S sid="109" ssid="3">For the automatic priors, we estimate separate hyper-parameters for each multinomial (of which there are hundreds).</S>
+    <S sid="110" ssid="4">As is standard, we initialize the word distributions using a variant of IBM model 1, and make use of NP lists (a manually created list of the constants in the MR language paired with the words that refer to them in the corpus).</S>
+    <S sid="111" ssid="5">At test time, since finding the most probable MR for a sentence involves summing over all possible derivations, we instead find the MR associated with the most probable derivation.</S>
+  </SECTION>
+  <SECTION title="8 Experimental setup and evaluation" number="8">
+    <S sid="112" ssid="1">We evaluate the system on GeoQuery (Wong and Mooney, 2006), a parallel corpus of 880 English questions and database queries about United States geography, 250 of which were translated into Spanish, Japanese, and Turkish.</S>
+    <S sid="113" ssid="2">We present here additional translations of the full 880 sentences into German, Greek, and Thai.</S>
+    <S sid="114" ssid="3">For evaluation, following from Kwiatkowski et al. (2010), we reserve 280 sentences for test and train on the remaining 600.</S>
+    <S sid="115" ssid="4">During development, we use cross-validation on the 600 sentence training set.</S>
+    <S sid="116" ssid="5">At test, we run once on the remaining 280 and perform 10 fold cross-validation on the 250 sentence sets.</S>
+    <S sid="117" ssid="6">To judge correctness, we follow standard practice and submit each parse as a GeoQuery database query, and say the parse is correct only if the answer matches the gold standard.</S>
+    <S sid="118" ssid="7">We report raw accuracy (the percentage of sentences with correct answers), as well as F1: the harmonic mean of precision (the proportion of correct answers out of sentences with a parse) and recall (the proportion of correct answers out of all sentences).5 We run three other state-of-the-art systems for comparison.</S>
+    <S sid="119" ssid="8">WASP (Wong and Mooney, 2006) and the hybrid tree (Lu et al., 2008) are chosen to represent tree transformation based approaches, and, while this comparison is our primary focus, we also report UBL-S (Kwiatkowski et al., 2010) as a nontree based top-performing system.6 The hybrid tree is notable as the only other system based on a generative model, and uni-hybrid, a version that uses a unigram distribution over words, is very similar to our own model.</S>
+    <S sid="120" ssid="9">We also report the best performing version, re-hybrid, which incorporates a discriminative re-ranking step.</S>
+    <S sid="121" ssid="10">We report transducer performance under three different training conditions: tsEM using EM, tsVBauto using VB with empirical Bayes, and tsVB-hand using hyper-parameters manually tuned on the German training data (&#945; of 0.3, 0.8, and 0.25 for MR rule, NL pattern, and word choices, respectively).</S>
+    <S sid="122" ssid="11">Table 1 shows results for 10 fold cross-validation on the training set.</S>
+    <S sid="123" ssid="12">The results highlight the benefit of the Dirichlet prior, whether manually or automatically set.</S>
+    <S sid="124" ssid="13">VB improves over EM considerably, most likely because (1) the handling of unknown words and MR entities allows it to return an analysis for all sentences, and (2) the sparse Dirichlet prior favors fewer rules, reasonable in this setting where only a few words are likely to share the same meaning.</S>
+    <S sid="125" ssid="14">On the test set (Table 2), we only run the model variants that perform best on the training set.</S>
+    <S sid="126" ssid="15">Test set accuracy is consistently higher for the VB trained tree transducer than the other tree transformation based models (and often highest overall), while fscore remains competitive.7</S>
+  </SECTION>
+  <SECTION title="9 Conclusion" number="9">
+    <S sid="127" ssid="1">We have argued that tree transformation based semantic parsing can benefit from the literature on formal language theory and tree automata, and have taken a step in this direction by presenting a tree transducer based semantic parser.</S>
+    <S sid="128" ssid="2">Drawing this connection facilitates a greater flow of ideas in the research community, allowing semantic parsing to leverage ideas from other work with tree automata, while making clearer how seemingly isolated efforts might relate to one another.</S>
+    <S sid="129" ssid="3">We demonstrate this by both building on previous work in training tree transducers using EM (Graehl et al., 2008), and describing a general purpose variational inference algorithm for adapting tree transducers to the Bayesian framework.</S>
+    <S sid="130" ssid="4">The new VB algorithm results in an overall performance improvement for the transducer over EM training, and the general effectiveness of the approach is further demonstrated by the Bayesian transducer achieving highest accuracy among other tree transformation based approaches.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="10">
+    <S sid="131" ssid="1">We thank Joel Lang, Michael Auli, Stella Frank, Prachya Boonkwan, Christos Christodoulopoulos, Ioannis Konstas, and Tom Kwiatkowski for providing the new translations of GeoQuery.</S>
+    <S sid="132" ssid="2">This research was supported in part under the Australian Research Council&#8217;s Discovery Projects funding scheme (project number DP110102506).</S>
+  </SECTION>
+</PAPER>

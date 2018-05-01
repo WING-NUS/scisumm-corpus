@@ -1,0 +1,169 @@
+<PAPER>
+  <S sid="0">Faster Phrase-Based Decoding by Refining Feature State</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We contribute a faster decoding algorithm for phrase-based machine translation.</S>
+    <S sid="2" ssid="2">Translation hypotheses keep track of state, such as context for the language model and coverage of words in the source sentence.</S>
+    <S sid="3" ssid="3">Most features depend upon only part of the state, but traditional algorithms, including cube pruning, handle state atomically.</S>
+    <S sid="4" ssid="4">For example, cube pruning will repeatedly query the language model with hypotheses that differ only in source coverage, despite the fact that source coverage is irrelevant to the language model.</S>
+    <S sid="5" ssid="5">Our key contribution avoids this behavior by placing hypotheses into equivalence classes, masking the parts of state that matter least to the score.</S>
+    <S sid="6" ssid="6">Moreover, we exploit shared words in hypotheses to iteratively refine language model scores rather than handling language model state atomically.</S>
+    <S sid="7" ssid="7">Since our algorithm and cube pruning are both approximate, improvement can be used to increase speed or accuracy.</S>
+    <S sid="8" ssid="8">When tuned to attain the same accuracy, our algorithm is 4.0&#8211;7.7 times as fast as the Moses decoder with cube pruning.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="9" ssid="1">Translation speed is critical to making suggestions as translators type, mining for parallel data by translating the web, and running on mobile devices without Internet connectivity.</S>
+    <S sid="10" ssid="2">We contribute a fast decoding algorithm for phrase-based machine translation along with an implementation in a new open-source (LGPL) decoder available at http://kheafield.com/code/.</S>
+    <S sid="11" ssid="3">Phrase-based decoders (Koehn et al., 2007; Cer et al., 2010; Wuebker et al., 2012) keep track of several types of state with translation hypotheses: coverage of the source sentence thus far, context for the language model, the last position for the distortion model, and anything else features need.</S>
+    <S sid="12" ssid="4">Existing decoders handle state atomically: hypotheses that have exactly the same state can be recombined and efficiently handled via dynamic programming, but there is no special handling for partial agreement.</S>
+    <S sid="13" ssid="5">Therefore, features are repeatedly consulted regarding hypotheses that differ only in ways irrelevant to their score, such as coverage of the source sentence.</S>
+    <S sid="14" ssid="6">Our decoder bundles hypotheses into equivalence classes so that features can focus on the relevant parts of state.</S>
+    <S sid="15" ssid="7">We pay particular attention to the language model because it is responsible for much of the hypothesis state.</S>
+    <S sid="16" ssid="8">As the decoder builds translations from left to right (Koehn, 2004), it records the last N &#8722; 1 words of each hypothesis so that they can be used as context to score the first N &#8722; 1 words of a phrase, where N is the order of the language model.</S>
+    <S sid="17" ssid="9">Traditional decoders (Huang and Chiang, 2007) try thousands of combinations of hypotheses and phrases, hoping to find ones that the language model likes.</S>
+    <S sid="18" ssid="10">Our algorithm instead discovers good combinations in a coarse-to-fine manner.</S>
+    <S sid="19" ssid="11">The algorithm exploits the fact that hypotheses often share the same suffix and phrases often share the same prefix.</S>
+    <S sid="20" ssid="12">These shared suffixes and prefixes allow the algorithm to coarsely reason over many combinations at once.</S>
+    <S sid="21" ssid="13">Our primary contribution is a new search algorithm that exploits the above observations, namely that state can be divided into pieces relevant to each feature and that language model state can be further subdivided.</S>
+    <S sid="22" ssid="14">The primary claim is that our algorithm is faster and more accurate than the popular cube pruning algorithm.</S>
+  </SECTION>
+  <SECTION title="2 Related Work" number="2">
+    <S sid="23" ssid="1">Our previous work (Heafield et al., 2013) developed language model state refinement for bottomProceedings of the 52nd Annual Meeting of the Association for Computational Linguistics (Short Papers), pages 130&#8211;135, Baltimore, Maryland, USA, June 23-25 2014. c&#65533;2014 Association for Computational Linguistics up decoding in syntatic machine translation.</S>
+    <S sid="24" ssid="2">In bottom-up decoding, hypotheses can be extended to the left or right, so hypotheses keep track of both their prefix and suffix.</S>
+    <S sid="25" ssid="3">The present phrasebased setting is simpler because sentences are constructed from left to right, so prefix information is unnecessary.</S>
+    <S sid="26" ssid="4">However, phrase-based translation implements reordering by allowing hypotheses that translate discontiguous words in the source sentence.</S>
+    <S sid="27" ssid="5">There are exponentially many ways to cover the source sentence and hypotheses carry this information as additional state.</S>
+    <S sid="28" ssid="6">A main contribution in this paper is efficiently ignoring coverage when evaluating the language model.</S>
+    <S sid="29" ssid="7">In contrast, syntactic machine translation hypotheses correspond to contiguous spans in the source sentence, so in prior work we simply ran the search algorithm in every span.</S>
+    <S sid="30" ssid="8">Another improvement upon Heafield et al. (2013) is that we previously made no effort to exploit common words that appear in translation rules, which are analogous to phrases.</S>
+    <S sid="31" ssid="9">In this work, we explicitly group target phrases by common prefixes, doing so directly in the phrase table.</S>
+    <S sid="32" ssid="10">Coarse-to-fine approaches (Petrov et al., 2008; Zhang and Gildea, 2008) invoke the decoder multiple times with increasingly detailed models, pruning after each pass.</S>
+    <S sid="33" ssid="11">The key difference in our work is that, rather than refining models in lock step, we effectively refine the language model on demand for hypotheses that score well.</S>
+    <S sid="34" ssid="12">Moreover, their work was performed in syntactic machine translation while we address issues specific to phrase-based translation.</S>
+    <S sid="35" ssid="13">Our baseline is cube pruning (Chiang, 2007; Huang and Chiang, 2007), which is both a way to organize search and an algorithm to search through cross products of sets.</S>
+    <S sid="36" ssid="14">We adopt the same search organization (Section 3.1) but change how cross products are searched.</S>
+    <S sid="37" ssid="15">Chang and Collins (2011) developed an exact decoding algorithm based on Lagrangian relaxation.</S>
+    <S sid="38" ssid="16">However, it has not been shown to tractably scale to 5-gram language models used by many modern translation systems.</S>
+  </SECTION>
+  <SECTION title="3 Decoding" number="3">
+    <S sid="39" ssid="1">We begin by summarizing the high-level organization of phrase-based cube pruning (Koehn, 2004; Koehn et al., 2007; Huang and Chiang, 2007).</S>
+    <S sid="40" ssid="2">Sections 3.2 and later show our contribution.</S>
+    <S sid="41" ssid="3">Phrase-based decoders construct hypotheses from left to right by appending phrases in the target language.</S>
+    <S sid="42" ssid="4">The decoder organizes this search process using stacks (Figure 1).</S>
+    <S sid="43" ssid="5">Stacks contain hypotheses that have translated the same number of source words.</S>
+    <S sid="44" ssid="6">The zeroth stack contains one hypothesis with nothing translated.</S>
+    <S sid="45" ssid="7">Subsequent stacks are built by extending hypotheses in preceding stacks.</S>
+    <S sid="46" ssid="8">For example, the second stack contains hypotheses that translated two source words either separately or as a phrasal unit.</S>
+    <S sid="47" ssid="9">Returning to Figure 1, the decoder can apply a phrase pair to translate &#8220;le chat&#8221; as &#8220;cat&#8221; or it can derive &#8220;the cat&#8221; by translating one word at a time; both appear in the second stack because they translate two source words.</S>
+    <S sid="48" ssid="10">To generalize, the decoder populates the ith stack by pairing hypotheses in the i &#8722; jth stack with target phrases that translate source phrases of length j.</S>
+    <S sid="49" ssid="11">Hypotheses remember which source word they translated, as indicated by the filled circles.</S>
+    <S sid="50" ssid="12">The reordering limit prevents hypotheses from jumping around the source sentence too much and dramatically reduces the search space.</S>
+    <S sid="51" ssid="13">Formally, the decoder cannot propose translations that would require jumping back more than R words in the source sentence, including multiple small jumps.</S>
+    <S sid="52" ssid="14">In practice, stacks are limited to k hypotheses, where k is set by the user.</S>
+    <S sid="53" ssid="15">Small k is faster but may prune good hypotheses, while large k is slower but more thorough, thereby comprising a time-accuracy trade-off.</S>
+    <S sid="54" ssid="16">The central question in this paper is how to select these k hypotheses.</S>
+    <S sid="55" ssid="17">Populating a stack boils down to two steps.</S>
+    <S sid="56" ssid="18">First, the decoder matches hypotheses with source phrases subject to three constraints: the total source length matches the stack being populated, none of the source words has already been transThe leaves indicate source coverage and any other hypothesis state. lated, and the reordering limit.</S>
+    <S sid="57" ssid="19">Second, the decoder searches through these matches to select k high-scoring hypotheses for placement in the stack.</S>
+    <S sid="58" ssid="20">We improve this second step.</S>
+    <S sid="59" ssid="21">The decoder provides our algorithm with pairs consisting of a hypothesis and a compatible source phrase.</S>
+    <S sid="60" ssid="22">Each source phrase translates to multiple target phrases.</S>
+    <S sid="61" ssid="23">The task is to grow these hypotheses by appending a target phrase, yielding new hypotheses.</S>
+    <S sid="62" ssid="24">These new hypotheses will be placed into a stack of size k, so we are interested in selecting k new hypotheses that score highly.</S>
+    <S sid="63" ssid="25">Beam search (Lowerre, 1976; Koehn, 2004) tries every hypothesis with every compatible target phrase then selects the top k new hypotheses by score.</S>
+    <S sid="64" ssid="26">This is wasteful because most hypotheses are discarded.</S>
+    <S sid="65" ssid="27">Instead, we follow cube pruning (Chiang, 2007) in using a priority queue to generate k hypotheses.</S>
+    <S sid="66" ssid="28">A key difference is that we generate these hypotheses iteratively.</S>
+    <S sid="67" ssid="29">For each source phrase, we collect the set of compatible hypotheses.</S>
+    <S sid="68" ssid="30">We then place these hypotheses in a trie that emphasizes the suffix words because these matter most when appending a target phrase.</S>
+    <S sid="69" ssid="31">Figure 2 shows an example.</S>
+    <S sid="70" ssid="32">While it suffices to build this trie on the last N &#8722; 1 words that matter to the language model, Li and Khudanpur (2008) have identified cases where fewer words are necessary because the language model will back off.</S>
+    <S sid="71" ssid="33">The leaves of the trie are complete hypotheses and reveal information irrelevant to the language model, such as coverage of the source sentence and the state of other features.</S>
+    <S sid="72" ssid="34">Each source phrase translates to a set of target phrases.</S>
+    <S sid="73" ssid="35">Because these phrases will be appended to a hypothesis, the first few words matter the most to the language model.</S>
+    <S sid="74" ssid="36">We therefore Figure 3: Target phrases arranged into a trie.</S>
+    <S sid="75" ssid="37">Set in italic, leaves reveal parts of the phrase that are irrelevant to the language model. arrange the target phrases into a prefix trie.</S>
+    <S sid="76" ssid="38">An example is shown in Figure 3.</S>
+    <S sid="77" ssid="39">Similar to the hypothesis trie, the depth may be shorter than N &#8722; 1 in cases where the language model will provably back off (Li and Khudanpur, 2008).</S>
+    <S sid="78" ssid="40">The trie can also be short because the target phrase has fewer than N &#8722; 1 words.</S>
+    <S sid="79" ssid="41">We currently store this trie data structure directly in the phrase table, though it could also be computed on demand to save memory.</S>
+    <S sid="80" ssid="42">Empirically, our phrase table uses less RAM than Moses&#8217;s memory-based phrase table.</S>
+    <S sid="81" ssid="43">As an optimization, a trie reveals multiple words when there would otherwise be no branching.</S>
+    <S sid="82" ssid="44">This allows the search algorithm to make decisions only when needed.</S>
+    <S sid="83" ssid="45">Following Heafield et al. (2013), leaves in the trie take the score of the underlying hypothesis or target phrase.</S>
+    <S sid="84" ssid="46">Non-leaf nodes take the maximum score of their descendants.</S>
+    <S sid="85" ssid="47">Children of a node are sorted by score.</S>
+    <S sid="86" ssid="48">The idea is that the decoder reasons over pairs of nodes in the hypothesis and phrase tries before devling into detail.</S>
+    <S sid="87" ssid="49">In this way, it can determine what the language model likes and, conversely, quickly discard combinations that the model does not like.</S>
+    <S sid="88" ssid="50">A boundary pair consists of a node in the hypothesis trie and a node in the target phrase trie.</S>
+    <S sid="89" ssid="51">For example, the decoder starts at the root of each trie with the boundary pair (E, E).</S>
+    <S sid="90" ssid="52">The score of a boundary pair is the sum of the scores of the underlying trie nodes.</S>
+    <S sid="91" ssid="53">However, once some words have been revealed, the decoder calls the language model to compute a score adjustment.</S>
+    <S sid="92" ssid="54">For example, the boundary pair (country, that) has score adjustment times the weight of the language model.</S>
+    <S sid="93" ssid="55">This has the effect of cancelling out the estimate made when the phrase was scored in isolation, replacing it with a more accurate estimate based on available context.</S>
+    <S sid="94" ssid="56">These score adjustments are efficient to compute because the decoder retained a pointer to &#8220;that&#8221; in the language model&#8217;s data structure (Heafield et al., 2011).</S>
+    <S sid="95" ssid="57">Refinement is the notion that the boundary pair (E, E) divides into several boundary pairs that reveal specific words from hypotheses or target phrases.</S>
+    <S sid="96" ssid="58">The most straightforward way to do this is simply to split into all children of a trie node.</S>
+    <S sid="97" ssid="59">Continuing the example from Figure 2, we could split (E, E) into three boundary pairs: (country, E), (nations, E), and (countries, E).</S>
+    <S sid="98" ssid="60">However, it is somewhat inefficient to separately consider the low-scoring child (countries, E).</S>
+    <S sid="99" ssid="61">Instead, we continue to split off the best child (country, E) and leave a note that the zeroth child has been split off, denoted (E[1+], E).</S>
+    <S sid="100" ssid="62">The index increases each time a child is split off.</S>
+    <S sid="101" ssid="63">The the boundary pair (E[1+], E) no longer counts (country, E) as a child, so its score is lower.</S>
+    <S sid="102" ssid="64">Splitting alternates sides.</S>
+    <S sid="103" ssid="65">For example, (country, E) splits into (country, that) and (country, E[1+]).</S>
+    <S sid="104" ssid="66">If one side has completely revealed words that matter to the language model, then splitting continues with the other side.</S>
+    <S sid="105" ssid="67">This procedure ensures that the language model score is completely resolved before considering irrelevant differences, such as coverage of the source sentence.</S>
+    <S sid="106" ssid="68">Search proceeds in a best-first fashion controlled by a priority queue.</S>
+    <S sid="107" ssid="69">For each source phrase, we convert the compatible hypotheses into a trie.</S>
+    <S sid="108" ssid="70">The target phrases were already converted into a trie when the phrase table was loaded.</S>
+    <S sid="109" ssid="71">We then push the root (E, E) boundary pair into the priority queue.</S>
+    <S sid="110" ssid="72">We do this for all source phrases under consideration, putting their root boundary pairs into the same priority queue.</S>
+    <S sid="111" ssid="73">The algorithm then loops by popping the top boundary pair.</S>
+    <S sid="112" ssid="74">It the top boundary pair uniquely describes a hypothesis and target phrase, then remaining features are evaluated and the new hypothesis is output to the decoder&#8217;s stack.</S>
+    <S sid="113" ssid="75">Otherwise, the algorithm splits the boundary pair and pushes both split versions.</S>
+    <S sid="114" ssid="76">Iteration continues until k new hypotheses have been found.</S>
+    <S sid="115" ssid="77">We build hypotheses from left-to-right and manage stacks just like cube pruning.</S>
+    <S sid="116" ssid="78">The only difference is how the k elements of these stacks are selected.</S>
+    <S sid="117" ssid="79">When the decoder matches a hypothesis with a compatible source phrase, we immediately evaluate the distortion feature and update future costs, both of which are independent of the target phrase.</S>
+    <S sid="118" ssid="80">Our future costs are exactly the same as those used in Moses (Koehn et al., 2007): the highest-scoring way to cover the rest of the source sentence.</S>
+    <S sid="119" ssid="81">This includes the language model score within target phrases but ignores the change in language model score that would occur were these phrases to be appended together.</S>
+    <S sid="120" ssid="82">The hypotheses compatible with each source phrase are arranged into a trie.</S>
+    <S sid="121" ssid="83">Finally, the priority queue algorithm from the preceding section searches for options that the language model likes.</S>
+  </SECTION>
+  <SECTION title="4 Experiments" number="4">
+    <S sid="122" ssid="1">The primary claim is that our algorithm performs better than cube pruning in terms of the trade-off between time and accuracy.</S>
+    <S sid="123" ssid="2">We compare our new decoder implementation with Moses (Koehn et al., 2007) by translating 1677 sentences from Chinese to English.</S>
+    <S sid="124" ssid="3">These sentences are a deduplicated subset of the NIST Open MT 2012 test set and were drawn from Chinese online text sources, such as discussion forums.</S>
+    <S sid="125" ssid="4">We trained our phrase table using a bitext of 10.8 million sentence pairs, which after tokenization amounts to approximately 290 million words on the English side.</S>
+    <S sid="126" ssid="5">The bitext contains data from several sources, including news articles, UN proceedings, Hong Kong government documents, online forum data, and specialized sources such as an idiom translation table.</S>
+    <S sid="127" ssid="6">We also trained our language model on the English half of this bitext using unpruned interpolated modified Kneser-Ney smoothing (Kneser and Ney, 1995; Chen and Goodman, 1998).</S>
+    <S sid="128" ssid="7">The system has standard phrase table, length, distortion, and language model features.</S>
+    <S sid="129" ssid="8">We plan to implement lexicalized reordering in future work; without this, the test system is 0.53 BLEU (Papineni et al., 2002) point behind a state-of-theart system.</S>
+    <S sid="130" ssid="9">We set the reordering limit to R = 15.</S>
+    <S sid="131" ssid="10">The phrase table was pre-pruned by applying the same heuristic as Moses: select the top 20 target phrases by score, including the language model.</S>
+    <S sid="132" ssid="11">Moses (Koehn et al., 2007) revision d6df825 was compiled with all optimizations recommended in the documentation.</S>
+    <S sid="133" ssid="12">We use the inmemory phrase table for speed.</S>
+    <S sid="134" ssid="13">Tests were run on otherwise-idle identical machines with 32 GB RAM; the processes did not come close to running out of memory.</S>
+    <S sid="135" ssid="14">The language model was compiled into KenLM probing format (Heafield, 2011) and placed in RAM while text phrase tables were forced into the disk cache before each run.</S>
+    <S sid="136" ssid="15">Timing is based on CPU usage (user plus system) minus loading time, as measured by running on empty input; our decoder is also faster at loading.</S>
+    <S sid="137" ssid="16">All results are single-threaded.</S>
+    <S sid="138" ssid="17">Model score is comparable across decoders and averaged over all 1677 sentences; higher is better.</S>
+    <S sid="139" ssid="18">The relationship between model score and uncased BLEU (Papineni et al., 2002) is noisy, so peak BLEU is not attained by the highest search accuracy.</S>
+    <S sid="140" ssid="19">Figure 4 shows the results for pop limits k ranging from 5 to 10000 while Table 1 shows select results.</S>
+    <S sid="141" ssid="20">For Moses, we also set the stack size to k to disable a second pruning pass, as is common.</S>
+    <S sid="142" ssid="21">Because Moses is slower, we also ran our decoder with higher beam sizes to fill in the graph.</S>
+    <S sid="143" ssid="22">Our decoder is more accurate, but mostly faster.</S>
+    <S sid="144" ssid="23">We can interpret accuracy improvments as speed improvements by asking how much time is required to attain the same accuracy as the baseline.</S>
+    <S sid="145" ssid="24">By this metric, our decoder is 4.0 to 7.7 times as fast as Moses, depending on k.</S>
+  </SECTION>
+  <SECTION title="5 Conclusion" number="5">
+    <S sid="146" ssid="1">We have contributed a new phrase-based search algorithm based on the principle that the language model cares the most about boundary words.</S>
+    <S sid="147" ssid="2">This leads to two contributions: hiding irrelevant state from features and an incremental refinement algorithm to find high-scoring combinations.</S>
+    <S sid="148" ssid="3">This algorithm is implemented in a new fast phrase-based decoder, which we release as open-source under the LGPL at kheafield.com/code/.</S>
+  </SECTION>
+  <SECTION title="Acknowledgements" number="6">
+    <S sid="149" ssid="1">This work was supported by the Defense Advanced Research Projects Agency (DARPA) Broad Operational Language Translation (BOLT) program through IBM.</S>
+    <S sid="150" ssid="2">This work used Stampede provided by the Texas Advanced Computing Center (TACC) at The University of Texas at Austin under XSEDE allocation TG-CCR140009.</S>
+    <S sid="151" ssid="3">XSEDE is supported by NSF grant number OCI1053575.</S>
+    <S sid="152" ssid="4">Any opinions, findings, and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the view of DARPA or the US government.</S>
+  </SECTION>
+</PAPER>

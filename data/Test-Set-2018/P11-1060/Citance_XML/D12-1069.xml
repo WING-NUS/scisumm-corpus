@@ -1,0 +1,251 @@
+<PAPER>
+  <S sid="0">Weakly Supervised Training of Semantic Parsers</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present a method for training a semantic parser using only a knowledge base and an unlabeled text corpus, without any individually annotated sentences.</S>
+    <S sid="2" ssid="2">Our key observation is that multiple forms of weak supervision can be combined to train an accurate semantic parser: supervision a knowledge base, supervision dependencyparsed sentences.</S>
+    <S sid="3" ssid="3">We apply our approach to train a semantic parser that uses 77 relations from Freebase in its knowledge representation.</S>
+    <S sid="4" ssid="4">This semantic parser extracts instances of binary relations with state-of-theart accuracy, while simultaneously recovering much richer semantic structures, such as conjunctions of multiple relations with partially shared arguments.</S>
+    <S sid="5" ssid="5">We demonstrate recovery of this richer structure by extracting logical forms from natural language queries against Freebase.</S>
+    <S sid="6" ssid="6">On this task, the trained semantic parser achieves 80% precision and 56% recall, despite never having seen an annotated logical form.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="7" ssid="1">Semantic parsing converts natural language statements into logical forms in a meaning representation language.</S>
+    <S sid="8" ssid="2">For example, the phrase &#8220;town in California&#8221; might be represented as Ax.CITY(x) &#8743; LOCATEDIN(x, CALIFORNIA), where CITY, LOCATEDIN and CALIFORNIA are predicates and entities from a knowledge base.</S>
+    <S sid="9" ssid="3">The expressivity and utility of semantic parsing is derived from this meaning representation, which is essentially a program that is directly executable by a computer.</S>
+    <S sid="10" ssid="4">In this sense, broad coverage semantic parsing is the goal of natural language understanding.</S>
+    <S sid="11" ssid="5">Unfortunately, due to data annotation constraints, modern semantic parsers only operate in narrow domains.</S>
+    <S sid="12" ssid="6">The best performing semantic parsers are trained using extensive manual annotation: typically, a number of sentences must be annotated with their desired logical form.</S>
+    <S sid="13" ssid="7">Although other forms of supervision exist (Clarke et al., 2010; Liang et al., 2011), these methods similarly require annotations for individual sentences.</S>
+    <S sid="14" ssid="8">More automated training methods are required to produce semantic parsers with richer meaning representations.</S>
+    <S sid="15" ssid="9">This paper presents an algorithm for training a semantic parser without per-sentence annotations.</S>
+    <S sid="16" ssid="10">Instead, our approach exploits two easily-obtainable sources of supervision: a large knowledge base and (automatically) dependency-parsed sentences.</S>
+    <S sid="17" ssid="11">The semantic parser is trained to identify relation instances from the knowledge base while simultaneously producing parses that syntactically agree with the dependency parses.</S>
+    <S sid="18" ssid="12">Combining these two sources of supervision allows us to train an accurate semantic parser for any knowledge base without annotated training data.</S>
+    <S sid="19" ssid="13">We demonstrate our approach by training a Combinatory Categorial Grammar (CCG) (Steedman, 1996) that parses sentences into logical forms containing any of 77 relations from Freebase.</S>
+    <S sid="20" ssid="14">Our training data consists of relation instances from Freebase and automatically dependency-parsed sentences from a web corpus.</S>
+    <S sid="21" ssid="15">The trained semantic parser extracts binary relations with state-of-the-art performance, while recovering considerably richer semantic structure.</S>
+    <S sid="22" ssid="16">We demonstrate recovery of this semantic structure using natural language queries against Freebase.</S>
+    <S sid="23" ssid="17">Our weakly-supervised semantic parser predicts the correct logical form for 56% of queries, despite never seeing a labeled logical form.</S>
+    <S sid="24" ssid="18">This paper is structured as follows.</S>
+    <S sid="25" ssid="19">We first provide some background information on CCG and the structure of a knowledge base in Section 2.</S>
+    <S sid="26" ssid="20">Section 3 formulates the weakly supervised training problem for semantic parsers and presents our algorithm.</S>
+    <S sid="27" ssid="21">Section 4 describes how we applied our algorithm to construct a semantic parser for Freebase, and Section 5 presents our results.</S>
+    <S sid="28" ssid="22">We conclude with related work and discussion.</S>
+  </SECTION>
+  <SECTION title="2 Background" number="2">
+    <S sid="29" ssid="1">Combinatory Categorial grammar (CCG) is a linguistic formalism that represents both the syntax and semantics of language (Steedman, 1996).</S>
+    <S sid="30" ssid="2">CCG is a lexicalized formalism that encodes all grammatical information in a lexicon A.</S>
+    <S sid="31" ssid="3">This lexicon contains syntactic and semantic categories for each word.</S>
+    <S sid="32" ssid="4">A lexicon may include entries such as: Each entry of the lexicon w := s : l maps a word or short phrase w to a syntactic category s and a logical form l. Syntactic categories s may be atomic (N) or complex (N\N).</S>
+    <S sid="33" ssid="5">Logical forms l are lambda calculus expressions constructed using predicates from a knowledge base.</S>
+    <S sid="34" ssid="6">These logical forms combine during parsing to form a complete logical form for the parsed text.</S>
+    <S sid="35" ssid="7">Parses are constructed by combining adjacent categories using several combination rules, such as forward (&gt;) and backward (&lt;) application: These rules mean that the complex category X/Y (X\Y ) behaves like a function which accepts an argument of type Y on its right (left) and returns a value of type X. Parsing amounts to sequentially applying these two rules, as shown in Figure 1.</S>
+    <S sid="36" ssid="8">The result of parsing is an ordered pair, containing both a syntactic parse tree and an associated logical form.</S>
+    <S sid="37" ssid="9">We refer to such an ordered pair as a semantic parse, or by using the letter E. Given a lexicon, there may be multiple semantic parses E for a given phrase w. Like context-free grammars (CFGs), CCGs can be extended to represent a probability distribution over parses P( |w; 0) where 0 is a parameter vector.</S>
+    <S sid="38" ssid="10">The main input to our system is a propositional knowledge base K = (E, R, C, A), containing entities E, categories C, relations R and relation instances A.</S>
+    <S sid="39" ssid="11">Categories and relations are predicates which operate on entities and return truth values; categories c E C are one-place predicates (CITY(e)) and relations r E R are twoplace predicates (LOCATEDIN(e1, e2)).</S>
+    <S sid="40" ssid="12">Entities e E E represent real-world entities and have a set of known text names.</S>
+    <S sid="41" ssid="13">For example, CALIFORNIA is an entity whose text names include &#8220;California&#8221; and &#8220;CA.&#8221; Relation instances r(e1, e2) E A are facts asserted by the knowledge base, such as LOCATEDIN(SACRAMENTO, CALIFORNIA).</S>
+    <S sid="42" ssid="14">Examples of such knowledge bases include Freebase (Bollacker et al., 2008), NELL (Carlson et al., 2010), and YAGO (Suchanek et al., 2007).</S>
+    <S sid="43" ssid="15">The knowledge base influences the semantic parser in two ways.</S>
+    <S sid="44" ssid="16">First, CCG logical forms are constructed by combining categories, relations and entities from the knowledge base with logical connectives; hence, the predicates in the knowledge base determine the expressivity of the parser&#8217;s semantic representation.</S>
+    <S sid="45" ssid="17">Second, the known relation instances r(e1, e2) E A are used as weak supervision to train the semantic parser.</S>
+  </SECTION>
+  <SECTION title="3 Weakly Supervised Semantic Parsing" number="3">
+    <S sid="46" ssid="1">We define weakly supervised semantic parsing as the following learning problem.</S>
+    <S sid="47" ssid="2">Input: This problem is ill-posed without additional assumptions: since the correct logical form for a sentence is never observed, there is no a priori reason to prefer one semantic parse to another.</S>
+    <S sid="48" ssid="3">Our training algorithm makes two assumptions about correct semantic parses, which are encoded as weak supervision constraints.</S>
+    <S sid="49" ssid="4">These constraints make learning possible by adding an inductive bias: Our weakly supervised training uses these constraints as a proxy for labeled semantic parses.</S>
+    <S sid="50" ssid="5">The training algorithm has two steps.</S>
+    <S sid="51" ssid="6">First, the algorithm constructs a graphical model that contains both the semantic parser and constant factors encoding the above two constraints.</S>
+    <S sid="52" ssid="7">This graphical model is then used to estimate parameters &#952; for the semantic parser, essentially optimizing &#952; to produce parses that satisfy the weak supervision constraints.</S>
+    <S sid="53" ssid="8">If our assumptions are correct and sufficiently constrain the parameter space, then this procedure will identify parameters for an accurate semantic parser.</S>
+    <S sid="54" ssid="9">The first step of training constructs a graphical model containing the semantic parser and two weak supervision constraints.</S>
+    <S sid="55" ssid="10">However, the first weak supervision constraint couples the semantic parses for every sentence s E S. Such coupling would result in an undesirably large graphical model.</S>
+    <S sid="56" ssid="11">We therefore modify this constraint to enforce that every relation r(e1, e2) is expressed at least once in S(e1,e2) C S, the subset of sentences which mention both e1 and e2.</S>
+    <S sid="57" ssid="12">These mentions are detected using the provided mention-identification procedure.</S>
+    <S sid="58" ssid="13">Figure 2 depicts the graphical model constructed for training.</S>
+    <S sid="59" ssid="14">The semantic constraint couples the extractions for all sentences S(e1,e2), so the graphical model is instantiated once per (e1, e2) tuple.</S>
+    <S sid="60" ssid="15">The model has 4 types of random variables and values: Si = si represents a sentence, Li = `i represents a semantic parse, Zi = zi represents the satisfaction of the syntactic constraint and Yr = yr represents the truth value of relation r. Si, Li and Zi are replicated once for each sentence s E S(e1,e2), while Yr is replicated once for each relation type r in the knowledge base (all r E R).</S>
+    <S sid="61" ssid="16">For each entity pair (e1, e2), this graphical model defines a conditional distribution over L, Y, Z given S. This distribution factorizes as: The factorization contains three replicated factors.</S>
+    <S sid="62" ssid="17">F represents the semantic parser, which is parametrized by &#952; and produces a semantic parse `i for each sentence si.</S>
+    <S sid="63" ssid="18">IF and 4b are deterministic factors representing the two weak supervision constraints.</S>
+    <S sid="64" ssid="19">We now describe each factor in more detail.</S>
+    <S sid="65" ssid="20">The factor F represents the semantic parser, which is a log-linear probabilistic CCG using the input lexicon A.</S>
+    <S sid="66" ssid="21">Given a sentence s and parameters &#952;, the parser defines an unnormalized probability distribution over semantic parses `, each of which includes both a syntactic CCG parse tree and logical form.</S>
+    <S sid="67" ssid="22">Let f(E, s) represent a feature function mapping semantic parses to vectors of feature values1.</S>
+    <S sid="68" ssid="23">The factor F is then defined as: If the features f(E, s) factorize according to the structure of the CCG parse tree, it is possible to perform exact inference using a CKY-style dynamic programming algorithm.</S>
+    <S sid="69" ssid="24">However, other aspects of the graphical model preclude exact inference, so we perform approximate inference using beam search.</S>
+    <S sid="70" ssid="25">Inference is explained in more detail in Section 3.2.</S>
+    <S sid="71" ssid="26">The semantic constraint states that, given an entity tuple (e1, e2), every relation instance r(e1, e2) E A must be expressed somewhere in S(11,12).</S>
+    <S sid="72" ssid="27">Furthermore, no semantic parse can express a relation instance which is not in the knowledge base.</S>
+    <S sid="73" ssid="28">This constraint is identical to the multiple deterministic-OR constraint used by Hoffmann et al. (2011) to train a sentential relation extractor.</S>
+    <S sid="74" ssid="29">The graphical model contains a semantic constraint factor IF and one binary variable Yr for each relation r in the knowledge base.</S>
+    <S sid="75" ssid="30">Yr represents whether r(e1,e2) is expressed by any sentence in S(11,12).</S>
+    <S sid="76" ssid="31">The IF factor determines whether each semantic parse in f extracts a relation between e1 and e2.</S>
+    <S sid="77" ssid="32">It then aggregates these sentence-level extractions using a deterministic OR: if any sentence extracts r(e1, e2) then Yr = 1.</S>
+    <S sid="78" ssid="33">Otherwise, Yr = 0.</S>
+    <S sid="79" ssid="34">The EXTRACTS function determines the relation instances that are asserted by a semantic parse E. EXTRACTS(E, r, e1, e2) is true if E asserts the relation r(e1, e2) and false otherwise.</S>
+    <S sid="80" ssid="35">This function essentially converts the semantic parser into a sentential relation extractor, and its implementation may depend on the types of logical connectives included in the lexicon A.</S>
+    <S sid="81" ssid="36">Logical forms in our Freebase semantic parser consist of conjunctions of predicates from the knowledge base; we therefore define EXTRACTS(E, r, e1, e2) as true if E&#8217;s logical form contains the clauses r(x, y), x = e1 and y = e2.</S>
+    <S sid="82" ssid="37">A problem with the semantic constraint is that it admits a large number of ungrammatical parses.</S>
+    <S sid="83" ssid="38">The syntactic constraint penalizes ungrammatical parses by encouraging the semantic parser to produce parse trees that agree with a dependency parse of the same sentence.</S>
+    <S sid="84" ssid="39">Specifically, the syntactic constraint requires the predicate-argument structure of the CCG parse to agree with the predicate-argument structure of the dependency parse.</S>
+    <S sid="85" ssid="40">Agreement is defined as a function of each CCG rule application in E. In the parse tree E, each rule application combines two subtrees, Eh and E,, into a single tree spanning a larger portion of the sentence.</S>
+    <S sid="86" ssid="41">A rule application is consistent with a dependency parse t if the head words of Eh and E, have a dependency edge between them in t. AGREE(E, t) is true if and only if every rule application in E is consistent with t. This syntactic constraint is encoded in the graphical model by the 4b factors and Z variables: 4b(z, E, s) = 1 if z = AGREE(E, DEPPARSE(s)) 0 otherwise To train the model, a single training example is constructed for every tuple of entities (e1, e2).</S>
+    <S sid="87" ssid="42">The input to the model is s = S(11,12), the set of sentences containing e1 and e2.</S>
+    <S sid="88" ssid="43">The weak supervision variables, y, z, are the output of the model. y is constructed by setting yr = 1 if r(e1, e2) &#8712; A, and 0 otherwise.</S>
+    <S sid="89" ssid="44">This setting trains the semantic parser to extract every true relation instance between (e1, e2) from some sentence in S(e,,e,), while simultaneously avoiding incorrect instances.</S>
+    <S sid="90" ssid="45">Finally, z = 1, to encourage agreement between the semantic and dependency parses.</S>
+    <S sid="91" ssid="46">The training data for the model is therefore a collection, {(sj,yj,zj)}n j&#65533;1, where j indexes entity tuples (e1, e2).</S>
+    <S sid="92" ssid="47">Training optimizes the semantic parser parameters &#952; to predict Y = yj, Z = zj given S = sj.</S>
+    <S sid="93" ssid="48">The parameters &#952; are estimated by running the structured perceptron algorithm (Collins, 2002) on the training data defined above.</S>
+    <S sid="94" ssid="49">The structured perceptron algorithm iteratively applies a simple update rule for each example (sj, yj, zj) in the training data: `predicted &#8592; `actual &#8592; &#952;t+1 &#8592; Each iteration of training requires solving two maximization problems.</S>
+    <S sid="95" ssid="50">The first maximization, maxe,y,z p(`, y, z|s; &#952;t), is straightforward because y and z are deterministic functions of `.</S>
+    <S sid="96" ssid="51">Therefore, it is solved by finding the maximum probability assignment `, then choosing values for y and z that satisfy the weak supervision constraints.</S>
+    <S sid="97" ssid="52">The second maximization, maxe p(`|y, z, s; &#952;t), is more challenging.</S>
+    <S sid="98" ssid="53">When y and z are given, the inference procedure must restrict its search to the parses ` which satisfy these weak supervision constraints.</S>
+    <S sid="99" ssid="54">The original formulation of the IF factors permitted tractable inference (Hoffmann et al., 2011), but the EXTRACTS function and the 4b factors preclude efficient inference.</S>
+    <S sid="100" ssid="55">We approximate this maximization using beam search over CCG parses `.</S>
+    <S sid="101" ssid="56">For each sentence s, we perform a beam search to produce k = 300 possible semantic parses.</S>
+    <S sid="102" ssid="57">We then check the value of 4b for each generated parse and eliminate parses which do not satisfy this syntactic constraint.</S>
+    <S sid="103" ssid="58">Finally, we apply EXTRACTS to each parse, then use the greedy approximate inference procedure from Hoffmann et al. (2011) for the IF factors.</S>
+  </SECTION>
+  <SECTION title="4 Building a Grammar for Freebase" number="4">
+    <S sid="104" ssid="1">We apply the training algorithm from the previous section to produce a semantic parser for a subset of Freebase.</S>
+    <S sid="105" ssid="2">This section describes details of the grammar we construct for this task, including the construction of the lexicon A, some extensions to the CCG parser, and the features used during training.</S>
+    <S sid="106" ssid="3">In this section, we assume access to a knowledge base K = (E, C, R, A), a corpus of dependencyparsed sentences S and a procedure for identifying mentions of entities in sentences.</S>
+    <S sid="107" ssid="4">The first step in constructing the semantic parser is defining a lexicon A.</S>
+    <S sid="108" ssid="5">We construct A by applying simple dependency-parse-based heuristics to sentences in the training corpus.</S>
+    <S sid="109" ssid="6">The resulting lexicon A captures a variety of linguistic phenomena, including verbs, common nouns (&#8220;city&#8221;), noun compounds (&#8220;California city&#8221;) and prepositional modifiers (&#8220;city in California&#8221;).</S>
+    <S sid="110" ssid="7">The first step in lexicon construction is to use the mention identification procedure to identify all mentions of entities in the sentences S. This process results in (e1, e2, s) triples, consisting of sentences with two entity mentions.</S>
+    <S sid="111" ssid="8">The dependency path between e1 and e2 in s is then matched against the dependency parse patterns in Table 1.</S>
+    <S sid="112" ssid="9">Each matched pattern adds one or more lexical entries to A Each pattern in Table 1 has a corresponding lexical category template, which is a CCG lexical category containing parameters e, c and r that are chosen at initialization time.</S>
+    <S sid="113" ssid="10">Given the triple (e1, e2, s), relations r are chosen such that r(e1, e2) &#8712; A, and categories c are chosen such that c(e1) &#8712; A or c(e2) &#8712; A.</S>
+    <S sid="114" ssid="11">The template is then instantiated with every combination of these e, c and r values.</S>
+    <S sid="115" ssid="12">After instantiating lexical categories for each sentence in S, we prune infrequent lexical categories to improve parser efficiency.</S>
+    <S sid="116" ssid="13">This pruning step is required because the common noun pattern generates a large number of lexical categories, the majority of which are incorrect.</S>
+    <S sid="117" ssid="14">Therefore, we eliminate all common noun categories instantiated by fewer than 5 sentences in S. The other rules are less fertile, so we do not need to prune their output.</S>
+    <S sid="118" ssid="15">In addition to these categories, the grammar includes type-changing rules from N to NDN.</S>
+    <S sid="119" ssid="16">These rules capture noun compounds by allowing nouns to become functions from nouns to nouns.</S>
+    <S sid="120" ssid="17">There are several such type-changing rules since the resulting category includes a hidden relation r between the noun and its modifier (see Table 1).</S>
+    <S sid="121" ssid="18">As with lexical categories, the set of type changing rules included in the grammar is determined by matching dependency parse patterns to the training data.</S>
+    <S sid="122" ssid="19">Similar rules for noun compounds are used in other CCG parsers (Clark and Curran, 2007).</S>
+    <S sid="123" ssid="20">The instantiated lexicon represents the semantics of words and phrases as conjunctions of predicates from the knowledge base, possibly including existentially quantified variables and A expressions.</S>
+    <S sid="124" ssid="21">The syntactic types N and PP are semantically represented as functions from entities to truth values (e.g., Ax.CITY(x)), while sentences S are statements with no A terms, such as Elx, y.x = CALIFORNIA &#8743; CITY(y) &#8743; LOCATEDIN(x, y).</S>
+    <S sid="125" ssid="22">Variables in the semantic representation (x, y) range over entities from the knowledge base.</S>
+    <S sid="126" ssid="23">Intuitively, the N and PP categories represent sets of entities, while sentences represent assertions about the world.</S>
+    <S sid="127" ssid="24">The semantic parser is trained using sentences from a web corpus, which contains many out-of-domain words.</S>
+    <S sid="128" ssid="25">As a consequence, many of the words encountered during training cannot be represented using the vocabulary of predicates from the knowledge base.</S>
+    <S sid="129" ssid="26">To handle these extraneous words, we allow the CCG parser to skip words while parsing a sentence.</S>
+    <S sid="130" ssid="27">During parsing, the parser first decides whether to retrieve a lexical category for each word in the sentence.</S>
+    <S sid="131" ssid="28">The sentence is then parsed as if only the retrieved lexical categories existed.</S>
+    <S sid="132" ssid="29">The features f(E, s) for our probabilistic CCG contain two sets of features.</S>
+    <S sid="133" ssid="30">The first set contains lexical features, which count the number of times each lexical entry is used in E. The second set contains rule application features, which count the number of times each combination rule is applied to each possible set of arguments.</S>
+    <S sid="134" ssid="31">An argument is defined by its syntactic and semantic category, and in some cases by the lexical entry which created it.</S>
+    <S sid="135" ssid="32">We lexicalize arguments for prepositional phrases PP and common nouns (initialized by the second rule in Table 1).</S>
+    <S sid="136" ssid="33">This lexicalization allows the parser to distinguish between prepositional phrases headed by different prepositions, as well as between different common nouns.</S>
+    <S sid="137" ssid="34">All other types are distinguished solely by syntactic and semantic category.</S>
+  </SECTION>
+  <SECTION title="5 Evaluation" number="5">
+    <S sid="138" ssid="1">In this section, we evaluate the performance of a semantic parser for Freebase, trained using our weakly-supervised algorithm.</S>
+    <S sid="139" ssid="2">Empirical comparison is somewhat difficult because the most comparable previous work &#8211; weakly-supervised relation extraction &#8211; uses a shallower semantic representation.</S>
+    <S sid="140" ssid="3">Our evaluation therefore has two components: (1) a binary relation extraction task, to demonstrate that the trained semantic parser extracts instances of binary relations with performance comparable to other state-of-the-art systems, and (2) a natural language database query task, to demonstrate the parser&#8217;s ability to extract more complex logical forms than binary relation instances, such as logical expressions involving conjunctions of multiple categories and relations with partially shared arguments.</S>
+    <S sid="141" ssid="4">Our experiments use a subset of 77 relations2 from Freebase3 as the knowledge base and a corpus of web sentences.</S>
+    <S sid="142" ssid="5">We constructed the sentence corpus by first sampling sentences from a web crawl and parsing them with MaltParser (Nivre et al., 2006).</S>
+    <S sid="143" ssid="6">Long sentences tended to have noisy parses while also rarely expressing relations, so we discarded sentences longer than 10 words.</S>
+    <S sid="144" ssid="7">Entities were identified by performing a simple string match between canonical entity names in Freebase and proper noun phrases identified by the parser.</S>
+    <S sid="145" ssid="8">In cases where a single noun phrase matched multiple entities, we selected the entity participating in the most relations.</S>
+    <S sid="146" ssid="9">The resulting corpus contains 2.5 million (e1, e2, s) triples, from which we reserved 10% for validation and 10% for testing.</S>
+    <S sid="147" ssid="10">The validation set was used to estimate performance during algorithm development, while the test set was used to generate the final experimental results.</S>
+    <S sid="148" ssid="11">All triples for each (e1, e2) tuple were placed in the same set.</S>
+    <S sid="149" ssid="12">Approximately 1% of the resulting (e1, e2, s) triples are positive examples, meaning there exists some relation r where r(e1, e2) E 04.</S>
+    <S sid="150" ssid="13">To improve training efficiency and prediction performance, we subsample 5% of the negative examples for training, producing a training set of 125k sentences with 27k positive examples.</S>
+    <S sid="151" ssid="14">The validation and test sets retain the original positive/negative ratio.</S>
+    <S sid="152" ssid="15">Table 2 shows some statistics of the most frequent relations in the test set.</S>
+    <S sid="153" ssid="16">The first experiment measures the semantic parser&#8217;s ability to extract relations from sentences in our web corpus.</S>
+    <S sid="154" ssid="17">We compare our semantic parser to MULTIR (Hoffmann et al., 2011), which is a state-ofthe-art weakly supervised relation extractor.</S>
+    <S sid="155" ssid="18">This method uses the same weak supervision constraint and parameter estimation procedure, but replaces the semantic parser by a linear classifier.</S>
+    <S sid="156" ssid="19">The features for this classifier include the dependency path between the entity mentions, the type of each mention, and the intervening context (Mintz et al., 2009).</S>
+    <S sid="157" ssid="20">Both the semantic parser and MULTIR were trained by running 5 iterations of the structured perceptron algorithm5.</S>
+    <S sid="158" ssid="21">At test time, both models predicted a relation r E R or NONE for each (e1, e2, s) triple in the test set.</S>
+    <S sid="159" ssid="22">The parser parses the sentence without considering the entities marked in the sentence, then applies the EXTRACTS function defined in Section 3.1 to identify a relation between e1 and e2.</S>
+    <S sid="160" ssid="23">We compare three versions of the semantic parser: PARSE, which is the basic semantic parser, PARSE+DEP which additionally observes the correct dependency parse at test time, and PARSE-DEP which is trained without the syntactic constraint.</S>
+    <S sid="161" ssid="24">Note that MULTIR uses the sentence&#8217;s dependency parse to construct its feature vector.</S>
+    <S sid="162" ssid="25">Our evaluation considers two performance measures: aggregate and sentential precision/recall.</S>
+    <S sid="163" ssid="26">Aggregate precision takes the union of all extracted relation instances r(e1, e2) from the test corpus and compares these instances to Freebase.</S>
+    <S sid="164" ssid="27">To produce a precision/recall curve, each extracted instance r(e1, e2) is assigned the maximum score over all sentences which extracted it.</S>
+    <S sid="165" ssid="28">This metric is easy to compute, but may be inaccurate due to inaccuracies and missing relations in Freebase.</S>
+    <S sid="166" ssid="29">Sentential precision computes the precision of extractions on individual (e1, e2, s) tuples.</S>
+    <S sid="167" ssid="30">This metric is evaluated by manually sampling and evaluating 100 test sentences from which a relation was extracted per model.</S>
+    <S sid="168" ssid="31">Unfortunately, it is difficult to compute recall for this metric, since the true number of sentences expressing relations is unknown.</S>
+    <S sid="169" ssid="32">We instead report precision as a function of the expected number of correct extractions, which is directly proportional to recall.</S>
+    <S sid="170" ssid="33">Figure 3 displays aggregate precision/recall and Figure 4 displays sentential precision/recall for all 4 models.</S>
+    <S sid="171" ssid="34">Generally, PARSE behaves like MULTIR with somewhat lower recall.</S>
+    <S sid="172" ssid="35">In the sentential evaluation, PARSE+DEP outperforms both PARSE and MULTIR.</S>
+    <S sid="173" ssid="36">The difference between PARSE+DEP&#8217;s aggregate and sentential precision stems from the fact that PARSE+DEP extracts each relation instance from more sentences than either MULTIR or PARSE.</S>
+    <S sid="174" ssid="37">PARSE-DEP has the worst performance in both evaluations, suggesting the importance of syntactic supervision.</S>
+    <S sid="175" ssid="38">Precision in the aggregate experiment is low partially due to examples with incorrect entity disambiguation.</S>
+    <S sid="176" ssid="39">We found that the skewed distribution of relation types hides interesting differences between the models.</S>
+    <S sid="177" ssid="40">Therefore, we include Figure 5 comparing our syntactically-supervised parsers to MULTIR, ignoring the two most frequent relations (which together make up over half of all relation instances).</S>
+    <S sid="178" ssid="41">Both PARSE and PARSE+DEP are considerably more precise than MULTIR on these less frequent relations because their compositional meaning representation shares parameter strength between relations.</S>
+    <S sid="179" ssid="42">For example, the semantic parsers learn that &#8220;in&#8221; often combines with a city to form a prepositional phrase; the parsers can apply this knowledge to identify city arguments of any relation.</S>
+    <S sid="180" ssid="43">However, MULTIR is capable of higher recall, since its dependency parse features can represent syntactic dependencies that cannot be represented by our semantic parsers.</S>
+    <S sid="181" ssid="44">This limitation is a consequence of our heuristic lexicon initialization procedure, and could be rectified by a more flexible initialization procedure.</S>
+    <S sid="182" ssid="45">The second experiment measures our trained parser&#8217;s ability to correctly translate natural language queries into logical queries against Freebase.</S>
+    <S sid="183" ssid="46">To avoid biasing the evaluation, we constructed a test corpus of natural language queries in a datadriven fashion.</S>
+    <S sid="184" ssid="47">We searched the test data for sentences with two related entities separated by an &#8220;is a&#8221; expression.</S>
+    <S sid="185" ssid="48">The portion of the sentence before the &#8220;is a&#8221; expression was discarded and the remainder retained as a candidate query.</S>
+    <S sid="186" ssid="49">For example &#8220;Jesse is an author from Austin, Texas,&#8221; was converted into the candidate query &#8220;author from Austin, Texas.&#8221; Each candidate query was then annotated with a logical form using categories and relations from the knowledge base; candidate queries without satisfactory logical forms were discarded.</S>
+    <S sid="187" ssid="50">We annotated 50 validation and 50 test queries in this fashion.</S>
+    <S sid="188" ssid="51">The validation set was used to estimate performance during algorithm development and the test set was used to generate the final results.</S>
+    <S sid="189" ssid="52">Example queries with their annotated logical forms are shown in Table 3.</S>
+    <S sid="190" ssid="53">Table 4 displays the results of the query evaluation.</S>
+    <S sid="191" ssid="54">For this evaluation, we forced the parser to include every word of the query in the parse.</S>
+    <S sid="192" ssid="55">Precision is the percentage of successfully parsed queries for which the correct logical form was predicted.</S>
+    <S sid="193" ssid="56">Recall is the percentage of all queries for which the correct logical form was predicted.</S>
+    <S sid="194" ssid="57">This evaluation demonstrates that the semantic parser successfully interprets common nouns and identifies multiple relations with shared arguments.</S>
+    <S sid="195" ssid="58">The performance difference between PARSE and PARSE-DEP also demonstrates the benefit of including syntactic supervision.</S>
+    <S sid="196" ssid="59">Examining the system output, we find two major sources of error.</S>
+    <S sid="197" ssid="60">The first is missing lexical categories for uncommon words (e.g., &#8220;ex-guitarist&#8221;), which negatively impact recall by making some queries unparsable.</S>
+    <S sid="198" ssid="61">The second is difficulty distinguishing between relations with similar type signatures, such as CITYLOCATEDINCOUNTRY and CITYCAPITALOFCOUNTRY.</S>
+  </SECTION>
+  <SECTION title="6 Related Work" number="6">
+    <S sid="199" ssid="1">There are many approaches to supervised semantic parsing, including inductive logic programming (Zelle and Mooney, 1996), probabilistic and synchronous grammars (Ge and Mooney, 2005; Wong and Mooney, 2006; Wong and Mooney, 2007; Lu et al., 2008), and automatically learned transformation rules (Kate et al., 2005).</S>
+    <S sid="200" ssid="2">This work most closely follows the work on semantic parsing using CCG (Zettlemoyer and Collins, 2005; Zettlemoyer and Collins, 2007; Kwiatkowski et al., 2010).</S>
+    <S sid="201" ssid="3">These supervised systems are all trained with annotated sentence/logical form pairs; hence these approaches are labor intensive and do not scale to broad domains with large numbers of predicates.</S>
+    <S sid="202" ssid="4">Several recent papers have attempted to reduce the amount of human supervision required to train a semantic parser.</S>
+    <S sid="203" ssid="5">One line of work eliminates the need for an annotated logical form, instead using only the correct answer for a database query (Liang et al., 2011) or even a binary correct/incorrect signal (Clarke et al., 2010).</S>
+    <S sid="204" ssid="6">This type of feedback may be easier to obtain than full logical forms, but still requires individually annotated sentences.</S>
+    <S sid="205" ssid="7">Other approaches are completely unsupervised, but do not tie the language to an existing meaning representation (Poon and Domingos, 2009).</S>
+    <S sid="206" ssid="8">It is also possible to self-train a semantic parser without any labeled data (Goldwasser et al., 2011).</S>
+    <S sid="207" ssid="9">However, this approach does not perform as well as more supervised approaches, since the parser&#8217;s self-training predictions are not constrained by the correct logical form.</S>
+    <S sid="208" ssid="10">Recent research has produced several weakly supervised relation extractors (Craven and Kumlien, 1999; Mintz et al., 2009; Wu and Weld, 2010; Riedel et al., 2010; Hoffmann et al., 2011).</S>
+    <S sid="209" ssid="11">These systems scale up to hundreds of predicates, but have much shallower semantic representations than semantic parsers.</S>
+    <S sid="210" ssid="12">For example, these systems cannot be directly used to respond to natural language queries.</S>
+    <S sid="211" ssid="13">This work extends weakly supervised relation extraction to produce richer semantic structure, using only slightly more supervision in the form of dependency parses.</S>
+  </SECTION>
+  <SECTION title="7 Discussion" number="7">
+    <S sid="212" ssid="1">This paper presents a method for training a semantic parser using only a knowledge base and a corpus of unlabeled sentences.</S>
+    <S sid="213" ssid="2">Our key observation is that multiple forms of weak supervision can be combined to train an accurate semantic parser: semantic supervision from a knowledge base of facts, and syntactic supervision in the form of a standard dependency parser.</S>
+    <S sid="214" ssid="3">We presented an algorithm for training a semantic parser in the form of a probabilistic Combinatory Categorial Grammar, using these two types of weak supervision.</S>
+    <S sid="215" ssid="4">We used this algorithm to train a semantic parser for an ontology of 77 Freebase predicates, using Freebase itself as the weak semantic supervision.</S>
+    <S sid="216" ssid="5">Experimental results show that our trained semantic parser extracts binary relations as well as a state-of-the-art weakly supervised relation extractor (Hoffmann et al., 2011).</S>
+    <S sid="217" ssid="6">Further experiments tested our trained parser&#8217;s ability to extract more complex meanings from sentences, including logical forms involving conjunctions of multiple relation and category predicates with shared arguments (e.g., Ax.MUSICIAN(x) &#8743; PERSONBORNIN(x, LONDON) &#8743; CITYINCOUNTRY(LONDON, ENGLAND)).</S>
+    <S sid="218" ssid="7">To test this capability, we applied the trained parser to natural language queries against Freebase.</S>
+    <S sid="219" ssid="8">The semantic parser correctly interpreted 56% of these queries, despite the broad domain and never having seen an annotated logical form.</S>
+    <S sid="220" ssid="9">Together, these two experimental analyses suggest that the combination of syntactic and semantic weak supervision is indeed a sufficient basis for training semantic parsers for a diverse range of corpora and predicate ontologies.</S>
+    <S sid="221" ssid="10">One limitation of our method is the reliance on hand-built dependency parse patterns for lexicon initialization.</S>
+    <S sid="222" ssid="11">Although these patterns capture a variety of linguistic phenomena, they require manual engineering and may miss important relations.</S>
+    <S sid="223" ssid="12">An area for future work is developing an automated way to produce this lexicon, perhaps by extending the recent work on automatic lexicon generation (Kwiatkowski et al., 2010) to the weakly supervised setting.</S>
+    <S sid="224" ssid="13">Such an algorithm seems especially important if one wishes to model phenomena such as adjectives, which are difficult to initialize heuristically without generating large numbers of lexical entries.</S>
+    <S sid="225" ssid="14">An elegant aspect of semantic parsing is that it is easily extensible to include more complex linguistic phenomena, such as quantification and events (multi-argument relations).</S>
+    <S sid="226" ssid="15">In the future, we plan to increase the expressivity of our parser&#8217;s meaning representation to capture more linguistic and semantic phenomena.</S>
+    <S sid="227" ssid="16">In this fashion, we can make progress toward broad coverage semantic parsing, and thus natural language understanding.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="8">
+    <S sid="228" ssid="1">This research has been supported in part by DARPA under contract number FA8750-09-C-0179, and by a grant from Google.</S>
+    <S sid="229" ssid="2">Additionally, we thank Yahoo! for use of their M45 cluster.</S>
+    <S sid="230" ssid="3">We also gratefully acknowledge the contributions of our colleagues on the NELL project, Justin Betteridge for collecting the Freebase relations, Jamie Callan and colleagues for the web crawl, and Thomas Kollar and Matt Gardner for helpful comments on earlier drafts of this paper.</S>
+  </SECTION>
+</PAPER>

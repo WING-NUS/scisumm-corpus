@@ -1,0 +1,173 @@
+<PAPER>
+  <S sid="0">Joshua 4.0: Packing, PRO, and Paraphrases</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present Joshua 4.0, the newest version of our open-source decoder for parsing-based statistical machine translation.</S>
+    <S sid="2" ssid="2">The main con</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="3" ssid="1">Joshua is an open-source toolkit1 for parsing-based statistical machine translation of human languages.</S>
+    <S sid="4" ssid="2">The original version of Joshua (Li et al., 2009) was a reimplementation of the Python-based Hiero machine translation system (Chiang, 2007).</S>
+    <S sid="5" ssid="3">It was later extended to support grammars with rich syntactic labels (Li et al., 2010a).</S>
+    <S sid="6" ssid="4">More recent efforts introduced the Thrax module, an extensible Hadoopbased extraction toolkit for synchronous contextfree grammars (Weese et al., 2011).</S>
+    <S sid="7" ssid="5">In this paper we describe a set of recent extensions to the Joshua system.</S>
+    <S sid="8" ssid="6">We present a new compact grammar representation format that leverages sparse features, quantization, and data redundancies to store grammars in a dense binary format.</S>
+    <S sid="9" ssid="7">This allows for both near-instantaneous start-up times and decoding with extremely large grammars.</S>
+    <S sid="10" ssid="8">In Section 2 we outline our packed grammar format and 1joshua-decoder.org present experimental results regarding its impact on decoding speed, memory use and translation quality.</S>
+    <S sid="11" ssid="9">Additionally, we present Joshua&#8217;s implementation of the pairwise ranking optimization (Hopkins and May, 2011) approach to translation model tuning.</S>
+    <S sid="12" ssid="10">J-PRO, like Z-MERT, makes it easy to implement new metrics and comes with both a built-in perceptron classifier and out-of-the-box support for widely used binary classifiers such as MegaM and MaxEnt (Daum&#180;e III and Marcu, 2006; Manning and Klein, 2003).</S>
+    <S sid="13" ssid="11">We describe our implementation in Section 3, presenting experimental results on performance, classifier convergence, and tuning speed.</S>
+    <S sid="14" ssid="12">Finally, we introduce the inclusion of bilingual pivoting-based paraphrase extraction into Thrax, Joshua&#8217;s grammar extractor.</S>
+    <S sid="15" ssid="13">Thrax&#8217;s paraphrase extraction mode is simple to use, and yields state-ofthe-art syntactically informed sentential paraphrases (Ganitkevitch et al., 2011).</S>
+    <S sid="16" ssid="14">The full feature set of Thrax (Weese et al., 2011) is supported for paraphrase grammars.</S>
+    <S sid="17" ssid="15">An easily configured feature-level pruning mechanism allows to keep the paraphrase grammar size manageable.</S>
+    <S sid="18" ssid="16">Section 4 presents details on our paraphrase extraction module.</S>
+  </SECTION>
+  <SECTION title="2 Compact Grammar Representation" number="2">
+    <S sid="19" ssid="1">Statistical machine translation systems tend to perform better when trained on larger amounts of bilingual parallel data.</S>
+    <S sid="20" ssid="2">Using tools such as Thrax, translation models and their parameters are extracted and estimated from the data.</S>
+    <S sid="21" ssid="3">In Joshua, translation models are represented as synchronous context-free grammars (SCFGs).</S>
+    <S sid="22" ssid="4">An SCFG is a collection of rules {ri} that take the form: where left-hand side Ci is a nonterminal symbol, the source side ai and the target side -yi are sequences of both nonterminal and terminal symbols.</S>
+    <S sid="23" ssid="5">Further, &#8764;i is a one-to-one correspondence between the nonterminal symbols of ai and -yi, and Oi is a vector of features quantifying the probability of ai translating to -yi, as well as other characteristics of the rule (Weese et al., 2011).</S>
+    <S sid="24" ssid="6">At decoding time, Joshua loads the grammar rules into memory in their entirety, and stores them in a trie data structure indexed by the rules&#8217; source side.</S>
+    <S sid="25" ssid="7">This allows the decoder to efficiently look up rules that are applicable to a particular span of the (partially translated) input.</S>
+    <S sid="26" ssid="8">As the size of the training corpus grows, so does the resulting translation grammar.</S>
+    <S sid="27" ssid="9">Using more diverse sets of nonterminal labels &#8211; which can significantly improve translation performance &#8211; further aggravates this problem.</S>
+    <S sid="28" ssid="10">As a consequence, the space requirements for storing the grammar in memory during decoding quickly grow impractical.</S>
+    <S sid="29" ssid="11">In some cases grammars may become too large to fit into the memory on a single machine.</S>
+    <S sid="30" ssid="12">As an alternative to the commonly used trie structures based on hash maps, we propose a packed trie representation for SCFGs.</S>
+    <S sid="31" ssid="13">The approach we take is similar to work on efficiently storing large phrase tables by Zens and Ney (2007) and language models by Heafield (2011) and Pauls and Klein (2011) &#8211; both language model implementations are now integrated with Joshua.</S>
+    <S sid="32" ssid="14">For our grammar representation, we break the SCFG up into three distinct structures.</S>
+    <S sid="33" ssid="15">As Figure 1 indicates, we store the grammar rules&#8217; source sides {ai}, target sides {-yi}, and feature data {oi} in separate formats of their own.</S>
+    <S sid="34" ssid="16">Each of the structures is packed into a flat array, and can thus be quickly read into memory.</S>
+    <S sid="35" ssid="17">All terminal and nonterminal symbols in the grammar are mapped to integer symbol id&#8217;s using a globally accessible vocabulary map.</S>
+    <S sid="36" ssid="18">We will now describe the implementation details for each representation and their interactions in turn.</S>
+    <S sid="37" ssid="19">The source-side trie (or source trie) is designed to facilitate efficient lookup of grammar rules by source side, and to allow us to completely specify a matching set of rule with a single integer index into the trie.</S>
+    <S sid="38" ssid="20">We store the source sides {ai} of a grammar in a downward-linking trie, i.e. each trie node maintains a record of its children.</S>
+    <S sid="39" ssid="21">The trie is packed into an array of 32-bit integers.</S>
+    <S sid="40" ssid="22">Figure 1 illustrates the composition of a node in the source-side trie.</S>
+    <S sid="41" ssid="23">All information regarding the node is stored in a contiguous block of integers, and decomposes into two parts: a linking block and a rule block.</S>
+    <S sid="42" ssid="24">The linking block stores the links to the child trie nodes.</S>
+    <S sid="43" ssid="25">It consists of an integer n, the number of children, and n blocks of two integers each, containing the symbol id aj leading to the child and the child node&#8217;s address sj (as an index into the source-side array).</S>
+    <S sid="44" ssid="26">The children in the link block are sorted by symbol id, allowing for a lookup via binary or interpolation search.</S>
+    <S sid="45" ssid="27">The rule block stores all information necessary to reconstruct the rules that share the source side that led to the current source trie node.</S>
+    <S sid="46" ssid="28">It stores the number of rules, m, and then a tuple of three integers for each of the m rules: we store the symbol id of the left-hand side, an index into the target-side trie and a data block id.</S>
+    <S sid="47" ssid="29">The rules in the data block are initially in an arbitrary order, but are sorted by application cost upon loading.</S>
+    <S sid="48" ssid="30">The target-side trie (or target trie) is designed to enable us to uniquely identify a target side -yi with a single pointer into the trie, as well as to exploit redundancies in the target side string.</S>
+    <S sid="49" ssid="31">Like the source trie, it is stored as an array of integers.</S>
+    <S sid="50" ssid="32">However, the target trie is a reversed, or upward-linking trie: a trie node retains a link to its parent, as well as the symbol id labeling said link.</S>
+    <S sid="51" ssid="33">As illustrated in Figure 1, the target trie is accessed by reading an array index from the source trie, pointing to a trie node at depth d. We then follow the parent links to the trie root, accumulating target side symbols gj into a target side string gd1 as we go along.</S>
+    <S sid="52" ssid="34">In order to match this traversal, the target strings are entered into the trie in reverse order, i.e. last word first.</S>
+    <S sid="53" ssid="35">In order to determine d from a stored in a packed trie.</S>
+    <S sid="54" ssid="36">Each node may contain n children and the symbols linking to them, and m entries for rules that share the same source side.</S>
+    <S sid="55" ssid="37">Each rule entry links to a node in the target-side trie, where the full target string can be retrieved by walking up the trie until the root is reached.</S>
+    <S sid="56" ssid="38">The rule entries also contain a data block id, which identifies feature data attached to the rule.</S>
+    <S sid="57" ssid="39">The features are encoded according to a type/quantization specification and stored as variable-length blocks of data in a byte buffer. pointer into the target trie, we maintain an offset table in which we keep track of where each new trie level begins in the array.</S>
+    <S sid="58" ssid="40">By first searching the offset table, we can determine d, and thus know how much space to allocate for the complete target side string.</S>
+    <S sid="59" ssid="41">To further benefit from the overlap there may be among the target sides in the grammar, we drop the nonterminal labels from the target string prior to inserting them into the trie.</S>
+    <S sid="60" ssid="42">For richly labeled grammars, this collapses all lexically identical target sides that share the same nonterminal reordering behavior, but vary in nonterminal labels into a single path in the trie.</S>
+    <S sid="61" ssid="43">Since the nonterminal labels are retained in the rules&#8217; source sides, we do not lose any information by doing this.</S>
+    <S sid="62" ssid="44">We designed the data format for the grammar rules&#8217; feature values to be easily extended to include other information that we may want to attach to a rule, such as word alignments, or locations of occurrences in the training data.</S>
+    <S sid="63" ssid="45">In order to that, each rule rz has a unique block id bz associated with it.</S>
+    <S sid="64" ssid="46">This block id identifies the information associated with the rule in every attached data store.</S>
+    <S sid="65" ssid="47">All data stores are implemented as memory-mapped byte buffers that are only loaded into memory when actually requested by the decoder.</S>
+    <S sid="66" ssid="48">The format for the feature data is detailed in the following.</S>
+    <S sid="67" ssid="49">The rules&#8217; feature values are stored as sparse features in contiguous blocks of variable length in a byte buffer.</S>
+    <S sid="68" ssid="50">As shown in Figure 1, a lookup table is used to map the bz to the index of the block in the buffer.</S>
+    <S sid="69" ssid="51">Each block is structured as follows: a single integer, n, for the number of features, followed by n feature entries.</S>
+    <S sid="70" ssid="52">Each feature entry is led by an integer for the feature id fj, and followed by a field of variable length for the feature value vj.</S>
+    <S sid="71" ssid="53">The size of the value is determined by the type of the feature.</S>
+    <S sid="72" ssid="54">Joshua maintains a quantization configuration which maps each feature id to a type handler or quantizer.</S>
+    <S sid="73" ssid="55">After reading a feature id from the byte buffer, we retrieve the responsible quantizer and use it to read the value from the byte buffer.</S>
+    <S sid="74" ssid="56">Joshua&#8217;s packed grammar format supports Java&#8217;s standard primitive types, as well as an 8-bit quantizer.</S>
+    <S sid="75" ssid="57">We chose 8 bit as a compromise between compression, value decoding speed and translagrammar versus the standard grammar format.</S>
+    <S sid="76" ssid="58">Even without lossy quantization the packed grammar representation yields significant savings in memory consumption.</S>
+    <S sid="77" ssid="59">Adding 8-bit quantization for the realvalued features in the grammar reduces even large syntactic grammars to a manageable size. tion performance (Federico and Bertoldi, 2006).</S>
+    <S sid="78" ssid="60">Our quantization approach follows Federico and Bertoldi (2006) and Heafield (2011) in partitioning the value histogram into 256 equal-sized buckets.</S>
+    <S sid="79" ssid="61">We quantize by mapping each feature value onto the weighted average of its bucket.</S>
+    <S sid="80" ssid="62">Joshua allows for an easily per-feature specification of type.</S>
+    <S sid="81" ssid="63">Quantizers can be share statistics across multiple features with similar value distributions.</S>
+    <S sid="82" ssid="64">We assess the packed grammar representation&#8217;s memory efficiency and impact on the decoding speed on the WMT12 French-English task.</S>
+    <S sid="83" ssid="65">Table 1 shows a comparison of the memory needed to store our WMT12 French-English grammars at runtime.</S>
+    <S sid="84" ssid="66">We can observe a substantial decrease in memory consumption for both Hiero-style grammars and the much larger syntactically annotated grammars.</S>
+    <S sid="85" ssid="67">Even without any feature value quantization, the packed format achieves an 80% reduction in space requirements.</S>
+    <S sid="86" ssid="68">Adding 8-bit quantization for the log-probability features yields even smaller grammar sizes, in this case a reduction of over 94%.</S>
+    <S sid="87" ssid="69">In order to avoid costly repeated retrievals of individual feature values of rules, we compute and cache the stateless application cost for each grammar rule at grammar loading time.</S>
+    <S sid="88" ssid="70">This, alongside with a lazy approach to rule lookup allows us to largely avoid losses in decoding speed. ing speed on the WMT12 French-English development set contrasting the packed grammar representation with the standard format.</S>
+    <S sid="89" ssid="71">Grammar loading for the packed grammar representation is substantially faster than that for the baseline setup.</S>
+    <S sid="90" ssid="72">Even with a slightly slower decoding speed (note the difference in the slopes) the packed grammar finishes in less than half the time, compared to the standard format. tems load a Hiero-style grammar with 43 million rules, and use 16 threads for parallel decoding.</S>
+    <S sid="91" ssid="73">The initial loading time for the packed grammar representation is dramatically shorter than that for the baseline setup (a total of 176 seconds for loading and sorting the grammar, versus 1897 for the standard format).</S>
+    <S sid="92" ssid="74">Even though decoding speed is slightly slower with the packed grammars (an average of 5.3 seconds per sentence versus 4.2 for the baseline), the effective translation speed is more than twice that of the baseline (1004 seconds to complete decoding the 2489 sentences, versus 2551 seconds with the standard setup).</S>
+  </SECTION>
+  <SECTION title="3 J-PRO: Pairwise Ranking Optimization in Joshua" number="3">
+    <S sid="93" ssid="1">Pairwise ranking optimization (PRO) proposed by (Hopkins and May, 2011) is a new method for discriminative parameter tuning in statistical machine translation.</S>
+    <S sid="94" ssid="2">It is reported to be more stable than the popular MERT algorithm (Och, 2003) and is more scalable with regard to the number of features.</S>
+    <S sid="95" ssid="3">PRO treats parameter tuning as an n-best list reranking problem, and the idea is similar to other pairwise ranking techniques like ranking SVM and IR SVMs (Li, 2011).</S>
+    <S sid="96" ssid="4">The algorithm can be described thusly: Let h(c) = (w, &#934;(c)) be the linear model score of a candidate translation c, in which &#934;(c) is the feature vector of c and w is the parameter vector.</S>
+    <S sid="97" ssid="5">Also let g(c) be the metric score of c (without loss of generality, we assume a higher score indicates a better translation).</S>
+    <S sid="98" ssid="6">We aim to find a parameter vector w such that for a pair of candidates {ci, cj} in an nbest list, namely the order of the model score is consistent with that of the metric score.</S>
+    <S sid="99" ssid="7">This can be turned into a binary classification problem, by adding instance with class label sign(g(ci) &#8722; g(cj)) to the training data (and symmetrically add instance with class label sign(g(cj) &#8722; g(ci)) at the same time), then using any binary classifier to find the w which determines a hyperplane separating the two classes (therefore the performance of PRO depends on the choice of classifier to a large extent).</S>
+    <S sid="100" ssid="8">Given a training set with T sentences, there are O(Tn2) pairs of candidates that can be added to the training set, this number is usually much too large for efficient training.</S>
+    <S sid="101" ssid="9">To make the task more tractable, PRO samples a subset of the candidate pairs so that only those pairs whose metric score difference is large enough are qualified as training instances.</S>
+    <S sid="102" ssid="10">This follows the intuition that high score differential makes it easier to separate good translations from bad ones.</S>
+    <S sid="103" ssid="11">PRO is implemented in Joshua 4.0 named J-PRO.</S>
+    <S sid="104" ssid="12">In order to ensure compatibility with the decoder and the parameter tuning module Z-MERT (Zaidan, 2009) included in all versions of Joshua, J-PRO is built upon the architecture of Z-MERT with similar usage and configuration files(with a few extra lines specifying PRO-related parameters).</S>
+    <S sid="105" ssid="13">J-PRO inherits Z-MERT&#8217;s ability to easily plug in new metrics.</S>
+    <S sid="106" ssid="14">Since PRO allows using any off-the-shelf binary classifiers, J-PRO provides a Java interface that enables easy plug-in of any classifier.</S>
+    <S sid="107" ssid="15">Currently, JPRO supports three classifiers: The user may specify which classifier he wants to use and the classifier-specific parameters in the JPRO configuration file.</S>
+    <S sid="108" ssid="16">The PRO approach is capable of handling a large number of features, allowing the use of sparse discriminative features for machine translation.</S>
+    <S sid="109" ssid="17">However, Hollingshead and Roark (2008) demonstrated that naively tuning weights for a heterogeneous feature set composed of both dense and sparse features can yield subpar results.</S>
+    <S sid="110" ssid="18">Thus, to better handle the relation between dense and sparse features and provide a flexible selection of training schemes, J-PRO supports the following four training modes.</S>
+    <S sid="111" ssid="19">We assume M dense features and N sparse features are used: feature parameters fixed (M+1 parameters to tune).</S>
+    <S sid="112" ssid="20">J-PRO supports n-best list input with a sparse feature format which enumerates only the firing features together with their values.</S>
+    <S sid="113" ssid="21">This enables a more compact feature representation when numerous features are involved in training.</S>
+    <S sid="114" ssid="22">We did our experiments using J-PRO on the NIST Chinese-English data, and BLEU score was used as the quality metric for experiments reported in this section.4 The experimental settings are as the following: Datasets: MT03 dataset (998 sentences) as development set for parameter tuning, MT04 (1788 sentences) and MT05 (1082 sentences) as test sets.</S>
+    <S sid="115" ssid="23">Features: Dense feature set include the 10 regular features used in the Hiero system; Sparse feature set 4We also experimented with other metrics including TER, METEOR and TER-BLEU.</S>
+    <S sid="116" ssid="24">Similar trends as reported in this section were observed.</S>
+    <S sid="117" ssid="25">These results are omitted here due to limited space. includes 1016 target-side rule POS bi-gram features as used in (Li et al., 2010b).</S>
+    <S sid="118" ssid="26">Classifiers: Perceptron, MegaM and Maximum entropy.</S>
+    <S sid="119" ssid="27">PRO parameters: F= 8000 (number of candidate pairs sampled uniformly from the n-best list), &#945; = 1 (sample acceptance probability), &#176; = 50 (number of top candidates to be added to the training set).</S>
+    <S sid="120" ssid="28">Figure 3 shows the BLEU score curves on the development and test sets as a function of iterations.</S>
+    <S sid="121" ssid="29">The upper and lower rows correspond to the results trained with 10 dense features and 1026 dense+sparse features respectively.</S>
+    <S sid="122" ssid="30">We intentionally selected very bad initial parameter vectors to verify the robustness of the algorithm.</S>
+    <S sid="123" ssid="31">It can be seen that with each iteration, the BLEU score increases monotonically on both development and test sets, and begins to converge after a few iterations.</S>
+    <S sid="124" ssid="32">When only 10 features are involved, all classifiers give almost the same performance.</S>
+    <S sid="125" ssid="33">However, when scaled to over a thousand features, the maximum entropy classifier becomes unstable and the curve fluctuates significantly.</S>
+    <S sid="126" ssid="34">In this situation MegaM behaves well, but the J-PRO built-in perceptron gives the most robust performance.</S>
+    <S sid="127" ssid="35">Table 2 compares the results of running Z-MERT and J-PRO.</S>
+    <S sid="128" ssid="36">Since MERT is not able to handle numerous sparse features, we only report results for the 10-feature setup.</S>
+    <S sid="129" ssid="37">The scores for both setups are quite close to each other, with Z-MERT doing slightly better on the development set but J-PRO yielding slightly better performance on the test set.</S>
+  </SECTION>
+  <SECTION title="4 Thrax: Grammar Extraction at Scale" number="4">
+    <S sid="130" ssid="1">the SAMT grammars using the Europarl and News Commentary training data for each listed language pair.</S>
+    <S sid="131" ssid="2">In previous years, our grammar extraction methods were limited by either memory-bounded extractors.</S>
+    <S sid="132" ssid="3">Moving towards a parallelized grammar extraction process, we switched from Joshua&#8217;s formerly builtin extraction module to Thrax for WMT11.</S>
+    <S sid="133" ssid="4">However, we were limited to a simple pseudo-distributed Hadoop setup.</S>
+    <S sid="134" ssid="5">In a pseudo-distributed cluster, all tasks run on separate cores on the same machine and access the local file system simultaneously, instead of being distributed over different physical machines and harddrives.</S>
+    <S sid="135" ssid="6">This setup proved unreliable for larger extractions, and we were forced to reduce the amount of data that we used to train our translation models.</S>
+    <S sid="136" ssid="7">For this year, however, we had a permanent cluster at our disposal, which made it easy to extract grammars from all of the available WMT12 data.</S>
+    <S sid="137" ssid="8">We found that on a properly distributed Hadoop setup Thrax was able to extract both Hiero grammars and the much larger SAMT grammars on the complete WMT12 training data for all tested language pairs.</S>
+    <S sid="138" ssid="9">The runtimes and resulting (unfiltered) grammar sizes for each language pair are shown in Table 3 (for Hiero) and Table 4 (for SAMT).</S>
+    <S sid="139" ssid="10">Recently English-to-English text generation tasks have seen renewed interest in the NLP community.</S>
+    <S sid="140" ssid="11">Paraphrases are a key component in largescale state-of-the-art text-to-text generation systems.</S>
+    <S sid="141" ssid="12">We present an extended version of Thrax that implements distributed, Hadoop-based paraphrase extraction via the pivoting approach (Bannard and Callison-Burch, 2005).</S>
+    <S sid="142" ssid="13">Our toolkit is capable of extracting syntactically informed paraphrase grammars at scale.</S>
+    <S sid="143" ssid="14">The paraphrase grammars obtained with Thrax have been shown to achieve state-of-theart results on text-to-text generation tasks (Ganitkevitch et al., 2011).</S>
+    <S sid="144" ssid="15">For every supported translation feature, Thrax implements a corresponding pivoted feature for paraphrases.</S>
+    <S sid="145" ssid="16">The pivoted features are set up to be aware of the prerequisite translation features they are derived from.</S>
+    <S sid="146" ssid="17">This allows Thrax to automatically detect the needed translation features and spawn the corresponding map-reduce passes before the pivoting stage takes place.</S>
+    <S sid="147" ssid="18">In addition to features useful for translation, Thrax also offers a number of features geared towards text-to-text generation tasks such as sentence compression or text simplification.</S>
+    <S sid="148" ssid="19">Due to the long tail of translations in unpruned counts refer to the English side of the bitexts used. translation grammars and the combinatorial effect of pivoting, paraphrase grammars can easily grow very large.</S>
+    <S sid="149" ssid="20">We implement a simple feature-level pruning approach that allows the user to specify upper or lower bounds for any pivoted feature.</S>
+    <S sid="150" ssid="21">If a paraphrase rule is not within these bounds, it is discarded.</S>
+    <S sid="151" ssid="22">Additionally, pivoted features are aware of the bounding relationship between their value and the value of their prerequisite translation features (i.e. whether the pivoted feature&#8217;s value can be guaranteed to never be larger than the value of the translation feature).</S>
+    <S sid="152" ssid="23">Thrax uses this knowledge to discard overly weak translation rules before the pivoting stage, leading to a substantial speedup in the extraction process.</S>
+    <S sid="153" ssid="24">Table 5 gives a few examples of large paraphrase grammars extracted from WMT training data.</S>
+    <S sid="154" ssid="25">With appropriate pruning settings, we are able to obtain paraphrase grammars estimated over bitexts with more than 100 million words.</S>
+  </SECTION>
+  <SECTION title="6 Conclusion" number="5">
+    <S sid="155" ssid="1">We present a new iteration of the Joshua machine translation toolkit.</S>
+    <S sid="156" ssid="2">Our system has been extended towards efficiently supporting large-scale experiments in parsing-based machine translation and text-to-text generation: Joshua 4.0 supports compactly represented large grammars with its packed grammars, as well as large language models via KenLM and BerkeleyLM.We include an implementation of PRO, allowing for stable and fast tuning of large feature sets, and extend our toolkit beyond pure translation applications by extending Thrax with a large-scale paraphrase extraction module.</S>
+    <S sid="157" ssid="3">Acknowledgements This research was supported by in part by the EuroMatrixPlus project funded by the European Commission (7th Framework Programme), and by the NSF under grant IIS-0713448.</S>
+    <S sid="158" ssid="4">Opinions, interpretations, and conclusions are the authors&#8217; alone.</S>
+  </SECTION>
+</PAPER>

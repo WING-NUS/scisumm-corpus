@@ -1,0 +1,235 @@
+<PAPER>
+  <S sid="0">Joint Entity and Relation Extraction Using Card-Pyramid Parsing</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Both entity and relation extraction can benefit from being performed jointly, allowing each task to correct the errors of the other.</S>
+    <S sid="2" ssid="2">We present a new method for joint entity and relation extraction using a graph we call a &#8220;card-pyramid.&#8221; This graph compactly encodes all possible entities and relations in a sentence, reducing the task of their joint extraction to jointly labeling its nodes.</S>
+    <S sid="3" ssid="3">We give an efficient labeling algorithm that is analogous to parsing using dynamic programming.</S>
+    <S sid="4" ssid="4">Experimental results show improved results for our joint extraction method compared to a pipelined approach.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="5" ssid="1">Information extraction (IE) is the task of extracting structured information from text.</S>
+    <S sid="6" ssid="2">The two most common sub-tasks of IE are extracting entities (like Person, Location and Organization) and extracting relations between them (like Work For which relates a Person and an Organization, OrgBased In which relates an Organization and a Location etc.).</S>
+    <S sid="7" ssid="3">Figure 1 shows a sample sentence annotated with entities and relations.</S>
+    <S sid="8" ssid="4">The application domain and requirements of the downstream tasks usually dictate the type of entities and relations that an IE system needs to extract.</S>
+    <S sid="9" ssid="5">Most work in IE has concentrated on entity extraction alone (Tjong Kim Sang, 2002; Sang and Meulder, 2003) or on relation extraction assuming entities are either given or previously extracted (Bunescu et al., 2005; Zhang et al., 2006; Giuliano et al., 2007; Qian et al., 2008).</S>
+    <S sid="10" ssid="6">However, these tasks are very closely inter-related.</S>
+    <S sid="11" ssid="7">While identifying correct entities is essential for identifying relations between them, identifying correct relations can in turn improve identification of entities.</S>
+    <S sid="12" ssid="8">For example, if the relation Work For is identified with high confidence by a relation extractor, then it can enforce identifying its arguments as Person and Organization, about which the entity extractor might not have been confident.</S>
+    <S sid="13" ssid="9">A brute force algorithm for finding the most probable joint extraction will soon become intractable as the number of entities in a sentence grows.</S>
+    <S sid="14" ssid="10">If there are n entities in a sentence, then there are O(n2) possible relations between them and if each relation can take l labels then there are O(ln2) total possibilities, which is intractable even for small l and n. Hence, an efficient inference mechanism is needed for joint entity and relation extraction.</S>
+    <S sid="15" ssid="11">The only work we are aware of for jointly extracting entities and relations is by Roth &amp; Yih (2004; 2007).</S>
+    <S sid="16" ssid="12">Their method first identifies the possible entities and relations in a sentence using separate classifiers which are applied independently and then computes a most probable consistent global set of entities and relations using linear programming.</S>
+    <S sid="17" ssid="13">In this paper, we present a different approach to joint extraction using a &#8220;card-pyramid&#8221; graph.</S>
+    <S sid="18" ssid="14">The labeled nodes in this graph compactly encode the possible entities and relations in a sentence.</S>
+    <S sid="19" ssid="15">The task of joint extraction then reduces to finding the most probable joint assignment to the nodes in the card-pyramid.</S>
+    <S sid="20" ssid="16">We give an efficient dynamic-programming algorithm for this task which resembles CYK parsing for contextfree grammars (Jurafsky and Martin, 2008).</S>
+    <S sid="21" ssid="17">The algorithm does a beam search and gives an approximate solution for a finite beam size.</S>
+    <S sid="22" ssid="18">A natural advantage of this approach is that extraction from a part of the sentence is influenced by extraction from its subparts and vice-versa, thus leading to a joint extraction.</S>
+    <S sid="23" ssid="19">During extraction from a part of the sentence it also allows use of features based on the extraction from its sub-parts, thus leading to a more integrated extraction.</S>
+    <S sid="24" ssid="20">We use Roth &amp; Yih&#8217;s (2004; 2007) dataset in our experiments and show that card-pyramid parsing improves accuracy over both their approach and a pipelined extractor.</S>
+  </SECTION>
+  <SECTION title="2 Card-Pyramid Parsing for Joint Extraction" number="2">
+    <S sid="25" ssid="1">In this section, we first introduce the card-pyramid structure and describe how it represents entities and their relations in a sentence.</S>
+    <S sid="26" ssid="2">We then describe an efficient algorithm for doing joint extraction using this structure.</S>
+    <S sid="27" ssid="3">We define a binary directed graph we call a cardpyramid because it looks like a pyramid built out of playing-cards as shown in Figure 2.</S>
+    <S sid="28" ssid="4">A cardpyramid is a &#8220;tree-like&#8221; graph with one root, internal nodes, and leaves, such that if there are n leaves, then there are exactly n levels with a decreasing number of nodes from bottom to top, leaves are at the lowest level (0) and the root is at the highest level (n &#8722; 1) (see Figure 3 for an example).</S>
+    <S sid="29" ssid="5">In addition, every non-leaf node at position i in level l is the parent of exactly two nodes at positions i and i + 1 at level l &#8722; 1.</S>
+    <S sid="30" ssid="6">Note that a card-pyramid is not a tree because many of its nodes have two parents.</S>
+    <S sid="31" ssid="7">A useful property of a card-pyramid is that a non-leaf node at position i in level l is always the lowest common ancestor of the leaves at positions i and l + i.</S>
+    <S sid="32" ssid="8">We now describe how entities and relations in a sentence are easily represented in a card-pyramid.</S>
+    <S sid="33" ssid="9">We assume that in addition to the given entity types, there is an extra type, Other, indicating that the entity is of none of the given types.</S>
+    <S sid="34" ssid="10">Similarly, there is an extra relation type, NR, indicating that its two entity arguments are not related.</S>
+    <S sid="35" ssid="11">Figure 3 shows the card-pyramid corresponding to the annotated sentence shown in figure 1.</S>
+    <S sid="36" ssid="12">To obtain it, first, all entities present in the sentence are made leaves of the card-pyramid in the same order as they appear in the sentence.</S>
+    <S sid="37" ssid="13">The label of a leaf is the type of the corresponding entity.</S>
+    <S sid="38" ssid="14">The leaf also stores the range of the indices of its entity&#8217;s words in the sentence.</S>
+    <S sid="39" ssid="15">Note that although there is no overlap between entities in the given example (nor in the dataset we used for our experiments), overlapping entities do not pose a problem.</S>
+    <S sid="40" ssid="16">Overlapping entities can still be ordered and supplied as the leaves of the card-pyramid.</S>
+    <S sid="41" ssid="17">Next, the relation between every two entities (leaves) is encoded as the label of their lowest common ancestor.</S>
+    <S sid="42" ssid="18">If two entities are not related, then the label of their lowest common ancestor is NR.</S>
+    <S sid="43" ssid="19">This way, every nonleaf node relates exactly two entities: the left-most and right-most leaves beneath it.</S>
+    <S sid="44" ssid="20">The task of jointly extracting entities and relations from a sentence reduces to jointly labeling the nodes of a card-pyramid which has all the candidate entities (i.e. entity boundaries) of the sentence as its leaves.</S>
+    <S sid="45" ssid="21">We call this process card-pyramid parsing.</S>
+    <S sid="46" ssid="22">We assume that all candidate entities are given up-front.</S>
+    <S sid="47" ssid="23">If needed, candidate entities can be either obtained automatically (Punyakanok and Roth, 2001) or generated using a simple heuristic, like including all noun-phrase chunks as candidate entities.</S>
+    <S sid="48" ssid="24">Or, in the worst case, each substring of words in the sentence can be given as a candidate entity.</S>
+    <S sid="49" ssid="25">Liberally including candidate entities is possible since they can simply be given the label Other if they are none of the given types.</S>
+    <S sid="50" ssid="26">In this section we describe our card-pyramid parsing algorithm whose pseudo-code is shown in Figure 4.</S>
+    <S sid="51" ssid="27">While the process is analogous to context-free grammar (CFG) parsing, particularly CYK bottom-up parsing, there are several major differences.</S>
+    <S sid="52" ssid="28">Firstly, in card-pyramid parsing the structure is already known and the only task is labeling the nodes, whereas in CFG parsing the structure is not known in advance.</S>
+    <S sid="53" ssid="29">This fact simplifies some aspects of card-pyramid parsing.</S>
+    <S sid="54" ssid="30">Secondly, in CFG parsing the subtrees under a node do not overlap which simplifies parsing.</S>
+    <S sid="55" ssid="31">However, in card-pyramid parsing there is significant overlap between the two sub-card-pyramids under a given node and this overlap needs to be consistently labeled.</S>
+    <S sid="56" ssid="32">This could have potentially complicated parsing, but there turns out to be a simple constant-time method for checking consistency of the overlap.</S>
+    <S sid="57" ssid="33">Thirdly, while CFG parsing parses the words in a sentence, here we are parsing candidate entities.</S>
+    <S sid="58" ssid="34">Finally, as described below, in cardpyramid parsing, a production at a non-leaf node relates the left-most and right-most leaves beneath it, while in CFG parsing a production at a non-leaf node relates its immediate children which could be other non-leaf nodes.</S>
+    <S sid="59" ssid="35">Parsing requires specifying a grammar for the card-pyramid.</S>
+    <S sid="60" ssid="36">The productions in this grammar are of two types.</S>
+    <S sid="61" ssid="37">For leaf nodes, the productions are of the form entityLabel &#8212;* ce where ce, which stands for candidate entity, is the only terminal symbol in the grammar.</S>
+    <S sid="62" ssid="38">We call these productions entity productions.</S>
+    <S sid="63" ssid="39">For non-leaf nodes, the productions are of the form relationLabel &#8212;* entityLabel1 entityLabel2.</S>
+    <S sid="64" ssid="40">We call these productions relation productions.</S>
+    <S sid="65" ssid="41">Note that their righthand-side (RHS) non-terminals are entity labels and not other relation labels.</S>
+    <S sid="66" ssid="42">From a training set of labeled sentences, the corresponding cardpyramids can be constructed using the procedure described in the previous section.</S>
+    <S sid="67" ssid="43">From these card-pyramids, the entity productions are obtained by simply reading off the labels of the leaves.</S>
+    <S sid="68" ssid="44">A relation productions is obtained from each nonleaf node by making the node&#8217;s label the production&#8217;s left-hand-side (LHS) non-terminal and making the labels of its left-most and right-most leaves the production&#8217;s RHS non-terminals.</S>
+    <S sid="69" ssid="45">For the example shown in Figure 3, some of the productions are Work For &#8212;* Person Organization, NR &#8212;* Person Other, OrgBased In &#8212;* Loc Org, Person &#8212;* ce, Location &#8212;* ce etc.</S>
+    <S sid="70" ssid="46">Note that there could be two separate productions like Work For &#8212;* Person Organization and Work For &#8212;* Organization Person based on the order in which the entities are found in a sentence.</S>
+    <S sid="71" ssid="47">For the relations which take arguments of the same type, like Kill(Person,Person), two productions are used with different LHS nonterminals (Kill and Kill reverse) to distinguish between the argument order of the entities.</S>
+    <S sid="72" ssid="48">The parsing algorithm needs a classifier for every entity production which gives the probability of a candidate entity being of the type given in the production&#8217;s LHS.</S>
+    <S sid="73" ssid="49">In the pseudo-code, this classifier is given by the function: entityclassifier(production, sentence, range).</S>
+    <S sid="74" ssid="50">The function range(r) represents the boundaries or the range of the word indices for the rth candidate entity.</S>
+    <S sid="75" ssid="51">Similarly, we assume that a classifier is given for every relation production which gives the probability that its two RHS entities are related by its LHS relation.</S>
+    <S sid="76" ssid="52">In the pseudo-code it is the function: relation-classifier(production, sentence, range1, range2, sub-card-pyramid1, subcard-pyramid2), where range1 and range2 are the ranges of the word indices of the two entities and sub-card-pyramid1 and sub-card-pyramid2 are the sub-card-pyramids rooted at its two children.</S>
+    <S sid="77" ssid="53">Thus, along with the two entities and the words in the sentence, information from these subcard-pyramids is also used in deciding the relation at a node.</S>
+    <S sid="78" ssid="54">In the next section, we further specify these entity and relation classifiers and explain how they are trained.</S>
+    <S sid="79" ssid="55">We note that this use of multiple classifiers to determine the most probable parse is similar to the method used in the KRISP semantic parser (Kate and Mooney, 2006).</S>
+    <S sid="80" ssid="56">Given the candidate entities in a sentence, the grammar, and the entity and relation classifiers, the card-pyramid parsing algorithm tries to find the most probable joint-labeling of all of its nodes, and thus jointly extracts entities and their relations.</S>
+    <S sid="81" ssid="57">The parsing algorithm does a beam search and maintains a beam at each node of the cardpyramid.</S>
+    <S sid="82" ssid="58">A node is represented by l[i][j] in the pseudo-code which stands for the node in the jth position in the ith level.</S>
+    <S sid="83" ssid="59">Note that at level i, the nodes range from l[i][0] to l[i][n &#8722; i &#8722; 1], where n is the number of leaves.</S>
+    <S sid="84" ssid="60">The beam at each node is a queue of items we call beam elements.</S>
+    <S sid="85" ssid="61">At leaf nodes, a beam element simply stores a possible entity label with its corresponding probability.</S>
+    <S sid="86" ssid="62">At non-leaf nodes, a beam element contains a possible joint assignment of labels to all the nodes in the sub-card-pyramid rooted at that node with its probability.</S>
+    <S sid="87" ssid="63">This is efficiently maintained through indices to the beam elements of its children nodes.</S>
+    <S sid="88" ssid="64">The parsing proceeds as follows.</S>
+    <S sid="89" ssid="65">First, the entity classifiers are used to fill the beams at the leaf nodes.</S>
+    <S sid="90" ssid="66">The add(beam, beam-element) function adds the beam element to the beam while maintaining its maximum beam-width size and sorted order based on the probabilities.</S>
+    <S sid="91" ssid="67">Next, the beams of the non-leaf nodes are filled in a bottom-up manner.</S>
+    <S sid="92" ssid="68">At any node, the beams of its children nodes are considered and every combination of their beam elements are tried.</S>
+    <S sid="93" ssid="69">To be considered further, the two possible sub-card-pyramids encoded by the two beam elements must have a consistent overlap.</S>
+    <S sid="94" ssid="70">This is easily enforced by checking that its left child&#8217;s right child&#8217;s beam element is same as its right child&#8217;s left child&#8217;s beam element.</S>
+    <S sid="95" ssid="71">If this condition is satisfied, then those relation productions are considered which have the left-most leaf of the left child and right-most leaf of the right child as its RHS non-terminals.'</S>
+    <S sid="96" ssid="72">For every such production in the grammar, 2 the probability of the relation is determined using the relation classifier.</S>
+    <S sid="97" ssid="73">This probability is then multiplied by the probabilities of the children sub-cardpyramids.</S>
+    <S sid="98" ssid="74">But, because of the overlap between the two children, a probability mass gets multiplied twice.</S>
+    <S sid="99" ssid="75">Hence the probability of the overlap subcard-pyramid is then suitably divided.</S>
+    <S sid="100" ssid="76">Finally, the estimated most-probable labeling is obtained from the top beam element of the root node.</S>
+    <S sid="101" ssid="77">We note that this algorithm may not find the optimal solution but only an approximate solution owing to a limited beam size, this is unlike probabilistic CFG parsing algorithms in which the optimal solution is found.</S>
+    <S sid="102" ssid="78">A limitless beam size will find the optimal solution but will reduce the algorithm to a computationally intractable brute force search.</S>
+    <S sid="103" ssid="79">The parsing algorithm with a finite beam size keeps the search computationally tractable while allowing a joint labelling.</S>
+  </SECTION>
+  <SECTION title="3 Classifiers for Entity and Relation Extraction" number="3">
+    <S sid="104" ssid="1">The card-pyramid parsing described in the previous section requires classifiers for each of the entity and relation productions.</S>
+    <S sid="105" ssid="2">In this section, we describe the classifiers we used in our experiments and how they were trained.</S>
+    <S sid="106" ssid="3">We use a support vector machine (SVM) (Cristianini and Shawe-Taylor, 2000) classifier for each of the entity productions in the grammar.</S>
+    <S sid="107" ssid="4">An entity classifier gets as input a sentence and a candidate entity indicated by the range of the indices of its words.</S>
+    <S sid="108" ssid="5">It outputs the probability that the candidate entity is of the respective entity type.</S>
+    <S sid="109" ssid="6">Probabilities for the SVM outputs are computed using the method by Platt (1999).</S>
+    <S sid="110" ssid="7">We use all possible word subsequences of the candidate entity words as implicit features using a word-subsequence kernel (Lodhi et al., 2002).</S>
+    <S sid="111" ssid="8">In addition, we use the following standard entity extraction features: the part-of-speech (POS) tag sequence of the candidate entity words, two words before and after the candidate entity and their POS tags, whether any or all candidate entity words are capitalized, 'These are stored in the beam elements.</S>
+    <S sid="112" ssid="9">2Note that this step enforces the consistency constraint of Roth and Yih (Roth and Yih, 2004; Roth and Yih, 2007) that a relation can only be between the entities of specific types.</S>
+    <S sid="113" ssid="10">The grammar in our approach inherently enforces this constraint. whether any or all words are found in a list of entity names, whether any word has sufffix &#8220;ment&#8221; or &#8220;ing&#8221;, and finally the alphanumeric pattern of characters (Collins, 2002) of the last candidate entity word obtained by replacing each character by its character type (lowercase, uppercase or numeric) and collapsing any consecutive repetition (for example, the alphanumeric pattern for CoNLL2010 will be AaA0).</S>
+    <S sid="114" ssid="11">The full kernel is computed by adding the word-subsequence kernel and the dot-product of all these features, exploiting the convolution property of kernels.</S>
+    <S sid="115" ssid="12">We also use an SVM classifier for each of the relation productions in the grammar which outputs the probability that the relation holds between the two entities.</S>
+    <S sid="116" ssid="13">A relation classifier is applied at an internal node of a card-pyramid.</S>
+    <S sid="117" ssid="14">It takes the input in two parts.</S>
+    <S sid="118" ssid="15">The first part is the sentence and the range of the word indices of its two entities l and r which are the left-most and the right-most leaves under it respectively.</S>
+    <S sid="119" ssid="16">The second part consists of the sub-card-pyramids rooted at the node&#8217;s two children which represent a possible entity and relation labeling for all the nodes underneath.</S>
+    <S sid="120" ssid="17">In general, any information from the sub-card-pyramids could be used in the classifier.</S>
+    <S sid="121" ssid="18">We use the following information: pairs of relations that exist between l and b and between b and r for every entity (leaf) b that exists between the two entities l and r. For example, in figure 3, the relation classifier at the root node which relates Person(0-0) and Organization (15-16) will take three pairs of relations as the information from the two sub-card-pyramids of its children: &#8220;Live In&#8212;OrgBased In&#8221; (with Location(3-4) as the in-between entity), &#8220;Live In&#8212;OrgBased In&#8221; (with Location(6-6) as the in-between entity) and &#8220;NR&#8212;NR&#8221; (with Other(12-12) as the in-between entity).</S>
+    <S sid="122" ssid="19">This information tells how the two entities are related to the entities present in between them.</S>
+    <S sid="123" ssid="20">This can affect the relation between the two entities, for example, if the sentence mentions that a person lives at a location and also mentions that an organization is based at that location then that person is likely to work at that organization.</S>
+    <S sid="124" ssid="21">Note that this information can not be incorporated in a pipelined approach in which each relation is determined independently.</S>
+    <S sid="125" ssid="22">It is also not possible to incorporate this in the linear programming method presented in (Roth and Yih, 2004; Roth and Yih, 2007) because that method computes the probabilities of all the relations independently before finding the optimal solution through linear programming.</S>
+    <S sid="126" ssid="23">It would also not help to add hard constraints to their linear program relating the relations because they need not always hold.</S>
+    <S sid="127" ssid="24">We add the kernels for each part of the input to compute the final kernel for the SVM classifiers.</S>
+    <S sid="128" ssid="25">The kernel for the second part of the input is computed by simply counting the number of common pairs of relations between two examples thus implicitly considering every pair of relation (as described in the last paragraph) as a feature.</S>
+    <S sid="129" ssid="26">For the first part of the input, we use word-subsequence kernels which have shown to be effective for relation extraction (Bunescu and Mooney, 2005b).</S>
+    <S sid="130" ssid="27">We compute the kernel as the sum of the wordsubsequence kernels between: the words between the two entities (between pattern), k (a parameter) words before the first entity (before pattern), k words after the second entity (after pattern) and the words from the beginning of the first entity to the end of the second entity (between-and-entity pattern).</S>
+    <S sid="131" ssid="28">The before, between and after patterns have been found useful in previous work (Bunescu and Mooney, 2005b; Giuliano et al., 2007).</S>
+    <S sid="132" ssid="29">Sometimes the words of the entities can indicate the relations they are in, hence we also use the betweenand-entity pattern.</S>
+    <S sid="133" ssid="30">When a relation classifier is used at a node, the labels of the leaves beneath it are already known, so we replace candidate entity words that are in the between and between-andentity3 patterns by their entity labels.</S>
+    <S sid="134" ssid="31">This provides useful information to the relation classifier and also makes these patterns less sparse for training.</S>
+    <S sid="135" ssid="32">Given training data of sentences annotated with entities and relations, the positive and negative examples for training the entity and relation classifiers are collected in the following way.</S>
+    <S sid="136" ssid="33">First, the corresponding card-pyramids are obtained for each of the training sentences as described in section 2.1.</S>
+    <S sid="137" ssid="34">For every entity production in a cardpyramid, a positive example is collected for its corresponding classifier as the sentence and the range of the entity&#8217;s word indices.</S>
+    <S sid="138" ssid="35">Similarly, for every relation production in a card-pyramid, a positive example is collected for its corresponding classifier as the sentence, the ranges of the two entities&#8217; word indices and the sub-card-pyramids rooted at its two children.</S>
+    <S sid="139" ssid="36">The positive examples of a production become the negative examples for all those productions which have the same righthand-sides but different left-hand-sides.</S>
+    <S sid="140" ssid="37">We found that for NR productions, training separate classifiers is harmful because it has the unwanted sideeffect of preferring one label assignment of entities over another due to the fact that these productions gave different probabilities for the &#8220;notrelated&#8221; relation between the entities.</S>
+    <S sid="141" ssid="38">To avoid 3Except for the two entities at the ends this, we found that it suffices if all these classifiers for NR productions always return 0.5 as the probability.</S>
+    <S sid="142" ssid="39">This ensures that a real relation will be preferred over NR if and only if its probability is greater than 0.5, otherwise nothing will change.</S>
+  </SECTION>
+  <SECTION title="4 Experiments" number="4">
+    <S sid="143" ssid="1">We conducted experiments to compare our cardpyramid parsing approach for joint entity and relation extraction to a pipelined approach.</S>
+    <S sid="144" ssid="2">We used the dataset4 created by Roth &amp; Yih (2004; 2007) that was also used by Giuliano et el.</S>
+    <S sid="145" ssid="3">(2007).</S>
+    <S sid="146" ssid="4">The sentences in this data were taken from the TREC corpus and annotated with entities and relations.</S>
+    <S sid="147" ssid="5">As in the previous work with this dataset, in order to observe the interaction between entities and relations, our experiments used only the 1437 sentences that include at least one relation.</S>
+    <S sid="148" ssid="6">The boundaries of the entities are already supplied by this dataset.</S>
+    <S sid="149" ssid="7">There are three types of entities: Person (1685), Location (1968) and Organization (978), in addition there is a fourth type Other (705), which indicates that the candidate entity is none of the three types.</S>
+    <S sid="150" ssid="8">There are five types of relations: Located In (406) indicates that one Location is located inside another Location, Work For (394) indicates that a Person works for an Organization, OrgBased In (451) indicates that an Organization is based in a Location, Live In (521) indicates that a Person lives at a Location and Kill (268) indicates that a Person killed another Person.</S>
+    <S sid="151" ssid="9">There are 17007 pairs of entities that are not related by any of the five relations and hence have the NR relation between them which thus significantly outnumbers other relations.</S>
+    <S sid="152" ssid="10">Our implementation uses the LIBSVM5 software for SVM classifiers.</S>
+    <S sid="153" ssid="11">We kept the noise penalty parameter of SVM very high (100) assuming there is little noise in our data.</S>
+    <S sid="154" ssid="12">For the word-subsequence kernel, we set 5 as the maximum length of a subsequence and 0.25 as the penalty parameter for subsequence gaps (Lodhi et al., 2002).</S>
+    <S sid="155" ssid="13">We used k = 5 words for before and after patterns for the relation classifiers.</S>
+    <S sid="156" ssid="14">These parameter values were determined through pilot experiments on a subset of the data.</S>
+    <S sid="157" ssid="15">We used a beam size of 5 in our card-pyramid parsing algorithm at which the performance plateaus.</S>
+    <S sid="158" ssid="16">We note that by using a beam size of 1 and by not using the second part of input for relation classifiers as described in section 3 (i.e. by ignoring the relations at the lower levels), the card-parsing algorithm reduces to the traditional pipelined approach because then only the best entity label for each candidate entity is considered for relation extraction.</S>
+    <S sid="159" ssid="17">Hence, in our experiments we simply use this setting as our pipelined approach.</S>
+    <S sid="160" ssid="18">We performed a 5-fold cross-validation to compare with the previous work with this dataset by Roth &amp; Yih (2007), however, our folds are not same as their folds which were not available.</S>
+    <S sid="161" ssid="19">We also note that our entity and relation classifiers are different from theirs.</S>
+    <S sid="162" ssid="20">They experimented with several models to see the effect of joint inference on them, we compare with the results they obtained with their most sophisticated model which they denote by &#8220;E H R&#8221;.</S>
+    <S sid="163" ssid="21">For every entity type and relation type, we measured Precision (percentage of output labels correct), Recall (percentage of gold-standard labels correctly identified) and Fmeasure (the harmonic mean of Precision and Recall).</S>
+    <S sid="164" ssid="22">Table 1 shows the results of entity and relation extraction.</S>
+    <S sid="165" ssid="23">The statistical significance is shown only for F-measures.</S>
+    <S sid="166" ssid="24">We first note that except for the Kill relation, all the results of our pipelined approach are far better than the pipelined approach of (Roth and Yih, 2007), for both entities and relations.</S>
+    <S sid="167" ssid="25">This shows that the entity and relation classifiers we used are better that the ones they used.</S>
+    <S sid="168" ssid="26">These strong baselines also set a higher ceiling for our joint extraction method to improve upon.</S>
+    <S sid="169" ssid="27">The entity extraction results show that on all the entities the card-pyramid parsing approach for joint extraction obtains a better performance than the pipelined approach.</S>
+    <S sid="170" ssid="28">This shows that entity extraction benefits when it is jointly done with relation extraction.</S>
+    <S sid="171" ssid="29">Joint extraction using cardpyramid parsing also gave improvement in performance on all the relations except the Located In relation.6 The results thus show that entity and relation extraction correct some of each other&#8217;s errors when jointly performed.</S>
+    <S sid="172" ssid="30">Roth &amp; Yih (2004; 2007) report that 5% to 25% of the relation predictions of their pipeline models were incoherent, meaning that the types of the entities related by the relations are not of the required types.</S>
+    <S sid="173" ssid="31">Their joint inference method corrects these mistakes, hence a part of the improvement their joint model obtains over their pipeline model is due to the fact that their pipeline model can output incoherent relations.</S>
+    <S sid="174" ssid="32">Since the types of the entities a relation&#8217;s arguments should 6Through error analysis we found that the drop in the performance for this relation was mainly because of an unusual sentence in the data which had twenty Location entities in it separated by commas.</S>
+    <S sid="175" ssid="33">After incorrectly extracting Located In relation between the Location entities at the lower levels, these erroneous extractions would be taken into account at higher levels in the card-pyramid, leading to extracting many more incorrect instances of this relation while doing joint extraction.</S>
+    <S sid="176" ssid="34">Since this is the only such sentence in the data, when it is present in the test set during cross-validation, the joint method never gets a chance to learn not to make these mistakes.</S>
+    <S sid="177" ssid="35">The drop occurs in only that one fold and hence the overall drop is not found as statistically significant despite being relatively large. take are known, we believe that filtering out the incoherent relation predictions of their pipeline model can improve its precision without hurting the recall.</S>
+    <S sid="178" ssid="36">On the other hand our pipelined approach never outputs incoherent relations because the grammar of relation productions enforce that the relations are always between entities of the required types.</S>
+    <S sid="179" ssid="37">Thus the improvement obtained by our joint extraction method over our pipelined approach is always non-trivial.</S>
+  </SECTION>
+  <SECTION title="5 Related Work" number="5">
+    <S sid="180" ssid="1">To our knowledge, Roth &amp; Yih (2004; 2007) have done the only other work on joint entity and relation extraction.</S>
+    <S sid="181" ssid="2">Their method employs independent entity and relation classifiers whose outputs are used to compute a most probable consistent global set of entities and relations using linear programming.</S>
+    <S sid="182" ssid="3">One key advantage of our cardpyramid method over their method is that the classifiers can take the output of other classifiers under its node as input features during parsing.</S>
+    <S sid="183" ssid="4">This is not possible in their approach because all classifier outputs are determined before they are passed to the linear program solver.</S>
+    <S sid="184" ssid="5">Thus our approach is more integrated and allows greater interaction between dependent extraction decisions.</S>
+    <S sid="185" ssid="6">Miller et al. (2000) adapt a probabilistic context-free parser for information extraction by augmenting syntactic labels with entity and relation labels.</S>
+    <S sid="186" ssid="7">They thus do a joint syntactic parsing and information extraction using a fixed template.</S>
+    <S sid="187" ssid="8">However, as designed, such a CFG approach cannot handle the cases when an entity is involved in multiple relations and when the relations crisscross each other in the sentence, as in Figure 1.</S>
+    <S sid="188" ssid="9">These cases occur frequently in the dataset we used in our experiments and many other relationextraction tasks.</S>
+    <S sid="189" ssid="10">Giuliano et al. (2007) thoroughly evaluate the effect of entity extraction on relation extraction using the dataset used in our experiments.</S>
+    <S sid="190" ssid="11">However, they employ a pipeline architecture and did not investigate joint relation and entity extraction.</S>
+    <S sid="191" ssid="12">Carlson et al. (2009) present a method to simultaneously do semi-supervised training of entity and relation classifiers.</S>
+    <S sid="192" ssid="13">However, their coupling method is meant to take advantage of the available unsupervised data and does not do joint inference.</S>
+    <S sid="193" ssid="14">Riedel et al. (2009) present an approach for extracting bio-molecular events and their arguments using Markov Logic.</S>
+    <S sid="194" ssid="15">Such an approach could also be adapted for jointly extracting entities and their relations, however, this would restrict entity and relation extraction to the same machine learning method that is used with Markov Logic.</S>
+    <S sid="195" ssid="16">For example, one would not be able to use kernelbased SVM for relation extraction, which has been very successful at this task, because Markov Logic does not support kernel-based machine learning.</S>
+    <S sid="196" ssid="17">In contrast, our joint approach is independent of the individual machine learning methods for entity and relation extraction, and hence allows use of the best machine learning methods available for each of them.</S>
+  </SECTION>
+  <SECTION title="6 Future Work" number="6">
+    <S sid="197" ssid="1">There are several possible directions for extending the current approach.</S>
+    <S sid="198" ssid="2">The card-pyramid structure could be used to perform other languageprocessing tasks jointly with entity and relation extraction.</S>
+    <S sid="199" ssid="3">For example, co-reference resolution between two entities within a sentence can be easily incorporated in card-pyramid parsing by introducing a production like coref &#8212;* Person Person, indicating that the two person entities are the same.</S>
+    <S sid="200" ssid="4">In this work, and in most previous work, relations are always considered between two entities.</S>
+    <S sid="201" ssid="5">However, there could be relations between more than two entities.</S>
+    <S sid="202" ssid="6">In that case, it should be possible to binarize those relations and then use card-pyramid parsing.</S>
+    <S sid="203" ssid="7">If the relations are between relations instead of between entities, then card-pyramid parsing can handle it by considering the labels of the immediate children as RHS nonterminals instead of the labels of the left-most and the right-most leaves beneath it.</S>
+    <S sid="204" ssid="8">Thus, it would be interesting to apply card-pyramid parsing to extract higher-order relations (such as causal or temporal relations).</S>
+    <S sid="205" ssid="9">Given the regular graph structure of the cardpyramid, it would be interesting to investigate whether it can be modeled using a probabilistic graphical model (Koller and Friedman, 2009).</S>
+    <S sid="206" ssid="10">In that case, instead of using multiple probabilistic classifiers, one could employ a single jointlytrained probabilistic model, which is theoretically more appealing and might give better results.</S>
+    <S sid="207" ssid="11">Finally, we note that a better relation classifier could be used in the current approach which makes more use of linguistic information.</S>
+    <S sid="208" ssid="12">For example, by using dependency-based kernels (Bunescu and Mooney, 2005a; Kate, 2008) or syntactic kernels (Qian et al., 2008; Moschitti, 2009) or by including the word categories and their POS tags in the subsequences.</S>
+    <S sid="209" ssid="13">Also, it will be interesting to see if a kernel that computes the similarity between subcard-pyramids could be developed and used for relation classification.</S>
+  </SECTION>
+  <SECTION title="7 Conclusions" number="7">
+    <S sid="210" ssid="1">We introduced a card-pyramid graph structure and presented a new method for jointly extracting entities and their relations from a sentence using it.</S>
+    <S sid="211" ssid="2">A card-pyramid compactly encodes the entities and relations in a sentence thus reducing the joint extraction task to jointly labeling its nodes.</S>
+    <S sid="212" ssid="3">We presented an efficient parsing algorithm for jointly labeling a card-pyramid using dynamic programming and beam search.</S>
+    <S sid="213" ssid="4">The experiments demonstrated the benefit of our joint extraction method over a pipelined approach.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="8">
+    <S sid="214" ssid="1">This research was funded by Air Force Contract FA8750-09-C-0172 under the DARPA Machine Reading Program.</S>
+  </SECTION>
+</PAPER>

@@ -1,0 +1,196 @@
+<PAPER>
+  <S sid="0">Vector space semantics with frequency-driven motifs</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Traditional models of distributional semantics suffer from computational issues such as data sparsity for individual lexemes and complexities of modeling semantic composition when dealing with structures larger than single lexical items.</S>
+    <S sid="2" ssid="2">In this work, we present a frequencydriven paradigm for robust distributional semantics in terms of semantically cohelineal constituents, or The framework subsumes issues such as differential compositional as well as noncompositional behavior of phrasal consituents, and circumvents some problems of data sparsity by design.</S>
+    <S sid="3" ssid="3">We design a segmentation model to optimally partition a sentence into lineal constituents, which can be used to define distributional contexts that are less noisy, semantically more interpretable, and linguistically disambiguated.</S>
+    <S sid="4" ssid="4">Hellinger PCA embeddings learnt using the framework show competitive results on empirical tasks.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="5" ssid="1">Meaning in language is a confluence of experientially acquired semantics of words or multi-word phrases, and their semantic composition to create new meanings.</S>
+    <S sid="6" ssid="2">For instance, successfully interpreting a sentence such as The old senator kicked the bucket. requires the knowledge that the semantic connotations of &#8216;kicking the bucket&#8217; as a unit are the same as those for &#8216;dying&#8217;.</S>
+    <S sid="7" ssid="3">Short of explicit supervision, such semantic mappings must be inferred by a new language speaker through inductive mechanisms operating on observed linguistic usage.</S>
+    <S sid="8" ssid="4">This perspective of acquired meaning aligns with the &#8216;meaning is usage&#8217; adage, consonant with Wittgenstein&#8217;s view of semantics.</S>
+    <S sid="9" ssid="5">At the same time, the ability to adaptively communicate elaborate meanings can only be conciled through Frege&#8217;s principle of compositionality, i.e., meanings of larger linguistic constructs can be derived from the meanings of individual components, modulated by their syntactic interrelations.</S>
+    <S sid="10" ssid="6">Indeed, most linguistic usage appears compositional.</S>
+    <S sid="11" ssid="7">This is supported by the fact even with very limited vocabulary, children and non-native speakers can often communicate surprisingly effectively.</S>
+    <S sid="12" ssid="8">It can be argued that to be sustainable, inductive aspects of meaning must be recurrent enough to be learnable by new users.</S>
+    <S sid="13" ssid="9">That is, a noncompositional phrase such as &#8216;kick the bucket&#8217; is likely to persist in common parlance only if it is frequently used with its associated semantic mapping.</S>
+    <S sid="14" ssid="10">If a usage-driven meaning of a motif is not recurrent enough, learning this mapping is inefficient in two ways.</S>
+    <S sid="15" ssid="11">First, the sparseness of observations would severely limit accurate inductive acquisition by new observers.</S>
+    <S sid="16" ssid="12">Second, the value of learning a very infrequent semantic mapping is likely marginal.</S>
+    <S sid="17" ssid="13">This motivates the need for a frequency-driven view of lexical semantics.</S>
+    <S sid="18" ssid="14">In particular, such a perspective can be especially advantageous for distributional semantics for reasons we outline below.</S>
+    <S sid="19" ssid="15">Distributional semantic models (DSMs) that represent words as distributions over neighbouring contexts have been particularly effective in capturing fine-grained lexical semantics (Turney et al., 2010).</S>
+    <S sid="20" ssid="16">Such models have engendered improvements in diverse applications such as selectional preference modeling (Erk, 2007), word-sense discrimination (McCarthy and Carroll, 2003), automatic dictionary building (Curran, 2003), and information retrieval (Manning et al., 2008).</S>
+    <S sid="21" ssid="17">However, while conventional DSMs consider collocaWith the bad press in wake of the financial crisis, businesses are leaving our shores. crisis: &lt;bad, businesses, financial, leaving, press, shores, wake&gt; financial crisis: &lt;bad press, businesses, in wake of, leaving our shores&gt; tion strengths (through counts and PMI scores) of word neighbourhoods, they disregard much of the regularity in human language.</S>
+    <S sid="22" ssid="18">Most significantly, word tokens that act as latent dimensions are often derived from arbitrary tokenization.</S>
+    <S sid="23" ssid="19">The example given in Table 1 succinctly describes this.</S>
+    <S sid="24" ssid="20">The first row in the table shows a representation of the meaning of the token &#8216;crisis&#8217; that a conventional DSM might extract from the given sentence after stopword removal.</S>
+    <S sid="25" ssid="21">While helpful, the representation seems unsatisfying since words such as &#8216;press&#8217;, &#8216;wake&#8217; and &#8216;shores&#8217; seem to have little to do with a crisis.</S>
+    <S sid="26" ssid="22">From a semantic perspective, a representation similar to the second is more valuable: not only does it represent a semantic mapping for a more specific meaning, but the latent dimensions of the representation have are less noisy (e.g., while &#8216;wake&#8217; is semantically ambiguous, its surrounding context in &#8216;in wake of&#8217; disambiguates it) and more intuitive in regards of semantic interepretability.</S>
+    <S sid="27" ssid="23">This is the overarching theme of this work: we present a frequency driven paradigm for extending distributional semantics to phrasal and sentential levels in terms of such semantically cohesive, recurrent lexical units or motifs.</S>
+    <S sid="28" ssid="24">We propose to identify such semantically cohesive motifs in terms of features inspired from frequency-characteristics, linguistic idiosyncrasies, and shallow syntactic analysis; and explore both supervised and semi-supervised models to optimally segment a sentence into such motifs.</S>
+    <S sid="29" ssid="25">Through exploiting regularities in language usage, the framework can efficiently account for both compositional and non-compositional word usage, while avoiding the issue of data-sparsity by design.</S>
+    <S sid="30" ssid="26">Our principal contributions in this paper are: drawing from frequency statistics, information theory, linguistic theories and shallow syntactic analysis This paper is organized as follows: In Section 2, we briefly review related work in the domain of compositional distributional semantics, and motivate our formulation.</S>
+    <S sid="31" ssid="27">Section 3 describes our methodology, which consists of a frequencydriven segmentation model to partition text into semantically meaningful recurring lineal-subunits, a representation learning framework for learning new semantic embeddings based on this segmentation, and an approach to use such embeddings in downstream applications.</S>
+    <S sid="32" ssid="28">We present experiments and empirical evaluations for our method in Section 4.</S>
+    <S sid="33" ssid="29">Finally, we conclude in Section 5 with a summary of our principal findings, and a discussion of possible directions for future work.</S>
+  </SECTION>
+  <SECTION title="2 Related Work" number="2">
+    <S sid="34" ssid="1">While DSMs have been valuable in representing semantics of single words, approaches to extend them to represent the semantics of phrases and sentences has met with only marginal success.</S>
+    <S sid="35" ssid="2">While there is considerable variety in approaches and formulations, existing approaches for phrasal level and sentential semantics can broadly be partitioned into two categories.</S>
+    <S sid="36" ssid="3">These have aimed at using semantic representations for individual words to learn semantic representations for larger linguistic structures.</S>
+    <S sid="37" ssid="4">These methods implicitly make an assumption of compositionality, and often include explicit computational models of compositionality.</S>
+    <S sid="38" ssid="5">Notable among such models are the additive and multiplicative models of composition by Mitchell and Lapata (2008), Grefenstette et al. (2010), Baroni and Zamparelli&#8217;s (2010) model that differentially models content and function words for semantic composition, and Goyal et al.&#8217;s SDSM model (2013) that incorporates syntactic roles to model semantic composition.</S>
+    <S sid="39" ssid="6">Notable among the most effective distributional representations are the recent deep-learning approaches by Socher et al. (2012), that model vector composition through non-linear transformations.</S>
+    <S sid="40" ssid="7">While word embeddings and language models from such methods have been useful for tasks such as relation classification, polarity detection, event coreference and parsing; much of existing literature on composition is based on abstract linguistic theory and conjecture, and there is little evidence to support that learnt representations for larger linguistic units correspond to their semantic meanings.</S>
+    <S sid="41" ssid="8">While works such as the SDSM model suffer from the problem of sparsity in composing structures beyond bigrams and trigrams, methods such as Mitchell and Lapata (2008)and (Socher et al., 2012) and Grefenstette and Sadrzadeh (2011) are restricted by significant model biases in representing semantic composition by generic algebraic operations.</S>
+    <S sid="42" ssid="9">Finally, the assumption that semantic meanings for sentences could have representations similar to those for smaller individual tokens is in some sense unintuitive, and not supported by linguistic or semantic theories.</S>
+    <S sid="43" ssid="10">Tree Kernel methods have gained popularity in the last decade for capturing syntactic information in the structure of parse trees (Collins and Duffy, 2002; Moschitti, 2006).</S>
+    <S sid="44" ssid="11">Instead of procuring explicit representations, the kernel paradigm directly focuses on the larger goal of quantifying semantic similarity of larger linguistic units.</S>
+    <S sid="45" ssid="12">Structural kernels for NLP are based on matching substructures within two parse trees , consisting of word-nodes with similar labels.</S>
+    <S sid="46" ssid="13">These methods have been useful for eclectic tasks such as parsing, NER, semantic role labeling, and sentiment analysis.</S>
+    <S sid="47" ssid="14">Recent approaches such as by Croce et al. (2011) and Srivastava et al.</S>
+    <S sid="48" ssid="15">(2013) have attempted to provide formulations to incorporate semantics into tree kernels through the use of distributional word vectors at the individual word-nodes.</S>
+    <S sid="49" ssid="16">While this framework is attractive in the lack of assumptions on representation that it makes, the use of distributional embeddings for individual tokens means that it suffers from the same shortcomings as described for the example in Table 1, and hence these methods model semantic relations between wordnodes very weakly.</S>
+    <S sid="50" ssid="17">Figure 1 shows an example of the shortcomings of this general approach.</S>
+    <S sid="51" ssid="18">While the two sentences in consideration have near-identical syntax and could be argued to have semantically aligned words in similar positions, the semantics of the complete sentences are widely divergent.</S>
+    <S sid="52" ssid="19">Specifically, the &#8216;bag of words&#8217; assumption in tree kernels doesn&#8217;t suffice for these lexemes, and a stronger semantic model is needed to capture phrasal semantics as well as diverging inter-word relations such as in &#8216;coffee table&#8217; and &#8216;water table&#8217;.</S>
+    <S sid="53" ssid="20">Our hypothesis is that a model that can even weakly identify recurrent motifs such as &#8216;water table&#8217; or &#8216;breaking a fall&#8217; would be helpful in building more effective semantic representations.</S>
+    <S sid="54" ssid="21">A significant advantage of a frequency driven view is that it makes the concern of compositionality of recurrent phrases immaterial.</S>
+    <S sid="55" ssid="22">If a motif occurs frequently enough in common parlance, its semantics could be captured with distributional models irrespective of whether its associated semantics are compositional or acquired.</S>
+    <S sid="56" ssid="23">Several approaches have focused on supervised identification of multi-word expressions (MWEs) through statistical (Pecina, 2008; Villavicencio et al., 2007) and linguistically motivated (Piao et al., 2005) techniques.</S>
+    <S sid="57" ssid="24">More recently, hybrid methods based on both statistical as well as linguistic features have been popular (Tsvetkov and Wintner, 2011).</S>
+    <S sid="58" ssid="25">Ramisch et al. (2008) demonstrate that adding part-of-speech tags to frequency counts substantially improves performance.</S>
+    <S sid="59" ssid="26">Other methods have attempted to exploit morphological, syntactic and semantic characteristics of MWEs.</S>
+    <S sid="60" ssid="27">In particular, approaches such as Bannard (2007) use syntactic rigidity to characterize MWEs.</S>
+    <S sid="61" ssid="28">While existing work has focused on the classification task of categorizing a phrasal constituent as a MWE or a non-MWE, the general ideas of most of these works are in line with our current framework, and the feature-set for our motif segmentation model is designed to subsume most of these ideas.</S>
+    <S sid="62" ssid="29">It is worthwhile to point out that the task of motif segmentation is slightly different from MWE identification.</S>
+    <S sid="63" ssid="30">Specifically, the onus on recurrent occurrences means that nondecomposibility is not an essential consideration for a word to be considered a motif.</S>
+    <S sid="64" ssid="31">In line with the proposed paradigm, typical MWEs such as &#8216;shoot the breeze&#8217;, &#8216;sour note&#8217; and &#8216;hot dog&#8217; would be considered valid lineal motifs.</S>
+    <S sid="65" ssid="32">1 In addition, even decomposable recurrent lineal phrases such as &#8216;love story&#8217;, &#8216;federal government&#8217;, and &#8216;millions of people&#8217; are marked as meaningful recurrent motifs.</S>
+    <S sid="66" ssid="33">Finally, and least interestingly, we include common named entities such as &#8216;United States&#8217; and &#8216;Java Virtual Machine&#8217; within the ambit of motifs.</S>
+  </SECTION>
+  <SECTION title="3 Method" number="3">
+    <S sid="67" ssid="1">In this section, we define our frequency-driven framework for distributional semantics in detail.</S>
+    <S sid="68" ssid="2">As just described above, our definition for motifs is less specific than MWEs.</S>
+    <S sid="69" ssid="3">With such a working definition, contiguous motifs are likely to make distributional representations less noisy and also assist in disambiguating context.</S>
+    <S sid="70" ssid="4">Also, the lack of specificity ensures that such motifs are common enough to meaningfully influence distributional representation beyond single tokens.</S>
+    <S sid="71" ssid="5">A method towards frequency-driven distributional semantics could involve the following principal components: The segmentation model forms the core of the framework.</S>
+    <S sid="72" ssid="6">Ideally, it fragments a given sentence into non-overlapping, semantically meaningful, empirically frequent contiguous sub-units or motifs.</S>
+    <S sid="73" ssid="7">The model accounts for possible segmentations of a sentence into potential motifs, and prefers recurrent and cohesive motifs through features that capture frequency-based and statistical features, as well as linguistic idiosyncracies.</S>
+    <S sid="74" ssid="8">This is accomplished using a very simple linear chain model and a rich feature set consisting of a combination of frequency-driven, information theoretic and linguistically motivated features.</S>
+    <S sid="75" ssid="9">Let an observed sentence be denoted by x, with the individual tokens xi denoting the i&#8217;th token in the sentence.</S>
+    <S sid="76" ssid="10">The segmentation model is a chain LVM (latent variable model) that aims to maximize a linear objective defined by: where fi are arbitrary Markov features that can depend on segments (potential motifs) of the observed sentence x, and contiguous latent states.</S>
+    <S sid="77" ssid="11">The features are chosen so as to best represent frequency-based, statistical as well as linguistic considerations for treating a segment as an agglutinative unit, or a motif.</S>
+    <S sid="78" ssid="12">In specific, these features could encode characteristics such as frequency statistics, collocation strengths and syntactic distinctness, or inflectional rigidity of the considered segments; described in detail in Section 3.2.</S>
+    <S sid="79" ssid="13">The model is an instantiation of a simple featurized HMM, and the weighted sum of features corresponding to a segment is cognate with an affinity score for the &#8216;stickiness&#8217; of the segment, i.e., the affinity for the segment to be treated as holistic unit or a single motif.</S>
+    <S sid="80" ssid="14">We also associate a penalizing cost for each non unary-motif to avoid aggressive agglutination of tokens.</S>
+    <S sid="81" ssid="15">In particular, for an ngram occurrence to be considered a motif, the marginal contribution due to the affinity of the prospective motif should at minimum exceed this penalty.</S>
+    <S sid="82" ssid="16">The weights for the affinity functions as well as these penalties are learnt from data using full as well as partial annotations.</S>
+    <S sid="83" ssid="17">The latent state-variables yk denotes the membership of the token xk to a unary or a larger motif; and the state-sequence collectively gives the segmentation of the sentence.</S>
+    <S sid="84" ssid="18">An individual state-variable yk encodes a pairing of the size of the encompassing ngram motif, and the position of the word xk within it.</S>
+    <S sid="85" ssid="19">For instance, yk = T3 denotes that the token xk is the final position in a trigram motif.</S>
+    <S sid="86" ssid="20">If the optimal weights wi are known, inference for the best motif segmentation can be performed in linear time (in the number of tokens) following the generalized Viterbi algorithm.</S>
+    <S sid="87" ssid="21">A slightly modified version of Viterbi could also be used to find segmentations that are constrained to agree with some given motif boundaries, but can segment other parts of the sentence optimally under these constraints.</S>
+    <S sid="88" ssid="22">This is necessary for the scenario of semi-supervised learning of weights with partially annotated sentences, as described later.</S>
+    <S sid="89" ssid="23">We briefly discuss data-driven learning of weights for features that define the motif affinity scores and penalties.</S>
+    <S sid="90" ssid="24">We describe learning of the model parameters with fully annotated training data, as well as an approach for learning motif segmentation that requires only partial supervision.</S>
+    <S sid="91" ssid="25">Supervised learning: In the supervised case, optimal state sequences y(k) are fully observed for the training set.</S>
+    <S sid="92" ssid="26">For this purpose, we created a dataset of 1000 sentences from the Simple English Wikipedia and the Gigaword Corpus, and manually annotated it with motif boundaries using BRAT (Stenetorp et al., 2012).</S>
+    <S sid="93" ssid="27">In this case, learning can follow the online structured perceptron learning procedure by Collins (2002), where weights updates for the k&#8217;th training example (x(k), y(k)) are given as: Here y' = Decode(x(k), w) is the optimal Viterbi decoding using the current estimates of the weights.</S>
+    <S sid="94" ssid="28">Updates are run for a large number of iterations until the change in objective drops below a threshold, and the learning rate &#945; is adaptively modified as described in Collins et al. Implicitly, the weight learning algorithm can be seen as a gradient descent procedure minimizing the difference between the scores of highest scoring (Viterbi) state sequences, and the label state sequences.</S>
+    <S sid="95" ssid="29">Semi-supervised learning: In the semisupervised case, the labels y(k) i are known only for some of the tokens in x(k).</S>
+    <S sid="96" ssid="30">This is a commonplace scenario, where a part of a sentence has clear motif-boundaries, whereas the rest of the sentence is not annotated.</S>
+    <S sid="97" ssid="31">For accumulating such data, we looked for occurrences of 2500 expressions from the WikiMWE dataset in sentences from the combined Simple English Wikipedia and Gigaword corpora.</S>
+    <S sid="98" ssid="32">The query expressions in the retrieved sentences were marked with motif boundaries, while the remaining tokens in the sentences were left unannotated.</S>
+    <S sid="99" ssid="33">While the Viterbi algorithm can be used for tagging optimal state-sequences given the weights, the structured perceptron can learn optimal model weights given gold-standard sequence labels.</S>
+    <S sid="100" ssid="34">Hence, in this case, we use a variation of the hard EM algorithm for learning.</S>
+    <S sid="101" ssid="35">The algorithm proceeds as follows: in the E-step, we use the current values of weights to compute hard-expectations, i.e., the best scoring Viterbi sequences among those consistent with the observed state labels.</S>
+    <S sid="102" ssid="36">In the M-step, we take the decoded state-sequences in the E-step as observed, and run perceptron learning to update feature weights wi.</S>
+    <S sid="103" ssid="37">Pseudocode of the learning algorithm for the partially labeled case is given in Algorithm 1.</S>
+    <S sid="104" ssid="38">Algorithm 1 The semi-supervised approach enables incorporation of significantly more training data.</S>
+    <S sid="105" ssid="39">In particular, this method could be used in conjunction with a supervised approach.</S>
+    <S sid="106" ssid="40">This would involve initializing the weights prior to the semisupervised procedure with the weights from the supervised learning model, so as to seed the semisupervised approach with reasonable model, and use the partially annotated data to fine-tune the supervised model.</S>
+    <S sid="107" ssid="41">The sequential approach, akin to annealing weights, can efficiently utilize both full and partial annotations.</S>
+    <S sid="108" ssid="42">In this section, we describe the principal features used in the segmentation model Transitional features and penalties: Iyi&#8722;1,yi 2 describing the transitional affinities of state pairs.</S>
+    <S sid="109" ssid="43">Since our state definitions preclude certain transitions (such as from state T2 to T1), these weights are initialized to &#8722;oc to expedite training. cies fngram(xi&#8722;n+1, ...xi&#8722;1, xi, yi).</S>
+    <S sid="110" ssid="44">This feature is associated with a particular tokensequence and ngram-tag, and takes the value of the motif-frequency if the motif token-sequence matches the feature tokensequence, and is marked as with a matching tag. e.g., fbgram(xi&#8722;1 = love, xi = story, yi = B2).</S>
+    <S sid="111" ssid="45">Additionally, a few feature for the segmentations model contained minor orthographic features based on word shape (length and capitalization patterns).</S>
+    <S sid="112" ssid="46">Also, all numbers, URLs, and currency symbols were normalized to the special NUMERIC, URL, and CURRENCY tokens respectively.</S>
+    <S sid="113" ssid="47">Finally, a gazetteer feature checked for occurrences of motifs in a gazetteer of named entities.</S>
+    <S sid="114" ssid="48">With the segmentation model described in the previous section, we process text from the English Gigaword corpus and the Simple English Wikipedia to partition sentences into motifs.</S>
+    <S sid="115" ssid="49">Since the segmentation model accounts for the contexts of the entire sentence in determining motifs, different instances of the same token could evoke different meaning representations.</S>
+    <S sid="116" ssid="50">Consider the following sentences tagged by the segmentation model, that would correspond to different representations of the token &#8216;remains&#8217;: once as a standalone motif, and once as part of an encompassing bigram motif (&#8216;remains classified&#8217;).</S>
+    <S sid="117" ssid="51">Hog prices have declined sharply , while the cost of corn remains relatively high.</S>
+    <S sid="118" ssid="52">Even with the release of such documents, questions are not answered, since only the agency knows what remains classified Given constituent motifs of each sentence in the data, we can now define neighbourhood distributions for unary or phrasal motifs in terms of other motifs (as envisioned in Table 1).</S>
+    <S sid="119" ssid="53">In our experiments, we use a window-length of 5 adjoining motifs on either side to define the neighbourhood of a constituent.</S>
+    <S sid="120" ssid="54">Naturally, in the presence of multiword motifs, the neighbourhood boundary could be more extended than in a conventional DSM.</S>
+    <S sid="121" ssid="55">With such neighbourhood contexts, the distributional paradigm posits that semantic similarity between a pair of motifs can be given by a sense of &#8216;distance&#8217; between the two distributions.</S>
+    <S sid="122" ssid="56">Most popularly, traditional measures of vector distance such as the cosine similarity, Euclidean distance and City-block distance have been used in several distributional approaches.</S>
+    <S sid="123" ssid="57">Additionally, several distance measures between discrete distributions exist in statistical literature, most famously the Kullback Leibler divergence, Bhattacharyya distance and the Hellinger distance.</S>
+    <S sid="124" ssid="58">Recent work (Lebret and Lebret, 2013) has shown that the Hellinger distance is an especially effective measure in learning distributional embeddings, with Hellinger PCA being much more computationally inexpensive than neural language modeling approaches, while performing much better than standard PCA, and competitive with the state-of-theart in downstream evaluations.</S>
+    <S sid="125" ssid="59">Hence, we use the Hellinger measure between neighbourhood motif distributions in learning representations.</S>
+    <S sid="126" ssid="60">The Hellinger distance between two categorical distributions P = (p1...pk) and Q = (q1...qk) is defined as: The Hellinger measure has intuitively desirable properties: specifically, it can be seen as the Euclidean distance between the squareroots transformed distributions, where both vectors &#8730;P and &#8730;Q are length-normalized under the same(Euclidean) norm.</S>
+    <S sid="127" ssid="61">Finally, we perform SVD on the motif similarity matrix (with size of the order of the total vocabulary in the corpus), and retain the first k principal eigenvectors to obtain lowdimensional vector representations that are more convenient to work with.</S>
+    <S sid="128" ssid="62">In our preliminary experiments, we found that k = 300 gave quantitatively good results, with marginal change with added dimensionality.</S>
+    <S sid="129" ssid="63">We use this setting for all our experiments.</S>
+  </SECTION>
+  <SECTION title="4 Experiments" number="4">
+    <S sid="130" ssid="1">In this section, we describe some experimental evaluations and findings for our approach.</S>
+    <S sid="131" ssid="2">We first quantitatively and qualitatively analyze the performance of the segmentation model, and then evaluate the distributional motif representations learnt by the model through two downstream applications.</S>
+    <S sid="132" ssid="3">In an evaluation of the motif segmentations model within the perspective of our framework, we believe that exact correspondence to human judgment is unrealistic, since guiding principles for defining motifs, such as semantic cohesion, are hard to define and only serve as working principles.</S>
+    <S sid="133" ssid="4">However, for purposes of relative comparison, we quantitatively evaluate the performance of the motif segmentation models on the fully annotated dataset.</S>
+    <S sid="134" ssid="5">For this experiment, the goldannotated corpus was split into a training and test sets in a 9:1 proportion.</S>
+    <S sid="135" ssid="6">A small fraction of the training split was set apart for development and validation.</S>
+    <S sid="136" ssid="7">For this evaluation, we considered a motif boundary as correct only for an exact match, i.e., when both its boundaries (left and right) were correctly predicted.</S>
+    <S sid="137" ssid="8">Also, since a majority of motifs are unary tokens, including them into consideration artificially boosts the accuracy, whereas we are more interested in the prediction of larger ngram tokens.</S>
+    <S sid="138" ssid="9">Hence we report results on the performance on only non-unary motifs.</S>
+    <S sid="139" ssid="10">Table 2 shows the performance of the segmentation model with the three proposed learning approaches described earlier.</S>
+    <S sid="140" ssid="11">For a baseline, we consider a rule-based model that simply learns all ngram segmentations seen in the training data, and marks any occurrence of a matching token sequence as a motif; without taking neighbouring context into account.</S>
+    <S sid="141" ssid="12">We observe that this model has a very high precision (since many token sequences marked as motifs would recur in similar contexts, and would thus have the same motif boundaries).</S>
+    <S sid="142" ssid="13">However, the rule-based method has a very row recall due to lack of generalization capabilities.</S>
+    <S sid="143" ssid="14">We see that while all three learning algorithms perform better than the baseline, the performance of the purely unsupervised system is inferior to supervised approaches.</S>
+    <S sid="144" ssid="15">This is not unexpected: the supervision provided to the model is very weak due to a lack of negative examples (which leads to spurious motif taggings, While men often (openly or privately) sympathized with Prince Charles when the princess went public about her rotten marriage, women cheered her on.</S>
+    <S sid="145" ssid="16">The healthcare initiative has become a White elephant for the federal government.</S>
+    <S sid="146" ssid="17">Chirac and Juppe have made a bad situation worse by seeking to meet Maastricht criteria not by cutting spending, but by raising taxes still further.</S>
+    <S sid="147" ssid="18">Now, say Vatican observers, Pope John Paul II wants to show the world that many church members did resist the Third Reich and paid the price. leading to a low precision), as well as no examples of transitions between adjacent motifs (to learn transitional weights and penalties).</S>
+    <S sid="148" ssid="19">The supervised model expectedly outperforms both the rulebased and the semi-supervised systems.</S>
+    <S sid="149" ssid="20">However, the supervised learning model with subsequent annealing outperforms the supervised model in terms of both precision and recall; showing the utility of the semi-supervised method when seeded with a good initial model, and the additive value of partially labeled data.</S>
+    <S sid="150" ssid="21">Qualitative analysis of motif-segmented sentences shows that our designed feature-set is effective and helpful in identifying semantically cohesive ngrams.</S>
+    <S sid="151" ssid="22">Table 3 provides four examples.</S>
+    <S sid="152" ssid="23">The first example correctly identifies &#8216;went public&#8217;, while missing out on the potential motif &#8216;cheered her on&#8217;.</S>
+    <S sid="153" ssid="24">In general, these examples illustrate that the model can identify idiomatic and idiosyncratic themes as well as commonly recurrent ngrams (in the second example, the model picks out &#8216;has become&#8217; which is highly recurrent, but doesn&#8217;t have the semantic cohesiveness of some of the other motifs).</S>
+    <S sid="154" ssid="25">In particular, consider the second example, where the model picks &#8216;white elephant&#8217; as a motif.</S>
+    <S sid="155" ssid="26">In such cases, the disambiguating influence of context incorporated by the motif is apparent.</S>
+    <S sid="156" ssid="27">Elephant White elephant tusks expensive trunk spend african biggest white the project indian very high baby multibillion dollar The above table shows some of the top results for the unary token &#8216;elephant&#8217; by frequency, and frequent unary and non-unary motifs for the motif &#8216;white elephant&#8217; retrieved by the segmentation model.</S>
+    <S sid="157" ssid="28">For evaluating distributional representations for motifs (in terms of other motifs) learnt by the framework, we test these representations in two downstream tasks: sentence polarity classification and metaphor detection.</S>
+    <S sid="158" ssid="29">For sentence polarity, we consider the Cornell Sentence Polarity corpus by Pang and Lee (2005), where the task is to classify the polarity of a sentence as positive or negative.</S>
+    <S sid="159" ssid="30">The data consists of 10662 sentences from movie reviews that have been annotated as either positive or negative.</S>
+    <S sid="160" ssid="31">For composing the motifs representations to get judgments on semantic similarity of sentences, we use our recent Vector Tree Kernel approach The VTK approach defines a convolutional kernel over graphs defined by the dependency parses of sentences, using a vector representation at each graph node that representing a single lexical token.</S>
+    <S sid="161" ssid="32">For our purposes, we modify the approach to merge the nodes of all tokens that constitute a motif occurrence, and use the motif representation as the vector associated with the node.</S>
+    <S sid="162" ssid="33">Table 4 shows results for the sentence polarity task.</S>
+    <S sid="163" ssid="34">For this task, the motif based distributional embeddings vastly outperform a conventional distributional model (DSM) based on token distributions, as well as additive (AVM) and multiplicative (MVM) models of vector compositionality, as proposed by Lapata et al. The model is competitive with the state-of-the-art VTK (Srivastava et al., 2013) that uses the SENNA neural embeddings by Collobert et al.</S>
+    <S sid="164" ssid="35">(2011).</S>
+    <S sid="165" ssid="36">On the metaphor detection task, we use the Metaphor dataset (Hovy et al., 2013).</S>
+    <S sid="166" ssid="37">The data consists of sentences with defined phrases, and the task consists of identifying the linguistic use in these phrases as metaphorical or literal.</S>
+    <S sid="167" ssid="38">For this task, the motif based model is expected to perform well as common metaphorical usage is generally through idiosyncratic MWEs, which the motif based models is specially geared to capture through the features of the segmentation model.</S>
+    <S sid="168" ssid="39">For this task, we again use the VTK formalism for combining vector representations of the individual motifs.</S>
+    <S sid="169" ssid="40">Table 5 shows that the motif-based DSM does better than discriminative models such as CRFs and SVMs, and also slightly improves on the VTK kernel with distributional embeddings.</S>
+  </SECTION>
+  <SECTION title="5 Conclusion" number="5">
+    <S sid="170" ssid="1">We have presented a new frequency-driven framework for distributional semantics of not only lexical items but also longer cohesive motifs.</S>
+    <S sid="171" ssid="2">The theme of this work is a general paradigm of seeking motifs that are recurrent in common parlance, are semantically coherent, and are possibly noncompositional.</S>
+    <S sid="172" ssid="3">Such a framework for distributional models avoids the issue of data sparsity in learning of representations for larger linguistic structures.</S>
+    <S sid="173" ssid="4">The approach depends on drawing features from frequency statistics, statistical correlations, and linguistic theories; and this work provides a computational framework to jointly model recurrence and semantic cohesiveness of motifs through compositional penalties and affinity scores in a data driven way.</S>
+    <S sid="174" ssid="5">While being deliberately vague in our working definition of motifs, we have presented simple efficient formulations to extract such motifs that uses both annotated as well as partially unannotated data.</S>
+    <S sid="175" ssid="6">The qualitative and quantitative analyis of results from our preliminary motif segmentation model indicate that such motifs can help to disambiguate contexts of single tokens, and provide cleaner, more interpretable representations.</S>
+    <S sid="176" ssid="7">Finally, we obtain motif representations in form of low-dimensional vector-space embeddings, and our experimental findings indicate value of the learnt representations in downstream applications.</S>
+    <S sid="177" ssid="8">We believe that the approach has considerable theoretical as well as practical merits, and provides a simple and clean formulation for modeling phrasal and sentential semantics.</S>
+    <S sid="178" ssid="9">In particular, we believe that ours is the first method that can invoke different meaning representations for a token depending on textual context of the sentence.</S>
+    <S sid="179" ssid="10">The flexibility of having separate representations to model different semantic senses has considerable valuable, as compared with extant approaches that assign a single representation to each token, and are hence constrained to conflate several semantic senses into a common representation.</S>
+    <S sid="180" ssid="11">The approach also elegantly deals with the problematic issue of differential compositional and non-compositional usage of words.</S>
+    <S sid="181" ssid="12">Future work can focus on a more thorough quantitative evaluation of the paradigm, as well as extension to model non-contiguous motifs.</S>
+  </SECTION>
+</PAPER>

@@ -1,0 +1,232 @@
+<PAPER>
+  <S sid="0">Graph Propagation for Paraphrasing Out-of-Vocabulary Words in Statistical Machine Translation</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Out-of-vocabulary (oov) words or phrases still remain a challenge in statistical machine translation especially when a limited amount of parallel text is available for training or when there is a domain shift from training data to test data.</S>
+    <S sid="2" ssid="2">In this paper, we propose a novel approach to finding translations for oov words.</S>
+    <S sid="3" ssid="3">We induce a lexicon by constructing a graph on source language monolingual text and employ a graph propagation technique in order to find translations for all the source language phrases.</S>
+    <S sid="4" ssid="4">Our method differs from previous approaches by adopting a graph propagation approach that takes into account not only one-step (from oov directly to a source language phrase that has a translation) but multi-step paraphrases from oov source language words to other source language phrases and eventually to target language translations.</S>
+    <S sid="5" ssid="5">Experimental results show that our graph propagation method significantly improves performance over two strong baselines under intrinsic and extrinsic evaluation metrics.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="6" ssid="1">Out-of-vocabulary (oov) words or phrases still remain a challenge in statistical machine translation.</S>
+    <S sid="7" ssid="2">SMT systems usually copy unknown words verbatim to the target language output.</S>
+    <S sid="8" ssid="3">Although this is helpful in translating a small fraction of oovs such as named entities for languages with same writing systems, it harms the translation in other types of oovs and distant language pairs.</S>
+    <S sid="9" ssid="4">In general, copied-over oovs are a hindrance to fluent, high quality translation, and we can see evidence of this in automatic measures such as BLEU (Papineni et al., 2002) and also in human evaluation scores such as HTER.</S>
+    <S sid="10" ssid="5">The problem becomes more severe when only a limited amount of parallel text is available for training or when the training and test data are from different domains.</S>
+    <S sid="11" ssid="6">Even noisy translation of oovs can aid the language model to better re-order the words in the target language (Zhang et al., 2012).</S>
+    <S sid="12" ssid="7">Increasing the size of the parallel data can reduce the number of oovs.</S>
+    <S sid="13" ssid="8">However, there will always be some words or phrases that are new to the system and finding ways to translate such words or phrases will be beneficial to the system.</S>
+    <S sid="14" ssid="9">Researchers have applied a number of approaches to tackle this problem.</S>
+    <S sid="15" ssid="10">Some approaches use pivot languages (Callison-Burch et al., 2006) while others use lexicon-induction-based approaches from source language monolingual corpora (Koehn and Knight, 2002; Garera et al., 2009; Marton et al., 2009).</S>
+    <S sid="16" ssid="11">Pivot language techniques tackle this problem by taking advantage of available parallel data between the source language and a third language.</S>
+    <S sid="17" ssid="12">Using a pivot language, oovs are translated into a third language and back into the source language and thereby paraphrases to those oov words are extracted (Callison-Burch et al., 2006).</S>
+    <S sid="18" ssid="13">For each oov, the system can be augmented by aggregating the translations of all its paraphrases and assign them to the oov.</S>
+    <S sid="19" ssid="14">However, these methods require parallel corpora between the source language and one or multiple pivot languages.</S>
+    <S sid="20" ssid="15">Another line of work exploits spelling and morphological variants of oov words.</S>
+    <S sid="21" ssid="16">Habash (2008) presents techniques for online handling of oov words for Arabic to English such as spelling expansion and morphological expansion.</S>
+    <S sid="22" ssid="17">Huang et al. (2011) proposes a method to combine sublexical/constituent translations of an oov word or phrase to generate its translations.</S>
+    <S sid="23" ssid="18">Several researchers have applied lexiconinduction methods to create a bilingual lexicon for those oovs.</S>
+    <S sid="24" ssid="19">Marton et al. (2009) use a monolingual text on the source side to find paraphrases to oov words for which the translations are available.</S>
+    <S sid="25" ssid="20">The translations for these paraphrases are then used as the translations of the oov word.</S>
+    <S sid="26" ssid="21">These methods are based on the distributional hypothesis which states that words appearing in the same contexts tend to have similar meaning (Harris, 1954).</S>
+    <S sid="27" ssid="22">Marton et al. (2009) showed that this method improves over the baseline system where oovs are untranslated.</S>
+    <S sid="28" ssid="23">We propose a graph propagation-based extension to the approach of Marton et al. (2009) in which a graph is constructed from source language monolingual text1 and the source-side of the available parallel data.</S>
+    <S sid="29" ssid="24">Nodes that have related meanings are connected together and nodes for which we have translations in the phrase-table are annotated with target-side translations and their feature values.</S>
+    <S sid="30" ssid="25">A graph propagation algorithm is then used to propagate translations from labeled nodes to unlabeled nodes (phrases appearing only in the monolingual text and oovs).</S>
+    <S sid="31" ssid="26">This provides a general purpose approach to handle several types of oovs, including morphological variants, spelling variants and synonyms2.</S>
+    <S sid="32" ssid="27">Constructing such a huge graph and propagating messages through it pose severe computational challenges.</S>
+    <S sid="33" ssid="28">Throughout the paper, we will see how these challenges are dealt with using scalable algorithms.</S>
+  </SECTION>
+  <SECTION title="2 Collocational Lexicon Induction" number="2">
+    <S sid="34" ssid="1">Rapp (1995) introduced the notion of a distributional profile in bilingual lexicon induction from monolingual data.</S>
+    <S sid="35" ssid="2">A distributional profile (DP) of a word or phrase type is a co-occurrence vector created by combining all co-occurrence vectors of the tokens of that phrase type.</S>
+    <S sid="36" ssid="3">Each distributional profile can be seen as a point in a |V |-dimensional space where V is the vocabulary where each word type represents a unique axis.</S>
+    <S sid="37" ssid="4">Points (i.e. phrase types) that are close to one another in this highdimensional space can represent paraphrases.</S>
+    <S sid="38" ssid="5">This approach has also been used in machine translation to find in-vocabulary paraphrases for oov words on the source side and find a way to translate them.</S>
+    <S sid="39" ssid="6">Marton et al. (2009) was the first to successfully integrate a collocational approach to finding translations for oov words into an end-to-end SMT system.</S>
+    <S sid="40" ssid="7">We explain their method in detail as we will compare against this approach.</S>
+    <S sid="41" ssid="8">The method relies on monolingual distributional profiles (DPs) which are numerical vectors representing the context around each word.</S>
+    <S sid="42" ssid="9">The goal is to find words or phrases that appear in similar contexts as the oovs.</S>
+    <S sid="43" ssid="10">For each oov a distributional profile is created by collecting all words appearing in a fixed distance from all occurrences of the oov word in the monolingual text.</S>
+    <S sid="44" ssid="11">These co-occurrence counts are converted to an association measure (Section 2.2) that encodes the relatedness of each pair of words or phrases.</S>
+    <S sid="45" ssid="12">Then, the most similar phrases to each oov are found by measuring the similarity of their DPs to that of the oov word.</S>
+    <S sid="46" ssid="13">Marton et al. (2009) uses a heuristic to prune the search space for finding candidate paraphrases by keeping the surrounding context (e.g.</S>
+    <S sid="47" ssid="14">L R) of each occurrences of the oov word.</S>
+    <S sid="48" ssid="15">All phrases that appear in any of such contexts are collected as candidate paraphrases.</S>
+    <S sid="49" ssid="16">For each of these paraphrases, a DP is constructed and compared to that of the oov word using a similarity measure (Section 2.2).</S>
+    <S sid="50" ssid="17">The top-k paraphrases that have translations in the phrase-table are used to assign translations and scores to each oov word by marginalizing translations over paraphrases: where t is a phrase on the target side, o is the oov word or phrase, and s is a paraphrase of o. p(s|o) is estimated using a similarity measure over DPs and p(t|s) is coming from the phrase-table.</S>
+    <S sid="51" ssid="18">We reimplemented this collocational approach for finding translations for oovs and used it as a baseline system.</S>
+    <S sid="52" ssid="19">Alternative ways of modeling and comparing distributional profiles have been proposed (Rapp, 1999; Fung and Yee, 1998; Terra and Clarke, 2003; Garera et al., 2009; Marton et al., 2009).</S>
+    <S sid="53" ssid="20">We review some of them here and compare their performance in Section 4.3.</S>
+    <S sid="54" ssid="21">Given a word u, its distributional profile DP(u) is constructed by counting surrounding words (in a fixed window size) in a monolingual corpus.</S>
+    <S sid="55" ssid="22">The counts can be collected in positional3 (Rapp, 1999) or non-positional way (count all the word occurrences within the sliding window).</S>
+    <S sid="56" ssid="23">A(&#183;, &#183;) is an association measure and can simply be defined as co-occurrence counts within sliding windows.</S>
+    <S sid="57" ssid="24">Stronger association measures can also be used such as: Conditional probability: the probability for the occurrence of each word in DP given the occurrence of u: CP(u,wi) = P(wi|u) (Sch&#168;utze and Pedersen, 1997) Pointwise Mutual Information: this measure is a transformation of the independence assumption into a ratio.</S>
+    <S sid="58" ssid="25">Positive values indicate that words co-occur more than what we expect under the independence assumption (Lin, 1998): where L is likelihood function under the assumption that word counts in text have binomial distributions.</S>
+    <S sid="59" ssid="26">The numerator represents the likelihood of the hypothesis that u and wi are independent Chi-square test: is a statistical hypothesis testing method to evaluate independence of two categorical random variables, e.g. whether the occurrence of u and wi (denoted by x and y respectively) are independent.</S>
+    <S sid="60" ssid="27">The test statistics &#967;2(u,wi) is the deviation of the observed counts fx,y from their expected values Ex,y: Various functions have been used to estimate the similarity between distributional profiles.</S>
+    <S sid="61" ssid="28">3e.g., position 1 is the word immediately after, position -1 is the word immediately before etc.</S>
+    <S sid="62" ssid="29">Given two distributional profiles DP(u) and DP(v), some similarity functions can be defined as follows.</S>
+    <S sid="63" ssid="30">Note that A(&#183;, &#183;) stands for the various association measures defined in Sec.</S>
+    <S sid="64" ssid="31">2.2.</S>
+    <S sid="65" ssid="32">Cosine coefficient is the cosine the angle between two vectors DP(u) and DP(v): L1-Norm computes the accumulated distance between entries of two distributional profiles (L1(&#183;, &#183;)).</S>
+    <S sid="66" ssid="33">It has been used as word similarity measure in language modeling (Dagan et al., 1999).</S>
+    <S sid="67" ssid="34">Jensen-Shannon Divergence is a symmetric version of contextual average mutual information (KL) which is used by (Dagan et al., 1999) as word similarity measure.</S>
+  </SECTION>
+  <SECTION title="3 Graph-based Lexicon Induction" number="3">
+    <S sid="68" ssid="1">We propose a novel approach to alleviate the oov problem.</S>
+    <S sid="69" ssid="2">Given a (possibly small amount of) parallel data between the source and target languages, and a large monolingual data in the source language, we construct a graph over all phrase types in the monolingual text and the source side of the parallel corpus and connect phrases that have similar meanings (i.e. appear in similar context) to one another.</S>
+    <S sid="70" ssid="3">To do so, the distributional profiles of all source phrase types are created.</S>
+    <S sid="71" ssid="4">Each phrase type represents a vertex in the graph and is connected to other vertices with a weight defined by a similarity measure between the two profiles (Section 2.3).</S>
+    <S sid="72" ssid="5">There are three types of vertices in the graph: i) labeled nodes which appear in the parallel corpus and for which we have the target-side translations5; ii) oov nodes from the dev/test set for which we seek labels (translations); and iii) unlabeled nodes (words or phrases) from the monolingual data which appear usually between oov nodes and labeled nodes.</S>
+    <S sid="73" ssid="6">When a relatively small parallel data is used, unlabeled nodes outnumber labeled ones and many of them lie on the paths between an oov node to labeled ones.</S>
+    <S sid="74" ssid="7">Marton et al. (2009)&#8217;s approach ignores these bridging nodes and connects each oov node to the k-nearest labeled nodes.</S>
+    <S sid="75" ssid="8">One may argue that these unlabeled nodes do not play a major role in the graph and the labels will eventually get to the oov nodes from the labeled nodes by directly connecting them.</S>
+    <S sid="76" ssid="9">However based on the definition of the similarity measures using context, it is quite possible that an oov node and a labeled node which are connected to the same unlabeled node do not share any context words and hence are not directly connected.</S>
+    <S sid="77" ssid="10">For instance, consider three nodes, u (unlabeled), o (oov) and l (labeled) where u has the same left context words with o but share the right context with l. o and l are not connected since they do not share any context word.</S>
+    <S sid="78" ssid="11">Once a graph is constructed based on similarities of phrases, graph propagation is used to propagate the labels from labeled nodes to unlabeled and oov nodes.</S>
+    <S sid="79" ssid="12">The approach is based on the smoothness assumption (Chapelle et al., 2006) which states if two nodes are similar according to the graph, then their output labels should also be similar.</S>
+    <S sid="80" ssid="13">The baseline approach (Marton et al., 2009) can be formulated as a bipartite graph with two types of nodes: labeled nodes (L) and oov nodes (O).</S>
+    <S sid="81" ssid="14">Each oov node is connected to a number of labeled nodes, and vice versa and there is no edge between nodes of the same type.</S>
+    <S sid="82" ssid="15">In such a graph, the similarity of each pair of nodes is computed using one of the similarity measures discussed above.</S>
+    <S sid="83" ssid="16">The labels are translations and their probabilities (more specifically p(e|f)) from the phrase-table extracted from the parallel corpus.</S>
+    <S sid="84" ssid="17">Translations get propagated to oov nodes using a label propagation technique.</S>
+    <S sid="85" ssid="18">However beside the difference in the oov label assignment, there is a major difference between our bipartite graph and the baseline (Marton et al., 2009): we do not use a heuristic to reduce the number of neighbor candidates and we consider all possible candidates that share at least one context word.</S>
+    <S sid="86" ssid="19">This makes a significant difference in practice as shown in Section 4.3.1.</S>
+    <S sid="87" ssid="20">We also take advantage of unlabeled nodes to help connect oov nodes to labeled ones.</S>
+    <S sid="88" ssid="21">The discussed bipartite graph can easily be expanded to a tripartite graph by adding unlabeled nodes.</S>
+    <S sid="89" ssid="22">Figure 1 illustrate a tripartite graph in which unlabeled nodes are connected to both labeled and oov nodes.</S>
+    <S sid="90" ssid="23">Again, there is no edge between nodes of the same type.</S>
+    <S sid="91" ssid="24">We also created the full graph where all nodes can be freely connected to nodes of any type including the same type.</S>
+    <S sid="92" ssid="25">However, constructing such graph and doing graph propagation on it is computationally very expensive for large n-grams.</S>
+    <S sid="93" ssid="26">Let G = (V, E, W) be a graph where V is the set of vertices, E is the set of edges, and W is the edge weight matrix.</S>
+    <S sid="94" ssid="27">The vertex set V consists of labeled VL and unlabeled VU nodes, and the goal of the labeling propagation algorithm is to compute soft labels for unlabeled vertices from the labeled vertices.</S>
+    <S sid="95" ssid="28">Intuitively, the edge weight W (u, v) encodes the degree of our belief about the similarity of the soft labeling for nodes u and v. A soft label &#710;Yv &#8712; Am+1 is a probability vector in (m + 1)dimensional simplex, where m is the number of possible labels and the additional dimension accounts for the undefined &#8869; label6.</S>
+    <S sid="96" ssid="29">In this paper, we make use of the modified Adsorption (MAD) algorithm (Talukdar and Crammer, 2009) which finds soft label vectors &#710;Yv to solve the following unconstrained optimization problem: where &#181;i and pi,v are hyper-parameters (&#8704;v : Ei pi,v = 1)7, and Rv &#8712; Am+1 encodes our prior belief about the labeling of a node v. The first term (1) enforces the labeling of the algorithm to match the seed labeling Y,, with different extent for different labeled nodes.</S>
+    <S sid="97" ssid="30">The second term (2) enforces the smoothness of the labeling according to the graph structure and edge weights.</S>
+    <S sid="98" ssid="31">The last term (3) regularizes the soft labeling for a vertex v to match a priori label R,,, e.g. for high-degree unlabeled nodes (hubs in the graph) we may believe that the neighbors are not going to produce reliable label and hence the probability of undefined label &#8869; should be higher.</S>
+    <S sid="99" ssid="32">The optimization problem can be solved with an efficient iterative algorithm which is parallelized in a MapReduce framework (Talukdar et al., 2008; Rao and Yarowsky, 2009).</S>
+    <S sid="100" ssid="33">We used the Junto label propagation toolkit (Talukdar and Crammer, 2009) for label propagation.</S>
+    <S sid="101" ssid="34">Graph-based approaches can easily become computationally very expensive as the number of nodes grow.</S>
+    <S sid="102" ssid="35">In our case, we use phrases in the monolingual text as graph vertices.</S>
+    <S sid="103" ssid="36">These phrases are n-grams up to a certain value, which can result in millions of nodes.</S>
+    <S sid="104" ssid="37">For each node a distributional profile (DP) needs to be created.</S>
+    <S sid="105" ssid="38">The number of possible edges can easily explode in size as there can be as many as O(n2) edges where n is the number of nodes.</S>
+    <S sid="106" ssid="39">A common practice to control the number of edges is to connect each node to at most k other nodes (k-nearest neighbor).</S>
+    <S sid="107" ssid="40">However, finding the top-k nearest nodes to each node requires considering its similarity to all the other nodes which requires O(n2) computations and since n is usually very large, doing such is practically intractable.</S>
+    <S sid="108" ssid="41">Therefore, researchers usually resort to an approximate k-NN algorithms such as locality-sensitive hashing (?</S>
+    <S sid="109" ssid="42">; Goyal et al., 2012).</S>
+    <S sid="110" ssid="43">Fortunately, since we use context words as cues for relating their meaning and since the similarity measures are defined based on these cues, the number of neighbors we need to consider for each node is reduced by several orders of magnitude.</S>
+    <S sid="111" ssid="44">We incorporate an inverted-index-style data structure which indicates what nodes are neighbors based on each context word.</S>
+    <S sid="112" ssid="45">Therefore, the set of neighbors of a node consists of union of all the neighbors bridged by each context word in the DP of the node.</S>
+    <S sid="113" ssid="46">However, the number of neighbors to be considered for each node even after this drastic reduction is still large (in order of a few thousands).</S>
+    <S sid="114" ssid="47">In order to deal with the computational challenges of such a large graph, we take advantage of the Hadoop&#8217;s MapReduce functionality to do both graph construction and label propagation steps.</S>
+  </SECTION>
+  <SECTION title="4 Experiments &amp; Results" number="4">
+    <S sid="115" ssid="1">We experimented with two different domains for the bilingual data: Europarl corpus (v7) (Koehn, 2005), and European Medicines Agency documents (EMEA) (Tiedemann, 2009) from French to English.</S>
+    <S sid="116" ssid="2">For the monolingual data, we used French side of the Europarl corpus and we used ACL/WMT 20058 data for dev/test sets.</S>
+    <S sid="117" ssid="3">Table 1 summarizes statistics of the datasets used.</S>
+    <S sid="118" ssid="4">From the dev and test sets, we extract all source words that do not appear in the phrase-table constructed from the parallel data.</S>
+    <S sid="119" ssid="5">From the oovs, we exclude numbers as well as named entities.</S>
+    <S sid="120" ssid="6">We apply a simple heuristic to detect named entities: basically words that are capitalized in the original dev/test set that do not appear at the beginning of a sentence are named entities.</S>
+    <S sid="121" ssid="7">Table 2 shows the number of oov types and tokens for Europarl and EMEA systems in both dev and test sets.</S>
+    <S sid="122" ssid="8">For the end-to-end MT pipeline, we used Moses (Koehn et al., 2007) with these standard features: relative-frequency and lexical translation model (TM) probabilities in both directions; distortion model; language model (LM) and word count.</S>
+    <S sid="123" ssid="9">Word alignment is done using GIZA++ (Och and Ney, 2003).</S>
+    <S sid="124" ssid="10">We used distortion limit of 6 and max-phrase-length of 10 in all the experiments.</S>
+    <S sid="125" ssid="11">For the language model, we used the KenLM toolkit (Heafield, 2011) to create a 5-gram language model on the target side of the Europarl corpus (v7) with approximately 54M tokens with Kneser-Ney smoothing.</S>
+    <S sid="126" ssid="12">Once the translations and their probabilities for each oov are extracted, they are added to the phrase-table that is induced from the parallel text.</S>
+    <S sid="127" ssid="13">The probability for new entries are added as a new feature in the log-linear framework to be tuned along with other features.</S>
+    <S sid="128" ssid="14">The value of this newly introduced feature for original entries in the phrase-table is set to 1.</S>
+    <S sid="129" ssid="15">Similarly, the value of original four probability features in the phrasetable for the new entries are set to 1.</S>
+    <S sid="130" ssid="16">The entire training pipeline is as follows: (i) a phrase table is constructed using parallel data as usual, (ii) oovs for dev and test sets are extracted, (iii) oovs are translated using graph propagation, (iv) oovs and translations are added to the phrase table, introducing a new feature type, (v) the new phrase table is tuned (with a LM) using MERT (Och, 2003) on the dev set.</S>
+    <S sid="131" ssid="17">If we have a list of possible translations for oovs with their probabilities, we become able to evaluate different methods we discussed.</S>
+    <S sid="132" ssid="18">We wordaligned the dev/test sets by concatenating them to a large parallel corpus and running GIZA++ on the whole set.</S>
+    <S sid="133" ssid="19">The resulting word alignments are used to extract the translations for each oov.</S>
+    <S sid="134" ssid="20">The correctness of this gold standard is limited to the size of the parallel data used as well as the quality of the word alignment software toolkit, and is not 100% precise.</S>
+    <S sid="135" ssid="21">However, it gives a good estimate of how each oov should be translated without the need for human judgments.</S>
+    <S sid="136" ssid="22">For evaluating our baseline as well as graphbased approaches, we use both intrinsic and extrinsic evaluations.</S>
+    <S sid="137" ssid="23">Two intrinsic evaluation metrics that we use to evaluate the possible translations for oovs are Mean Reciprocal Rank (MRR) (Voorhees, 1999) and Recall.</S>
+    <S sid="138" ssid="24">Intrinsic evaluation metrics are faster to apply and are used to optimize different hyper-parameters of the approach (e.g. window size, phrase length, etc.).</S>
+    <S sid="139" ssid="25">Once we come up with the optimized values for the hyper-parameters, we extrinsically evaluate different approaches by adding the new translations to the phrase-table and run it through the MT pipeline.</S>
+    <S sid="140" ssid="26">MRR is an Information Retrieval metric used to evaluate any process that produces a ranked list of possible candidates.</S>
+    <S sid="141" ssid="27">The reciprocal rank of a list is the inverse of the rank of the correct answer in the list.</S>
+    <S sid="142" ssid="28">Such score is averaged over a set, oov set In a few cases, there are multiple translations for an oov word (i.e. appearing more than once in the parallel corpus and being assigned to multiple different phrases), we take the average of reciprocal ranks for each of them.</S>
+    <S sid="143" ssid="29">MRR takes the probabilities of oov translations into account in sorting the list of candidate translations.</S>
+    <S sid="144" ssid="30">However, in an MT pipeline, the language model is supposed to rerank the hypotheses and move more appropriate translations (in terms of fluency) to the top of the list.</S>
+    <S sid="145" ssid="31">Hence, we also evaluate our candidate translation regardless of the ranks.</S>
+    <S sid="146" ssid="32">Since Moses uses a certain number of translations per source phrase (called the translation table limit or ttl which we set to 20 in our experiments) , we use the recall measure to evaluate the top ttl translations in the list.</S>
+    <S sid="147" ssid="33">Recall is another Information Retrieval measure that is the fraction of correct answers that are retrieved.</S>
+    <S sid="148" ssid="34">For example, it assigns score of 1 if the correct translation of the oov word is in the top-k list and 0 otherwise.</S>
+    <S sid="149" ssid="35">The scores are averaged over all oovs to compute recall.</S>
+    <S sid="150" ssid="36">|{gold standard} n {candidate list}| |{gold standard}| In Section 2.2 and 2.3, different types of association measures and similarity measures have been explained to build and compare distributional profiles.</S>
+    <S sid="151" ssid="37">Table 3 shows the results on Europarl when using different similarity combinations.</S>
+    <S sid="152" ssid="38">The measures are evaluated by fixing the window size to 4 and maximum candidate paraphrase length to 2 (e.g. bigram).</S>
+    <S sid="153" ssid="39">First column shows the association measures used to build DPs.</S>
+    <S sid="154" ssid="40">As the results show, the combination of PMI as association measure and cosine as DP similarity measure outperforms the other possible combinations.</S>
+    <S sid="155" ssid="41">We use these two measures throughout the rest of the experiments.</S>
+    <S sid="156" ssid="42">Figure 2 illustrates the effects of different window sizes and paraphrase lengths on MRR.</S>
+    <S sid="157" ssid="43">As the figure shows, the best MRR is reached when using window size of 4 and trigram nodes.</S>
+    <S sid="158" ssid="44">Going from trigram to 4-gram results in a drop in MRR.</S>
+    <S sid="159" ssid="45">One reason would be that distributional profiles for 4grams are very sparse and that negatively affects the stability of similarity measures.</S>
+    <S sid="160" ssid="46">Figure 3 illustrates the effect of increasing the size of monolingual text on both MRR and recall.</S>
+    <S sid="161" ssid="47">1x refers to the case of using 125k sentences for the monolingual text and the 16x indicates using the whole Europarl text on the source side (&#8776; 2M sentences).</S>
+    <S sid="162" ssid="48">As shown, there is a linear correlation between the logarithm of the data size and the MRR and recall ratios.</S>
+    <S sid="163" ssid="49">Interestingly, MRR is growing faster than recall by increasing the monolingual text size, which means that the scoring function gets better when more data is available.</S>
+    <S sid="164" ssid="50">The figure also indicates that a much bigger monolingual text data can be used to further improve the quality of the translations, however, at the expense of more computational resources.</S>
+    <S sid="165" ssid="51">Table 4 shows the intrinsic results on the Europarl corpus when using unigram nodes in each of the graphs.</S>
+    <S sid="166" ssid="52">The results are evaluated on the dev-set based on the gold alignment created using GIZA++.</S>
+    <S sid="167" ssid="53">Each node is connected to at most 20 other nodes (same as the max-paraphrase-limit in the baseline).</S>
+    <S sid="168" ssid="54">For the tripartite graph, each node is connected to 15 labeled nodes and 5 unlabeled ones.</S>
+    <S sid="169" ssid="55">The tripartite graph gets a slight improvement over the bipartite one, however, the full graph failed to have the same increase.</S>
+    <S sid="170" ssid="56">One reason is that allowing paths longer than 2 between oov and labeled nodes causes more noise to propagate into the graph.</S>
+    <S sid="171" ssid="57">In other words, a paraphrase of a paraphrase of a paraphrase is not necessarily a useful paraphrase for an oov as the translation may no longer be a valid one.</S>
+    <S sid="172" ssid="58">Table 5 also shows the effect of using bigrams instead of unigrams as graph nodes.</S>
+    <S sid="173" ssid="59">There is an improvement by going from unigrams to bigrams in both bipartite and tripartite graphs.</S>
+    <S sid="174" ssid="60">We did not use trigrams or larger n-grams in our experiments.</S>
+    <S sid="175" ssid="61">The generated candidate translations for the oovs can be added to the phrase-table created using the parallel corpus to increase the coverage of the phrase-table.</S>
+    <S sid="176" ssid="62">This aggregated phrase-table is to be tuned along with the language model on the dev set, and run on the test set.</S>
+    <S sid="177" ssid="63">BLEU (Papineni et al., 2002) is still the de facto evaluation metric for machine translation and we use that to measure the quality of our proposed approaches for MT.</S>
+    <S sid="178" ssid="64">In these experiments, we do not use alignment information on dev or test sets unlike the previous section.</S>
+    <S sid="179" ssid="65">Table 6 reports the Bleu scores for different domains when the oov translations from the graph propagation is added to the phrase-table and compares them with the baseline system (i.e.</S>
+    <S sid="180" ssid="66">Moses).</S>
+    <S sid="181" ssid="67">Results for our approach is based on unigram tripartite graphs and show that we improve over the baseline in both the same-domain (Europarl) and domain adaptation (EMEA) settings.</S>
+  </SECTION>
+  <SECTION title="5 Related work" number="5">
+    <S sid="182" ssid="1">There has been a long line of research on learning translation pairs from non-parallel corpora (Rapp, 1995; Koehn and Knight, 2002; Haghighi et al., 2008; Garera et al., 2009; Marton et al., 2009; Laws et al., 2010).</S>
+    <S sid="183" ssid="2">Most have focused on extracting a translation lexicon by mining monolingual resources of data to find clues, using probabilistic methods to map words, or by exploiting the cross-language evidence of closely related languages.</S>
+    <S sid="184" ssid="3">Most of them evaluated only highfrequency words of specific types (nouns or content words) (Rapp, 1995; Koehn and Knight, 2002; Haghighi et al., 2008; Garera et al., 2009; Laws et al., 2010) In contrast, we do not consider any constraint on our test data and our data includes many low frequency words.</S>
+    <S sid="185" ssid="4">It has been shown that translation of high-frequency words is easier than low frequency words (Tamura et al., 2012).</S>
+    <S sid="186" ssid="5">Some methods have used a third language(s) as pivot or bridge to find translation pairs (Mann and Yarowsky, 2001; Schafer and Yarowsky, 2002; Callison-Burch et al., 2006).</S>
+    <S sid="187" ssid="6">Context similarity has been used effectively in bilingual lexicon induction (Rapp, 1995; Koehn and Knight, 2002; Haghighi et al., 2008; Garera et al., 2009; Marton et al., 2009; Laws et al., 2010).</S>
+    <S sid="188" ssid="7">It has been modeled in different ways: in terms of adjacent words (Rapp, 1999; Fung and Yee, 1998), or dependency relations (Garera et al., 2009).</S>
+    <S sid="189" ssid="8">Laws et al. (2010) used linguistic analysis in the form of graph-based models instead of a vector space.</S>
+    <S sid="190" ssid="9">But all of these researches used an available seed lexicon as the basic source of similarity between source and target languages unlike our method which just needs a monolingual corpus of source language which is freely available for many languages and a small bilingual corpora.</S>
+    <S sid="191" ssid="10">Some methods tried to alleviate the lack of seed lexicon by using orthographic similarity to extract a seed lexicon (Koehn and Knight, 2002; Fiser and Ljubesic, 2011).</S>
+    <S sid="192" ssid="11">But it is not a practical solution in case of unrelated languages.</S>
+    <S sid="193" ssid="12">Haghighi et al. (2008) and Daum&#180;e and Jagarlamudi (2011) proposed generative models based on canonical correlation analysis to extract translation lexicons for non-parallel corpora by learning a matching between source and target lexicons.</S>
+    <S sid="194" ssid="13">Using monolingual features to represent words, feature vectors are projected from source and target words into a canonical space to find the appropriate matching between them.</S>
+    <S sid="195" ssid="14">Their method relies on context features which need a seed lexicon and orthographic features which only works for phylogenetically related languages.</S>
+    <S sid="196" ssid="15">Graph-based semi-supervised methods have been shown to be useful for domain adaptation in MT as well.</S>
+    <S sid="197" ssid="16">Alexandrescu and Kirchhoff (2009) applied a graph-based method to determine similarities between sentences and use these similarities to promote similar translations for similar sentences.</S>
+    <S sid="198" ssid="17">They used a graph-based semi-supervised model to re-rank the n-best translation hypothesis.</S>
+    <S sid="199" ssid="18">Liu et al. (2012) extended Alexandrescu&#8217;s model to use translation consensus among similar sentences in bilingual training data by developing a new structured label propagation method.</S>
+    <S sid="200" ssid="19">They derived some features to use during decoding process that has been shown useful in improving translation quality.</S>
+    <S sid="201" ssid="20">Our graph propagation method connects monolingual source phrases with oovs to obtain translation and so is a very different use of graph propagation from these previous works.</S>
+    <S sid="202" ssid="21">Recently label propagation has been used for lexicon induction (Tamura et al., 2012).</S>
+    <S sid="203" ssid="22">They used a graph based on context similarity as well as cooccurrence graph in propagation process.</S>
+    <S sid="204" ssid="23">Similar to our approach they used unlabeled nodes in label propagation process.</S>
+    <S sid="205" ssid="24">However, they use a seed lexicon to define labels and comparable corpora to construct graphs unlike our approach.</S>
+  </SECTION>
+  <SECTION title="6 Conclusion" number="6">
+    <S sid="206" ssid="1">We presented a novel approach for inducing oov translations from a monolingual corpus on the source side and a parallel data using graph propagation.</S>
+    <S sid="207" ssid="2">Our results showed improvement over the baselines both in intrinsic evaluations and on BLEU.</S>
+    <S sid="208" ssid="3">Future work includes studying the effect of size of parallel corpus on the induced oov translations.</S>
+    <S sid="209" ssid="4">Increasing the size of parallel corpus on one hand reduces the number of oovs.</S>
+    <S sid="210" ssid="5">But, on the other hand, there will be more labeled paraphrases that increases the chance of finding the correct translation for oovs in the test set.</S>
+    <S sid="211" ssid="6">Currently, we find paraphrases for oov words.</S>
+    <S sid="212" ssid="7">However, oovs can be considered as n-grams (phrases) instead of unigrams.</S>
+    <S sid="213" ssid="8">In this scenario, we also can look for paraphrases and translations for phrases containing oovs and add them to the phrase-table as new translations along with the translations for unigram oovs.</S>
+    <S sid="214" ssid="9">We also plan to explore different graph propagation objective functions.</S>
+    <S sid="215" ssid="10">Regularizing these objective functions appropriately might let us scale to much larger data sets with an order of magnitude more nodes in the graph.</S>
+  </SECTION>
+</PAPER>

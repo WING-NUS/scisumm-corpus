@@ -1,0 +1,247 @@
+<PAPER>
+  <S sid="0">Turbo Parsers: Dependency Parsing by Approximate Variational Inference</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present a unified view of two state-of-theart non-projective dependency parsers, both approximate: the loopy belief propagation parser of Smith and Eisner (2008) and the relaxed linear program of Martins et al. (2009).</S>
+    <S sid="2" ssid="2">By representing the model assumptions with a factor graph, we shed light on the optimization problems tackled in each method.</S>
+    <S sid="3" ssid="3">We also propose a new aggressive online algorithm to learn the model parameters, which makes use of the underlying variational representation.</S>
+    <S sid="4" ssid="4">The algorithm does not require a learning rate parameter and provides a single framework for a wide family of convex loss functions, including CRFs and structured SVMs.</S>
+    <S sid="5" ssid="5">Experiments show state-of-the-art performance for 14 languages.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="6" ssid="1">Feature-rich discriminative models that break locality/independence assumptions can boost a parser&#8217;s performance (McDonald et al., 2006; Huang, 2008; Finkel et al., 2008; Smith and Eisner, 2008; Martins et al., 2009; Koo and Collins, 2010).</S>
+    <S sid="7" ssid="2">Often, inference with such models becomes computationally intractable, causing a demand for understanding and improving approximate parsing algorithms.</S>
+    <S sid="8" ssid="3">In this paper, we show a formal connection between two recently-proposed approximate inference techniques for non-projective dependency parsing: loopy belief propagation (Smith and Eisner, 2008) and linear programming relaxation (Martins et al., 2009).</S>
+    <S sid="9" ssid="4">While those two parsers are differently motivated, we show that both correspond to inference in a factor graph, and both optimize objective functions over local approximations of the marginal polytope.</S>
+    <S sid="10" ssid="5">The connection is made clear by writing the explicit declarative optimization problem underlying Smith and Eisner (2008) and by showing the factor graph underlying Martins et al. (2009).</S>
+    <S sid="11" ssid="6">The success of both approaches parallels similar approximations in other fields, such as statistical image processing and error-correcting coding.</S>
+    <S sid="12" ssid="7">Throughtout, we call these turbo parsers.1 Our contributions are not limited to dependency parsing: we present a general method for inference in factor graphs with hard constraints (&#167;2), which extends some combinatorial factors considered by Smith and Eisner (2008).</S>
+    <S sid="13" ssid="8">After presenting a geometric view of the variational approximations underlying message-passing algorithms (&#167;3), and closing the gap between the two aforementioned parsers (&#167;4), we consider the problem of learning the model parameters (&#167;5).</S>
+    <S sid="14" ssid="9">To this end, we propose an aggressive online algorithm that generalizes MIRA (Crammer et al., 2006) to arbitrary loss functions.</S>
+    <S sid="15" ssid="10">We adopt a family of losses subsuming CRFs (Lafferty et al., 2001) and structured SVMs (Taskar et al., 2003; Tsochantaridis et al., 2004).</S>
+    <S sid="16" ssid="11">Finally, we present a technique for including features not attested in the training data, allowing for richer models without substantial runtime costs.</S>
+    <S sid="17" ssid="12">Our experiments (&#167;6) show state-of-the-art performance on dependency parsing benchmarks.</S>
+    <S sid="18" ssid="13">Denote by X a set of input objects from which we want to infer some hidden structure conveyed in an output set Y.</S>
+    <S sid="19" ssid="14">Each input x &#8712; X (e.g., a sentence) is associated with a set of candidate outputs Y(x) &#8838; Y (e.g., parse trees); we are interested in the case where Y(x) is a large structured set.</S>
+    <S sid="20" ssid="15">Choices about the representation of elements of Y(x) play a major role in algorithm design.</S>
+    <S sid="21" ssid="16">In many problems, the elements of Y(x) can be represented as discrete-valued vectors of the form y = hy1, ... , yIi, each yi taking values in a label set Yi.</S>
+    <S sid="22" ssid="17">For example, in unlabeled dependency parsing, I is the number of candidate dependency arcs (quadratic in the sentence length), and each Yi = {0, 1}.</S>
+    <S sid="23" ssid="18">Of course, the yi are highly interdependent.</S>
+    <S sid="24" ssid="19">Factor Graphs.</S>
+    <S sid="25" ssid="20">Probabilistic models like CRFs (Lafferty et al., 2001) assume a factorization of the conditional distribution of Y , where each C &#8838; {1, ... , I} is a factor, C is the set of factors, each yC &#176;_ hyiiiEC denotes a partial output assignment, and each 'FC is a nonnegative potential function that depends on the output only via its restriction to C. A factor graph (Kschischang et al., 2001) is a convenient representation for the factorization in Eq.</S>
+    <S sid="26" ssid="21">1: it is a bipartite graph Gx comprised of variable nodes {1, ... , I} and factor nodes C &#8712; C, with an edge connecting the ith variable node and a factor node C iff i &#8712; C. Hence, the factor graph Gx makes explicit the direct dependencies among the variables {y1, ... , yI}.</S>
+    <S sid="27" ssid="22">Factor graphs have been used for several NLP tasks, such as dependency parsing, segmentation, and co-reference resolution (Sutton et al., 2007; Smith and Eisner, 2008; McCallum et al., 2009).</S>
+    <S sid="28" ssid="23">Hard and Soft Constraint Factors.</S>
+    <S sid="29" ssid="24">It may be the case that valid outputs are a proper subset of Y1 &#215; &#183; &#183; &#183; &#215; YI&#8212;for example, in dependency parsing, the entries of the output vector y must jointly define a spanning tree.</S>
+    <S sid="30" ssid="25">This requires hard constraint factors that rule out forbidden partial assignments by mapping them to zero potential values.</S>
+    <S sid="31" ssid="26">See Table 1 for an inventory of hard constraint factors used in this paper.</S>
+    <S sid="32" ssid="27">Factors that are not of this special kind are called soft factors, and have strictly positive potentials.</S>
+    <S sid="33" ssid="28">We thus have a partition C = Chard &#8746; Csoft.</S>
+    <S sid="34" ssid="29">We let the soft factor potentials take the form `pC(x,yC) &#176;_ exp(&#952;T&#966;C(x,yC)), where &#952; &#8712; Rd is a vector of parameters (shared across factors) and &#966;C(x, yC) is a local feature vector.</S>
+    <S sid="35" ssid="30">The conditional distribution of Y (Eq.</S>
+    <S sid="36" ssid="31">1) thus becomes log-linear: where Zx(&#952;) &#176;_ Ey,E%x) exp(&#952;T&#966;(x, y')) is the partition function, and the features decompose as: Dependency Parsing.</S>
+    <S sid="37" ssid="32">Smith and Eisner (2008) proposed a factor graph representation for dependency parsing (Fig.</S>
+    <S sid="38" ssid="33">1).</S>
+    <S sid="39" ssid="34">The graph has O(n2) variable nodes (n is the sentence length), one per candidate arc a &#176;_ hh, mi linking a head h and modifier m. Outputs are binary, with ya = 1 iff arc a belongs to the dependency tree.</S>
+    <S sid="40" ssid="35">There is a hard factor TREE connected to all variables, that constrains the overall arc configurations to form a spanning tree.</S>
+    <S sid="41" ssid="36">There is a unary soft factor per arc, whose log-potential reflects the score of that arc.</S>
+    <S sid="42" ssid="37">There are also O(n3) pairwise factors; their log-potentials reflect the scores of sibling and grandparent arcs.</S>
+    <S sid="43" ssid="38">These factors create loops, thus calling for approximate inference.</S>
+    <S sid="44" ssid="39">Without them, the model is arc-factored, and exact inference in it is well studied: finding the most probable parse tree takes O(n3) time with the ChuLiu-Edmonds algorithm (McDonald et al., 2005),2 and computing posterior marginals for all arcs takes O(n3) time via the matrix-tree theorem (Smith and Smith, 2007; Koo et al., 2007).</S>
+    <S sid="45" ssid="40">Message-passing algorithms.</S>
+    <S sid="46" ssid="41">In general factor graphs, both inference problems&#8212; obtaining the most probable output (the MAP) argmaxyE%x) Pre(y|x), and computing the marginals Pre(Yi = yi|x)&#8212;can be addressed with the belief propagation (BP) algorithm (Pearl, 1988), which iteratively passes messages between variables and factors reflecting their local &#8220;beliefs.&#8221; In sum-product BP, the messages take the form:3 In max-product BP, the summation in Eq.</S>
+    <S sid="47" ssid="42">5 is replaced by a maximization.</S>
+    <S sid="48" ssid="43">Upon convergence, variable and factor beliefs are computed as: to the true marginals, and in the max-product case, maximizing each Ti(yi) yields the MAP output.</S>
+    <S sid="49" ssid="44">In graphs with loops, BP is an approximate method, not guaranteed to converge, nicknamed loopy BP.</S>
+    <S sid="50" ssid="45">We highlight a variational perspective of loopy BP in &#167;3; for now we consider algorithmic issues.</S>
+    <S sid="51" ssid="46">Note that computing the factor-to-variable messages for each factor C (Eq.</S>
+    <S sid="52" ssid="47">5) requires a summation/maximization over exponentially many configurations.</S>
+    <S sid="53" ssid="48">Fortunately, for all the hard constraint factors in rows 3&#8211;5 of Table 1, this computation can be done in linear time (and polynomial for the TREE factor)&#8212;this extends results presented in Smith and Eisner (2008).4 In Table 1 we present closed-form expressions for the factor-to-variable message ratios mC&#8594;i , MC&#8594;i(1)/MC&#8594;i(0) in terms of their variable-tofactor counterparts mi&#8594;C , Mi&#8594;C(1)/Mi&#8594;C(0); these ratios are all that is necessary when the variables are binary.</S>
+    <S sid="54" ssid="49">Detailed derivations are presented in an extended version of this paper (Martins et al., 2010b).</S>
+  </SECTION>
+  <SECTION title="3 Variational Representations" number="2">
+    <S sid="55" ssid="1">Let Tx , {Pr&#952;(.|x)  |&#952; &#8712; Rd} be the family of all distributions of the form in Eq.</S>
+    <S sid="56" ssid="2">2.</S>
+    <S sid="57" ssid="3">We next present an alternative parametrization for the distributions in Tx in terms of factor marginals.</S>
+    <S sid="58" ssid="4">We will see that each distribution can be seen as a point in the socalled marginal polytope (Wainwright and Jordan, 2008); this will pave the way for the variational representations to be derived next.</S>
+    <S sid="59" ssid="5">Parts and Output Indicators.</S>
+    <S sid="60" ssid="6">A part is a pair hC, yCi, where C is a soft factor and yC a partial output assignment.</S>
+    <S sid="61" ssid="7">We let 9Z = {hC, yCi  |C &#8712; Osofk, yC &#8712; Hi&#8712;C &#65533;i} be the set of all parts.</S>
+    <S sid="62" ssid="8">Given an output y0 &#8712; &#65533;(x), a part hC, yCi is said to be active if it locally matches the output, i.e., if yC = y0C.</S>
+    <S sid="63" ssid="9">Any output y0 &#8712; &#65533;(x) can be mapped to a |9Z|dimensional binary vector &#967;(y0) indicating which parts are active, i.e., [&#967;(y0)]hC,yCi = 1 if yC = y0C sum-product and max-product cases; these probabilities are induced by the messages in Eq.</S>
+    <S sid="64" ssid="10">4: for an event A C REC Pr{YC E A} o Eyc H(yC E A) FLEC Mi&#8212;C(yi). and 0 otherwise; &#967;(y0) is called the output indicator vector.</S>
+    <S sid="65" ssid="11">This mapping allows decoupling the feature vector in Eq.</S>
+    <S sid="66" ssid="12">3 as the product of an input matrix and an output vector: where F(x) is a d-by-|9Z |matrix whose columns contain the part-local feature vectors &#966;C(x, yC).</S>
+    <S sid="67" ssid="13">Observe, however, that not every vector in {0,1}|T-| corresponds necessarily to a valid output in &#65533;(x).</S>
+    <S sid="68" ssid="14">Marginal Polytope.</S>
+    <S sid="69" ssid="15">Moving to vector representations of outputs leads naturally to a geometric view of the problem.</S>
+    <S sid="70" ssid="16">The marginal polytope is the convex hull5 of all the &#8220;valid&#8221; output indicator vectors: Note that M(Sx) only depends on the factor graph Sx and the hard constraints (i.e., it is independent of the parameters &#952;).</S>
+    <S sid="71" ssid="17">The importance of the marginal polytope stems from two facts: (i) each vertex of M(Sx) corresponds to an output in &#65533;(x); (ii) each point in M(Sx) corresponds to a vector of marginal probabilities that is realizable by some distribution (not necessarily in Tx) that factors according to Sx.</S>
+    <S sid="72" ssid="18">Variational Representations.</S>
+    <S sid="73" ssid="19">We now describe formally how the points in M(Sx) are linked to the distributions in Tx.</S>
+    <S sid="74" ssid="20">We extend the &#8220;canonical overcomplete parametrization&#8221; case, studied by Wainwright and Jordan (2008), to our scenario (common in NLP), where arbitrary features are allowed and the parameters are tied (shared by all factors).</S>
+    <S sid="75" ssid="21">Let H(Pr&#952;(.|x)) ,&#8722; Ey&#8712;%x) Pr&#952;(y|x) log Pr&#952;(y|x) denote the entropy of Pr&#952;(.|x), and E&#952;[.] the expectation under Pr&#952;(.|x).</S>
+    <S sid="76" ssid="22">The component of &#181; &#8712; M(Sx) indexed by part hC, yCi is denoted &#181;C(yC).</S>
+    <S sid="77" ssid="23">A proof of this proposition can be found in Martins et al. (2010a).</S>
+    <S sid="78" ssid="24">Fig.</S>
+    <S sid="79" ssid="25">2 provides an illustration of the dual parametrization implied by Prop.</S>
+    <S sid="80" ssid="26">1.</S>
+  </SECTION>
+  <SECTION title="4 Approximate Inference &amp; Turbo Parsing" number="3">
+    <S sid="81" ssid="1">We now show how the variational machinery just described relates to message-passing algorithms and provides a common framework for analyzing two recent dependency parsers.</S>
+    <S sid="82" ssid="2">Later (&#167;5), Prop.</S>
+    <S sid="83" ssid="3">1 is used constructively for learning the model parameters.</S>
+    <S sid="84" ssid="4">For general factor graphs with loops, the marginal polytope M(Gx) cannot be compactly specified and the entropy term H(&#181;) lacks a closed form, rendering exact optimizations in Eqs.</S>
+    <S sid="85" ssid="5">9&#8211;10 intractable.</S>
+    <S sid="86" ssid="6">A popular approximate algorithm for marginal inference is sum-product loopy BP, which passes messages as described in &#167;2 and, upon convergence, computes beliefs via Eqs.</S>
+    <S sid="87" ssid="7">6&#8211;7.</S>
+    <S sid="88" ssid="8">Were loopy BP exact, these beliefs would be the true marginals and hence a point in the marginal polytope M(Gx).</S>
+    <S sid="89" ssid="9">However, this need not be the case, as elucidated by Yedidia et al. (2001) and others, who first analyzed loopy BP from a variational perspective.</S>
+    <S sid="90" ssid="10">The following two approximations underlie loopy BP: Namely, it is characterized by L(Gx) , {&#964; E R|&#65533; |&#65533; |Eq.</S>
+    <S sid="91" ssid="11">11 holds Vi, yi E Yi, C E C}.</S>
+    <S sid="92" ssid="12">The elements of L(Gx) are called pseudo-marginals.</S>
+    <S sid="93" ssid="13">Clearly, the true marginals satisfy Eq.</S>
+    <S sid="94" ssid="14">11, and therefore M(Gx) C L(Gx).</S>
+    <S sid="95" ssid="15">Any stationary point of sum-product BP is a local optimum of the variational problem in Eq.</S>
+    <S sid="96" ssid="16">9 with M(Gx) replaced by L(Gx) and H replaced by HBethe (Yedidia et al., 2001).</S>
+    <S sid="97" ssid="17">Note however that multiple optima may exist, since HBethe is not necessarily concave, and that BP may not converge.</S>
+    <S sid="98" ssid="18">Table 1 shows closed form expressions for the local agreement constraints and entropies of some hard-constraint factors, obtained by invoking Eq.</S>
+    <S sid="99" ssid="19">7 and observing that TC(yC) must be zero if configuration yC is forbidden.</S>
+    <S sid="100" ssid="20">See Martins et al. (2010b).</S>
+    <S sid="101" ssid="21">We next present our main contribution: a formal connection between two recent approximate dependency parsers, which at first sight appear unrelated.</S>
+    <S sid="102" ssid="22">Recall that (i) Smith and Eisner (2008) proposed a factor graph (Fig.</S>
+    <S sid="103" ssid="23">1) in which they run loopy BP, and that (ii) Martins et al. (2009) approximate parsing as the solution of a linear program.</S>
+    <S sid="104" ssid="24">Here, we fill the blanks in the two approaches: we derive explicitly the variational problem addressed in (i) and we provide the underlying factor graph in (ii).</S>
+    <S sid="105" ssid="25">This puts the two approaches side-by-side as approximate methods for marginal and MAP inference.</S>
+    <S sid="106" ssid="26">Since both rely on &#8220;local&#8221; approximations (in the sense of Eq.</S>
+    <S sid="107" ssid="27">11) that ignore the loops in their graphical models, we dub them turbo parsers by analogy with error-correcting turbo decoders (see footnote 1).</S>
+    <S sid="108" ssid="28">Turbo Parser #1: Sum-Product Loopy BP.</S>
+    <S sid="109" ssid="29">The factor graph depicted in Fig.</S>
+    <S sid="110" ssid="30">1&#8212;call it Gx&#8212;includes pairwise soft factors connecting sibling and grandparent arcs.6 We next characterize the local polytope L(Gx) and the Bethe approximation HBethe inherent in Smith and Eisner&#8217;s loopy BP algorithm.</S>
+    <S sid="111" ssid="31">Let A be the set of candidate arcs, and P C_ A2 the set of pairs of arcs that have factors.</S>
+    <S sid="112" ssid="32">Let &#964; = (&#964;A,&#964;P) with &#964;A = (Ta)aEA and &#964;P = (Tab)(a,b)EP.</S>
+    <S sid="113" ssid="33">Since all variables are binary, we may write, for each a E A, Ta(1) = za and Ta(0) = 1 &#8722; za, where za is a variable constrained to [0, 1].</S>
+    <S sid="114" ssid="34">Let zA = (za)aEA; the local agreement constraints at the TREE factor (see Table 1) are written as zA E Ztree(x), where Ztree(x) is the arborescence polytope, i.e., the convex hull of all incidence vectors of dependency trees (Martins et al., 2009).</S>
+    <S sid="115" ssid="35">It is straightforward to write a contingency table and obtain the following local agreement constraints at the pairwise factors: Noting that all these pseudo-marginals are constrained to the unit interval, one can get rid of all variables Tab and write everything as inequalities which, along with zA E Ztree(x), define the local polytope L(Gx).</S>
+    <S sid="116" ssid="36">As for the factor entropies, start by noting that the TREE-factor entropy Htree can be obtained in closed form by computing the marginals ZA and the partition function Zx(&#952;) (via the matrix-tree theorem) and recalling the variational representation in Eq.</S>
+    <S sid="117" ssid="37">9, yielding Htree = log Zx(&#952;) &#8722; &#952;TF(x)zA.</S>
+    <S sid="118" ssid="38">Some algebra allows writing the overall Bethe entropy approximation as: where we introduced the mutual information associated with each pairwise factor, Ia;b(za, zb, zab) = whose maximizer corresponds to the beliefs returned by the Smith and Eisner&#8217;s loopy BP algorithm (if it converges).</S>
+    <S sid="119" ssid="39">Turbo Parser #2: LP-Relaxed MAP.</S>
+    <S sid="120" ssid="40">We now turn to the concise integer LP formulation of Martins et al. (2009).</S>
+    <S sid="121" ssid="41">The formulation is exact but NPhard, and so an LP relaxation is made there by dropping the integer constraints.</S>
+    <S sid="122" ssid="42">We next construct a factor graph G' and show that the LP relaxation corresponds to an optimization of the form in Eq.</S>
+    <S sid="123" ssid="43">10, with the marginal polytope M(G') replaced by L(G').</S>
+    <S sid="124" ssid="44">G' includes the following auxiliary variable nodes: path variables (pij)i=0,...,n,j=1,...,n, which indicate whether word j descends from i in the dependency tree, and flow variables (fka )aEA,k=1,...,n, which evaluate to 1 iff arc a &#8220;carries flow&#8221; to k, i.e., iff there is a path from the root to k that passes through a.</S>
+    <S sid="125" ssid="45">We need to seed these variables imposing i.e., any word descends from the root and from itself, and arcs leaving a word carry no flow to that word.</S>
+    <S sid="126" ssid="46">This can be done with unary hard constraint factors.</S>
+    <S sid="127" ssid="47">We then replace the TREE factor in Fig.</S>
+    <S sid="128" ssid="48">1 by the factors shown in Fig.</S>
+    <S sid="129" ssid="49">3: L(G0x) is thus defined by the constraints in Eq.</S>
+    <S sid="130" ssid="50">12 and 15&#8211;19.</S>
+    <S sid="131" ssid="51">The approximate MAP problem, that replaces M(G0 x) by L(G0x) in Eq.</S>
+    <S sid="132" ssid="52">10, thus becomes: maxz,f,p &#952;&gt;F(x)z (20) s.t.</S>
+    <S sid="133" ssid="53">Eqs.</S>
+    <S sid="134" ssid="54">12 and 15&#8211;19 are satisfied.</S>
+    <S sid="135" ssid="55">This is exactly the LP relaxation considered by Martins et al. (2009) in their multi-commodity flow model, for the configuration with siblings and grandparent features.7 They also considered a configuration with non-projectivity features&#8212;which fire if an arc is non-projective.8 That configuration can also be obtained here if variables {nhh,mi} are added to indicate non-projective arcs and OR-WITHOUTPUT hard constraint factors are inserted to enforce nhh,mi = zhh,mi&#8743;V min(h,m)&lt;j&lt;min(h,m) &#172;phj.</S>
+    <S sid="136" ssid="56">Details are omitted for space.</S>
+    <S sid="137" ssid="57">In sum, although the approaches of Smith and Eisner (2008) and Martins et al. (2009) look very different, in reality both are variational approximations emanating from Prop.</S>
+    <S sid="138" ssid="58">1, respectively for marginal and MAP inference.</S>
+    <S sid="139" ssid="59">However, they operate on distinct factor graphs, respectively Figs.</S>
+    <S sid="140" ssid="60">1 and 3.9</S>
+  </SECTION>
+  <SECTION title="5 Online Learning" number="4">
+    <S sid="141" ssid="1">Our learning algorithm is presented in Alg.</S>
+    <S sid="142" ssid="2">1.</S>
+    <S sid="143" ssid="3">It is a generalized online learner that tackles E2-regularized empirical risk minimization of the form where each hxi, yii is a training example, A &#8805; 0 is the regularization constant, and L(&#952;; x, y) is a nonnegative convex loss.</S>
+    <S sid="144" ssid="4">Examples include the logistic loss used in CRFs (&#8722; log Pro(y|x)) and the hinge loss of structured SVMs (maxy,&#8712;%x) &#952;&gt;(&#966;(x, y0)&#8722; &#966;(x, y)) + E(y0, y) for some cost function E).</S>
+    <S sid="145" ssid="5">These are both special cases of the family defined in Fig.</S>
+    <S sid="146" ssid="6">4, which also includes the structured perceptron&#8217;s loss (Q &#8594; &#8734;, -y = 0) and the softmax-margin loss of Gimpel and Smith (2010; Q = -y = 1).</S>
+    <S sid="147" ssid="7">Alg.</S>
+    <S sid="148" ssid="8">1 is closely related to stochastic or online gradient descent methods, but with the key advantage of not needing a learning rate hyperparameter.</S>
+    <S sid="149" ssid="9">We sketch the derivation of Alg.</S>
+    <S sid="150" ssid="10">1; full details can be found in Martins et al. (2010a).</S>
+    <S sid="151" ssid="11">On the tth round, one example hxt, yti is considered.</S>
+    <S sid="152" ssid="12">We seek to solve 9Given what was just exposed, it seems appealing to try max-product loopy BP on the factor graph of Fig.</S>
+    <S sid="153" ssid="13">1, or sumproduct loopy BP on the one in Fig.</S>
+    <S sid="154" ssid="14">3.</S>
+    <S sid="155" ssid="15">Both attempts present serious challenges: the former requires computing messages sent by the tree factor, which requires O(n2) calls to the Chu-LiuEdmonds algorithm and hence O(n5) time.</S>
+    <S sid="156" ssid="16">No obvious strategy seems to exist for simultaneous computation of all messages, unlike in the sum-product case.</S>
+    <S sid="157" ssid="17">The latter is even more challenging, as standard sum-product loopy BP has serious issues in the factor graph of Fig.</S>
+    <S sid="158" ssid="18">3; we construct in Martins et al. (2010b) a simple example with a very poor Bethe approximation.</S>
+    <S sid="159" ssid="19">This might be fixed by using other variants of sum-product BP, e.g., ones in which the entropy approximation is concave. which trades off conservativeness (stay close to the most recent solution &#952;t) and correctness (keep the loss small).</S>
+    <S sid="160" ssid="20">Alg.</S>
+    <S sid="161" ssid="21">1&#8217;s lines 7&#8211;8 are the result of taking the first-order Taylor approximation of L around &#952;t, which yields the lower bound L(&#952;; xt, yt) &#8805; L(&#952;t; xt, yt) + (&#952; &#8722; &#952;t)&gt;&#8711;L(&#952;t; xt, yt), and plugging that linear approximation into the constraint of Eq.</S>
+    <S sid="162" ssid="22">23, which gives a simple Euclidean projection problem (with slack) with a closed-form solution.</S>
+    <S sid="163" ssid="23">The online updating requires evaluating the loss and computing its gradient.</S>
+    <S sid="164" ssid="24">Both quantities can be computed using the variational expression in Prop.</S>
+    <S sid="165" ssid="25">1, for any loss L&#946;,&#947;(&#952;; x, y) in Fig.</S>
+    <S sid="166" ssid="26">4.10 Our only assumption is that the cost function `(y0, y) can be written as a sum over factor-local costs; letting &#181; = &#967;(y) and &#181;0 = &#967;(y0), this implies `(y0, y) = p&gt;&#181;0 + q for some p and q which are constant with respect to &#181;0.11 Under this assumption, L&#946;,&#947;(&#952;; x, y) becomes expressible in terms of the log-partition function of a distribution whose log-potentials are set to &#946;(F(x)&gt;&#952; + &#947;p).</S>
+    <S sid="167" ssid="27">From Eq.</S>
+    <S sid="168" ssid="28">9 and after some algebra, we finally obtain L&#946;,&#947;(&#952;;x,y) = Let &#181;&#65533; be a maximizer in Eq.</S>
+    <S sid="169" ssid="29">24; from the second statement of Prop.</S>
+    <S sid="170" ssid="30">1 we obtain &#8711;L&#946;,&#947;(&#952;; x, y) = F(x)(&#181;&#8722;&#181;).</S>
+    <S sid="171" ssid="31">When the inference problem in Eq.</S>
+    <S sid="172" ssid="32">24 is intractable, approximate message-passing algorithms like loopy BP still allow us to obtain approximations of the loss L&#946;,&#947; and its gradient.</S>
+    <S sid="173" ssid="33">For the hinge loss, we arrive precisely at the maxloss variant of 1-best MIRA (Crammer et al., 2006).</S>
+    <S sid="174" ssid="34">For the logistic loss, we arrive at a new online learning algorithm for CRFs that resembles stochastic gradient descent but with an automatic step size that follows from our variational representation.</S>
+    <S sid="175" ssid="35">Unsupported Features.</S>
+    <S sid="176" ssid="36">As datasets grow, so do the sets of features, creating further computational challenges.</S>
+    <S sid="177" ssid="37">Often only &#8220;supported&#8221; features&#8212;those observed in the training data&#8212;are included, and even those are commonly eliminated when their frequencies fall below a threshold.</S>
+    <S sid="178" ssid="38">Important information may be lost as a result of these expedient choices.</S>
+    <S sid="179" ssid="39">Formally, the supported feature set is Fsupp g Umi=1 supp &#966;(xi, yi), where supp u &#176;_ {j  |uj =6 0} denotes the support of vector u. Fsupp is a subset of the complete feature set, comprised of those features that occur in some candidate output, in Fcomp\Fsupp are called unsupported.</S>
+    <S sid="180" ssid="40">Sha and Pereira (2003) have shown that training a CRF-based shallow parser with the complete feature set may improve performance (over the supported one), at the cost of 4.6 times more features.</S>
+    <S sid="181" ssid="41">Dependency parsing has a much higher ratio (around 20 for bilexical word-word features, as estimated in the Penn Treebank), due to the quadratic or faster growth of the number of parts, of which only a few are active in a legal output.</S>
+    <S sid="182" ssid="42">We propose a simple strategy for handling Fcomp efficiently, which can be applied for those losses in Fig.</S>
+    <S sid="183" ssid="43">4 where &#946; = &#8734;.</S>
+    <S sid="184" ssid="44">(e.g., the structured SVM and perceptron).</S>
+    <S sid="185" ssid="45">Our procedure is the following: keep an active set F containing all features that have been instantiated in Alg.</S>
+    <S sid="186" ssid="46">1.</S>
+    <S sid="187" ssid="47">At each round, run lines 4&#8211;5 as usual, using only features in T. Since the other features have not been used before, they have a zero weight, hence can be ignored.</S>
+    <S sid="188" ssid="48">When Q = oo, the variational problem in Eq.</S>
+    <S sid="189" ssid="49">24 consists of a MAP computation and the solution corresponds to one output Yt E &#65533;(xt).</S>
+    <S sid="190" ssid="50">Only the parts that are active in Yt but not in yt, or vice-versa, will have features that might receive a nonzero update.</S>
+    <S sid="191" ssid="51">Those parts are reexamined for new features and the active set T is updated accordingly.</S>
+  </SECTION>
+  <SECTION title="6 Experiments" number="5">
+    <S sid="192" ssid="1">We trained non-projective dependency parsers for 14 languages, using datasets from the CoNLL-X shared task (Buchholz and Marsi, 2006) and two datasets for English: one from the CoNLL-2008 shared task (Surdeanu et al., 2008), which contains non-projective arcs, and another derived from the Penn Treebank applying the standard head rules of Yamada and Matsumoto (2003), in which all parse trees are projective.12 We implemented Alg.</S>
+    <S sid="193" ssid="2">1, 12We used the provided train/test splits for all datasets.</S>
+    <S sid="194" ssid="3">For English, we used the standard test partitions (section 23 of the Wall Street Journal).</S>
+    <S sid="195" ssid="4">We did not exploit the fact that some datasets only contain projective trees and have unique roots. which handles any loss function Lo&#65533;,y.13 When 0 &lt; oo, Turbo Parser #1 and the loopy BP algorithm of Smith and Eisner (2008) is used; otherwise, Turbo Parser #2 is used and the LP relaxation is solved with CPLEX.</S>
+    <S sid="196" ssid="5">In both cases, we employed the same pruning strategy as Martins et al. (2009).</S>
+    <S sid="197" ssid="6">Two different feature configurations were first tried: an arc-factored model and a model with second-order features (siblings and grandparents).</S>
+    <S sid="198" ssid="7">We used the same arc-factored features as McDonald et al. (2005) and second-order features that conjoin words and lemmas (at most two), parts-ofspeech tags, and (if available) morphological information; this was the same set of features as in Martins et al.</S>
+    <S sid="199" ssid="8">(2009).</S>
+    <S sid="200" ssid="9">Table 2 shows the results obtained in both configurations, for CRF and SVM loss functions.</S>
+    <S sid="201" ssid="10">While in the arc-factored case performance is similar, in second-order models there seems to be a consistent gain when the SVM loss is used.</S>
+    <S sid="202" ssid="11">There are two possible reasons: first, SVMs take the cost function into consideration; second, Turbo Parser #2 is less approximate than Turbo Parser #1, since only the marginal polytope is approximated (the entropy function is not involved).</S>
+    <S sid="203" ssid="12">The loopy BP algorithm managed to converge for nearly all sentences (with message damping).</S>
+    <S sid="204" ssid="13">The last three columns show the beneficial effect of unsupported features for the SVM case (with a more powerful model with non-projectivity features).</S>
+    <S sid="205" ssid="14">For most languages, unsupported features convey helpful information, which can be used with little extra cost (on average, 2.5 times more features are instantiated).</S>
+    <S sid="206" ssid="15">A combination of the techniques discussed here yields parsers that are in line with very strong competitors&#8212;for example, the parser of Koo and Collins (2010), which is exact, third-order, and constrains the outputs to be projective, does not outperform ours on the projective English dataset.14 Finally, Table 3 shows results obtained for different settings of &#946; and &#947;. Interestingly, we observe that higher scores are obtained for loss functions that are &#8220;between&#8221; SVMs and CRFs.</S>
+  </SECTION>
+  <SECTION title="7 Related Work" number="6">
+    <S sid="207" ssid="1">There has been recent work studying efficient computation of messages in combinatorial factors: bipartite matchings (Duchi et al., 2007), projective and non-projective arborescences (Smith and Eisner, 2008), as well as high order factors with countbased potentials (Tarlow et al., 2010), among others.</S>
+    <S sid="208" ssid="2">Some of our combinatorial factors (OR, OR-WITHOUTPUT) and the analogous entropy computations were never considered, to the best of our knowledge.</S>
+    <S sid="209" ssid="3">Prop.</S>
+    <S sid="210" ssid="4">1 appears in Wainwright and Jordan (2008) for canonical overcomplete models; we adapt it here for models with shared features.</S>
+    <S sid="211" ssid="5">We rely on the variational interpretation of loopy BP, due to Yedidia et al. (2001), to derive the objective being optimized by Smith and Eisner&#8217;s loopy BP parser.</S>
+    <S sid="212" ssid="6">Independently of our work, Koo et al. (2010) recently proposed an efficient dual decomposition method to solve an LP problem similar (but not equal) to the one in Eq.</S>
+    <S sid="213" ssid="7">20,15 with excellent parsing performance.</S>
+    <S sid="214" ssid="8">Their parser is also an instance of a turbo parser since it relies on a local approximation of a marginal polytope.</S>
+    <S sid="215" ssid="9">While one can also use dual decomposition to address our MAP problem, the fact that our model does not decompose as nicely as the one in Koo et al. (2010) would likely result in slower convergence.</S>
+  </SECTION>
+  <SECTION title="8 Conclusion" number="7">
+    <S sid="216" ssid="1">We presented a unified view of two recent approximate dependency parsers, by stating their underlying factor graphs and by deriving the variational problems that they address.</S>
+    <S sid="217" ssid="2">We introduced new hard constraint factors, along with formulae for their messages, local belief constraints, and entropies.</S>
+    <S sid="218" ssid="3">We provided an aggressive online algorithm for training the models with a broad family of losses.</S>
+    <S sid="219" ssid="4">There are several possible directions for future work.</S>
+    <S sid="220" ssid="5">Recent progress in message-passing algorithms yield &#8220;convexified&#8221; Bethe approximations that can be used for marginal inference (Wainwright et al., 2005), and provably convergent max-product variants that solve the relaxed LP (Globerson and Jaakkola, 2008).</S>
+    <S sid="221" ssid="6">Other parsing formalisms can be handled with the inventory of factors shown here&#8212; among them, phrase-structure parsing.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="8">
+    <S sid="222" ssid="1">The authors would like to thank the reviewers for their comments, and Kevin Gimpel, David Smith, David Sontag, and Terry Koo for helpful discussions.</S>
+    <S sid="223" ssid="2">A. M. was supported by a grant from FCT/ICTI through the CMUPortugal Program, and also by Priberam Inform&#180;atica.</S>
+    <S sid="224" ssid="3">N. S. was supported in part by Qatar NRF NPRP-08-4851-083.</S>
+    <S sid="225" ssid="4">E. X. was supported by AFOSR FA9550010247, ONR N000140910758, NSF CAREER DBI-0546594, NSF IIS-0713379, and an Alfred P. Sloan Fellowship.</S>
+    <S sid="226" ssid="5">M. F. and P. A. were supported by the FET programme (EU FP7), under the SIMBAD project (contract 213250).</S>
+  </SECTION>
+</PAPER>

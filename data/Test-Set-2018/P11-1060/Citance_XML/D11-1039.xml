@@ -1,0 +1,282 @@
+<PAPER>
+  <S sid="0">Bootstrapping Semantic Parsers from Conversations</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Conversations provide rich opportunities for interactive, continuous learning.</S>
+    <S sid="2" ssid="2">When something goes wrong, a system can ask for clarification, rewording, or otherwise redirect the interaction to achieve its goals.</S>
+    <S sid="3" ssid="3">In this paper, we present an approach for using conversational interactions of this type to induce semantic parsers.</S>
+    <S sid="4" ssid="4">We demonstrate learning without any explicit annotation of the meanings of user utterances.</S>
+    <S sid="5" ssid="5">Instead, we model meaning with latent variables, and introduce a loss function to measure how well potential meanings match the conversation.</S>
+    <S sid="6" ssid="6">This loss drives the overall learning approach, which induces a weighted CCG grammar that could be used to automatically bootstrap the semantic analysis component in a complete dialog system.</S>
+    <S sid="7" ssid="7">Experiments on DARPA Communicator conversational logs demonstrate effective learning, despite requiring no explicit meaning annotations.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="8" ssid="1">Conversational interactions provide significant opportunities for autonomous learning.</S>
+    <S sid="9" ssid="2">A well-defined goal allows a system to engage in remediations when confused, such as asking for clarification, rewording, or additional explanation.</S>
+    <S sid="10" ssid="3">The user&#8217;s response to such requests provides a strong, if often indirect, signal that can be used to learn to avoid the original confusion in future conversations.</S>
+    <S sid="11" ssid="4">In this paper, we show how to use this type of conversational feedback to learn to better recover the meaning of user utterances, by inducing semantic parsers from unannotated conversational logs.</S>
+    <S sid="12" ssid="5">We believe that this style of learning will contribute to the long term goal of building self-improving dialog systems that continually learn from their mistakes, with little or no human intervention.</S>
+    <S sid="13" ssid="6">Many dialog systems use a semantic parsing component to analyze user utterances (e.g., Allen et al., 2007; Litman et al., 2009; Young et al., 2010).</S>
+    <S sid="14" ssid="7">For example, in a flight booking system, the sentence Sent: I want to go to Seattle on Friday LF: &#955;x.to(x, SEA) &#8743; date(x, FRI) might be mapped to the logical form (LF) meaning representation above, a lambda-calculus expression defining the set of flights that match the user&#8217;s desired constraints.</S>
+    <S sid="15" ssid="8">This LF is a representation of the semantic content that comes from the sentence, and would be input to a context-dependent understanding component in a full dialog system, for example to find the date that the symbol FRI refers to.</S>
+    <S sid="16" ssid="9">To induce semantic parsers from interactions, we consider user statements in conversational logs and model their meaning with latent variables.</S>
+    <S sid="17" ssid="10">We demonstrate that it is often possible to use the dialog that follows a statement (including remediations such as clarifications, simplifications, etc.) to learn the meaning of the original sentence.</S>
+    <S sid="18" ssid="11">For example, consider the first user utterance in Figure 1, where the system failed to understand the user&#8217;s request.</S>
+    <S sid="19" ssid="12">To complete the task, the system must use a remediation strategy.</S>
+    <S sid="20" ssid="13">Here, it takes the initiative by asking for and confirming each flight constraint in turn.</S>
+    <S sid="21" ssid="14">This strategy produces an unnatural conversation but provides supervision for learning the meaning of the original utterance.</S>
+    <S sid="22" ssid="15">We can easily record representations of the meanings the system intended to convey at each step, as seen in Figure 1, and use this indirect supervision for learning.</S>
+    <S sid="23" ssid="16">Learning from this weak signal is challenging.</S>
+    <S sid="24" ssid="17">In any specific conversation, the system&#8217;s remediations can fail to recover aspects of the original user meaning and can introduce spurious constraints, for example when users change their goals mid conversation.</S>
+    <S sid="25" ssid="18">To learn effectively, the model must accumulate evidence from many interactions to best recover the meaning of each specific sentence.</S>
+    <S sid="26" ssid="19">We will learn semantic parsers defined by probabilistic Combinatory Categorial Grammars (PCCGs), which include both a lexicon and a weighted linear model for parse selection.</S>
+    <S sid="27" ssid="20">The lexicon specifies the meanings of individual words and phrases, while the parameters of a parsing model define how to best combine word- and phrase-level meanings to analyze complete sentences.</S>
+    <S sid="28" ssid="21">To learn without labeled meaning representations, we make use of a variant of the loss-sensitive Perceptron algorithm (Singh-Miller and Collins, 2007).</S>
+    <S sid="29" ssid="22">We define loss functions to provide a rough measure of (1) how well a candidate meaning for a utterance matches the conversation that follows it and (2) how well the candidate matches our expectations about the types of things that are often said in the dialog&#8217;s domain.</S>
+    <S sid="30" ssid="23">These notions of loss drive not only the parameter estimation but also the grammar induction process that constructs the CCG lexicon.</S>
+    <S sid="31" ssid="24">Experiments on conversation logs from the DARPA Communicator corpus (Walker et al., 2002) demonstrate the feasibility of our approach.</S>
+    <S sid="32" ssid="25">This paper makes the following contributions: that demonstrate effective learning from conversations alone.</S>
+  </SECTION>
+  <SECTION title="2 Problem" number="2">
+    <S sid="33" ssid="1">Our goal is to learn a function that maps a sentence x to a lambda-calculus expression z.</S>
+    <S sid="34" ssid="2">We assume access to logs of conversations with automatically generated annotation of system utterance meanings, but no explicit labeling of each user utterance meaning.</S>
+    <S sid="35" ssid="3">We define a conversation C = (U, O) to be a sequence of utterances U&#65533; = [uo, ... , um] and a set of conversational objects O.</S>
+    <S sid="36" ssid="4">An object o E O is an entity that is being discussed, for example there would be a unique object for each flight leg discussed in a travel planning conversation.</S>
+    <S sid="37" ssid="5">Each utterance ui = (s, x, a, z) represents the speaker s E {User, System} producing the natural language statement x which asserts a speech act a E {ASK, CONFIRM, ...} with meaning representation z.</S>
+    <S sid="38" ssid="6">For example, from the second system utterance in Figure 1 the question x =&#8220;Leaving what city?&#8221; is an a=ASK speech act with lambda-calculus meaning z = &#955;x.from(fl, x).</S>
+    <S sid="39" ssid="7">This meaning represents the fact that the system asked for the departure city for the conversational object o = fl representing the flight leg that is currently being discussed.</S>
+    <S sid="40" ssid="8">We will learn from conversations where the speech acts a and logical forms z for user utterances are unlabeled.</S>
+    <S sid="41" ssid="9">Such data can be generated by recording interactions, along with each system&#8217;s internal representation of its own utterances.</S>
+    <S sid="42" ssid="10">Finally, since we will be analyzing sentences at a specific point in a complete conversation, we define our training data as a set {(ji, Ci)|i = 1... n}.</S>
+    <S sid="43" ssid="11">Each pair is a conversation Ci and the index ji of the user utterance x in Ci whose meaning we will attempt to learn to recover.</S>
+    <S sid="44" ssid="12">In general, the same conversation C can be used in multiple examples, each with a different sentence index.</S>
+    <S sid="45" ssid="13">Section 8 provides the details of how the data was gathered for our experiments.</S>
+  </SECTION>
+  <SECTION title="3 Overview of Approach" number="3">
+    <S sid="46" ssid="1">We will present an algorithm for learning a weighted CCG parser, as defined in Section 5, that can be used to map sentences to logical forms.</S>
+    <S sid="47" ssid="2">The approach induces a lexicon to represent the meanings of words and phrases while also estimating the parameters of a weighted linear model for selecting the best parse given the lexicon.</S>
+    <S sid="48" ssid="3">Learning As defined in Section 2, the algorithm takes a set of n training examples, {(ji, Ci) : i = 1, ... , n}.</S>
+    <S sid="49" ssid="4">For each example, our goal is to learn to parse the user utterance x at position ji in Ci.</S>
+    <S sid="50" ssid="5">The training data contains no direct evidence about the logical form z that should be paired with x, or the CCG analysis that would be used to construct z.</S>
+    <S sid="51" ssid="6">We model all of these choices as latent variables.</S>
+    <S sid="52" ssid="7">To learn effectively in this complex, latent space, we introduce a loss function L(z, j, C) E R that measures how well a logical form z models the meaning for the user utterance at position j in C. In Section 6, we will present the details of the loss we use, which is designed to be sensitive to remediations in C (system requests for clarification, etc.) but also be robust to the fact that conversations often do not uniquely determine which z should be selected, for example when the user prematurely ends the discussion.</S>
+    <S sid="53" ssid="8">Then, in Section 7, we present an approach for incorporating this loss function into a complete algorithm that induces a CCG lexicon and estimates the parameters of the parsing model.</S>
+    <S sid="54" ssid="9">This learning setup focuses on a subproblem in dialog; semantic interpretation.</S>
+    <S sid="55" ssid="10">We do not yet learn to recover user speech acts or integrate the logical form into the context of the conversation.</S>
+    <S sid="56" ssid="11">These are important areas for future work.</S>
+    <S sid="57" ssid="12">Evaluation We will evaluate performance on a test set {(xi, zi)|i = 1, ... , m} of m sentences xi that have been explicitly labeled with logical forms zi.</S>
+    <S sid="58" ssid="13">This data will allow us to directly evaluate the quality of the learned model.</S>
+    <S sid="59" ssid="14">Each sentence is analyzed with the learned model alone; the loss function and any conversational context are not used during evaluation.</S>
+    <S sid="60" ssid="15">Parsers that perform well in this setting will be strong candidates for inclusion in a more complete dialog system, as motivated in Section 1.</S>
+  </SECTION>
+  <SECTION title="4 Related Work" number="4">
+    <S sid="61" ssid="1">Most previous work on learning from conversational interactions has focused on the dialog sub-problems of response planning (e.g., Levin et al., 2000; Singh et al., 2002) and natural language generation (e.g., Lemon, 2011).</S>
+    <S sid="62" ssid="2">We are not aware of previous work on inducing semantic parsers from conversations.</S>
+    <S sid="63" ssid="3">There has been significant work on supervised learning for inducing semantic parsers.</S>
+    <S sid="64" ssid="4">Various techniques were applied to the problem including machine translation (Papineni et al., 1997; Ramaswamy and Kleindienst, 2000; Wong and Mooney, 2006; 2007; Matuszek et al., 2010), higherorder unification (Kwiatkowski et al., 2010), parsing (Ruifang and Mooney, 2006; Lu et al., 2008), inductive logic programming (Zelle and Mooney, 1996; Thompson and Mooney, 2003; Tang and Mooney, 2000), probabilistic push-down automata (He and Young, 2005; 2006) and ideas from support vector machines and string kernels (Kate and Mooney, 2006; Nguyen et al., 2006).</S>
+    <S sid="65" ssid="5">The algorithms we develop in this paper build on previous work on supervised learning of CCG parsers (Zettlemoyer and Collins, 2005; 2007), as we describe in Section 5.3.</S>
+    <S sid="66" ssid="6">There is also work on learning to do semantic analysis with alternate forms of supervision.</S>
+    <S sid="67" ssid="7">Clarke et al. (2010) and Liang et al.</S>
+    <S sid="68" ssid="8">(2011) describe approaches for learning semantic parsers from questions paired with database answers, while Goldwasser et al. (2011) presents work on unsupervised learning.</S>
+    <S sid="69" ssid="9">Our approach provides an alternative method of supervision that could complement these approaches.</S>
+    <S sid="70" ssid="10">Additionally, there has been significant recent work on learning to do other, reI want to go from Boston to New York and then to Chicago lated, natural language semantic analysis tasks from context-dependent database queries (Miller et al., 1996; Zettlemoyer and Collins, 2009), grounded event streams (Chen et al., 2010; Liang et al., 2009), environment interactions (Branavan et al., 2009; 2010; Vogel and Jurafsky, 2010), and even unannotated text (Poon and Domingos, 2009; 2010).</S>
+    <S sid="71" ssid="11">Finally, the DARPA Communicator data (Walker et al., 2002) has been previously studied.</S>
+    <S sid="72" ssid="12">Walker and Passonneau (2001) introduced a schema of speech acts for evaluation of the DARPA Communicator system performance.</S>
+    <S sid="73" ssid="13">Georgila et al. (2009) extended this annotation schema to user utterances using an automatic process.</S>
+    <S sid="74" ssid="14">Our speech acts extend this work to additionally include full meaning representations.</S>
+  </SECTION>
+  <SECTION title="5 Mapping Sentences to Logical Form" number="5">
+    <S sid="75" ssid="1">We will use a weighted linear CCG grammar for semantic parsing, as briefly reviewed in this section.</S>
+    <S sid="76" ssid="2">Combinatory categorial grammars (CCGs) are a linguistically-motivated model for a wide range of language phenomena (Steedman, 1996; 2000).</S>
+    <S sid="77" ssid="3">A CCG is defined by a lexicon and a set of combinators.</S>
+    <S sid="78" ssid="4">The grammar defines a set of possible parse trees, where each tree includes syntactic and semantic information that can be used to construct logical forms for sentences.</S>
+    <S sid="79" ssid="5">The lexicon contains entries that define categories for words or phrases.</S>
+    <S sid="80" ssid="6">For example, the second lexical entry in the parse in Figure 2 is: from := (N\N)/NP : Ay.Af.Ax.f(x) n from(x, y) Each category includes both syntactic and semantic information.</S>
+    <S sid="81" ssid="7">For example, the phrase &#8220;from&#8221; is assigned the category with syntax (N\N)/NP and semantics Ay.Af.Ax.f(x) n from(x, y).</S>
+    <S sid="82" ssid="8">The outermost syntactic forward slash specifies that the entry must first be combined with an NP to the right (the departure city), while the inner back slash specifies that it will later modify a noun N to the left (to add a constraint to a set of flights).</S>
+    <S sid="83" ssid="9">The lambda-calculus semantic expression is designed to build the appropriate meaning representation at each of these steps, as seen in the parse in Figure 2.</S>
+    <S sid="84" ssid="10">In general, we make use of typed lambda calculus to represent meaning (Carpenter, 1997), both in the lexicon and in intermediate parse tree nodes.</S>
+    <S sid="85" ssid="11">We also introduce an extension for modeling arraytyped variables to represent lists of individual entries.</S>
+    <S sid="86" ssid="12">These constructions are used, for example, to model sentences describing a sequence of segments while specifying flight preferences.</S>
+    <S sid="87" ssid="13">Figure 2 shows how a CCG parse builds a logical form for a complete sentence with an array-typed variable.</S>
+    <S sid="88" ssid="14">Each intermediate node in the tree is constructed with one of a small set of CCG combinator rules, see the explanation from Steedman (1996; 2000).</S>
+    <S sid="89" ssid="15">We make use of the standard application, composition and coordination combinators, as well as type-shifting rules introduced by Zettlemoyer and Collins (2007) to model spontaneous, unedited text.</S>
+    <S sid="90" ssid="16">A weighted linear CCG (Clark and Curran, 2007) provides a ranking on the space of possible parses under the grammar, which can be used to select the best logical form for a sentence.</S>
+    <S sid="91" ssid="17">This type of model is closely related to several other approaches (Ratnaparkhi et al., 1994; Johnson et al., 1999; Lafferty et al., 2001; Collins, 2004; Taskar et al., 2004).</S>
+    <S sid="92" ssid="18">Let x be a sentence, y be a CCG parse, and GEN(x; A) be the set of all possible CCG parses for x given the lexicon A.</S>
+    <S sid="93" ssid="19">Define O(x, y) E Rd to be a d-dimensional feature&#8211;vector representation and 0 E Rd to be a parameter vector.</S>
+    <S sid="94" ssid="20">The optimal parse for sentence x is and the final output logical form z is the lambdacalculus expression at the root of y*(x).</S>
+    <S sid="95" ssid="21">We compute y*(x) with a CKY-style chart parsing algorithm.</S>
+    <S sid="96" ssid="22">Since each chart entry contains a full lambda-calculus meaning expression, we use N-best pruning to control the number of options we consider at each span.</S>
+    <S sid="97" ssid="23">Learning a model of this form involves learning the parameters 0 and the lexicon A.</S>
+    <S sid="98" ssid="24">We will show that this is possible from conversational logs that do not contain any explicit labeling of the logical forms for user utterances.</S>
+    <S sid="99" ssid="25">Previous work on lexical induction, including the GENLEX approach which we briefly review here, has required labeled logical meaning representations.</S>
+    <S sid="100" ssid="26">In Section 7, we will introduce a new way of using GENLEX to learn from unannotated conversation logs.</S>
+    <S sid="101" ssid="27">The supervised CCG learning algorithms of Zettlemoyer and Collins (2005; 2007) induce a weighted CCG from training examples (xi, zi) for i = 1... n, where xi is a sentence and zi is the corresponding lambda-calculus meaning representation.</S>
+    <S sid="102" ssid="28">The output from the algorithm is a pair (0, A) containing the learned parameters and CCG lexicon.</S>
+    <S sid="103" ssid="29">They defined the function GENLEX(x, z) to map a sentence x and its meaning z to a large set of potential lexical entries.</S>
+    <S sid="104" ssid="30">These entries are generated with rules that consider the logical form z and guess potential CCG categories.</S>
+    <S sid="105" ssid="31">For example, the rule p &#8594; (N\N)/NP : Ay.Af.Ax.f(x) n p(x, y) introduces categories commonly used to model certain types of prepositions.</S>
+    <S sid="106" ssid="32">This rule would, for example, introduce the category (N\N)/NP : Ay.Af.Ax.f(x) n to(x, y) for any logical form z that contains the constant to.</S>
+    <S sid="107" ssid="33">GENLEX uses a small set of rules of this type to generate categories that are paired with all possible substrings in x to form an overly general lexicon.</S>
+    <S sid="108" ssid="34">The complete learning algorithm then simultaneously selects a small subset of all entries generated by GENLEX and estimates parameter values 0.</S>
+    <S sid="109" ssid="35">Zettlemoyer and Collins (2005) present a more detailed explanation.</S>
+  </SECTION>
+  <SECTION title="6 Measuring Loss" number="6">
+    <S sid="110" ssid="1">In Section 7, we will present a loss-sensitive learning algorithm that models the meaning of user utterances as latent variables to be estimated from conversational interactions.</S>
+    <S sid="111" ssid="2">We first introduce a loss function to measure the quality of potential meaning representations.</S>
+    <S sid="112" ssid="3">This loss function L(z, j, C) E R indicates how well a logical expression z represents the meaning of the j-th user utterance in conversation C. For example, consider the first user utterance (j = 2) in Figure 3, which is a request for a return trip from Boston to New York.</S>
+    <S sid="113" ssid="4">We would like to assign the lowest loss to the meaning representation (d) in Figure 3 that correctly encodes all of the stated constraints.</S>
+    <S sid="114" ssid="5">We make use of a loss function with two parts: L(z, j,C) = Lc(z, j,C) + Ld(z).</S>
+    <S sid="115" ssid="6">The conversation loss Lc (defined in Section 6.1) measures how well the candidate meaning representation fits the conversation, for example incorporating information recovered through conversational remediations as motivated in Section 1.</S>
+    <S sid="116" ssid="7">The domain loss Ld (described in Section 6.2) measures how well a logical form z matches domain expectations, such as the fact that flights can only have a single origin.</S>
+    <S sid="117" ssid="8">These functions guide the types of meaning representations we expect to see, but in many cases will fail to specify a unique best option, for example in conversations where the user prematurely terminates the interaction.</S>
+    <S sid="118" ssid="9">In Section 7, we will present a complete, loss-driven learning algorithm that is robust to these types of ambiguities while inducing a weighted CCG parser from conversations.</S>
+    <S sid="119" ssid="10">We will use a conversation loss function Lc(z, j, C) that provides a rough indication of how well the logical expression z represents a potential meaning for the user utterance at position j in C. For example, the first user utterance (j = 2) in Figure 3 is a request for a return trip from Boston to New York where the user has explicitly mentioned both legs.</S>
+    <S sid="120" ssid="11">The figure also shows five options (a-e) for the logical form z.</S>
+    <S sid="121" ssid="12">We want to assign the lowest loss to option (d), which includes all of the stated constraints.</S>
+    <S sid="122" ssid="13">The loss is computed in four steps for a user utterance x at position j by (1) selecting a subset of system utterances in the conversation C, (2) extracting and computing loss for semantic content from selected system utterances, (3) aligning the subexpressions in z to the extracted semantic content, and (4) computing the minimal loss value from the best alignment.</S>
+    <S sid="123" ssid="14">In Figure 3, the loss for the candidate logical forms is computed by considering the segment of system utterances up until the conversation end.</S>
+    <S sid="124" ssid="15">Within this segment, the matching for expression (d) involves mapping the origin and departure constraints for the first leg (Boston - New York) onto the earlier system confirmations while also aligning the ones for the second leg to system utterances later in the selected portion of the conversation.</S>
+    <S sid="125" ssid="16">Finally, the overall score depends on the quality of the alignment, for example how many of the constraints match to confirmations.</S>
+    <S sid="126" ssid="17">This section presents the full approach.</S>
+    <S sid="127" ssid="18">Segmentation For a user utterance at position j, we select all system utterances from j &#8722; 1 until the system believes it has completed the current subtask, as indicated by a reset action or final offer.</S>
+    <S sid="128" ssid="19">We call this selected segment &#175;C.</S>
+    <S sid="129" ssid="20">In Figure 3, C&#175; ends with a reset, but in a successful interaction it would have ended with the offer of a specific flight.</S>
+    <S sid="130" ssid="21">Extracting Properties A property is a predicateentity-value triplet, where the entity can be a variable from z or a conversational object.</S>
+    <S sid="131" ssid="22">For example, (from, fl, BOS) is a property where fl is a object from C&#175; and (from, x, BOS) is a property from z = Ax.from(x, BOS).</S>
+    <S sid="132" ssid="23">We define P&amp; to be the set of properties from logical forms for system utterances in &#175;C.</S>
+    <S sid="133" ssid="24">Similarly, we define Pz to be the set of properties in z.</S>
+    <S sid="134" ssid="25">Scoring System Properties For each system property p E Pj we compute its position value pos(p), which is a normalized weighted average over all the positions where it appears in a logical form.</S>
+    <S sid="135" ssid="26">For each mention the weight is obtained from its speech act.</S>
+    <S sid="136" ssid="27">For example, properties that are explicitly confirmed contribute more to the average than those that were merely offered to the user in a select statement.</S>
+    <S sid="137" ssid="28">We use pos(p) to compute a loss loss(p) for each property p E Pj.</S>
+    <S sid="138" ssid="29">We first define Pff' to be all properties in P&amp; with entity e. For entity e and position d, we define the entity-normalization function: d &#8722; minp&#8712;PC&#175;' pos(p) For a given property p E Pj with an entity e we compute the loss value: Where n&#65533;1 e is the inverse of ne.</S>
+    <S sid="139" ssid="30">This loss value is designed to, first, provide less loss for later properties so that it, for example, favors the last property in a series of statements that finally resolves a confusion in the conversation.</S>
+    <S sid="140" ssid="31">Second, the loss value is lower for objects mentioned closer to the user utterance x, thereby preferring objects discussed sooner.</S>
+    <S sid="141" ssid="32">Matching Properties An alignment A maps variables in z to conversational objects in &#175;C, for example the flight legs fl1 and fl2 being discussed in Figure 3.</S>
+    <S sid="142" ssid="33">We will use alignments to match properties of z and &#175;C.</S>
+    <S sid="143" ssid="34">To do this we extend the alignment function A to apply to properties, for example A((from, x, BOS)) = (from, A(x), BOS).</S>
+    <S sid="144" ssid="35">Scoring Alignments Finally, we compute the conversation loss L,(z, j, C) as follows: The function s(A(p.), ps) E R computes the compatibility of the two input properties.</S>
+    <S sid="145" ssid="36">It is zero if A(p.) =&#65533; ps.</S>
+    <S sid="146" ssid="37">Otherwise, it returns loss(ps).</S>
+    <S sid="147" ssid="38">We approximate the min computation in L, over alignments A as follows.</S>
+    <S sid="148" ssid="39">For a logical form z at position j, we align the outer-most variable to the conversational object in C&#175; that is being discussed at j.</S>
+    <S sid="149" ssid="40">The remaining variables are aligned greedily to minimize the loss, by selecting a single conversational object for each in turn.</S>
+    <S sid="150" ssid="41">Finally, for each aligned variable, we increase the loss by one for each unmatched property from Pz.</S>
+    <S sid="151" ssid="42">This increases the loss of logical forms that include spurious information.</S>
+    <S sid="152" ssid="43">However, since a conversation might stop prematurely and therefore won&#8217;t discuss the entire user request, we only increase the loss for variables that are already aligned.</S>
+    <S sid="153" ssid="44">For this purpose, we define an aligned variable to be one that has at least one property matched successfully.</S>
+    <S sid="154" ssid="45">We also make use of a domain loss function Ld(z) E R. The function takes a logical form z and returns the number of violations there are in z to a set of constraints on logical forms that occur commonly in the dialog domain.</S>
+    <S sid="155" ssid="46">For example, in a travel domain, a violation might occur if a flight leg has two different destination cities.</S>
+    <S sid="156" ssid="47">The set of possible violations must be specified for each dialog system, but can often be compiled from existing resources, such as a database of valid flight ticketing options.</S>
+    <S sid="157" ssid="48">In our experiments, we will use a set of eight simple constraints to check for violations in flight Inputs: Training set {(ji, Ci) : i = 1 ... n} where each example includes the index ji of a sentence xi in the conversation Ci.</S>
+    <S sid="158" ssid="49">Initial lexicon A0.</S>
+    <S sid="159" ssid="50">Number of iterations T. Margin ry.</S>
+    <S sid="160" ssid="51">Beam size k for lexicon generation.</S>
+    <S sid="161" ssid="52">Loss function L(x, j, C), as described in Section 6.</S>
+    <S sid="162" ssid="53">Definitions: GENLEX(x, C) takes as input a sentence and a conversation and returns a set of lexical items as described in Section 7.</S>
+    <S sid="163" ssid="54">GEN(x; A) is the set of all possible CCG parses for x given the lexicon A. LF(y) returns the logical form z at the root of the parse tree y.</S>
+    <S sid="164" ssid="55">Let 4)i(y) be shorthand for the feature function 4)(xi, y) defined in Section 5.</S>
+    <S sid="165" ssid="56">Define LEX(y) to be the set of lexical entries used in parse y.</S>
+    <S sid="166" ssid="57">Finally, let MINLi(Y) be {y|&#8704;y0 E Y, L(LF(y), ji, Ci) &#8804; L(LF(y0), ji, Ci)}, the set of minimal loss parses in Y . itineraries, which can have multiple legs.</S>
+    <S sid="167" ssid="58">These include, for example, checking that the legs have unique origins and destinations that match across the entire itinerary.</S>
+    <S sid="168" ssid="59">For example, in Figure 3 the logical forms (a), (b) and (d) will have no violations; they describe valid flights.</S>
+    <S sid="169" ssid="60">Example (c) has a single violation: a flight has two origins.</S>
+    <S sid="170" ssid="61">Example (e) violates a more complex constraint: the second flight&#8217;s origin is different from the first flight&#8217;s destination.</S>
+  </SECTION>
+  <SECTION title="7 Learning" number="7">
+    <S sid="171" ssid="1">Figure 4 presents the complete learning algorithm.</S>
+    <S sid="172" ssid="2">We assume access to training examples, {(ji,Ci) : dex ji of a sentence xi in the conversation Ci.</S>
+    <S sid="173" ssid="3">The algorithm learns a weighted CCG parser, described in Section 5, including both a lexicon &#923; and parameters &#952;.</S>
+    <S sid="174" ssid="4">The approach is online, considering each example in turn and performing two steps: (1) expanding the lexicon and (2) updating the parameters.</S>
+    <S sid="175" ssid="5">Step 1: Lexical Induction We introduce new lexical items by selecting candidates from the function GENLEX, following previous work (Zettlemoyer and Collins, 2005; 2007) as reviewed in Section 5.3.</S>
+    <S sid="176" ssid="6">However, we face the new challenge that there is no labeled logical-form meaning z.</S>
+    <S sid="177" ssid="7">Instead, let ZC&#175; be set of all logical forms that appear in system utterances in the relevant conversation segment &#175;C.</S>
+    <S sid="178" ssid="8">We will now define the conversational lexicon set: where we use logical forms from system utterances to guess possible CCG categories for analyzing the user utterance.</S>
+    <S sid="179" ssid="9">This approach will overgeneralize, when the system talks about things that are unrelated to what the user said, and will also often be incomplete, for example when the system does not repeat parts of the original content.</S>
+    <S sid="180" ssid="10">However, it provides a way of guessing lexical items that can be combined with previously learned ones, which can fill in any gaps and help select the best analysis.</S>
+    <S sid="181" ssid="11">Step 1(a) in Figure 4 uses GENLEX to temporarily create a large set of potential categories based on the conversation.</S>
+    <S sid="182" ssid="12">Steps (b-d) select a small subset of these entries to add to the current lexicon &#923;: we find the k-best parses under the model, rerank them according to loss, find the lexical items used in the best trees, and add them to &#923;.</S>
+    <S sid="183" ssid="13">This approach favors lexical items that are used in highscoring but low-loss analyses, as computed given the current model.</S>
+    <S sid="184" ssid="14">Step 2: Parameter Updates Given the loss function G(x, i, C), we use a variant of a loss-sensitive perceptron to update the parameters (Singh-Miller and Collins, 2007).</S>
+    <S sid="185" ssid="15">In Steps (a-c), for the current example i, we compute the relative loss function &#916;i that scales with the loss achieved by the best and worst possible parses under the model.</S>
+    <S sid="186" ssid="16">In contrast to previous work, we do not only compute the loss over a fixed n-best list of possible outputs, but instead use the current model score to recompute the options at each update.</S>
+    <S sid="187" ssid="17">Then, Steps (d-e) find the set Ri of least loss analyses and Ei of higher-loss candidates whose models scores are not separated by at least -y&#916;i, where -y is a margin scale constant.</S>
+    <S sid="188" ssid="18">The final update (Step f) is additive and increases the parameters for features indicative of the analyses with less loss while down weighting those for parses that were not sufficiently separated.</S>
+    <S sid="189" ssid="19">Discussion This algorithm uses the conversation to drive learning in two ways: it guides the lexical items that are proposed while also providing the conversational feedback that defines the loss used to update the parameters.</S>
+    <S sid="190" ssid="20">The resulting approach is, at every step, using information about how the conversation progressed after a user utterance to reconstruct the meaning of the original statement.</S>
+  </SECTION>
+  <SECTION title="8 Data Sets" number="8">
+    <S sid="191" ssid="1">For evaluation, we used conversation logs from the Lucent and BBN dialog systems in the DARPA Communicator corpus (Walker et al., 2002).</S>
+    <S sid="192" ssid="2">We selected these systems since they provide significant opportunities for learning.</S>
+    <S sid="193" ssid="3">They asked relatively open ended questions, allowing for more complex user responses, while also using a number of simple remediating strategies to recover from misunderstandings.</S>
+    <S sid="194" ssid="4">The original conversational logs included unannotated transcripts of system and user utterances.</S>
+    <S sid="195" ssid="5">Inspired by the speech act labeling approach of Walker and Passonneau (2001), we wrote a set of scripts to label the speech acts and logical forms for system statements.</S>
+    <S sid="196" ssid="6">This could be done with high accuracy since the original text was generated with templates.</S>
+    <S sid="197" ssid="7">These labels represent what the system explicitly said and do not require complex, potentially error-prone annotation of the full state of the original dialog system.</S>
+    <S sid="198" ssid="8">The set of speech acts includes confirmations, information requests, selects, offers, instructions, and a miscellaneous category.</S>
+    <S sid="199" ssid="9">The data sets include a total of 376 conversations, divided into training and testing sets.</S>
+    <S sid="200" ssid="10">Table 1 provides details about the training and testing sets, as well as general data set statistics.</S>
+    <S sid="201" ssid="11">We developed our system using 4-fold cross validation on the training sets.</S>
+    <S sid="202" ssid="12">Although there are approximately 12,000 user utterances in the data sets, the vast majority are simple, short phrases (such as &#8220;yes&#8221; or &#8220;no&#8221;) which are not useful for learning a semantic parser.</S>
+    <S sid="203" ssid="13">We select user utterances with a small set of heuristics, including a threshold (6 for Lucent, 4 for BBN) on the number of words and requiring that at least one noun phrase is present from our initial lexicon.</S>
+    <S sid="204" ssid="14">This approach was manually developed to perform well on the training sets, but is not perfect and does introduce a small amount of noise into the data.</S>
+  </SECTION>
+  <SECTION title="9 Experimental Setup" number="9">
+    <S sid="205" ssid="1">This section describes our experimental setup and comparisons.</S>
+    <S sid="206" ssid="2">We follow the setup of Zettlemoyer and Collins (2007) where possible, including feature design, initialization of the semantic parser, and evaluation metrics, as reviewed below.</S>
+    <S sid="207" ssid="3">Features and Parser The features include indicators for lexical item use, properties of the logical form that is being constructed, and indicators for parsing operators used to build the tree.</S>
+    <S sid="208" ssid="4">The parser attempts to boost recall with a two-pass strategy that allows for word skipping if the initial parse fails.</S>
+    <S sid="209" ssid="5">Initialization and Parameters We use an initial lexicon that includes a list of domain-specific noun phrases, such as city and airport names, and a list of domain-independent categories for closed-class words such as &#8220;the&#8221; and &#8220;and&#8221;.</S>
+    <S sid="210" ssid="6">We also used a time and number parser to expand this lexicon for each input sentence with the BIU Number Normalizer.1 The learning parameters were tuned using the development sets: the margin constant y is set to 0.5, we use 6 iterations and take the top 30 parses for lexical generation (step 1, figure 4).</S>
+    <S sid="211" ssid="7">The parser used for parameter update (step 2, figure 4) has a beam of 250.</S>
+    <S sid="212" ssid="8">The parameter vector is initialized to &#175;0.</S>
+    <S sid="213" ssid="9">Evaluation Metrics For evaluation, we measure performance against gold standard labels.</S>
+    <S sid="214" ssid="10">We report both the number of exact matches, fully correct logical forms, and a partial-credit number.</S>
+    <S sid="215" ssid="11">We measure partial-credit accuracy by mapping logical forms to attribute-value pairs (for example, the expression from(x, LA) will be mapped to from = LA) and report precision and recall on attribute sets.</S>
+    <S sid="216" ssid="12">This more lenient measure does not test the overall structure of the logical expression, only its components.</S>
+    <S sid="217" ssid="13">Systems We compare performance with the following systems: Full Supervision: We measured how a fully supervised approach would perform on our data by handlabeling the training data and using a 0-1 loss function that tests if the output logical form matches the labeled one.</S>
+    <S sid="218" ssid="14">For lexicon generation, the labels were used instead of the conversation.</S>
+    <S sid="219" ssid="15">No Conversation Baseline: We also report results for a no conversation baseline.</S>
+    <S sid="220" ssid="16">This baseline system is constructed by making two modifications to the full approach.</S>
+    <S sid="221" ssid="17">We remove the conversation loss function and apply the GENLEX templates to every possible logical constant, instead of only those in the conversation.</S>
+    <S sid="222" ssid="18">This baseline allows us to measure the importance of having access to the conversations by completely ignoring the context for each sentence.</S>
+    <S sid="223" ssid="19">Ablations: In addition to the baseline above, we also do ablation tests by turning off various individual components of the complete algorithm.</S>
+  </SECTION>
+  <SECTION title="10 Results" number="10">
+    <S sid="224" ssid="1">Table 2 shows exact match results for the development sets, including different system configurations.</S>
+    <S sid="225" ssid="2">We report mean results across four folds.</S>
+    <S sid="226" ssid="3">To verify their contributions, we include results where we ablate the conversational loss and domain loss functions.</S>
+    <S sid="227" ssid="4">Both are essential.</S>
+    <S sid="228" ssid="5">The test results are listed in Table 3.</S>
+    <S sid="229" ssid="6">The full method significantly outperforms the baseline, indicating that we are making effective use of the conversational feedback, although we do not yet match the fully supervised result.</S>
+    <S sid="230" ssid="7">The poor baseline performance is not surprising, given the difficulty of the task and lack of guidance when the conversations are removed.</S>
+    <S sid="231" ssid="8">The partial-credit numbers also demonstrate an empirical trend that we observed; in many cases where we do not produce the correct logical form, the output is often close to correct, with only one or two missed flight constraints.</S>
+    <S sid="232" ssid="9">The difference between the two systems is evident.</S>
+    <S sid="233" ssid="10">The BBN system presents a simpler approach to the dialog problem by creating a more constrained conversation.</S>
+    <S sid="234" ssid="11">This is done by handling one flight at a time, in the case of flight planing, and posing simple and close ended questions to the user.</S>
+    <S sid="235" ssid="12">Such an approach encourages the user to make simpler requests, with relatively few constraints in each request.</S>
+    <S sid="236" ssid="13">In contrast, the Lucent system presents a less-constrained approach: interactions start with an open ended prompt and the conversations flow in a more natural, less constrained fashion.</S>
+    <S sid="237" ssid="14">BBN&#8217;s simplified approach makes it easier for learning, giving us superior performance when compared to the Lucent system, despite the smaller training set.</S>
+    <S sid="238" ssid="15">This is true for both our approach and supervised learning.</S>
+    <S sid="239" ssid="16">We compared the logical forms recovered by the best conversational model to the labeled ones in the training set.</S>
+    <S sid="240" ssid="17">Many of the errors came from cases where the dialog system never fully recovered from confusions in the conversation.</S>
+    <S sid="241" ssid="18">For example, the Lucent system almost never understood user utterances that specified flight arrival times.</S>
+    <S sid="242" ssid="19">Since it was unable to consistently recover and introduce this constraint, the user would often just recalculate and specify a departure time that would achieve the original goal.</S>
+    <S sid="243" ssid="20">This type of failure provides no signal for our learning algorithm, whereas the fully supervised algorithm would use labeled logical forms to resolve the confusion.</S>
+    <S sid="244" ssid="21">Interestingly, the test set had more sentences that suffered such failures than the development set, which contributed to the performance gap.</S>
+  </SECTION>
+  <SECTION title="11 Discussion" number="11">
+    <S sid="245" ssid="1">We presented a loss-driven learning approach that induces the lexicon and parameters of a CCG parser for mapping sentences to logical forms.</S>
+    <S sid="246" ssid="2">The loss was defined over the conversational context, without requiring annotation of user utterances meaning.</S>
+    <S sid="247" ssid="3">The overall approach assumes that, in aggregate, the conversations contain sufficient signal (remediations such as clarification, etc.) to learn effectively.</S>
+    <S sid="248" ssid="4">In this paper, we satisfied this requirement by using logs from automated systems that deployed reasonably effective recovery strategies.</S>
+    <S sid="249" ssid="5">An important area for future work is to consider how this learning can be best integrated into a complete dialog system.</S>
+    <S sid="250" ssid="6">This would include designing remediation strategies that allow for the most effective learning and considering how similar techniques could be used simultaneously for other dialog subproblems.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="12">
+    <S sid="251" ssid="1">The research was supported by funding from the DARPA Computer Science Study Group.</S>
+    <S sid="252" ssid="2">Thanks to Dan Weld, Raphael Hoffmann, Jonathan Berant, Hoifung Poon and Mark Yatskar for their suggestions and comments.</S>
+    <S sid="253" ssid="3">We also thank Shachar Mirkin for providing access to the BIU Normalizer.</S>
+  </SECTION>
+</PAPER>

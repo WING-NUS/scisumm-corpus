@@ -1,0 +1,192 @@
+<PAPER>
+  <S sid="0">Multilevel Coarse-To-Fine PCFG Parsing</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present a PCFG parsing algorithm that uses a multilevel coarse-to-fine (mlctf) scheme to improve the efficiency of search for the best parse.</S>
+    <S sid="2" ssid="2">Our approach requires the user to specify a sequence of nested partitions or equivalence classes of the PCFG nonterminals.</S>
+    <S sid="3" ssid="3">We define a sequence of PCFGs corresponding to each partition, where the nonterminals of each PCFG are clusters of nonterminals of the original source PCFG.</S>
+    <S sid="4" ssid="4">We use the results of parsing at a coarser level (i.e., grammar defined in terms of a coarser partition) to prune the next finer level.</S>
+    <S sid="5" ssid="5">We present experiments showing that with our algorithm the work load (as measured by the total number of constituents processed) is decreased by a factor of ten with no decrease in parsing accuracy compared to standard CKY parsing with the original PCFG.</S>
+    <S sid="6" ssid="6">We suggest that the search space over mlctf algorithms is almost totally unexplored so that future work should be able to improve significantly on these results.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="7" ssid="1">Reasonably accurate constituent-based parsing is fairly quick these days, if fairly quick means about a second per sentence.</S>
+    <S sid="8" ssid="2">Unfortunately, this is still too slow for many applications.</S>
+    <S sid="9" ssid="3">In some cases researchers need large quantities of parsed data and do not have the hundreds of machines necessary to parse gigaword corpora in a week or two.</S>
+    <S sid="10" ssid="4">More pressingly, in real-time applications such as speech recognition, a parser would be only a part of a much larger system, and the system builders are not keen on giving the parser one of the ten seconds available to process, say, a thirty-word sentence.</S>
+    <S sid="11" ssid="5">Even worse, some applications require the parsing of multiple candidate strings per sentence (Johnson and Charniak, 2004) or parsing from a lattice (Hall and Johnson, 2004), and in these applications parsing efficiency is even more important.</S>
+    <S sid="12" ssid="6">We present here a multilevel coarse-to-fine (mlctf) PCFG parsing algorithm that reduces the complexity of the search involved in finding the best parse.</S>
+    <S sid="13" ssid="7">It defines a sequence of increasingly more complex PCFGs, and uses the parse forest produced by one PCFG to prune the search of the next more complex PCFG.</S>
+    <S sid="14" ssid="8">We currently use four levels of grammars in our mlctf algorithm.</S>
+    <S sid="15" ssid="9">The simplest PCFG, which we call the level-0 grammar, contains only one nontrivial nonterminal and is so simple that minimal time is needed to parse a sentence using it.</S>
+    <S sid="16" ssid="10">Nonetheless, we demonstrate that it identifies the locations of correct constituents of the parse tree (the &#8220;gold constituents&#8221;) with high recall.</S>
+    <S sid="17" ssid="11">Our level-1 grammar distinguishes only argument from modifier phrases (i.e., it has two nontrivial nonterminals), while our level-2 grammar distinguishes the four major phrasal categories (verbal, nominal, adjectival and prepositional phrases), and level 3 distinguishes all of the standard categories of the Penn treebank. first appearance of this idea we are aware of is in Maxwell and Kaplan (1993), where a covering CFG is automatically extracted from a more detailed unification grammar and used to identify the possible locations of constituents in the more detailed parses of the sentence.</S>
+    <S sid="18" ssid="12">Maxwell and Kaplan use their covering CFG to prune the search of their unification grammar parser in essentially the same manner as we do here, and demonstrate significant performance improvements by using their coarse-to-fine approach.</S>
+    <S sid="19" ssid="13">The basic theory of coarse-to-fine approximations and dynamic programming in a stochastic framework is laid out in Geman and Kochanek (2001).</S>
+    <S sid="20" ssid="14">This paper describes the multilevel dynamic programming algorithm needed for coarse-to-fine analysis (which they apply to decoding rather than parsing), and show how to perform exact coarse-to-fine computation, rather than the heuristic search we perform here.</S>
+    <S sid="21" ssid="15">A paper closely related to ours is Goodman (1997).</S>
+    <S sid="22" ssid="16">In our terminology, Goodman&#8217;s parser is a two-stage ctf parser.</S>
+    <S sid="23" ssid="17">The second stage is a standard tree-bank parser while the first stage is a regular-expression approximation of the grammar.</S>
+    <S sid="24" ssid="18">Again, the second stage is constrained by the parses found in the first stage.</S>
+    <S sid="25" ssid="19">Neither stage is smoothed.</S>
+    <S sid="26" ssid="20">The parser of Charniak (2000) is also a two-stage ctf model, where the first stage is a smoothed Markov grammar (it uses up to three previous constituents as context), and the second stage is a lexicalized Markov grammar with extra annotations about parents and grandparents.</S>
+    <S sid="27" ssid="21">The second stage explores all of the constituents not pruned out after the first stage.</S>
+    <S sid="28" ssid="22">Related approaches are used in Hall (2004) and Charniak and Johnson (2005).</S>
+    <S sid="29" ssid="23">A quite different approach to parsing efficiency is taken in Caraballo and Charniak (1998) (and refined in Charniak et al. (1998)).</S>
+    <S sid="30" ssid="24">Here efficiency is gained by using a standard chartparsing algorithm and pulling constituents off the agenda according to (an estimate of) their probability given the sentence.</S>
+    <S sid="31" ssid="25">This probability is computed by estimating Equation 1: The nonterminal categories in these grammars can be regarded as clusters or equivalence classes of the original Penn treebank nonterminal categories.</S>
+    <S sid="32" ssid="26">(In fact, we obtain these grammars by relabeling the node labels in the treebank and extracting a PCFG from this relabelled treebank in the standard fashion, but we discuss other approaches below.)</S>
+    <S sid="33" ssid="27">We require that the partition of the nonterminals defined by the equivalence classes at level l + 1 be a refinement of the partition defined at level l. This means that each nonterminal category at level l+1 is mapped to a unique nonterminal category at level l (although in general the mapping is many to one, i.e., each nonterminal category at level l corresponds to several nonterminal categories at level l + 1).</S>
+    <S sid="34" ssid="28">We use the correspondence between categories at different levels to prune possible constituents.</S>
+    <S sid="35" ssid="29">A constituent is considered at level l + 1 only if the corresponding constituent at level l has a probability exceeding some threshold..</S>
+    <S sid="36" ssid="30">Thus parsing a sentence proceeds as follows.</S>
+    <S sid="37" ssid="31">We first parse the sentence with the level-0 grammar to produce a parse forest using the CKY parsing algorithm.</S>
+    <S sid="38" ssid="32">Then for each level l + 1 we reparse the sentence with the level l + 1 grammar using the level l parse forest to prune as described above.</S>
+    <S sid="39" ssid="33">As we demonstrate, this leads to considerable efficiency improvements.</S>
+    <S sid="40" ssid="34">The paper proceeds as follows.</S>
+    <S sid="41" ssid="35">We next discuss previous work (Section 2).</S>
+    <S sid="42" ssid="36">Section 3 outlines the algorithm in more detail.</S>
+    <S sid="43" ssid="37">Section 4 presents some experiments showing that the work load (as measured by the total number of constituents processed) is decreased by a factor of ten over standard CKY parsing at the final level.</S>
+    <S sid="44" ssid="38">We also discuss some fine points of the results therein.</S>
+    <S sid="45" ssid="39">Finally in section 5 we suggest that because the search space of mlctf algorithms is, at this point, almost totally unexplored, future work should be able to improve significantly on these results.</S>
+  </SECTION>
+  <SECTION title="2 Previous Research" number="2">
+    <S sid="46" ssid="1">Coarse-to-fine search is an idea that has appeared several times in the literature of computational linguistics and related areas.</S>
+    <S sid="47" ssid="2">The It must be estimated because during the bottom-up chart-parsing algorithm, the true outside probability cannot be computed.</S>
+    <S sid="48" ssid="3">The results cited in Caraballo and Charniak (1998) cannot be compared directly to ours, but are roughly in the same equivalence class.</S>
+    <S sid="49" ssid="4">Those presented in Charniak et al. (1998) are superior, but in Section 5 below we suggest that a combination of the techniques could yield better results still.</S>
+    <S sid="50" ssid="5">Klein and Manning (2003a) describe efficient A* for the most likely parse, where pruning is accomplished by using Equation 1 and a true upper bound on the outside probability.</S>
+    <S sid="51" ssid="6">While their maximum is a looser estimate of the outside probability, it is an admissible heuristic and together with an A* search is guaranteed to find the best parse first.</S>
+    <S sid="52" ssid="7">One question is if the guarantee is worth the extra search required by the looser estimate of the true outside probability.</S>
+    <S sid="53" ssid="8">Tsuruoka and Tsujii (2004) explore the framework developed in Klein and Manning (2003a), and seek ways to minimize the time required by the heap manipulations necessary in this scheme.</S>
+    <S sid="54" ssid="9">They describe an iterative deepening algorithm that does not require a heap.</S>
+    <S sid="55" ssid="10">They also speed computation by precomputing more accurate upper bounds on the outside probabilities of various kinds of constituents.</S>
+    <S sid="56" ssid="11">They are able to reduce by half the number of constituents required to find the best parse (compared to CKY).</S>
+    <S sid="57" ssid="12">Most recently, McDonald et al. (2005) have implemented a dependency parser with good accuracy (it is almost as good at dependency parsing as Charniak (2000)) and very impressive speed (it is about ten times faster than Collins (1997) and four times faster than Charniak (2000)).</S>
+    <S sid="58" ssid="13">It achieves its speed in part because it uses the Eisner and Satta (1999) algorithm for n3 bilexical parsing, but also because dependency parsing has a much lower grammar constant than does standard PCFG parsing &#8212; after all, there are no phrasal constituents to consider.</S>
+    <S sid="59" ssid="14">The current paper can be thought of as a way to take the sting out of the grammar constant for PCFGs by parsing first with very few phrasal constituents and adding them only Level: 0 1 2 3 after most constituents have been pruned away.</S>
+  </SECTION>
+  <SECTION title="3 Multilevel Course-to-fine Parsing" number="3">
+    <S sid="60" ssid="1">We use as the underlying parsing algorithm a reasonably standard CKY parser, modified to allow unary branching rules.</S>
+    <S sid="61" ssid="2">The complete nonterminal clustering is given in Figure 1.</S>
+    <S sid="62" ssid="3">We do not cluster preterminals.</S>
+    <S sid="63" ssid="4">These remain fixed at all levels to the standard Penn-tree-bank set Marcus et al. (1993).</S>
+    <S sid="64" ssid="5">Level-0 makes two distinctions, the root node and everybody else.</S>
+    <S sid="65" ssid="6">At level 1 we make one further distinction, between phrases that tend to be heads of constituents (NPs, VPs, and Ss) and those that tend to be modifiers (ADJPs, PPs, etc.).</S>
+    <S sid="66" ssid="7">Level-2 has a total of five categories: root, things that are typically headed by nouns, those headed by verbs, things headed by prepositions, and things headed by classical modifiers (adjectives, adverbs, etc.).</S>
+    <S sid="67" ssid="8">Finally, level 3 is the classical tree-bank set.</S>
+    <S sid="68" ssid="9">As an example, Figure 2 shows the parse for the sentence &#8220;He ate at the mall.&#8221; at levels 0 to 3.</S>
+    <S sid="69" ssid="10">During training we create four grammars, one for each level of granularity.</S>
+    <S sid="70" ssid="11">So, for example, at level 1 the tree-bank rule S &#8594;NP VP . would be translated into the rule HP &#8594;HP HP .</S>
+    <S sid="71" ssid="12">That is, each constituent type found in &#8220;S &#8594;NP VP .&#8221; is mapped into its generalization at level 1.</S>
+    <S sid="72" ssid="13">The probabilities of all rules are computed using maximum likelihood for constituents at that level.</S>
+    <S sid="73" ssid="14">The grammar used by the parser can best be described as being influenced by four components: The first of these has already been covered.</S>
+    <S sid="74" ssid="15">We discuss the other three in turn.</S>
+    <S sid="75" ssid="16">In anticipation of eventually lexicalizing the grammar we binarize from the head out.</S>
+    <S sid="76" ssid="17">For example, consider the rule A &#8594;a b c d e where c is the head constituent.</S>
+    <S sid="77" ssid="18">We binarize this as follows: Grammars induced in this way tend to be too specific, as the binarization introduce a very large number of very specialized phrasal categories (the Ai).</S>
+    <S sid="78" ssid="19">Following common practice Johnson (1998; Klein and Manning (2003b) we Markovize by replacing these nonterminals with ones that remember less of the immediate rule context.</S>
+    <S sid="79" ssid="20">In our version we keep track of only the parent, the head constituent and the constituent immediately to the right or left, depending on which side of the constituent we are processing.</S>
+    <S sid="80" ssid="21">With this scheme the above rules now look like this: A &#8594;Ad,c e Ad,c &#8594;Aa,c d Aa,c &#8594;a Ab,c Ab,c &#8594;b c So, for example, the rule &#8220;A &#8594;Ad,c e&#8221; would have a high probability if constituents of type A, with c as their head, often have d followed by e at their end.</S>
+    <S sid="81" ssid="22">Lastly, we add parent annotation to phrasal categories to improve parsing accuracy.</S>
+    <S sid="82" ssid="23">If we assume that in this case we are expanding a rule for an A used as a child of Q, and a, b, c, d, and e are all phrasal categories, then the above rules become: Once we have parsed at a level, we evaluate the probability of a constituent p(nki,j  |s) according to the standard inside-outside formula of Equation 1.</S>
+    <S sid="83" ssid="24">In this equation nki,j is a constituent of type k spanning the words i to j, and &#945;(&#183;) and &#946;(&#183;) are the outside and inside probabilities of the constituent, respectively.</S>
+    <S sid="84" ssid="25">Because we prune at the end each granularity level, we can evaluate the equation exactly; no approximations are needed (as in, e.g., Charniak et al. (1998)).</S>
+    <S sid="85" ssid="26">During parsing, instead of building each constituent allowed by the grammar, we first test if the probability of the corresponding coarser constituent (which we have from Equation 1 in the previous round of parsing) is greater than a threshold.</S>
+    <S sid="86" ssid="27">(The threshold is set empirically based upon the development data.)</S>
+    <S sid="87" ssid="28">If it is below the threshold, we do not put the constituent in the chart.</S>
+    <S sid="88" ssid="29">For example, before we can use a NP and a VP to create a S (using the rule above), we would first need to check that the probability in the coarser grammar of using the same span HP and HP to create a HP is above the threshold.</S>
+    <S sid="89" ssid="30">We use the standard inside-outside formula to calculate this probability (Equation 1).</S>
+    <S sid="90" ssid="31">The empirical results below justify our conjecture that there are thresholds that allow significant pruning while leaving the gold constituents untouched.</S>
+  </SECTION>
+  <SECTION title="4 Results" number="4">
+    <S sid="91" ssid="1">In all experiments the system is trained on the Penn tree-bank sections 2-21.</S>
+    <S sid="92" ssid="2">Section 23 is used for testing and section 24 for development.</S>
+    <S sid="93" ssid="3">The input to the parser are the gold-standard parts of speech, not the words.</S>
+    <S sid="94" ssid="4">The point of parsing at multiple levels of granularity is to prune the results of rough levels before going on to finer levels.</S>
+    <S sid="95" ssid="5">In particular, it is necessary for any pruning scheme to retain the true (gold-standard WSJ) constituents in the face of the pruning.</S>
+    <S sid="96" ssid="6">To gain an idea of what is possible, consider Figure 3.</S>
+    <S sid="97" ssid="7">According to the graph, at the zeroth level of parsing and a the pruning level 10&#8722;4 the probability that a gold constituent is deleted due to pruning is slightly more than 0.001 (or 0.1%).</S>
+    <S sid="98" ssid="8">At level three it is slightly more that 0.01 (or 1.0%).</S>
+    <S sid="99" ssid="9">The companion figure, Figure 4 shows the retention rate of the non-gold (incorrect) constituents.</S>
+    <S sid="100" ssid="10">Again, at pruning level 10&#8722;4 and parsing level 0 we retain about .3 (30%) of the bad constituents (so we pruned 70%), whereas at level 3 we retain about .004 (0.4%).</S>
+    <S sid="101" ssid="11">Note that in the current paper we do not actually prune at level 3, instead return the Viterbi parse.</S>
+    <S sid="102" ssid="12">We include pruning results here in anticipation of future work in which level 3 would be a precursor to still more fine-grained parsing.</S>
+    <S sid="103" ssid="13">As noted in Section 2, there is some (implicit) debate in the literature on using estimates of the outside probability in Equation 1, or instead computing the exact upper bound.</S>
+    <S sid="104" ssid="14">The idea is that an exact upper bound gives one an admissible search heuristic but at a cost, since it is a less accurate estimator of the true outside probability.</S>
+    <S sid="105" ssid="15">(Note that even the upper bound does not, in general, keep all of the gold constituents, since a non-perfect model will assign some of them low probability.)</S>
+    <S sid="106" ssid="16">As is clear from Figure 3, the estimate works very well indeed.</S>
+    <S sid="107" ssid="17">On the basis of this graph, we set the lowest allowable constituent probability at &gt; 5 &#183; 10&#8722;4, &gt; 10&#8722;5, and &gt; 10&#8722;4 for levels 0,1, and 2, respectively.</S>
+    <S sid="108" ssid="18">No pruning is done at level 3, since there is no level 4.</S>
+    <S sid="109" ssid="19">After setting the pruning parameters on the development set we proceed to parse the test set (WSJ section 23).</S>
+    <S sid="110" ssid="20">Figure 5 shows the resulting pruning statistics.</S>
+    <S sid="111" ssid="21">The total number of constituents created at level 0, for all sentences combined, is 8.82 &#183; 106.</S>
+    <S sid="112" ssid="22">Of those 7.55 &#183; 106 (or 86.5%) are pruned before going on to level 1.</S>
+    <S sid="113" ssid="23">At level 1, the 1.3 million left over from level 0 expanded to a total of 9.18 &#183; 106.</S>
+    <S sid="114" ssid="24">70.8% of these in turn are pruned, and so forth.</S>
+    <S sid="115" ssid="25">The percent pruned at, e.g., level 1 in Figure 3 is much higher than that shown here because it considers all of the possible level-1 constituents, not just those left unpruned after level 0.</S>
+    <S sid="116" ssid="26">There is no pruning at level 3.</S>
+    <S sid="117" ssid="27">There we simply return the Viterbi parse.</S>
+    <S sid="118" ssid="28">We also show that with pruning we generate a total of 40.4 &#183; 106 constituents.</S>
+    <S sid="119" ssid="29">For comparison exhaustively parsing using the tree-bank grammar yields a total of 392&#183;106 constituents.</S>
+    <S sid="120" ssid="30">This is the factor-of-10 Level Time for Level Running Total There are two points of interest.</S>
+    <S sid="121" ssid="31">The first is that each level of pruning is worthwhile.</S>
+    <S sid="122" ssid="32">We do not get most of the effect from one or the other level.</S>
+    <S sid="123" ssid="33">The second point is that we get significant pruning at level 0.</S>
+    <S sid="124" ssid="34">The reader may remember that level 0 distinguishes only between the root node and the rest.</S>
+    <S sid="125" ssid="35">We initially expected that it would be too coarse to distinguish good from bad constituents at this level, but it proved as useful as the other levels.</S>
+    <S sid="126" ssid="36">The explanation is that this level does use the full treebank preterminal tags, and in many cases these alone are sufficient to make certain constituents very unlikely.</S>
+    <S sid="127" ssid="37">For example, what is the probability of any constituent of length two or greater ending in a preposition?</S>
+    <S sid="128" ssid="38">The answer is: very low.</S>
+    <S sid="129" ssid="39">Similarly for constituents of length two or greater ending in modal verbs, and determiners.</S>
+    <S sid="130" ssid="40">Not quite so improbable, but nevertheless less likely than most, would be constituents ending in verbs, or ending just short of the end of the sentence.</S>
+    <S sid="131" ssid="41">Figure 6 shows how much time is spent at each level of the algorithm, along with a running total of the time spent to that point.</S>
+    <S sid="132" ssid="42">(This is for all sentences in the test set, length G 100.)</S>
+    <S sid="133" ssid="43">The number for the unpruned parser is again about ten times that for the pruned version, but the number for the standard CKY version is probably too high.</S>
+    <S sid="134" ssid="44">Because our CKY implementation is quite slow, we ran the unpruned version on many machines and summed the results.</S>
+    <S sid="135" ssid="45">In all likelihood at least some of these machines were overloaded, a fact that our local job distributer would not notice.</S>
+    <S sid="136" ssid="46">We suspect that the real number is significantly lower, though still much higher than the pruned version.</S>
+    <S sid="137" ssid="47">Finally Figure 7 shows that our pruning is accomplished without loss of accuracy.</S>
+    <S sid="138" ssid="48">The results with pruning include four sentences that did not receive any parses at all.</S>
+    <S sid="139" ssid="49">These sentences received zeros for both precision and recall and presumably lowered the results somewhat.</S>
+    <S sid="140" ssid="50">We allowed ourselves to look at the first of these, which turned out to contain the phrase: (NP ... (INTJ (UH oh) (UH yes)) ...) The training data does not include interjections consisting of two &#8220;UH&#8221;s, and thus a gold parse cannot be constructed.</S>
+    <S sid="141" ssid="51">Note that a different binarization scheme (e.g. the one used in Klein and Manning (2003b) would have smoothed over this problem.</S>
+    <S sid="142" ssid="52">In our case the unpruned version is able to patch together a lot of very unlikely constituents to produce a parse, but not a very good one.</S>
+    <S sid="143" ssid="53">Thus we attribute the problem not to pruning, but to binarization.</S>
+    <S sid="144" ssid="54">We also show the results for the most similar Klein and Manning (2003b) experiment.</S>
+    <S sid="145" ssid="55">Our results are slightly better.</S>
+    <S sid="146" ssid="56">We attribute the difference to the fact that we have the gold tags and they do not, but their binarization scheme does not run into the problems that we encountered.</S>
+  </SECTION>
+  <SECTION title="5 Conclusion and Future Research" number="5">
+    <S sid="147" ssid="1">We have presented a novel parsing algorithm based upon the coarse-to-fine processing model.</S>
+    <S sid="148" ssid="2">Several aspects of the method recommend it.</S>
+    <S sid="149" ssid="3">First, unlike methods that depend on best-first search, the method is &#8220;holistic&#8221; in its evaluation of constituents.</S>
+    <S sid="150" ssid="4">For example, consider the impact of parent labeling.</S>
+    <S sid="151" ssid="5">It has been repeatedly shown to improve parsing accuracy (Johnson, 1998; Charniak, 2000; Klein and Manning, 2003b), but it is difficult if not impossible to integrate with best-first search in bottom-up chart-parsing (as in Charniak et al. (1998)).</S>
+    <S sid="152" ssid="6">The reason is that when working bottom up it is difficult to determine if, say, ssbar is any more or less likely than ss, as the evidence, working bottom up, is negligible.</S>
+    <S sid="153" ssid="7">Since our method computes the exact outside probability of constituents (albeit at a coarser level) all of the top down information is available to the system.</S>
+    <S sid="154" ssid="8">Or again, another very useful feature in English parsing is the knowledge that a constituent ends at the right boundary (minus punctuation) of a string.</S>
+    <S sid="155" ssid="9">This can be included only in an ad-hoc way when working bottom up, but could be easily added here.</S>
+    <S sid="156" ssid="10">Many aspects of the current implementation that are far from optimal.</S>
+    <S sid="157" ssid="11">It seems clear to us that extracting the maximum benefit from our pruning would involve taking the unpruned constituents and specifying them in all possible ways allowed by the next level of granularity.</S>
+    <S sid="158" ssid="12">What we actually did is to propose all possible constituents at the next level, and immediately rule out those lacking a corresponding constituent remaining at the previous level.</S>
+    <S sid="159" ssid="13">This was dictated by ease of implementation.</S>
+    <S sid="160" ssid="14">Before using mlctf parsing in a production parser, the other method should be evaluated to see if our intuitions of greater efficiency are correct.</S>
+    <S sid="161" ssid="15">It is also possible to combine mlctf parsing with queue reordering methods.</S>
+    <S sid="162" ssid="16">The best-first search method of Charniak et al. (1998) estimates Equation 1.</S>
+    <S sid="163" ssid="17">Working bottom up, estimating the inside probability is easy (we just sum the probability of all the trees found to build this constituent).</S>
+    <S sid="164" ssid="18">All the cleverness goes into estimating the outside probability.</S>
+    <S sid="165" ssid="19">Quite clearly the current method could be used to provide a more accurate estimate of the outside probability, namely the outside probability at the coarser level of granularity.</S>
+    <S sid="166" ssid="20">There is one more future-research topic to add before we stop, possibly the most interesting of all.</S>
+    <S sid="167" ssid="21">The particular tree of coarser to finer constituents that governs our mlctf algorithm (Figure 1) was created by hand after about 15 minutes of reflection and survives, except for typos, with only two modifications.</S>
+    <S sid="168" ssid="22">There is no reason to think it is anywhere close to optimal.</S>
+    <S sid="169" ssid="23">It should be possible to define &#8220;optimal&#8221; formally and search for the best mlctf constituent tree.</S>
+    <S sid="170" ssid="24">This would be a clustering problem, and, fortunately, one thing statistical NLP researchers know how to do is cluster.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="6">
+    <S sid="171" ssid="1">This paper is the class project for Computer Science 241 at Brown University in fall 2005.</S>
+    <S sid="172" ssid="2">The faculty involved were supported in part by DARPA GALE contract HR0011-06-2-0001.</S>
+    <S sid="173" ssid="3">The graduate students were mostly supported by Brown University fellowships.</S>
+    <S sid="174" ssid="4">The undergraduates were mostly supported by their parents.</S>
+    <S sid="175" ssid="5">Our thanks to all.</S>
+  </SECTION>
+</PAPER>
