@@ -5,6 +5,10 @@
 This package contains a release of training and test topics to aid in 
 the development of computational linguistics summarization systems.
 
+Final system reports of the recently concluded edition of Shared Task, 
+CL-SciSumm '18 @ SIGIR '18 can be found in BIRNDL 
+Proceedings: http://ceur-ws.org/Vol-2132/ under the header 'Sytem Papers'
+
 The CL-SciSumm Shared Task is run off the CL-SciSumm corpus, and comprises 
 three sub-tasks in automatic research paper summarization on a new corpus 
 of research papers. A training corpus of forty topics has been released. A 
@@ -24,7 +28,6 @@ To know how this corpus was constructed, please see ./docs/corpusconstruction.tx
 Results of the CL-SciSumm-18 will be released in the BIRNDL workshop collocated 
 with <a href="http://sigir.org/sigir2018/">ACM SIGIR</a> 2018, Ann Arbor, MI, USA. 
 <a href="http://wing.comp.nus.edu.sg/~cl-scisumm2018">Go to task website</a>.<br> 
-Register your team now via <a href ="https://easychair.org/conferences/?conf=birndl2018">easychair</a>
 
 If you use the data and publish please let us know and cite our CL-SciSumm 2016 task overview paper:<br>
 @inproceedings{jaidka2016overview,<br>
@@ -40,7 +43,7 @@ March 18, 2018
 
 Please read further for details on the Computational Linguistics Shared Task run as part of BIRNDL 2018 workshop collocated with SIGIR 2018 - official website hosted at: http://wing.comp.nus.edu.sg/~cl-scisumm2018
 
-To participate in the 2018 shared task, please register your team details at: <a href="https://easychair.org/conferences/?conf=birndl2018">https://easychair.org/conferences/?conf=birndl2018</a> <br>
+Final system reports of the Shared Task can be found in BIRNDL Proceedings: http://ceur-ws.org/Vol-2132/ under the header 'Sytem Papers'
 
 ### Overview
 
