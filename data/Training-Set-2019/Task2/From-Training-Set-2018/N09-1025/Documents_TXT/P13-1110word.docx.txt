@@ -1,0 +1,2197 @@
+﻿Online Relative Margin Maximization for Statistical Machine Translation
+
+
+
+Vladimir Eidelman 
+Computer Science 
+and UMIACS
+University of Maryland 
+College Park, MD 
+vlad@umiacs.umd.edu
+
+
+Yuval Marton
+Microsoft
+City Center Plaza Bellevue, WA 
+yuvalmarton@gmail.com
+
+
+Philip Resnik 
+Linguistics and 
+UMIACS
+University of Maryland 
+College Park, MD 
+resnik@umd.edu
+
+
+
+
+
+
+Abstract
+
+Recent advances in large-margin learning 
+have shown that better generalization  can 
+be achieved by incorporating higher order 
+information into the optimization,  such as 
+the spread of the data. However,  these so- 
+lutions are impractical  in complex struc- 
+tured prediction  problems such as statis- 
+tical machine translation. We present an 
+online gradient-based algorithm  for rela- 
+tive margin maximization, which bounds 
+the spread of the projected data while max- 
+imizing the margin. We evaluate our op- 
+timizer on Chinese-English and Arabic- 
+English translation tasks, each with small 
+and large feature sets, and show that our 
+learner is able to achieve significant  im- 
+provements  of 1.2-2 BLEU  and 1.7-4.3
+TER on average over state-of-the-art opti- 
+mizers with the large feature set.
+
+
+1   Introduction
+
+The desire to incorporate high-dimensional  sparse 
+feature representations  into statistical machine 
+translation (SMT) models  has driven recent re- 
+search away from Minimum Error Rate Training 
+(MERT) (Och, 2003), and toward other discrim- 
+inative methods that can optimize  more features. 
+Examples include minimum risk (Smith and Eis- 
+ner, 2006), pairwise ranking (PRO) (Hopkins and 
+May, 2011), RAMPION (Gimpel and Smith, 2012), 
+and variations of the margin-infused relaxation al- 
+gorithm (MIRA) (Watanabe et al., 2007; Chiang et 
+al., 2008; Cherry and Foster, 2012). While the ob- 
+jective function and optimization method vary for 
+each optimizer,  they can all be broadly described 
+as learning a linear model, or parameter vector w, 
+which is used to score alternative translation hy- 
+potheses.
+  In every SMT system,  and in machine learn- 
+ing in general, the goal of learning is to find a
+
+
+model that generalizes well, i.e. one that will yield 
+good translations for previously  unseen sentences. 
+However, as the dimension  of the feature space in- 
+creases, generalization  becomes increasingly  diffi- 
+cult. Since only a small portion of all (sparse) fea- 
+tures may be observed in a relatively  small fixed 
+set of instances during tuning, we are prone  to 
+overfit the training data. An alternative approach 
+for solving this problem is estimating discrimina- 
+tive  feature weights  directly on the training bi- 
+text (Tillmann and Zhang, 2006; Blunsom et al.,
+2008; Simianer et al., 2012), which is usually sub- 
+stantially  larger than the tuning set, but this is com- 
+plementary to our goal here of better generaliza- 
+tion given a fixed size tuning set.
+  In order to achieve that goal, we need to care- 
+fully choose what objective to optimize, and how 
+to perform parameter estimation of w for this ob- 
+jective.  We focus on large-margin  methods such 
+as SVM (Joachims, 1998) and passive-aggressive 
+algorithms  such as MIRA. Intuitively these seek 
+a w such that the separating distance in geomet- 
+ric space of two hypotheses is at least as large  as 
+the cost incurred by selecting the incorrect  one. 
+This criterion performs well in practice at find- 
+ing a linear separator in high-dimensional feature 
+spaces (Tsochantaridis  et al., 2004; Crammer et 
+al., 2006).
+  Now, recent advances in machine learning have 
+shown that the generalization  ability  of  these 
+learners can be improved by utilizing second or- 
+der information,  as in the Second Order Percep- 
+tron (Cesa-Bianchi et al., 2005), Gaussian Margin 
+Machines (Crammer et al., 2009b),  confidence- 
+weighted learning (Dredze and Crammer, 2008), 
+AROW (Crammer et al., 2009a; Chiang,  2012) 
+and Relative  Margin Machines  (RMM)  (Shiv- 
+aswamy  and Jebara, 2009b). The latter, RMM, 
+was introduced as an effective and less computa- 
+tionally expensive way to incorporate the spread 
+of the data – second order information  about the
+
+
+
+
+1116
+
+Proceedings of the 51st Annual Meeting of the Association for Computational Linguistics, pages 1116–1126, 
+Sofia, Bulgaria, August 4-9 2013. Qc 2013 Association for Computational Linguistics
+
+
+distance between hypotheses when projected onto 
+the line defined by the weight vector w.
+  Unfortunately, not all  advances  in  machine 
+learning  are easy to apply to structured prediction 
+problems such as SMT;  the latter often involve la- 
+tent variables  and surrogate references, resulting 
+in loss functions that have not been well explored 
+in machine learning (Mcallester and Keshet, 2011; 
+Gimpel and Smith, 2012). Although Shivaswamy 
+and Jebara  extended  RMM  to handle sequen- 
+tial structured prediction (Shivaswamy and Jebara,
+
+
+
+even where previously MERT was shown to be ad- 
+vantageous (§5).   Finally, we discuss the spread 
+and other key  issues of RM (§6),  and conclude 
+with discussion of future work (§7).
+
+2   Learning in SMT
+
+Given an input sentence in the source language
+x ∈ X , we want to produce a translation y ∈ Y(x)
+using  a linear model parameterized by a weight
+vector w:
+
+
+2009a),  their batch approach to quadratic opti- 
+mization, using existing off-the-shelf QP solvers,
+does not provide a practical solution:  as Taskar et
+
+
+(y∗, d∗) =	arg max
+(y,d)∈Y(x),D(x)
+
+
+w  f (x, y, d)
+
+
+al. (2006) observe, “off-the-shelf  QP solvers tend 
+to scale poorly with problem and training sam- 
+ple size” for structured prediction problems.. This 
+motivates  an online gradient-based optimization 
+approach—an approach that is particularly attrac- 
+tive because its simple update is well suited for ef- 
+ficiently processing structured objects with sparse 
+features (Crammer et al., 2012).
+  The contributions of this paper include (1) in- 
+troduction of a loss function  for structured RMM 
+in the SMT setting, with surrogate reference trans- 
+lations and latent variables; (2) an online gradient- 
+based solver,  RM, with a closed-form  parameter 
+update to optimize the relative margin loss; and 
+(3) an efficient implementation that integrates well 
+with the open source cdec SMT system (Dyer et 
+al., 2010).1 In addition, (4) as our solution is not 
+dependent on any specific QP solver, it can be 
+easily incorporated into practically any gradient- 
+based learning  algorithm.
+After  background  discussion  on learning in
+SMT (§2), we introduce a novel online learning al-
+gorithm for relative margin maximization suitable 
+for SMT (§3). First, we introduce RMM (§3.1) and
+propose  a latent structured relative margin objec- 
+tive which incorporates cost-augmented hypothe- 
+sis selection and latent variables. Then, we de- 
+rive a simple closed-form online update necessary 
+to create a large margin  solution  while simulta- 
+neously bounding  the spread of the projection of
+the data (§3.2). Chinese-English translation exper-
+iments show that our algorithm, RM, significantly
+outperforms strong state-of-the-art optimizers, in 
+both a basic feature setting and high-dimensional
+(sparse) feature  space (§4).   Additional Arabic-
+English experiments further validate these results,
+
+
+where w  f (x, y, d) is the weighted feature scor- 
+ing function, hereafter s(x, y, d), and Y(x) is the
+space of possible translations of x.  While many 
+derivations d ∈ D(x) can produce a given transla-
+tion, we are only able to observe y; thus we model 
+d as a latent  variable. Although our models are 
+actually defined over derivations, they are always 
+paired with translations,  so our feature function 
+f (x, y, d) is defined over derivation–translation 
+pairs.2 The learning goal is then to estimate w.
+  The instability of  MERT  in  larger feature 
+sets (Foster  and Kuhn, 2009; Hopkins  and May,
+2011), has  motivated many alternative  tuning 
+methods for SMT. These include  strategies based 
+on batch log-linear models (Tillmann  and Zhang,
+2006; Blunsom et al., 2008), as well as the in- 
+troduction of online linear models (Liang et al.,
+2006a; Arun and Koehn, 2007).
+  Recent batch optimizers,  PRO and RAMPION, 
+and Batch-MIRA (Cherry and Foster, 2012), have 
+been partly motivated by existing MT infrastruc- 
+tures, as they iterate between decoding the entire 
+tuning set and optimizing the parameters.   PRO 
+considers tuning a classification  problem and em- 
+ploys a binary classifier to rank pairs of outputs. 
+RAMPION aims to address the disconnect between 
+MT and machine learning by optimizing  a struc- 
+tured ramp loss with a concave-convex procedure.
+
+2.1   Large-Margin Learning
+Online large-margin  algorithms,  such as MIRA, 
+have also gained prominence  in SMT, thanks to 
+their ability to learn models in high-dimensional 
+feature spaces (Watanabe et al., 2007; Chiang et 
+al., 2009). The usual presentation of MIRA’s opti- 
+mization problem is given  as a quadratic program:
+
+
+
+
+
+1 https://github.com/veidel/cdec
+
+
+2 We may omit d in some equations 
+for clarity.
+
+
+
+wt+1 = arg min
+w
+
+
+||w − wt||2 + C ξi
+
+
+
+
+(1)
+
+
+s.t. s(xi, yi, d) − s(xi, y1, d) ≥ ∆i(y1) − ξi
+where y1 is the single most violated constraint, the
+cost ∆i(y) is computed using an external measure 
+of quality, such as 1-BLEU(yi, y), and a slack vari- 
+able ξi  is introduced to allow for non-separable 
+instances.   C acts as a regularization  parameter, 
+trading off between margin maximization and con- 
+straint violations.
+  While solving the optimization problem relies 
+on computing the margin between the correct out-
+put yi, and y1, in SMT our decoder is often inca-
+pable of producing the reference translation,  i.e. 
+yi  ∈/ Y(xi). We must instead resort to selecting  a 
+surrogate reference, y+ ∈ Y(xi).  This issue has
+recently received  considerable  attention (Liang 
+et al., 2006a; Eidelman,  2012; Chiang, 2012), 
+with preference given to surrogate references ob- 
+tained through cost-diminished  hypothesis selec- 
+tion. Thus, y+ is selected based on a combination 
+of model score and error metric from the k-best 
+list produced by our current model. A similar se- 
+lection is made for the cost-augmented hypothesis
+y− ∈ Y(xi):
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(b)
+
+Figure 1: (a) RM and large margin solution comparison and 
+(b) the spread of the projections given by each. RM and large 
+margin solutions are shown with a darker dotted line and a 
+darker solid line, respectively.
+
+3   The Relative Margin Machine in SMT
+
+3.1   Relative Margin Machine
+
+The margin, the distance  between  the correct 
+hypothesis  and incorrect one,  is  defined by
+s(x , y+, d+)  and s(x , y−, d−).     It  is  maxi-
+
+
+i	i
+
+
+(y+, d+) ←	arg max
+(y,d)∈Y(xi ),D(xi )
+
+
+s(xi, y, d) − ∆i(y)
+
+
+mized by  minimizing the 
+norm in  SVM,  or 
+analogously,  the proximity 
+constraint in MIRA:
+
+
+1 	2
+
+
+(y−, d−) ←	arg max
+(y,d)∈Y(xi ),D(xi )
+
+
+s(xi, y, d) + ∆i(y)
+
+
+arg minw  2 ||w − wt|| . 
+However, theoretical re-
+sults supporting large-margin 
+learning, such as the
+
+
+  In this setting, the optimization  problem be- 
+comes:
+1
+
+
+VC-dimension (Vapnik, 1995) or the Rademacher 
+bound (Bartlett and Mendelson,  2003) consider
+
+
+wt+1 = arg min
+w
+
+
+||w − wt||2 + C ξi
+
+
+
+(2)
+
+
+measures of complexity, 
+in addition to the empir-
+ical performance, when 
+describing future predic-
+
+
+s.t. δs(xi, y+, y−) ≥ ∆i(y−) − ∆i(y+) − ξi
+where δs(xi, y+, y−)=s(xi, y+, d+)-s(xi, y−, d−)
+  This leads to a variant  of the structured ramp 
+loss to be optimized:
+  =
+
+
+tive ability. The measures of complexity usually 
+take the form of some value on the radius of the 
+data, such as the ratio of the radius of the data to 
+the margin (Shivaswamy  and Jebara, 2009a).  As 
+radius is a way of measuring spread in any pro- 
+jection direction, here we will specifically  be in-
+
+
+−	max
+(y+ ,d+ )∈Y(xi ),D(xi )
++	max
+(y−,d−)∈Y(xi ),D(xi )
+
+
+ s(xi, y+, d+) − ∆i(y+) 
+ s(xi, y−, d−) + ∆i(y−) 
+
+(3)
+
+
+terested in the the 
+spread of the data as 
+measured after the 
+projection defined by 
+the learned model w.
+  More	formally,
+	the
+	spread	is	the	dis- tance between y+,   and the worst candidate
+
+
+The passive-aggressive update (Crammer et al.,
+
+
+(yw , dw ) ← arg min(y,d)
+
+
+(xi ),D
+
+
+(xi ) s(xi, y, d),
+
+
+2006), which is used to solve this problem, up-
+dates w on each round such that the score of the 
+correct hypothesis y+ is greater than the score of
+the incorrect y− by a margin  at least as large as the
+cost incurred by predicting the incorrect hypothe- 
+sis, while keeping the change to w small.
+
+
+after projecting both onto the line defined by the 
+weight vector w.  For each y1, this projection is 
+conveniently given by s(xi, y1, d), thus the spread
+is calculated  as δs(xi, y+, yw ).
+RMM was introduced  as a generalization  over
+SVM that incorporates both the margin constraint
+
+
+and information  regarding the spread of the data. 
+The relative margin is the ratio of the absolute, 
+or maximum margin, to the spread of the pro- 
+jected data. Thus, the RMM learns a large mar- 
+gin solution relative to the spread of the data, or 
+in other words, creates  a max margin while si- 
+multaneously  bounding the spread of the projected 
+data. As a concrete  example,  consider  the plot 
+shown in Figure 1(a), with hypotheses represented 
+by two-dimensional  feature vectors. The point 
+marked with a circle  in the upper right represents 
+f (xi, y+), while all other squares represent alter-
+native incorrect  hypotheses f (xi, y1).   The large
+margin decision boundary is shown with a darker 
+solid line, while the relative margin solution is 
+shown with a darker dotted line. The lighter lines 
+parallel to each define the margins, with the square
+at the intersection being f (xi, y−).  The bottom
+portion of Figure 1(b) presents an alternative  view
+of each solution,  showing  the projections of the
+
+
+cient optimization  procedure that does not require 
+batch training or an off-the-shelf  QP solver.
+
+3.2   RM Algorithm
+We address the above-mentioned limitations by in- 
+troducing   a novel online learning algorithm for 
+relative margin maximization,  RM. The relative 
+margin solution is obtained by maximizing the 
+same margin  as Equation  (2), but now with re- 
+spect to the distance between y+, and the worst 
+candidate yw .  Thus, the relative margin dictates 
+trading-off between a large margin  as before, and 
+a small spread of the projection, in other words, 
+bounding the distance between y+ and yw .  The 
+additional computation required, namely, obtain- 
+ing yw , is efficient to perform,  and has likely al- 
+ready happened while obtaining  the k-best deriva- 
+tions necessary for the margin update. The online 
+latent structured soft relative margin optimization 
+problem is then:
+
+
+hypotheses given the learned model of each. No- 
+tice that with a large margin solution, although the
+
+
+
+wt+1 = arg min
+w
+
+
+||w − wt||2 + C ξi + Dτi
+
+
+distance between y+ and y− is greater, the points
+are highly spread, extending far to the left of the 
+decision boundary.
+  In contrast,  with a relative  margin, although 
+we have a smaller absolute margin,  the spread is 
+smaller, all points being within a smaller distance E 
+of the decision boundary. The higher the spread of 
+the projection,  the higher the variance of the pro- 
+jected points,  and the greater the likelihood that 
+we will mislabel  a new instance, since the high 
+variance projections may cross the learned deci- 
+sion boundary.  In higher dimensions, accounting 
+for the spread becomes even more crucial,  as will 
+be discussed in Section 6.3
+  Although RMM is theoretically well-founded 
+and improves practical performance over large-
+
+
+s.t.: δs(xi, y+, y−) ≥ ∆i(y−) − ∆i(y+) − ξi
+− B − τi  ≤ δs(xi, y+, yw ) ≤ B + τi
+(4)
+
+where additional  bounding  constraints are added 
+to the usual margin constraints in order to contain 
+the spread by bounding the difference in projec- 
+tions.  B is an additional  parameter; it controls 
+the spread, trading off between margin maximiza- 
+tion and spread minimization. Notice that when
+B → ∞, the bounding constraints disappear, and
+we are left with the original problem in Equa-
+tion (2). D, which plays an analogous role to C , 
+allows penalized violations of the bounding con- 
+straints.
+The dual of Equation (4) can be derived  as:
+
+
+margin learning in the settings where it was intro- 
+duced, it is unsuitable for most complex structured
+
+
+max	=     
+α,β,β∗
+y∈Y (xi )
+I     
+
+
+αy  − B     
+y∈Y (xi )
+
+
+βy − B         	∗
+y∈Y (xi )
+ 
+
+
+prediction in NLP.  Nonetheless, since structured
+RMM  is a  generalization   of Structured  SVM,
+
+
+− 1	α  ω (y+ , y) −
+2	y   i
+y∈Y (xi )
+
+
+βy ωi (y+ , y)
+y∈Y (xi )
+
+
+which  shares its underlying objective with MIRA, 
+our intuition is that SMT should be able to benefit
+
+
++        β∗ω (y+ , y),
+y   i
+y∈Y (xi )
+
+
+as well. But to take advantage of the second-order 
+information RMM utilizes for increased general-
+
+
+ 
+
+y ∈Y (xj )
+
+
+αy ωj (y
+
+
+, y ) −	 
+y ∈Y (xj )
+
+
+βy ωj (y
+
+
+, y )
+
+
+izability in SMT, we need a computationally  effi-
+
+  3 The   motivation   of    confidence-weighted estima- 
+tion (Dredze and Crammer,  2008) and AROW (Crammer 
+et al., 2009a) is related in spirit.  They use second-order
+
+
+
++	 
+y ∈Y (xj )
+
+
+
+y ωj (y
+
+
+\
+, y )
+
+(5)
+
+
+information in the form of a  distribution over weights to 
+change the maximum margin solution.
+
+
+where the α  Lagrange  multiplier corresponds
+to the standard margin constraint,  while β and
+
+
+β∗  each  correspond   to a  bounding constraint, 
+and ωi(y+, y1)  corresponds to the difference of
+
+
+Algorithm 2 RM update with α, β, β∗
+1: procedure OPTIMIZE(w, S1 , S2 , S3 , C, B)
+
+
+f (xi, y+, d+) and f (xi, y1, d1).   The weight up-
+
+
+2:	while w
+ 
+
+
+changes do
+ 
+
+
+i	i	i
+
+
+3:	if	1
+
+
+> 1 then
+
+
+date can then be obtained from the dual variables:
+
+
+4:	UPDATEMARGIN(w, S1 , C )
+
+
+5:	end if
+2  
+
+
+y ω (y+ , y)
+
+
+6:	if  Si   > 1 then
+
+
+αy ωi (y+ , y) −	βy ωi (y+ , y) +	β∗   i
+
+
+
+7:	UPDATEUPPERBOUND(w, S2 , B)
+
+
+(6)
+
+
+8:	end if
+9:	if  S3  > 1 then
+
+
+ 
+i
+
+
+The dual in Equation (5) can be optimized  us-
+
+
+10:	UPDATELOWERBOUND(w, S3 , B)
+
+
+ing a cutting plane algorithm, an effective method 
+for solving a  relaxed optimization problem in 
+the dual, used in Structured SVM, MIRA, and
+
+
+11:	end if
+12:	end while
+13: end procedure
+14: procedure UPDATEMARGIN(w, S1 , C )
+
+
+RMM (Tsochantaridis et al., 2004; Chiang, 2012;
+
+
+15:
+
+
+αy  ←
+
+
+0 for all y ∈  1
+
+
+16:
+
+
+αy+   ← C
+
+
+Shivaswamy  and Jebara,  2009a).  The cutting
+plane presented in Alg. 1 decomposes the overall 
+problem into subproblems which are solved inde- 
+pendently by creating working sets Sj , which cor- 
+respond to the largest violations of either the mar- 
+gin constraint, or bounding constraints, and itera- 
+tively satisfying the constraints in each set.
+The cutting plane in Alg. 1 makes  use of the
+
+
+i
+17:	for n ← 1...M axI ter do
+18:	Select two constraints y, y  from S1
+i
+19:	∆i (y )−∆i (y)−δs(xi , y, y )
+||ω(y,y  )||2
+20:	γα ← max(−αy , min(αy , γα ))
+21:	αy ← αy + γα ;  αy ← αy − γα
+22:	w ← w + γα (ω(y, y ))
+23:	end for
+24: end procedure
+25: procedure UPDATEUPPERBOUND(w, S2 , B)
+26:	βy ← 0 for all y ∈ S2
+
+
+the closed-form  gradient-based  updates we de-
+
+
+27:
+
+
+for n ← 1...M axI ter do
+
+
+rived for RM presented in Alg. 2.  The updates
+
+
+28:	Select one constraint y from S2
+
+
+amount to performing  a subgradient descent step 
+to update w in accordance with the constraints.
+
+
+29:	γβ  ← max(0,
+30:	βy ← βy + γβ
+
+
+B−δs(xi ,y+ ,y)
+||ω(y+ ,y)||2
+
+
+Since the constraint matrix of the dual program is 
+not strictly decomposable across constraint types, 
+we are in effect solving an approximation of the
+
+
+31:	w ← w − γβ (ω(y+ , y))
+32:	end for
+33: end procedure
+34: procedure UPDATELOWERBOUND(w, S3 , B)
+
+
+β∗ 	3
+
+
+35:
+
+
+y ← 0 for all y ∈ Si
+
+
+original problem.
+
+
+36:	for n ← 
+1...M axI ter do
+
+
+ 		37:	Select one constraint y from S3
+
+
+Algorithm 1  RM  Cutting  Plane Algorithm
+
+
+38:	γβ∗  ← max(0, −B−δs(xi ,y
+
+
+,y) )
+
+
+
+(adapted from (Shivaswamy  and Jebara, 2009a))
+
+
+39:	β∗
+
+
+∗ 	β∗
+
+
+||ω(y+ ,y)||2
+
+
+
+
+Require: ith training example (xi , yi ), weight w, margin 
+reg. C , bound B, bound reg. D,  ,  B
+1:  S1  ←  y+  , S2  ←  y+  , S3  ←  y+  
+
+
+y ← βy + γ
+40:	w ← w + γβ∗ (ω(y+
+41:	end for
+42: end procedure
+
+
+
+, y))
+
+
+i	i	i
+2: repeat
+3:	H (y) := ∆i (y) − ∆i (y+ ) − δs(xi , y+ , y)
+4:	y1  ← arg maxy∈Y (xi ) H (y)
+
+
+5:	y2  ← arg maxy∈Y (xi ) G(y) := δs(xi , y
+6:	y3  ← arg miny∈Y (xi ) −G(y)
+7:	ξ ← max {0, maxy∈Si  H (y)}
+8:	V1  ← H (y1 ) − ξ −  
+9:	V2 ← G(y2 ) − B −  B
+10:	V3 ← −G(y3 ) − B −  B
+11:	j ← arg maxj  ∈{1,2,3} Vj
+12:	if Vj  > 0 then
+13:	Sj  ← Sj  ∪ {yj }
+
+
+, y)
+
+
+each set, if there is one, and perform  
+the corre-
+sponding  parameter updates in Alg. 2.  
+We re- fer to the resulting passive-
+aggressive algorithm  as RM-PA,  and the 
+cutting plane version as RM-CP. 
+Preliminary experiments showed that RM-
+PA per- forms on par with RM-CP, thus 
+RM-PA is the one used in the empirical 
+evaluation below.
+
+
+i	i
+
+
+14:	OPTIMIZE(
+15:	end if
+
+
+w, S1 , S2 , S3 , C, B) 	r> 
+see  Alg. 2
+i	i	i
+
+
+A graphical 
+depiction of the 
+passive-aggressive
+RM update is 
+presented in Figure 
+2.  The upper
+
+
+ 16: until S1 , S2 , S3 do not change
+i	i	i
+
+
+  Alternatively,  we  could  utilize  a   passive- 
+aggressive  updating strategy (Crammer et al.,
+2006), which would simply bypass  the cutting 
+plane and select the most violated constraint for
+
+
+right circle represents y+, while all other squares 
+represent alternative hypotheses y1. As in the stan-
+
+dard MIRA solution, we select the maximum mar- 
+gin constraint violator, y−, shown as the triangle,
+and update such that the margin is greater than the 
+cost. Additionally, we select the maximum bound-
+
+
+
+
+
+
+
+
+
+
+
+dist > B
+
+
+
+Bounding 
+Constraint
+
+dist
+
+B
+
+
+
+
+cost 
+> 
+mar
+gin
+
+
+
+
+
+
+
+
+
+
+
+
+margin
+
+
+
+
+
+
+
+
+cost
+
+
+English 
+side of the 
+corpus with 
+additional 
+words from 
+non-NYT 
+and non-
+LAT, 
+randomly  
+selected 
+portions of 
+the 
+Gigaword 
+v4 corpus, 
+using 
+modi- fied 
+Kneser-Ney 
+smoothing 
+(Chen and 
+Goodman,
+1996). We 
+used cdec 
+(Dyer et 
+al., 2010)  
+as our 
+hierarchical  
+phrase-
+based 
+decoder, 
+and tuned 
+the 
+parameters 
+of the 
+system to 
+optimize 
+BLEU (Pap- 
+ineni et al., 
+2002) on 
+the NIST 
+MT06 
+corpus.
+We 
+applied  
+several 
+competitive  
+optimizers  
+as
+
+
+Margin Constraint
+
+
+
+Model Score
+
+Figure 2:  RM update  with margin and bounding con- 
+straints.  The diagonal dotted line depicts cost–margin equi- 
+librium. The vertical gray dotted line depicts the bound B. 
+White arrows indicate updates triggered by constraint viola- 
+tions. Squares are data points in the k-best list not selected 
+for update in this round.
+
+task	Corpus 	Sentences	Tokens
+                                                       En     Zh/Ar
+
+
+
+ 		MT05                     1082         35k        33k 
+training	1M    23.7M     22.8M 
+tune (MT06)           1797       55k         49k
+
+
+baselines: hypergraph-based MERT (Kumar et al.,
+2009), k-best variants of MIRA (Crammer et 
+al.,
+2006; Chiang et al., 2009), PRO (Hopkins 
+and
+May, 2011),  and RAMPION (Gimpel and 
+Smith,
+2012). The size of the k-best list was set to 
+500 for RAMPION, MIRA and RM, and 1500 for 
+PRO, with both PRO and RAMPION utilizing k-
+best ag- gregation across iterations. RAMPION 
+settings were as described  in (Gimpel  and 
+Smith, 2012), and PRO settings  as described  in 
+(Hopkins and May, 2011), with PRO 
+requiring regularization tuning in order to be 
+competitive  with the other op- timizers. MIRA 
+and RM were run with 15 paral-
+
+Donald et al., 2010). All optimizers were 
+imple- mented in cdec and use the same system 
+config-
+
+
+Ar-En
+
+
+MT05	1056	36k	33k
+
+
+uration, 
+thus the 
+only 
+indepen
+dent 
+variable 
+is the
+
+
+                MT08                     1360       51k         45k
+4-gram LM 	24M	600M	–
+
+
+Table 1: Corpus statistics
+
+
+ing constraint violator, yw , shown as the upside- 
+down triangle, and update so the distance from y+ 
+is no greater than B.
+
+4   Experiments
+
+4.1   Setup
+
+To evaluate the advantage of explicitly accounting 
+for the spread of the data, we conducted several 
+experiments  on two Chinese-English translation 
+test sets, using two different  feature sets in each. 
+For training we used  the non-UN and non-HK 
+Hansards portions of the NIST training corpora, 
+which was  segmented  using the Stanford  seg- 
+menter (Tseng et al., 2005). The data statistics are 
+summarized in the top half of Table 1. The English 
+data was lowercased, tokenized and aligned using 
+GIZA++ (Och and Ney, 2003) to obtain bidirec- 
+tional alignments, which were symmetrized using 
+the grow-diag-final-and method (Koehn 
+et al., 2003).  We  trained  a 4-gram  LM on the
+
+
+optimizer itself. We set C to 0.01, and M axI ter 
+to 100. We selected the bound step size D, based 
+on performance on a held-out  dev set, to be 
+0.01 for the basic feature set and 0.1 for the 
+sparse fea- ture set. The bound constraint B was 
+set to 1.4 The approximate sentence-level BLEU 
+cost ∆i is com- puted in a manner similar to 
+(Chiang et al., 2009), namely, in the context of 
+previous 1-best transla- tions of the tuning set.   
+All results are averaged over 3 runs.
+
+4.2   Feature 
+Sets
+
+We experimented with a small (basic) feature set, 
+and a  large (sparse) feature  set.   For the 
+small feature  set, we use 14 features, including  
+a lan- guage model, 5 translation model features, 
+penal- ties for unknown words, the glue rule, 
+and rule arity.  For experiments with a larger  
+feature  set, we introduced additional lexical and 
+non-lexical sparse Boolean  features of the form 
+commonly found in the literature (Chiang et al., 
+2009; Watan-
+
+  4 We also conducted an investigation into the setting of 
+the B parameter. We explored alternative values for B, as 
+well as scaling  it by the current candidate’s cost, and found 
+that the optimizer is fairly insensitive to these changes, 
+resulting in only minor differences in BLEU.
+
+
+Optimizer              Zh       Ar 
+MIRA                   35k     37k 
+PRO                   95k  115k 
+RAMPION                  22k     24k 
+RM                  30k 32k 
+Active+Inactive    3.4M   4.9M
+
+Table 2: Active sparse feature templates
+
+
+abe et al., 2007; Simianer et al., 2012).
+  Non-lexical  features include structural distor- 
+tion, which captures the dependence between re- 
+ordering  and the size of a filler, and rule shape, 
+which bins grammar rules by their sequence of 
+terminals and nonterminals (Chiang et al., 2008). 
+Lexical features on rules include rule ID, which 
+fires on a specific  grammar  rule.  We also in- 
+troduce context-dependent lexical features for the
+300 most frequent aligned word pairs (f ,e) in the 
+training corpus, which fire on triples (f ,e,f+1) and 
+(f ,e,f−1), capturing when we see f aligned to e,
+with f+1 and f−1 occurring to the right or left of f ,
+respectively.  All other words fall into the default
+(unk) feature bin. In addition, we have insertion
+and deletion features for the 150 most frequently
+unaligned target and source words.  These feature 
+templates resulted in a total of 3.4 million possible 
+features, of which only a fraction  were active for 
+the respective tuning  set and optimizer,  as shown 
+in Table 2.
+
+4.3   Results
+
+As can be seen from the results in Table 3, our 
+RM method was the best performer in all Chinese- 
+English tests according to all measures – up to 1.9
+BLEU and 6.6 TER over MIRA – even though we 
+only optimized for BLEU.5  Surprisingly, it seems 
+that MIRA did not benefit as much from  the sparse 
+features as RM. The results are especially notable 
+for the basic feature setting – up to 1.2 BLEU and
+4.6 TER improvement over MERT – since MERT 
+has been shown to be competitive with small num- 
+bers of features compared to high-dimensional  op- 
+timizers  such as MIRA (Chiang et al., 2008).
+  For the tuning set, the decoder performance was 
+consistently the lowest with RM, compared to the
+
+  5 In the small feature set RAMPION yielded similar best 
+BLEU  scores, but worse TER.  In preliminary experiments 
+with a  smaller trigram LM, our RM method consistently 
+yielded the highest scores in all Chinese-English  tests – up 
+to 1.6 BLEU and 6.4 TER from MIRA, the second best per- 
+former.
+
+
+other optimizers. We believe this is due to the 
+RM bounding constraint being more resistant to 
+overfitting  the training data, and thus allowing  for 
+improved generalization.  Conversely, while PRO 
+had the second lowest tuning scores, it seemed to 
+display signs of underfitting in the basic and large 
+feature settings.
+
+5   Additional Experiments
+
+In order to explore the applicability of our ap- 
+proach to a wider range of languages, we also eval- 
+uated its performance on Arabic-English  transla- 
+tion.  All experimental details were the same  as 
+above, except those noted below.
+  For training,  we used the non-UN  portion of the 
+NIST training  corpora, which  was segmented us- 
+ing an HMM segmenter (Lee et al., 2003). Dataset 
+statistics are given in the bottom part of Table 1. 
+The sparse feature templates resulted here in a to- 
+tal of 4.9 million possible features, of which again 
+only a fraction  were active, as shown in Table 2.
+  As can be seen in Table 4, in the smaller feature 
+set, RM and MERT  were the best performers, with 
+the exception that on MT08, MIRA yielded some- 
+what better (+0.7) BLEU  but a somewhat  worse 
+(-0.9) TER score than RM.
+  On the large feature set, RM is again the best 
+performer,   except,  perhaps,  a tied BLEU  score 
+with MIRA on MT08, but with a clear  1.8 TER 
+gain. In both Arabic-English  feature sets, MIRA 
+seems to take the second place, while RAMPION
+lags behind, unlike in Chinese-English (§4).6
+Interestingly, RM achieved substantially higher
+BLEU  precision  scores in all tests for both lan- 
+guage pairs. However, this was also usually cou- 
+pled had a higher brevity  penalty (BP) than MIRA, 
+with the BP increasing slightly when moving to 
+the sparse setting.
+
+6   Discussion
+
+The trend of the results, summarized  as RM gain 
+over other optimizers averaged over all test sets, is 
+presented in Table 5. RM shows clear advantage 
+in both basic and sparse feature sets, over all other 
+state-of-the-art optimizers.  The RM gains are no- 
+tably higher in the large feature set, which we take
+
+  6 In our preliminary  experiments with the smaller trigram 
+LM, MERT did better on MT05 in the smaller feature set, and 
+MIRA had a small  advantage in two cases.  RAMPION per- 
+formed similarly to RM on the smaller feature set. RM’s loss 
+was only up to 0.8 BLEU (0.7 TER) from MERT or MIRA, 
+while its gains were up to 1.7 BLEU and 2.1 TER over MIRA.
+
+
+
+
+O
+pt
+i
+m
+iz
+er
+S
+m
+all 
+(b
+as
+ic) 
+fe
+at
+ur
+e 
+se
+t
+La
+rg
+e 
+(s
+pa
+rs
+e) 
+fe
+at
+ur
+e 
+set
+
+T
+u
+n
+e
+M
+T
+0
+3
+M
+T
+0
+5
+T
+u
+n
+e
+M
+T
+0
+3
+M
+T
+0
+5
+
+↑
+B
+LE
+U
+↑
+B
+LE
+U   
+↓T
+ER
+↑
+B
+LE
+U   
+↓T
+ER
+↑
+B
+LE
+U
+↑
+B
+LE
+U   
+↓T
+ER
+↑
+B
+LE
+U   
+↓T
+ER
+M
+E
+R
+T
+3
+5
+.
+4
+3
+5
+.
+8	60.8
+3
+2
+.
+4	63.9
+-
+-
+	
+-
+-
+	
+-
+M
+I
+R
+A
+3
+5
+.
+5
+3
+5
+.
+8	61.1
+3
+2
+.
+1	64.6
+3
+6
+.
+6
+3
+5
+.
+9	60.6
+3
+2
+.
+1	64.1
+P
+R
+O
+3
+4
+.
+1
+3
+6
+.
+0	60.2
+3
+1
+.
+7	63.4
+3
+5
+.
+7
+3
+4
+.
+8	56.1
+3
+1
+.
+4	59.1
+R
+A
+M
+PI
+O
+N
+3
+5
+.
+1
+3
+6
+.
+5	58.6
+3
+3
+.
+0	61.3
+3
+6
+.
+7
+3
+6
+.
+9	57.7
+3
+3
+.
+3	60.6
+R
+M
+3
+1
+.
+3
+3
+6
+.
+5	56.4
+3
+3
+.
+6	59.3
+3
+3
+.
+2
+3
+7
+.
+5	54.6
+3
+4
+.
+0	57.5
+
+Table 3: Performance on Zh-En with basic (left) and sparse (right) feature sets on MT03 and MT05.
+
+
+O
+pt
+i
+m
+iz
+er
+S
+m
+all 
+(b
+as
+ic) 
+fe
+at
+ur
+e 
+se
+t
+La
+rg
+e 
+(s
+pa
+rs
+e) 
+fe
+at
+ur
+e 
+set
+
+T
+u
+n
+e
+M
+T
+0
+5
+M
+T
+0
+8
+T
+u
+n
+e
+M
+T
+0
+5
+M
+T
+0
+8
+
+↑
+B
+LE
+U
+↑
+B
+LE
+U   
+↓T
+ER
+↑
+B
+LE
+U   
+↓T
+ER
+↑
+B
+LE
+U
+↑
+B
+LE
+U   
+↓T
+ER
+↑
+B
+LE
+U   
+↓T
+ER
+M
+E
+R
+T
+4
+3
+.
+8
+5
+3
+.
+3	40.2
+4
+1
+.
+0	50.7
+-
+-
+	
+-
+-
+	
+-
+M
+I
+R
+A
+4
+3
+.
+0
+5
+2
+.
+8	40.8
+4
+1
+.
+3	50.6
+4
+4
+.
+4
+5
+3
+.
+4	40.1
+4
+1
+.
+8	50.2
+P
+R
+O
+4
+1
+.
+5
+5
+1
+.
+3	41.5
+3
+9
+.
+4	51.5
+4
+6
+.
+8
+5
+3
+.
+2	40.0
+4
+1
+.
+4	49.7
+R
+A
+M
+PI
+O
+N
+4
+2
+.
+4
+5
+2
+.
+0	40.8
+4
+0
+.
+0	50.8
+4
+4
+.
+6
+5
+2
+.
+9	40.4
+4
+1
+.
+0	50.4
+R
+M
+3
+8
+.
+5
+5
+3
+.
+3	39.8
+4
+0
+.
+6	49.7
+4
+3
+.
+0
+5
+5
+.
+3	37.5
+4
+1
+.
+8	48.4
+
+Table 4: Performance on Ar-En with basic (left) and sparse (right) feature sets on MT05 and MT08.
+
+
+
+
+
+O
+pt
+i
+m
+iz
+er
+S
+m
+a
+l
+l
+  
+s
+e
+t
+B
+L
+E
+U   
+T
+E
+R
+L
+a
+r
+g
+e
+ 
+s
+e
+t
+B
+L
+E
+U   
+T
+E
+R
+M
+E
+R
+T
+0
+.
+4
+	2.6
+-
+	-
+M
+I
+R
+A
+0
+.
+5
+	3.0
+1
+.
+4
+	4.3
+P
+R
+O
+1
+.
+4
+	2.9
+2
+.
+0
+	1.7
+R
+A
+M
+PI
+O
+N
+0
+.
+6
+	1.6
+1
+.
+2
+	2.8
+
+Table 5: RM gain over other optimizers averaged 
+over all test sets.
+
+
+as an indication for the importance of bounding 
+the spread.
+
+   Spread analysis: For RM, the average spread 
+of the projected data in the Chinese-English small
+feature set was 0.9±3.6  for all tuning iterations,
+and 0.7±2.9 for the iteration with the highest de-
+coder performance.  In comparison,  the spread of 
+the data for MIRA was 5.9±20.5 for the best it-
+eration. In the sparse setting,  RM had an aver- 
+age spread of 0.9±2.4 for the best iteration, while 
+MIRA  had a  spread  of 14.0±31.1.  Similarly, 
+on Arabic-English, RM had a spread of 0.7±2.4 
+in the small setting, and 0.82±1.4 in the sparse 
+setting, while MIRA’s spread was 9.4±26.8  and
+11.4±22.1, for the small and sparse settings,  re-
+spectively.  Notice that the average spread for RM
+stays about the same when moving  to higher di- 
+mensions,  with the variance  decreasing in both 
+cases.   For MIRA, however, the average spread
+
+
+increases in both cases, with the variance being 
+much higher than RM. For instance, observe that 
+the spread of MIRA on Chinese grows from 5.9 to
+14.0 in the sparse feature setting.  While bounding 
+the spread is useful in the low-dimensional  setting 
+(0.7-1.5 BLEU gain with RM over MIRA as shown 
+in Table 3), accounting for the spread is even more 
+crucial with sparse features,  where  MIRA gains 
+only up to 0.1 BLEU, while RM gains 1 BLEU. 
+These results support the claim that our imposed 
+bound B indeed  helps decrease the spread, and 
+that, in turn, lower spread yields better general- 
+ization performance.
+   Error Analysis:  The inconclusive advantage 
+of RM over MIRA (in BLEU  vs.  TER scores) 
+on Arabic-English MT08 calls for a closer  look. 
+Therefore we conducted  a coarse  error analysis 
+on 15 randomly  selected sentences from MERT, 
+RMM and MIRA, with basic and sparse feature 
+settings for the latter two.  This sample yielded
+450 data points for analysis: output of the 5 con- 
+ditions  on 15 sentences scored in 6 violation cate- 
+gories. The categories were: function word drop, 
+content word drop, syntactic error (with a reason- 
+able meaning), semantic error (regardless of syn- 
+tax), word order issues, and function word mis- 
+translation  and “hallucination”.  The purpose of 
+this analysis was to get a qualitative  feel for the 
+output of each model,  and a better idea as to why 
+we obtained performance improvements. RM no-
+
+
+ticeably  had more word order and excess/wrong 
+function word issues in the basic feature setting 
+than any optimizer.  However, RM seemed to ben- 
+efit the most from the sparse features,  as its bad 
+word order rate dropped close to MIRA, and its ex- 
+cess/wrong function word rate dropped below that 
+of MIRA with sparse features (MIRA’s rate actu- 
+ally doubled from its basic feature set). We con- 
+jecture both these issues will be ameliorated with 
+syntactic  features such as those in Chiang et al. 
+(2008). This correlates with our observation that 
+RM’s overall BLEU score is negatively impacted 
+by the BP, as the BLEU precision  scores are no- 
+ticeably higher.
+   K-best: RM is potentially more sensitive to the 
+size and order of the k-best list. While MIRA is 
+only concerned with the margin between y+ and
+y−, RM also accounts for the distance between y+
+and yw . It might  be the case that a larger k-best, or 
+revisiting  previous strategies for y+ and y− selec-
+tion, such as bold updating, local updating (Liang 
+et al., 2006b), or max-BLEU updating (Tillmann 
+and Zhang, 2006) might have a greater impact. 
+Also, we only explored several settings of B, and 
+there remains a continuum  of RM solutions that 
+trade off between margin  and spread in different 
+ways.
+   Active features:   Perhaps contrary to expecta- 
+tion, we did not see evidence  of a correlation  be- 
+tween the number of active features and optimizer 
+performance. RAMPION, with the fewest features, 
+is the closest performer to RM in Chinese, while 
+MIRA, with a greater number,  is the closest on 
+Arabic. We also notice that while PRO had the 
+lowest BLEU scores in Chinese, it was competi- 
+tive in Arabic with the highest number of features.
+
+7   Conclusions and Future  Work
+
+We have introduced RM, a novel online  margin- 
+based  algorithm designed  for optimizing high- 
+dimensional feature spaces, which  introduces  con- 
+straints into a large-margin  optimizer  that bound 
+the spread of the projection of the data while max- 
+imizing the margin. The closed-form online up- 
+date for our relative margin solution accounts for 
+surrogate references and latent variables.
+  Experimentation in statistical MT yielded sig- 
+nificant improvements  over several  other state- 
+of-the-art optimizers,  especially in   a   high- 
+dimensional  feature space (up to 2 BLEU and 4.3
+
+
+comparable performance according to two scoring 
+methods in two language pairs, with two test sets 
+each, in small and large feature settings. More- 
+over, across conditions,  RM always yielded the 
+best combined TER-BLEU score.7
+  These improvements  are achieved using stan- 
+dard, relatively  small tuning sets, contrasted with 
+improvements involving sparse features obtained 
+using much larger tuning sets,  on the order of 
+hundreds of thousands of sentences (Liang et al.,
+2006a; Tillmann  and Zhang, 2006; Blunsom et al.,
+2008; Simianer et al., 2012). Since our approach 
+is complementary to scaling up the tuning data, in 
+future work we intend to combine these two meth- 
+ods. In future work we also intend to explore using 
+additional sparse features that are known to be use- 
+ful in translation, e.g. syntactic features explored 
+by Chiang et al. (2008).
+  Finally, although motivated by statistical ma- 
+chine translation, RM is a gradient-based method 
+that can easily be applied to other problems.  We 
+plan to investigate its utility elsewhere in NLP 
+(e.g. for parsing)  as well as in other domains in- 
+volving high-dimensional structured prediction.
+
+Acknowledgments
+
+We would like to thank Pannaga Shivaswamy  for 
+valuable discussions, and the anonymous review- 
+ers for their comments. Vladimir Eidelman is sup- 
+ported by a National  Defense Science and Engi- 
+neering Graduate Fellowship.  This work was also 
+supported in part by the BOLT program of the De- 
+fense Advanced Research Projects Agency,  Con- 
+tract HR0011-12-C-0015.
+
+
+References
+
+Abishek Arun and Philipp Koehn. 2007. Online learn- 
+ing methods for discriminative training of phrase 
+based statistical machine translation.  In MT Summit 
+XI.
+
+Peter L.  Bartlett and Shahar  Mendelson.   2003.
+Rademacher and gaussian complexities: risk bounds 
+and structural results. J. Mach. Learn. Res., 3:463–
+482, March.
+
+Phil Blunsom, Trevor Cohn, and Miles Osborne. 2008.
+A discriminative  latent variable model for statisti- 
+cal machine translation.  In Proceedings of ACL-08: 
+HLT, Columbus, Ohio, June.
+
+7 We and other researchers often use 1 (TER − BLEU) as a
+
+
+TER on average). Overall, RM achieves the best or
+
+
+combined SMT quality metric.
+
+
+Nicolo` Cesa-Bianchi, Alex Conconi, and Claudio Gen- 
+tile.  2005. A second-order perceptron algorithm. 
+SIAM J. Comput., 34(3):640–668, March.
+
+Stanley F. Chen and Joshua Goodman.  1996. An em- 
+pirical study of smoothing techniques for language 
+modeling. In Proceedings of the 34th Annual Meet- 
+ing of the Association for Computational Linguis- 
+tics, pages 310–318.
+
+Colin Cherry and George Foster. 2012. Batch tuning 
+strategies for statistical machine translation. In Pro- 
+ceedings of NAACL.
+
+David Chiang, Yuval Marton, and Philip Resnik. 2008.
+Online large-margin training of syntactic and struc- 
+tural translation features. In Proceedings of the Con- 
+ference on Empirical  Methods in Natural Language 
+Processing (EMNLP), Waikiki, Honolulu, Hawaii.
+
+David Chiang, Kevin Knight, and Wei Wang. 2009.
+11,001 new features for statistical  machine trans- 
+lation.  In Proceedings of Human Language Tech- 
+nologies: The 2009 Annual Conference of the North 
+American Chapter of the Association for Computa- 
+tional Linguistics, NAACL ’09, pages 218–226.
+
+David Chiang. 2012. Hope and fear for discriminative 
+training of statistical translation models. J. Machine 
+Learning Research.
+
+Koby Crammer, Ofer Dekel, Joseph  Keshet, Shai 
+Shalev-Shwartz,  and Yoram Singer.  2006.  On- 
+line passive-aggressive algorithms.  J. Mach. Learn. 
+Res., 7:551–585.
+
+Koby Crammer, Alex Kulesza, and Mark Dredze.
+2009a. Adaptive regularization of weight vectors. 
+In Advances in Neural Information  Processing Sys- 
+tems 22, pages 414–422.
+
+Koby Crammer, Mehryar Mohri,  and Fernando Pereira.
+2009b.  Gaussian  margin machines.  Journal of
+Machine Learning Research - Proceedings Track,
+5:105–112.
+
+Koby Crammer, Mark Dredze, and Fernando Pereira.
+2012.   Confidence-weighted  linear classification 
+for  text categorization.  J. Mach. Learn. Res.,
+98888:1891–1926,  June.
+
+Mark Dredze and Koby Crammer.  2008. Confidence- 
+weighted linear classification. In In ICML 08: Pro- 
+ceedings  of the 25th international conference  on 
+Machine  learning,  pages 264–271. ACM.
+
+Chris Dyer, Adam Lopez, Juri Ganitkevitch,  Jonathan 
+Weese,  Ferhan  Ture, Phil Blunsom,  Hendra Seti- 
+awan, Vladimir Eidelman, and Philip Resnik. 2010. 
+cdec: A decoder, alignment, and learning framework 
+for finite-state and context-free translation models. 
+In Proceedings of ACL System Demonstrations.
+
+Vladimir Eidelman. 2012. Optimization  strategies for 
+online large-margin learning in machine translation. 
+In Proceedings of the Seventh Workshop on Statisti- 
+cal Machine Translation.
+
+
+George Foster and Roland Kuhn. 2009. Stabilizing 
+minimum  error rate training. In Proceedings of the 
+Fourth Workshop on Statistical Machine Transla- 
+tion, pages 242–249,  Athens,  Greece, March. As- 
+sociation for Computational Linguistics.
+
+Kevin Gimpel and Noah A. Smith. 2012. Structured 
+ramp loss minimization  for machine translation.  In 
+Proceedings of the 2012 Conference of the North 
+American Chapter of the Association for Computa- 
+tional Linguistics.
+
+Mark Hopkins  and Jonathan May.  2011. Tuning as 
+ranking. In Proceedings of the 2011 Conference on 
+Empirical Methods in Natural Language Process- 
+ing, pages 1352–1362, Edinburgh,  Scotland, UK., 
+July. Association for Computational Linguistics.
+
+Thorsten Joachims. 1998. Text Categorization with 
+Support Vector Machines: Learning with Many Rel- 
+evant Features. In Claire Ne´dellec and Ce´line Rou- 
+veirol, editors,  European Conference on Machine 
+Learning,  pages 137–142, Berlin.  Springer.
+
+Philipp Koehn,  Franz Josef Och, and Daniel Marcu.
+2003. Statistical  phrase-based translation. In Pro- 
+ceedings of the 2003 Conference of the North Amer- 
+ican Chapter of the Association for Computational 
+Linguistics on Human Language Technology - Vol- 
+ume 1, NAACL ’03, Stroudsburg, PA, USA.
+
+Shankar Kumar, Wolfgang Macherey, Chris Dyer, and 
+Franz Och.  2009.  Efficient minimum error rate 
+training and minimum  bayes-risk decoding for trans- 
+lation hypergraphs and lattices. In Proceedings of 
+the Joint Conference of the 47th Annual Meeting of 
+the ACL and the 4th International  Joint Conference 
+on Natural Language  Processing  of the AFNLP, 
+pages 163–171.
+
+Young-Suk Lee, Kishore Papineni, Salim Roukos, Os- 
+sama Emam,  and Hany Hassan. 2003. Language 
+model based Arabic word segmentation.    In Pro- 
+ceedings of the 41st Annual Meeting on Associa- 
+tion for Computational Linguistics - Volume 1, pages
+399–406.
+
+Percy Liang, Alexandre Bouchard-Coˆ te´,  Dan Klein, 
+and Ben Taskar. 2006a. An end-to-end discrimi- 
+native approach to machine translation. In Proceed- 
+ings of the 21st International  Conference on Com- 
+putational Linguistics and the 44th annual meeting 
+of the Association for Computational Linguistics, 
+ACL-44, pages 761–768.
+
+Percy Liang, Alexandre Bouchard-Coˆ te´,  Dan Klein, 
+and Ben Taskar. 2006b. An end-to-end discrimi- 
+native approach to machine translation. In Proceed- 
+ings of the 2006 International  Conference on Com- 
+putational Linguistics (COLING) - the Association 
+for Computational Linguistics (ACL).
+
+David Mcallester  and Joseph Keshet. 2011. Gener- 
+alization bounds and consistency for latent struc- 
+tural probit and  ramp loss.   In J.  Shawe-Taylor,
+
+
+R.S. Zemel, P. Bartlett, F.C.N. Pereira,  and K.Q. 
+Weinberger,  editors,  Advances in Neural Informa- 
+tion Processing  Systems 24, pages 2205–2212.
+
+Ryan McDonald, Keith Hall, and Gideon Mann. 2010.
+Distributed  training strategies for the structured per- 
+ceptron. In Human Language Technologies:  The
+2010 Annual Conference  of the North American 
+Chapter of the Association for Computational Lin- 
+guistics, pages 456–464, Los Angeles, California.
+
+Franz Och and Hermann Ney.  2003.  A systematic 
+comparison of various statistical alignment models. 
+In Computational Linguistics, volume 29(21), pages
+19–51.
+
+Franz Josef Och. 2003. Minimum error rate training 
+in statistical machine translation. In Proceedings of 
+the 41st Annual Meeting of the Association for Com- 
+putational Linguistics, pages 160–167.
+
+Kishore Papineni, Salim Roukos, Todd Ward, and Wei- 
+Jing Zhu.  2002.  BLEU:  a method  for automatic 
+evaluation of machine translation. In Proceedings 
+of 40th Annual Meeting of the Association for Com- 
+putational Linguistics, pages 311–318.
+
+Pannagadatta Shivaswamy  and Tony Jebara.   2009a.
+Structured prediction  with relative margin.  In In 
+International  Conference on Machine Learning and 
+Applications.
+
+Pannagadatta K Shivaswamy and Tony Jebara. 2009b.
+Relative margin machines. In In Advances in Neural
+Information Processing Systems 21. MIT Press.
+
+Patrick Simianer, Stefan Riezler, and Chris Dyer. 2012.
+Joint feature selection in distributed stochastic learn- 
+ing for large-scale discriminative  training in smt. In 
+Proceedings of the 50th Annual Meeting of the As- 
+sociation for Computational Linguistics (Volume 1: 
+Long Papers), Jeju Island, Korea, July.
+
+David A. Smith and Jason Eisner.  2006.  Minimum risk 
+annealing for training log-linear models. In Pro- 
+ceedings of the COLING/ACL  2006 Main Confer- 
+ence Poster Sessions, Sydney, Australia,  July. Asso- 
+ciation for Computational Linguistics.
+
+Ben Taskar, Simon Lacoste-Julien, and Michael I. Jor- 
+dan. 2006. Structured prediction, dual extragradi- 
+ent and bregman projections.  J. Mach. Learn. Res.,
+7:1627–1653, December.
+
+Christoph Tillmann  and Tong Zhang. 2006. A discrim- 
+inative global training algorithm for statistical MT. 
+In Proceedings of the 2006 International Conference 
+on Computational Linguistics (COLING) - the Asso- 
+ciation for Computational Linguistics (ACL).
+
+Huihsin Tseng, Pi-Chuan Chang, Galen Andrew, 
+Daniel Jurafsky, and Christopher Manning.  2005. A 
+conditional random field word segmenter. In Fourth 
+SIGHAN Workshop on Chinese Language Process- 
+ing.
+
+
+Ioannis  Tsochantaridis,  Thomas Hofmann, Thorsten 
+Joachims, and Yasemin Altun. 2004. Support vector 
+machine learning for interdependent and structured 
+output spaces. In Proceedings of the twenty-first in- 
+ternational conference on Machine learning, ICML
+’04.
+
+Vladimir N. Vapnik. 1995. The nature of statistical 
+learning theory. Springer-Verlag New York, Inc., 
+New York, NY, USA.
+
+Taro Watanabe,  Jun Suzuki, Hajime Tsukada,  and 
+Hideki Isozaki. 2007. Online large-margin train- 
+ing for statistical machine translation. In Proceed- 
+ings of the 2007 Joint Conference  on Empirical 
+Methods in Natural Language Processing and Com- 
+putational Natural Language  Learning (EMNLP- 
+CoNLL),  Prague, Czech Republic,  June. Association 
+for Computational Linguistics.
+

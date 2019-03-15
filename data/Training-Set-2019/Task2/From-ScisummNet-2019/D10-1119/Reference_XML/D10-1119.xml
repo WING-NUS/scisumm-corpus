@@ -1,0 +1,241 @@
+<PAPER>
+  <S sid="0">Inducing Probabilistic CCG Grammars from Logical Form with Higher-Order Unification</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">This paper addresses the problem of learning to map sentences to logical form, given training data consisting of natural language sentences paired with logical representations of their meaning.</S>
+    <S sid="2" ssid="2">Previous approaches have been designed for particular natural languages or specific meaning representations; here we present a more general method.</S>
+    <S sid="3" ssid="3">The approach induces a probabilistic CCG grammar that represents the meaning of individual words and defines how these meanings can be combined to analyze complete sentences.</S>
+    <S sid="4" ssid="4">We use higher-order unification to define a hypothesis space containing all grammars consistent with the training data, and develop an online learning algorithm that efficiently searches this space while simultaneously estimating the parameters of a log-linear parsing model.</S>
+    <S sid="5" ssid="5">Experiments demonstrate high accuracy on benchmark data sets in four languages with two different meaning representations.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="6" ssid="1">A key aim in natural language processing is to learn a mapping from natural language sentences to formal representations of their meaning.</S>
+    <S sid="7" ssid="2">Recent work has addressed this problem by learning semantic parsers given sentences paired with logical meaning representations (Thompson &amp; Mooney, 2002; Kate et al., 2005; Kate &amp; Mooney, 2006; Wong &amp; Mooney, 2006, 2007; Zettlemoyer &amp; Collins, 2005, 2007; Lu et al., 2008).</S>
+    <S sid="8" ssid="3">For example, the training data might consist of English sentences paired with lambda-calculus meaning representations: Given pairs like this, the goal is to learn to map new, unseen, sentences to their corresponding meaning.</S>
+    <S sid="9" ssid="4">Previous approaches to this problem have been tailored to specific natural languages, specific meaning representations, or both.</S>
+    <S sid="10" ssid="5">Here, we develop an approach that can learn to map any natural language to a wide variety of logical representations of linguistic meaning.</S>
+    <S sid="11" ssid="6">In addition to data like the above, this approach can also learn from examples such as: Sentence: hangi eyaletin texas ye siniri vardir Meaning: answer(state(borders(tex))) where the sentence is in Turkish and the meaning representation is a variable-free logical expression of the type that has been used in recent work (Kate et al., 2005; Kate &amp; Mooney, 2006; Wong &amp; Mooney, 2006; Lu et al., 2008).</S>
+    <S sid="12" ssid="7">The reason for generalizing to multiple languages is obvious.</S>
+    <S sid="13" ssid="8">The need to learn over multiple representations arises from the fact that there is no standard representation for logical form for natural language.</S>
+    <S sid="14" ssid="9">Instead, existing representations are ad hoc, tailored to the application of interest.</S>
+    <S sid="15" ssid="10">For example, the variable-free representation above was designed for building natural language interfaces to databases.</S>
+    <S sid="16" ssid="11">Our approach works by inducing a combinatory categorial grammar (CCG) (Steedman, 1996, 2000).</S>
+    <S sid="17" ssid="12">A CCG grammar consists of a language-specific lexicon, whose entries pair individual words and phrases with both syntactic and semantic information, and a universal set of combinatory rules that project that lexicon onto the sentences and meanings of the language via syntactic derivations.</S>
+    <S sid="18" ssid="13">The learning process starts by postulating, for each sentence in the training data, a single multi-word lexical item pairing that sentence with its complete logical form.</S>
+    <S sid="19" ssid="14">These entries are iteratively refined with a restricted higher-order unification procedure (Huet, 1975) that defines all possible ways to subdivide them, consistent with the requirement that each training sentence can still be parsed to yield its labeled meaning.</S>
+    <S sid="20" ssid="15">For the data sets we consider, the space of possible grammars is too large to explicitly enumerate.</S>
+    <S sid="21" ssid="16">The induced grammar is also typically highly ambiguous, producing a large number of possible analyses for each sentence.</S>
+    <S sid="22" ssid="17">Our approach discriminates between analyses using a log-linear CCG parsing model, similar to those used in previous work (Clark &amp; Curran, 2003, 2007), but differing in that the syntactic parses are treated as a hidden variable during training, following the approach of Zettlemoyer &amp; Collins (2005, 2007).</S>
+    <S sid="23" ssid="18">We present an algorithm that incrementally learns the parameters of this model while simultaneously exploring the space of possible grammars.</S>
+    <S sid="24" ssid="19">The model is used to guide the process of grammar refinement during training as well as providing a metric for selecting the best analysis for each new sentence.</S>
+    <S sid="25" ssid="20">We evaluate the approach on benchmark datasets from a natural language interface to a database of US Geography (Zelle &amp; Mooney, 1996).</S>
+    <S sid="26" ssid="21">We show that accurate models can be learned for multiple languages with both the variable-free and lambdacalculus meaning representations introduced above.</S>
+    <S sid="27" ssid="22">We also compare performance to previous methods (Kate &amp; Mooney, 2006; Wong &amp; Mooney, 2006, 2007; Zettlemoyer &amp; Collins, 2005, 2007; Lu et al., 2008), which are designed with either language- or representation- specific constraints that limit generalization, as discussed in more detail in Section 6.</S>
+    <S sid="28" ssid="23">Despite being the only approach that is general enough to run on all of the data sets, our algorithm achieves similar performance to the others, even outperforming them in several cases.</S>
+  </SECTION>
+  <SECTION title="2 Overview of the Approach" number="2">
+    <S sid="29" ssid="1">The goal of our algorithm is to find a function f : x &#8212;* z that maps sentences x to logical expressions z.</S>
+    <S sid="30" ssid="2">We learn this function by inducing a probabilistic CCG (PCCG) grammar from a training set {(xZ, zz)|i = 1... n} containing example (sentence, logical-form) pairs such as (&#8220;New York borders Vermont&#8221;, next to(ny, vt)).</S>
+    <S sid="31" ssid="3">The induced grammar consists of two components which the algorithm must learn: tion over the possible parses y, conditioned on the sentence x.</S>
+    <S sid="32" ssid="4">We will present the approach in two parts.</S>
+    <S sid="33" ssid="5">The lexical induction process (Section 4) uses a restricted form of higher order unification along with the CCG combinatory rules to propose new entries for A.</S>
+    <S sid="34" ssid="6">The complete learning algorithm (Section 5) integrates this lexical induction with a parameter estimation scheme that learns 0.</S>
+    <S sid="35" ssid="7">Before presenting the details, we first review necessary background.</S>
+  </SECTION>
+  <SECTION title="3 Background" number="3">
+    <S sid="36" ssid="1">This section provides an introduction to the ways in which we will use lambda calculus and higher-order unification to construct meaning representations.</S>
+    <S sid="37" ssid="2">It also reviews the CCG grammar formalism and probabilistic extensions to it, including existing parsing and parameter estimation techniques.</S>
+    <S sid="38" ssid="3">We assume that sentence meanings are represented as logical expressions, which we will construct from the meaning of individual words by using the operations defined in the lambda calculus.</S>
+    <S sid="39" ssid="4">We use a version of the typed lambda calculus (cf.</S>
+    <S sid="40" ssid="5">Carpenter (1997)), in which the basic types include e, for entities; t, for truth values; and i for numbers.</S>
+    <S sid="41" ssid="6">There are also function types of the form (e, t) that are assigned to lambda expressions, such as Ax.state(x), which take entities and return truth values.</S>
+    <S sid="42" ssid="7">We represent the meaning of words and phrases using lambda-calculus expressions that can contain constants, quantifiers, logical connectors, and lambda abstractions.</S>
+    <S sid="43" ssid="8">The advantage of using the lambda calculus lies in its generality.</S>
+    <S sid="44" ssid="9">The meanings of individual words and phrases can be arbitrary lambda expressions, while the final meaning for a sentence can take different forms.</S>
+    <S sid="45" ssid="10">It can be a full lambdacalculus expression, a variable-free expression such as answer(state(borders(tex))), or any other logical expression that can be built from the primitive meanings via function application and composition.</S>
+    <S sid="46" ssid="11">The higher-order unification problem (Huet, 1975) involves finding a substitution for the free variables in a pair of lambda-calculus expressions that, when applied, makes the expressions equal each other.</S>
+    <S sid="47" ssid="12">This problem is notoriously complex; in the unrestricted form (Huet, 1973), it is undecidable.</S>
+    <S sid="48" ssid="13">In this paper, we will guide the grammar induction process using a restricted version of higherorder unification that is tractable.</S>
+    <S sid="49" ssid="14">For a given expression h, we will need to find expressions for f and g such that either h = f(g) or h = Ax.f(g(x)).</S>
+    <S sid="50" ssid="15">This limited form of the unification problem will allow us to define the ways to split h into subparts that can be recombined with CCG parsing operations, which we will define in the next section, to reconstruct h. CCG (Steedman, 2000) is a linguistic formalism that tightly couples syntax and semantics, and can be used to model a wide range of language phenomena.</S>
+    <S sid="51" ssid="16">For present purposes a CCG grammar includes a lexicon A with entries like the following: where each lexical item w &#65533;- X : h has words w, a syntactic category X, and a logical form h expressed as a lambda-calculus expression.</S>
+    <S sid="52" ssid="17">For the first example, these are &#8220;New York,&#8221; NP, and ny.</S>
+    <S sid="53" ssid="18">CCG syntactic categories may be atomic (such as S, NP) or complex (such as S\NP/NP).</S>
+    <S sid="54" ssid="19">CCG combines categories using a set of combinatory rules.</S>
+    <S sid="55" ssid="20">For example, the forward (&gt;) and These rules apply to build syntactic and semantic derivations under the control of the word order information encoded in the slash directions of the lexical entries.</S>
+    <S sid="56" ssid="21">For example, given the lexicon above, the sentence New York borders Vermont can be parsed to produce: where each step in the parse is labeled with the combinatory rule (&#8722; &gt; or &#8722; &lt;) that was used.</S>
+    <S sid="57" ssid="22">CCG also includes combinatory rules of forward (&gt; B) and backward (&lt; B) composition: These rules provide for a relaxed notion of constituency which will be useful during learning as we reason about possible refinements of the grammar.</S>
+    <S sid="58" ssid="23">We also allow vertical slashes in CCG categories, which act as wild cards.</S>
+    <S sid="59" ssid="24">For example, with this extension the forward application combinator (&gt;) could be used to combine the category S/(S&#65533;NP) with any of S\NP, S/NP, or SNP.</S>
+    <S sid="60" ssid="25">Figure 1 shows two parses where the composition combinators and vertical slashes are used.</S>
+    <S sid="61" ssid="26">These parses closely resemble the types of analyses that will be possible under the grammars we learn in the experiments described in Section 8.</S>
+    <S sid="62" ssid="27">Given a CCG lexicon A, there will, in general, be many possible parses for each sentence.</S>
+    <S sid="63" ssid="28">We select the most likely alternative using a log-linear model, which consists of a feature vector 0 and a parameter vector 0.</S>
+    <S sid="64" ssid="29">The joint probability of a logical form z constructed with a parse y, given a sentence x is Section 7 defines the features used in the experiments, which include, for example, lexical features that indicate when specific lexical items in A are used in the parse y.</S>
+    <S sid="65" ssid="30">For parsing and parameter estimation, we use standard algorithms (Clark &amp; Curran, 2007), as described below.</S>
+    <S sid="66" ssid="31">The parsing, or inference, problem is to find the most likely logical form z given a sentence x, assuming the parameters 0 and lexicon A are known: where the probability of the logical form is found by summing over all parses that produce it: In this approach the distribution over parse trees y is modeled as a hidden variable.</S>
+    <S sid="67" ssid="32">The sum over parses in Eq.</S>
+    <S sid="68" ssid="33">3 can be calculated efficiently using the inside-outside algorithm with a CKY-style parsing algorithm.</S>
+    <S sid="69" ssid="34">To estimate the parameters themselves, we use stochastic gradient updates (LeCun et al., 1998).</S>
+    <S sid="70" ssid="35">Given a set of n sentence-meaning pairs {(xi, zi) : i = 1...n}, we update the parameters 0 iteratively, for each example i, by following the local gradient of the conditional log-likelihood objective Oi = log P(zi|xi; 0, A).</S>
+    <S sid="71" ssid="36">The local gradient of the individual parameter 0j associated with feature Oj and training instance (xi, zi) is given by: As with Eq.</S>
+    <S sid="72" ssid="37">3, all of the expectations in Eq.</S>
+    <S sid="73" ssid="38">4 are calculated through the use of the inside-outside algorithm on a pruned parse chart.</S>
+    <S sid="74" ssid="39">In the experiments, each chart cell was pruned to the top 200 entries.</S>
+  </SECTION>
+  <SECTION title="4 Splitting Lexical Items" number="4">
+    <S sid="75" ssid="1">Before presenting a complete learning algorithm, we first describe how to use higher-order unification to define a procedure for splitting CCG lexical entries.</S>
+    <S sid="76" ssid="2">This splitting process is used to expand the lexicon during learning.</S>
+    <S sid="77" ssid="3">We seed the lexical induction with a multi-word lexical item xi`S:zi for each training example (xi, zi), consisting of the entire sentence xi and its associated meaning representation zi.</S>
+    <S sid="78" ssid="4">For example, one initial lexical item might be: Although these initial, sentential lexical items can parse the training data, they will not generalize well to unseen data.</S>
+    <S sid="79" ssid="5">To learn effectively, we will need to split overly specific entries of this type into pairs of new, smaller, entries that generalize better.</S>
+    <S sid="80" ssid="6">For example, one possible split of the lexical entry given in (5) would be the pair: New York borders ` S/NP : Ax.next to(ny, x), Vermont ` NP : vt where we broke the original logical expression into two new ones Ax.next to(ny, x) and vt, and paired them with syntactic categories that allow the new lexical entries to be recombined to produce the original analysis.</S>
+    <S sid="81" ssid="7">The next three subsections define the set of possible splits for any given lexical item.</S>
+    <S sid="82" ssid="8">The process is driven by solving a higher-order unification problem that defines all of the ways of splitting the logical expression into two parts, as described in Section 4.1.</S>
+    <S sid="83" ssid="9">Section 4.2 describes how to construct syntactic categories that are consistent with the two new fragments of logical form and which will allow the new lexical items to recombine.</S>
+    <S sid="84" ssid="10">Finally, Section 4.3 defines the full set of lexical entry pairs that can be created by splitting a lexical entry.</S>
+    <S sid="85" ssid="11">As we will see, this splitting process is overly prolific for any single language and will yield many lexical items that do not generalize well.</S>
+    <S sid="86" ssid="12">For example, there is nothing in our original lexical entry above that provides evidence that the split should pair &#8220;Vermont&#8221; with the constant vt and not Ax.next to(ny, x).</S>
+    <S sid="87" ssid="13">Section 5 describes how we estimate the parameters of a probabilistic parsing model and how this parsing model can be used to guide the selection of items to add to the lexicon.</S>
+    <S sid="88" ssid="14">The set of possible splits for a logical expression h is defined as the solution to a pair of higherorder unification problems.</S>
+    <S sid="89" ssid="15">We find pairs of logical expressions (f, g) such that either f(g) = h or Ax.f(g(x)) = h. Solving these problems creates new expressions f and g that can be recombined according to the CCG combinators, as defined in Section 3.2, to produce h. In the unrestricted case, there can be infinitely many solution pairs (f, g) for a given expression h. For example, when h = tex and f = Ax.tex, the expression g can be anything.</S>
+    <S sid="90" ssid="16">Although it would be simple enough to forbid vacuous variables in f and g, the number of solutions would still be exponential in the size of h. For example, when h contains a conjunction, such as h = Ax.city(x) n major(x) n in(x, tex), any subset of the expressions in the conjunction can be assigned to f (or g).</S>
+    <S sid="91" ssid="17">To limit the number of possible splits, we enforce the following restrictions on the possible higherorder solutions that will be used during learning: Together, these three restrictions guarantee that the number of splits is, in the worst case, an Ndegree polynomial of the number of constants in h. The constraints were designed to increase the efficiency of the splitting algorithm without impacting performance on the development data.</S>
+    <S sid="92" ssid="18">We define the set of possible splits for a category X:h with syntax X and logical form h by enumerating the solution pairs (f, g) to the higher-order unification problems defined above and creating syntactic categories for the resulting expressions.</S>
+    <S sid="93" ssid="19">For example, given X :h = S\NP :Ax.in(x, tex), f = AyAx.in(x, y), and g = tex, we would produce the following two pairs of new categories: which were constructed by first choosing the syntactic category for g, in this case NP, and then enumerating the possible directions for the new slash in the category containing f. We consider each of these two steps in more detail below.</S>
+    <S sid="94" ssid="20">The new syntactic category for g is determined based on its type, T(g).</S>
+    <S sid="95" ssid="21">For example, T(tex) = e and T(Ax.state(x)) = (e, t).</S>
+    <S sid="96" ssid="22">Then, the function QT) takes an input type T and returns the syntactic category of T as follows: The basic types e and t are assigned syntactic categories NP and S, and all functional types are assigned categories recursively.</S>
+    <S sid="97" ssid="23">For example Q(e, t)) = S|NP and Q(e, (e, t))) = S|NP|NP.</S>
+    <S sid="98" ssid="24">This definition of CCG categories is unconventional in that it never assigns atomic categories to functional types.</S>
+    <S sid="99" ssid="25">For example, there is no distinct syntactic category N for nouns (which have semantic type he, ti).</S>
+    <S sid="100" ssid="26">Instead, the more complex category S|NP is used.</S>
+    <S sid="101" ssid="27">Now, we are ready to define the set of all category splits.</S>
+    <S sid="102" ssid="28">For a category A = X:h we can define which is a union of sets, each of which includes splits for a single CCG operator.</S>
+    <S sid="103" ssid="29">For example, FA(X:h) is the set of category pairs where each pair can be combined with the forward application combinator, described in Section 3.2, to reconstruct X:h. The remaining three sets are defined similarly, and are associated with the backward application and forward and backward composition operators, respectively: where the composition sets FC and BC only accept input categories with the appropriate outermost slash direction, for example FC(X/Y:h).</S>
+    <S sid="104" ssid="30">We can now define the lexical splits that will be used during learning.</S>
+    <S sid="105" ssid="31">For lexical entry w0:n ` A, with word sequence w0:n = hw0, ... , wni and CCG category A, define the set SL of splits to be: where we enumerate all ways of splitting the words sequence w0:n and aligning the subsequences with categories in SC(A), as defined in the last section.</S>
+  </SECTION>
+  <SECTION title="5 Learning Algorithm" number="5">
+    <S sid="106" ssid="1">The previous section described how a splitting procedure can be used to break apart overly specific lexical items into smaller ones that may generalize better to unseen data.</S>
+    <S sid="107" ssid="2">The space of possible lexical items supported by this splitting procedure is too large to explicitly enumerate.</S>
+    <S sid="108" ssid="3">Instead, we learn the parameters of a PCCG, which is used both to guide the splitting process, and also to select the best parse, given a learned lexicon.</S>
+    <S sid="109" ssid="4">Figure 2 presents the unification-based learning algorithm, UBL.</S>
+    <S sid="110" ssid="5">This algorithm steps through the data incrementally and performs two steps for each training example.</S>
+    <S sid="111" ssid="6">First, new lexical items are induced for the training instance by splitting and merging nodes in the best correct parse, given the current parameters.</S>
+    <S sid="112" ssid="7">Next, the parameters of the PCCG are updated by making a stochastic gradient update on the marginal likelihood, given the updated lexicon.</S>
+    <S sid="113" ssid="8">Inputs and Initialization The algorithm takes as input the training set of n (sentence, logical form) pairs {(xi, zi) : i = 1...n} along with an NP list, ANP, of proper noun lexical items such as Texas ` NP:tex.</S>
+    <S sid="114" ssid="9">The lexicon, A, is initialized with a single lexical item xi `S :zi for each of the training pairs along with the contents of the NP list.</S>
+    <S sid="115" ssid="10">It is possible to run the algorithm without the initial NP list; we include it to allow direct comparisons with previous approaches, which also included NP lists.</S>
+    <S sid="116" ssid="11">Features and initial feature weights are described in Section 7.</S>
+    <S sid="117" ssid="12">Step 1: Updating the Lexicon In the lexical update step the algorithm first computes the best correct parse tree y* for the current training example and then uses y* as input to the procedure NEW-LEX, which determines which (if any) new lexical items to add to A. NEW-LEX begins by enumerating all pairs (C, wi:j), for i &lt; j, where C is a category occurring at a node in y* and wi:j are the (two or more) words it spans.</S>
+    <S sid="118" ssid="13">For example, in the left parse in Figure 1, there would be four pairs: one with the category C = NP\NP:Ax.border(x) and the phrase wi:j =&#8220;ye siniri vardir&#8221;, and one for each non-leaf node in the tree.</S>
+    <S sid="119" ssid="14">For each pair (C, wi:j), NEW-LEX considers introducing a new lexical item wi:j `C, which allows for the possibility of a parse where the subtree rooted at C is replaced with this new entry.</S>
+    <S sid="120" ssid="15">(If C is a leaf node, this item will already exist.)</S>
+    <S sid="121" ssid="16">NEW-LEX also considers adding each pair of new lexical items that is obtained by splitting wi:j`C as described in Section 4, thereby considering many different ways of reanalyzing the node.</S>
+    <S sid="122" ssid="17">This process creates a set of possible new lexicons, where each lexicon expands A in a different way by adding the items from either a single split or a single merge of a node in y*.</S>
+    <S sid="123" ssid="18">For each potential new lexicon A', NEW-LEX computes the probability p(y*|xi, zi; B', A') of the original parse y* under A' and parameters B' that are the same as B but have weights for the new lexical items, as described in Section 7.</S>
+    <S sid="124" ssid="19">It also finds the best new parse y' = arg maxy p(y|xi, zi; B', A').1 Finally, NEW-LEX selects the A' with the largest difference in log probability between y' and y*, and returns the new entries in A'.</S>
+    <S sid="125" ssid="20">If y* is the best parse for every A', NEW-LEX returns the empty set; the lexicon will not change.</S>
+    <S sid="126" ssid="21">Step 2: Parameter Updates For each training example we update the parameters B using the stochastic gradient updates given by Eq.</S>
+    <S sid="127" ssid="22">4.</S>
+    <S sid="128" ssid="23">Discussion The alternation between refining the lexicon and updating the parameters drives the learning process.</S>
+    <S sid="129" ssid="24">The initial model assigns a conditional likelihood of one to each training example (there is a single lexical item for each sentence xi, and it contains the labeled logical form zi).</S>
+    <S sid="130" ssid="25">Although the splitting step often decreases the probability of the data, the new entries it produces are less specific and should generalize better.</S>
+    <S sid="131" ssid="26">Since we initially assign positive weights to the parameters for new lexical items, the overall approach prefers splitting; trees with many lexical items will initially be much more likely.</S>
+    <S sid="132" ssid="27">However, if the learned lexical items are used in too many incorrect parses, the stochastic gradient updates will down weight them to the point where the lexical induction step can merge or re-split nodes in the trees that contain them.</S>
+    <S sid="133" ssid="28">This allows the approach to correct the lexicon and, hopefully, improve future performance.</S>
+  </SECTION>
+  <SECTION title="6 Related Work" number="6">
+    <S sid="134" ssid="1">Previous work has focused on a variety of different meaning representations.</S>
+    <S sid="135" ssid="2">Several approaches have been designed for the variable-free logical representations shown in examples throughout this paper.</S>
+    <S sid="136" ssid="3">For example, Kate &amp; Mooney (2006) present a method (KRISP) that extends an existing SVM learning algorithm to recover logical representations.</S>
+    <S sid="137" ssid="4">The 1This computation can be performed efficiently by incrementally updating the parse chart used to find y*.</S>
+    <S sid="138" ssid="5">Inputs: Training set {(xi, zi) : i = 1... n} where each example is a sentence xi paired with a logical form zi.</S>
+    <S sid="139" ssid="6">Set of NP lexical items ANP.</S>
+    <S sid="140" ssid="7">Number of iterations T. Learning rate parameter &#945;0 and cooling rate parameter c. Definitions: The function NEW-LEX(y) takes a parse y and returns a set of new lexical items found by splitting and merging categories in y, as described in Section 5.</S>
+    <S sid="141" ssid="8">The distributions p(y|x, z; B, A) and p(y, z|x; B, A) are defined by the log-linear model, as described in Section 3.3.</S>
+    <S sid="142" ssid="9">Initialization: WASP system (Wong &amp; Mooney, 2006) uses statistical machine translation techniques to learn synchronous context free grammars containing both words and logic.</S>
+    <S sid="143" ssid="10">Lu et al. (2008) (Lu08) developed a generative model that builds a single hybrid tree of words, syntax and meaning representation.</S>
+    <S sid="144" ssid="11">These algorithms are all language independent but representation specific.</S>
+    <S sid="145" ssid="12">Other algorithms have been designed to recover lambda-calculus representations.</S>
+    <S sid="146" ssid="13">For example, Wong &amp; Mooney (2007) developed a variant of WASP (A-WASP) specifically designed for this alternate representation.</S>
+    <S sid="147" ssid="14">Zettlemoyer &amp; Collins (2005, 2007) developed CCG grammar induction techniques where lexical items are proposed according to a set of hand-engineered lexical templates.</S>
+    <S sid="148" ssid="15">Our approach eliminates this need for manual effort.</S>
+    <S sid="149" ssid="16">Another line of work has focused on recovering meaning representations that are not based on logic.</S>
+    <S sid="150" ssid="17">Examples include an early statistical method for learning to fill slot-value representations (Miller et al., 1996) and a more recent approach for recovering semantic parse trees (Ge &amp; Mooney, 2006).</S>
+    <S sid="151" ssid="18">Exploring the extent to which these representations are compatible with the logic-based learning approach we developed is an important area for future work.</S>
+    <S sid="152" ssid="19">Finally, there is work on using categorial grammars to solve other, related learning problems.</S>
+    <S sid="153" ssid="20">For example, Buszkowski &amp; Penn (1990) describe a unification-based approach for grammar discovery from bracketed natural language sentences and Villavicencio (2002) developed an approach for modeling child language acquisition.</S>
+    <S sid="154" ssid="21">Additionally, Bos et al. (2004) consider the challenging problem of constructing broad-coverage semantic representations with CCG, but do not learn the lexicon.</S>
+  </SECTION>
+  <SECTION title="7 Experimental Setup" number="7">
+    <S sid="155" ssid="1">Features We use two types of features in our model.</S>
+    <S sid="156" ssid="2">First, we include a set of lexical features: For each lexical item L E A, we include a feature OL that fires when L is used.</S>
+    <S sid="157" ssid="3">Second, we include semantic features that are functions of the output logical expression z.</S>
+    <S sid="158" ssid="4">Each time a predicate p in z takes an argument a with type T (a) in position i it triggers two binary indicator features: O(p,a,i) for the predicate-argument relation; and O(p,T(a),i) for the predicate argument-type relation.</S>
+    <S sid="159" ssid="5">Initialization The weights for the semantic features are initialized to zero.</S>
+    <S sid="160" ssid="6">The weights for the lexical features are initialized according to coocurrance statistics estimated with the Giza++ (Och &amp; Ney, 2003) implementation of IBM Model 1.</S>
+    <S sid="161" ssid="7">We compute translation scores for (word, constant) pairs that cooccur in examples in the training data.</S>
+    <S sid="162" ssid="8">The initial weight for each OL is set to ten times the average score over the (word, constant) pairs in L, except for the weights of seed lexical entries in ANP which are set to 10 (equivalent to the highest possible coocurrence score).</S>
+    <S sid="163" ssid="9">We used the learning rate &#945;0 = 1.0 and cooling rate c = 10&#8722;5 in all training scenarios, and ran the algorithm for T = 20 iterations.</S>
+    <S sid="164" ssid="10">These values were selected with cross validation on the Geo880 development set, described below.</S>
+    <S sid="165" ssid="11">Data and Evaluation We evaluate our system on the GeoQuery datasets, which contain naturallanguage queries of a geographical database paired with logical representations of each query&#8217;s meaning.</S>
+    <S sid="166" ssid="12">The full Geo880 dataset contains 880 (Englishsentence, logical-form) pairs, which we split into a development set of 600 pairs and a test set of 280 pairs, following Zettlemoyer &amp; Collins (2005).</S>
+    <S sid="167" ssid="13">The Geo250 dataset is a subset of Geo880 containing 250 sentences that have been translated into Turkish, Spanish and Japanese as well as the original English.</S>
+    <S sid="168" ssid="14">Due to the small size of this dataset we use 10-fold cross validation for evaluation.</S>
+    <S sid="169" ssid="15">We use the same folds as Wong &amp; Mooney (2006, 2007) and Lu et al. (2008), allowing a direct comparison.</S>
+    <S sid="170" ssid="16">The GeoQuery data is annotated with both lambda-calculus and variable-free meaning representations, which we have seen examples of throughout the paper.</S>
+    <S sid="171" ssid="17">We report results for both representations, using the standard measures of Recall (percentage of test sentences assigned correct logical forms), Precision (percentage of logical forms returned that are correct) and F1 (the harmonic mean of Precision and Recall).</S>
+    <S sid="172" ssid="18">Two-Pass Parsing To investigate the trade-off between precision and recall, we report results with a two-pass parsing strategy.</S>
+    <S sid="173" ssid="19">When the parser fails to return an analysis for a test sentence due to novel words or usage, we reparse the sentence and allow the parser to skip words, with a fixed cost.</S>
+    <S sid="174" ssid="20">Skipping words can potentially increase recall, if the ignored word is an unknown function word that does not contribute semantic content.</S>
+  </SECTION>
+  <SECTION title="8 Results and Discussion" number="8">
+    <S sid="175" ssid="1">Tables 1, 2, and 3 present the results for all of the experiments.</S>
+    <S sid="176" ssid="2">In aggregate, they demonstrate that our algorithm, UBL, learns accurate models across languages and for both meaning representations.</S>
+    <S sid="177" ssid="3">This is a new result; no previous system is as general.</S>
+    <S sid="178" ssid="4">We also see the expected tradeoff between precision and recall that comes from the two-pass parsing approach, which is labeled UBL-s. With the ability to skip words, UBL-s achieves the highest recall of all reported systems for all evaluation conditions.</S>
+    <S sid="179" ssid="5">However, UBL achieves much higher precision and better overall F1 scores, which are generally comparable to the best performing systems.</S>
+    <S sid="180" ssid="6">The comparison to the CCG induction techniques of ZC05 and ZC07 (Table 3) is particularly striking.</S>
+    <S sid="181" ssid="7">These approaches used language-specific templates to propose new lexical items and also required as input a set of hand-engineered lexical entries to model phenomena such as quantification and determiners.</S>
+    <S sid="182" ssid="8">However, the use of higher-order unification allows UBL to achieve comparable performance while automatically inducing these types of entries.</S>
+    <S sid="183" ssid="9">For a more qualitative evaluation, Table 4 shows a selection of lexical items learned with high weights for the lambda-calculus meaning representations.</S>
+    <S sid="184" ssid="10">Nouns such as &#8220;state&#8221; or &#8220;estado&#8221; are consistently learned across languages with the category S|NP, which stands in for the more conventional N. The algorithm also learns language-specific constructions such as the Japanese case markers &#8220;no&#8221; and &#8220;wa&#8221;, which are treated as modifiers that do not add semantic content.</S>
+    <S sid="185" ssid="11">Language-specific word order is also encoded, using the slash directions of the CCG categories.</S>
+    <S sid="186" ssid="12">For example, &#8220;what&#8221; and &#8220;que&#8221; take their arguments to the right in the wh-initial English and Spanish.</S>
+    <S sid="187" ssid="13">However, the Turkish wh-word &#8220;nelerdir&#8221; and the Japanese question marker &#8220;nan desu ka&#8221; are sentence final, and therefore take their arguments to the left.</S>
+    <S sid="188" ssid="14">Learning regularities of this type allows UBL to generalize well to unseen data.</S>
+    <S sid="189" ssid="15">There is less variation and complexity in the learned lexical items for the variable-free representation.</S>
+    <S sid="190" ssid="16">The fact that the meaning representation is deeply nested influences the form of the induced grammar.</S>
+    <S sid="191" ssid="17">For example, recall that the sentence &#8220;what states border texas&#8221; would be paired with the meaning answer(state(borders(tex))).</S>
+    <S sid="192" ssid="18">For this representation, lexical items such as: can be used to construct the desired output.</S>
+    <S sid="193" ssid="19">In practice, UBL often learns entries with only a single slash, like those above, varying only in the direction, as required for the language.</S>
+    <S sid="194" ssid="20">Even the more complex items, such as those for quantifiers, are consistently simpler than those induced from the lambda-calculus meaning representations.</S>
+    <S sid="195" ssid="21">For example, one of the most complex entries learned in the experiments for English is the smallest ` NP\NP/(NP|NP):AfAx.smallest one(f(x)).</S>
+    <S sid="196" ssid="22">There are also differences in the aggregate statistics of the learned lexicons.</S>
+    <S sid="197" ssid="23">For example, the average length of a learned lexical item for the (lambdacalculus, variable-free) meaning representations is: (1.21,1.08) for Turkish, (1.34,1.19) for English, (1.43,1.25) for Spanish and (1.63,1.42) for Japanese.</S>
+    <S sid="198" ssid="24">For both meaning representations the model learns significantly more multiword lexical items for the somewhat analytic Japanese than the agglutinative Turkish.</S>
+    <S sid="199" ssid="25">There are also variations in the average number of learned lexical items in the best parses during the final pass of training: 192 for Japanese, 206 for Spanish, 188 for English and 295 for Turkish.</S>
+    <S sid="200" ssid="26">As compared to the other languages, the morpologically rich Turkish requires significantly more lexical variation to explain the data.</S>
+    <S sid="201" ssid="27">Finally, there are a number of cases where the UBL algorithm could be improved in future work.</S>
+    <S sid="202" ssid="28">In cases where there are multiple allowable word orders, the UBL algorithm must learn individual entries for each possibility.</S>
+    <S sid="203" ssid="29">For example, the following two categories are often learned with high weight for the Japanese word &#8220;chiisai&#8221;: and are treated as distinct entries in the lexicon.</S>
+    <S sid="204" ssid="30">Similarly, the approach presented here does not model morphology, and must repeatedly learn the correct categories for the Turkish words &#8220;nehri,&#8221; &#8220;nehir,&#8221; &#8220;nehirler,&#8221; and &#8220;nehirlerin&#8221;, all of which correspond to the logical form Ax.river(x).</S>
+  </SECTION>
+  <SECTION title="9 Conclusions and Future Work" number="9">
+    <S sid="205" ssid="1">This paper has presented a method for inducing probabilistic CCGs from sentences paired with logical forms.</S>
+    <S sid="206" ssid="2">The approach uses higher-order unification to define the space of possible grammars in a language- and representation-independent manner, paired with an algorithm that learns a probabilistic parsing model.</S>
+    <S sid="207" ssid="3">We evaluated the approach on four languages with two meaning representations each, achieving high accuracy across all scenarios.</S>
+    <S sid="208" ssid="4">For future work, we are interested in exploring the generality of the approach while extending it to new understanding problems.</S>
+    <S sid="209" ssid="5">One potential limitation is in the constraints we introduced to ensure the tractability of the higher-order unification procedure.</S>
+    <S sid="210" ssid="6">These restrictions will not allow the approach to induce lexical items that would be used with, among other things, many of the type-raised combinators commonly employed in CCG grammars.</S>
+    <S sid="211" ssid="7">We are also interested in developing similar grammar induction techniques for context-dependent understanding problems, such as the one considered by Zettlemoyer &amp; Collins (2009).</S>
+    <S sid="212" ssid="8">Such an approach would complement ideas for using high-order unification to model a wider range of language phenomena, such as VP ellipsis (Dalrymple et al., 1991).</S>
+  </SECTION>
+  <SECTION title="Acknowledgements" number="10">
+    <S sid="213" ssid="1">We thank the reviewers for useful feedback.</S>
+    <S sid="214" ssid="2">This work was supported by the EU under IST Cognitive Systems grant IP FP6-2004-IST-4-27657 &#8220;Paco-Plus&#8221; and ERC Advanced Fellowship 249520 &#8220;GRAMPLUS&#8221; to Steedman.</S>
+    <S sid="215" ssid="3">Kwiatkowski was supported by an EPRSC studentship.</S>
+    <S sid="216" ssid="4">Zettlemoyer was supported by a US NSF International Research Fellowship.</S>
+  </SECTION>
+</PAPER>

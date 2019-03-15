@@ -1,0 +1,293 @@
+<PAPER>
+	<ABSTRACT>
+		<S sid ="1" ssid = "1">We offer a simple, effective, and scalable method for statistical machine translation parameter tuning based on the pairwise approach to ranking (Herbrich et al., 1999).</S>
+		<S sid ="2" ssid = "2">Unlike the popular MERT algorithm (Och, 2003), our pairwise ranking optimization (PRO) method is not limited to a handful of parameters and can easily handle systems with thousands of features.</S>
+		<S sid ="3" ssid = "3">Moreover, unlike recent approaches built upon the MIRA algorithm of Crammer and Singer (2003) (Watanabe et al., 2007; Chi- ang et al., 2008b), PRO is easy to implement.</S>
+		<S sid ="4" ssid = "4">It uses off-the-shelf linear binary classifier software and can be built on top of an existing MERT framework in a matter of hours.</S>
+		<S sid ="5" ssid = "5">We establish PRO’s scalability and effectiveness by comparing it to MERT and MIRA and demonstrate parity on both phrase-based and syntax-based systems in a variety of language pairs, using large scale data scenarios.</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number = "1">
+			<S sid ="6" ssid = "6">The MERT algorithm (Och, 2003) is currently the most popular way to tune the parameters of a statistical machine translation (MT) system.</S>
+			<S sid ="7" ssid = "7">MERT is well-understood, easy to implement, and runs quickly, but can behave erratically and does not scale beyond a handful of features.</S>
+			<S sid ="8" ssid = "8">This lack of scalability is a significant weakness, as it inhibits systems from using more than a couple dozen features to discriminate between candidate translations and stymies feature development innovation.</S>
+			<S sid ="9" ssid = "9">Several researchers have attempted to address this weakness.</S>
+			<S sid ="10" ssid = "10">Recently, Watanabe et al.</S>
+			<S sid ="11" ssid = "11">(2007) and Chiang et al.</S>
+			<S sid ="12" ssid = "12">(2008b) have developed tuning methods using the MIRA algorithm (Crammer and Singer, 2003) as a nucleus.</S>
+			<S sid ="13" ssid = "13">The MIRA technique of Chiang et al. has been shown to perform well on large-scale tasks with hundreds or thousands of features (2009).</S>
+			<S sid ="14" ssid = "14">However, the technique is complex and architecturally quite different from MERT.</S>
+			<S sid ="15" ssid = "15">Tellingly, in the entire proceedings of ACL 2010 (Hajicˇ et al., 2010), only one paper describing a statistical MT system cited the use of MIRA for tuning (Chiang, 2010), while 15 used MERT.1 Here we propose a simpler approach to tuning that scales similarly to high-dimensional feature spaces.</S>
+			<S sid ="16" ssid = "16">We cast tuning as a ranking problem (Chen et al., 2009), where the explicit goal is to learn to correctly rank candidate translations.</S>
+			<S sid ="17" ssid = "17">Specifically, we follow the pairwise approach to ranking (Herbrich et al., 1999; Freund et al., 2003; Burges et al., 2005; Cao et al., 2007), in which the ranking problem is reduced to the binary classification task of deciding between candidate translation pairs.</S>
+			<S sid ="18" ssid = "18">Of primary concern to us is the ease of adoption of our proposed technique.</S>
+			<S sid ="19" ssid = "19">Because of this, we adhere as closely as possible to the established MERT architecture and use freely available machine learning software.</S>
+			<S sid ="20" ssid = "20">The end result is a technique that scales and performs just as well as MIRA-based tuning, but which can be implemented in a couple of hours by anyone with an existing MERT implementation.</S>
+			<S sid ="21" ssid = "21">Mindful that many would-be enhancements to the 1 The remainder either did not specify their tuning method.</S>
+			<S sid ="22" ssid = "22">(though a number of these used the Moses toolkit (Koehn et al., 2007), which uses MERT for tuning) or, in one case, set weights by hand.</S>
+			<S sid ="23" ssid = "23">state-of-the-art are false positives that only show improvement in a narrowly defined setting or with limited data, we validate our claims on both syntax and phrase-based systems, using multiple language pairs and large data sets.</S>
+			<S sid ="24" ssid = "24">We describe tuning in abstract and somewhat formal terms in Section 2, describe the MERT algorithm in the context of those terms and illustrate its scalability issues via a synthetic experiment in Section 3, introduce our pairwise ranking optimization method in Section 4, present numerous large-scale MT experiments to validate our claims in Section 5, discuss some related work in Section 6, and conclude in Section 7.</S>
+	</SECTION>
+	<SECTION title="Tuning. " number = "2">
+			<S sid ="25" ssid = "1">In Figure 1, we show an example candidate space, defined as a tuple (∆, I , J, f, e, x) where: • ∆ is a positive integer referred to as the dimensionality of the space • I is a (possibly infinite) set of positive integers, referred to as sentence indices • J maps each sentence index to a (possibly infinite) set of positive integers, referred to as candidate indices • f maps each sentence index to a sentence from the source language • e maps each pair (i, j) ∈ I × J (i) to the jth target-language candidate translation of source sentence f (i) • x maps each pair (i, j) ∈ I × J (i) to a ∆-dimension feature vector representation of e(i, j) The example candidate space has two source sentences, three candidate translations for each source sentence, and feature vectors of dimension 2.</S>
+			<S sid ="26" ssid = "2">It is an example of a finite candidate space, defined as a candidate space for which I is finite and J maps each index of I to a finite set.</S>
+			<S sid ="27" ssid = "3">A policy of candidate space (∆, I , J, f, e, x) is a function that maps each member i ∈ I to a member of J (i).</S>
+			<S sid ="28" ssid = "4">A policy corresponds to a choice of one candidate translation for each source sentence.</S>
+			<S sid ="29" ssid = "5">For the example in Figure 1, policy p1 = {1 1→ 2, 2 1→ 3} corresponds to the choice of “he does not go” for the first source sentence and “I do not go” for the second source sentence.</S>
+			<S sid ="30" ssid = "6">Obviously some policies are better than others.</S>
+			<S sid ="31" ssid = "7">Policy p2 = {1 1→ 3, 2 1→ 1} corresponds to the inferior translations “she not go” and “I go not.” We assume the MT system distinguishes between policies using a scoring function for candidate trans lations of the form hw (i, j) = w · x(i, j), where w is a weight vector of the same dimension as feature vector x(i, j).</S>
+			<S sid ="32" ssid = "8">This scoring function extends to a policy p by summing the cost of each of the policy’s candidate translations: Hw (p) = i∈I hw (i, p(i)).</S>
+			<S sid ="33" ssid = "9">As can be seen in Figure 1, using w = [−2, 1], Hw (p1) = 9 and Hw (p2) = −8.</S>
+			<S sid ="34" ssid = "10">The goal of tuning is to learn a weight vector w such that Hw (p) assigns a high score to good policies, and a low score to bad policies.2 To do so, we need information about which policies are good and which are bad.</S>
+			<S sid ="35" ssid = "11">This information is provided by a “gold” scoring function G that maps each policy to a real-valued score.</S>
+			<S sid ="36" ssid = "12">Typically this gold function is BLEU (Papineni et al., 2002), though there are several common alternatives (Lavie and Denkowski, 2009; Melamed et al., 2003; Snover et al., 2006; Chiang et al., 2008a).</S>
+			<S sid ="37" ssid = "13">We want to find a weight vector w such that Hw behaves “similarly” to G on a candidate space s. We assume a loss function ls(Hw , G) which returns the real-valued loss of using scoring function Hw when the gold scoring function is G and the candidate space is s. Thus, we may say the goal of tuning is to find the weight vector w that minimizes loss.</S>
+	</SECTION>
+	<SECTION title="MERT. " number = "3">
+			<S sid ="38" ssid = "1">In general, the candidate space may have infinitely many source sentences, as well as infinitely many candidate translations per source sentence.</S>
+			<S sid ="39" ssid = "2">In practice, tuning optimizes over a finite subset of source sentences3 and a finite subset of candidate translations as well.</S>
+			<S sid ="40" ssid = "3">The classic tuning architecture used in the dominant MERT approach (Och, 2003) forms the translation subset and learns weight vector w via 2 Without loss of generality, we assume that a higher score indicates a better translation.</S>
+			<S sid ="41" ssid = "4">3 See Section 5.2 for the tune sets used in this paper’s exper-.</S>
+			<S sid ="42" ssid = "5">iments.</S>
+			<S sid ="43" ssid = "6">Sour ce Sent ence Candi date Tran slatio ns i f (i) j e(i , j) x(i , j) hw (i, j) g(i , j) 1 “il ne va pa s” 1 2 3 “h e go es no t” “ h e d o e s n ot g o ” “s h e n ot g o ” [2 4] [ 3 8 ] [ 6 1 ] 0 2 11 0.</S>
+			<S sid ="44" ssid = "7">28 0.</S>
+			<S sid ="45" ssid = "8">42 0.</S>
+			<S sid ="46" ssid = "9">12 2 “je ne vai s pa s” 1 2 3 “I go no t” “ w e d o n o t g o ” “ I d o n o t g o ” [-33] [15] [-53] 37 7 0.</S>
+			<S sid ="47" ssid = "10">15 0.</S>
+			<S sid ="48" ssid = "11">18 0.</S>
+			<S sid ="49" ssid = "12">34 Figure 1: Example candidate space of dimensionality 2.</S>
+			<S sid ="50" ssid = "13">Note: I = {1, 2}, J (1) = J (2) = {1, 2, 3}.</S>
+			<S sid ="51" ssid = "14">We also show a local scoring function hw (i, j) (where w = [−2, 1]) and a local gold scoring function g(i, j).</S>
+			<S sid ="52" ssid = "15">Algorithm TUNE(s, G): 1: initialize pool: let st = (∆, I t, J t, f, e, x), where I t ⊆ I and J t = ∅ 2: for the desired number of iterations do 3: candidate generation: choose index pairs (i, j); for each, add j to J t(i) 4: optimization: find vector w that minimizes MERT has proven itself effective at tuning candidate spaces with low dimensionality.</S>
+			<S sid ="53" ssid = "16">However, it is often claimed that MERT does not scale well with dimensionality.</S>
+			<S sid ="54" ssid = "17">To test this claim, we devised the following synthetic data experiment: 1.</S>
+			<S sid ="55" ssid = "18">We created a gold scoring function G that is. also a linear function of the same form as Hw , lss (Hw , G) 5: return w i.e., G(p) = Hw∗ (p) for some gold weight vec Figure 2: Schema for iterative tuning of base candidate space s = (∆, I , J, f, e, x) w.r.t. gold function G. a feedback loop consisting of two phases.</S>
+			<S sid ="56" ssid = "19">Figure 2 shows the pseudocode.</S>
+			<S sid ="57" ssid = "20">During candidate generation, candidate translations are selected from a base candidate space s and added to a finite candidatespace st called the candidate pool.</S>
+			<S sid ="58" ssid = "21">During optimiza tion, the weight vector w is optimized to minimize loss lss (Hw , G).For its candidate generation phase, MERT gener ates the k-best candidate translations for each source sentence according to hw , where w is the weight vector from the previous optimization phase (or an arbitrary weight vector for the first iteration).</S>
+			<S sid ="59" ssid = "22">For its optimization phase, MERT defines the loss function as follows: ls(Hw , G) = max G(p) − G(arg max Hw (p)) tor w∗.</S>
+			<S sid ="60" ssid = "23">Under this assumption, the role of the optimization phase reduces to learning back the gold weight vector w∗.</S>
+			<S sid ="61" ssid = "24">2.</S>
+			<S sid ="62" ssid = "25">We generated a ∆-dimensionality candidate.</S>
+			<S sid ="63" ssid = "26">pool with 500 source “sentences” and 100 candidate “translations” per sentence.</S>
+			<S sid ="64" ssid = "27">We created the corresponding feature vectors by drawing ∆ random real numbers uniformly from the interval [0, 500].</S>
+			<S sid ="65" ssid = "28">3.</S>
+			<S sid ="66" ssid = "29">We ran MERT’s line optimization on this syn-.</S>
+			<S sid ="67" ssid = "30">thetic candidate pool and compared the learned weight vector w to the gold weight vector w∗ using cosine similarity.</S>
+			<S sid ="68" ssid = "31">We used line optimization in the standard way, by generating 20 random starting weight vectors and hill-climbing on each independently until no further progress is made, then choosing the final weight vector that minimizes loss.</S>
+			<S sid ="69" ssid = "32">We tried various dimensionalities from 10 to 1000.</S>
+			<S sid ="70" ssid = "33">We repeated each set p p ting three times, generating different random data In other words, it prefers weight vectors w such that the gold function G scores Hw ’s best policy as highly as possible (if Hw ’s best policy is the same as G’s best policy, then there is zero loss).</S>
+			<S sid ="71" ssid = "34">Typically the optimization phase is implemented using Och’s line optimization algorithm (2003).</S>
+			<S sid ="72" ssid = "35">each time.</S>
+			<S sid ="73" ssid = "36">The results in Figure 3 indicate that as the dimensionality of the problem increases MERT rapidly loses the ability to learn w∗.</S>
+			<S sid ="74" ssid = "37">Note that this synthetic problem is considerably easier than a real MT scenario, where the data is noisy and interdependent, and the gold scoring function is nonlinear.</S>
+			<S sid ="75" ssid = "38">If MERT cannot scale in this simple scenario, it has little hope of succeeding in a high-dimensionality deployment scenario.</S>
+	</SECTION>
+	<SECTION title="Optimization via Pairwise Ranking. " number = "4">
+			<S sid ="76" ssid = "1">We would like to modify MERT so that it scales well to high-dimensionality candidate spaces.</S>
+			<S sid ="77" ssid = "2">The most prominent example of a tuning method that performs well on high-dimensionality candidate spaces is the MIRA-based approach used by Watanabe et al.</S>
+			<S sid ="78" ssid = "3">(2007) and Chiang et al.</S>
+			<S sid ="79" ssid = "4">(2008b; 2009).</S>
+			<S sid ="80" ssid = "5">Unfortunately, this approach requires a complex architecture that diverges significantly from the MERT approach, and consequently has not been widely adopted.</S>
+			<S sid ="81" ssid = "6">Our goal is to achieve the same performance with minimal modification to MERT.</S>
+			<S sid ="82" ssid = "7">With MERT as a starting point, we have a choice: modify candidate generation, optimization, or both.</S>
+			<S sid ="83" ssid = "8">Although alternative candidate generation methods have been proposed (Macherey et al., 2008; Chiang et al., 2008b; Chatterjee and Cancedda, 2010), we will restrict ourselves to MERT-style candidate generation, in order to minimize divergence from the established MERT tuning architecture.</S>
+			<S sid ="84" ssid = "9">Instead, we focus on the optimization phase.</S>
+			<S sid ="85" ssid = "10">4.1 Basic Approach.</S>
+			<S sid ="86" ssid = "11">While intuitive, the MERT optimization module focuses attention on Hw ’s best policy, and not on its overall prowess at ranking policies.</S>
+			<S sid ="87" ssid = "12">We will create an optimization module that directly addresses Hw ’s ability to rank policies in the hope that this more holistic approach will generalize better to un We follow the pairwise approach to ranking (Her- brich et al., 1999; Freund et al., 2003; Burges et al., 2005; Cao et al., 2007).</S>
+			<S sid ="88" ssid = "13">In the pairwise approach, the learning task is framed as the classification of candidate pairs into two categories: correctly ordered and incorrectly ordered.</S>
+			<S sid ="89" ssid = "14">Specifically, for can didate translation pair e(i, j) and e(i, jt), we want: g(i, j) &gt; g(i, jt) ⇔ hw (i, j) &gt; hw (i, jt).</S>
+			<S sid ="90" ssid = "15">We can re-express this condition: g(i, j) &gt; g(i, jt) ⇔ hw (i, j) &gt; hw (i, jt) ⇔ hw (i, j) − hw (i, jt) &gt; 0 ⇔ w · x(i, j) − w · x(i, jt) &gt; 0 ⇔ w · (x(i, j) − x(i, jt)) &gt; 0 Thus optimization reduces to a classic binary classification problem.</S>
+			<S sid ="91" ssid = "16">We create a labeled training instance for this problem by computing difference vec tor x(i, j) − x(i, jt), and labeling it as a positive or negative instance based on whether, respectively, the first or second vector is superior according to gold function g. To ensure balance, we consider both possible difference vectors from a pair.</S>
+			<S sid ="92" ssid = "17">For example, given the candidate space of Figure 1, since g(1, 1) &gt; g(1, 3), we would add ([−4, 3], +) and ([4, −3], −) to our training set.</S>
+			<S sid ="93" ssid = "18">We can then feed thistraining data directly to any off-the-shelf classifica tion tool that returns a linear classifier, in order to obtain a weight vector w that optimizes the above condition.</S>
+			<S sid ="94" ssid = "19">This weight vector can then be used directly by the MT system in the subsequent candidate generation phase.</S>
+			<S sid ="95" ssid = "20">The exact loss function lss (Hw , G) optimized depends on the choice of classifier.4 Typical approaches to pairwise ranking enumerate all difference vectors as training data.</S>
+			<S sid ="96" ssid = "21">For tuning seen data.</S>
+			<S sid ="97" ssid = "22">however, this means O(|I | ∗ J 2 ) vectors, where Assume that the gold scoring function G decomposes in the following way: G(p) = g(i, p(i)) (1) i∈I where g(i, j) is a local scoring function that scores the single candidate translation e(i, j).</S>
+			<S sid ="98" ssid = "23">We show an example g in Figure 1.</S>
+			<S sid ="99" ssid = "24">For an arbitrary pair of can didate translations e(i, j) and e(i, jt), the local gold function g tells us which is the better translation.</S>
+			<S sid ="100" ssid = "25">Note that this induces a ranking on the candidate translations for each source sentence.</S>
+			<S sid ="101" ssid = "26">Jmax is the cardinality of the largest J (i).</S>
+			<S sid ="102" ssid = "27">Since I and Jmax commonly range in the thousands, a full enumeration would produce billions of feature vectors.</S>
+			<S sid ="103" ssid = "28">Out of tractability considerations, we sample from the space of difference vectors, using the sampler template in Figure 4.</S>
+			<S sid ="104" ssid = "29">For each source sentence i, the sampler generates Γ candidate transla tion pairs (j, jt), and accepts each pair with probability αi(|g(i, j) − g(i, jt)|).</S>
+			<S sid ="105" ssid = "30">Among the accepted pairs, it keeps the Ξ with greatest g differential, and adds their difference vectors to the training data.5 4 See (Chen et al., 2009) for a brief survey..</S>
+	</SECTION>
+	<SECTION title="The intuition for biasing toward high score differential  is. " number = "5">
+			<S sid ="106" ssid = "1">1 0.8 0.6 0.4 0.2 0 Sy nth etic par am eter lea rni ng of M ER T and PR O P R O N o i s y P R O M E R T N o i s y M E R T 0 200 400 600 800 1000 D i m e n s i o n a l i t y Algorithm SAMPLERs,g ( Γ, Ξ, i, αi ): 1: V = () 2: for Γ samplings do 3: Choos e (j, jt) ∈ J (i)×J (i) uniformly at ran dom.</S>
+			<S sid ="107" ssid = "2">4: With probability αi(|g(i, j) g(i, jt)|), add ( x ( i , j ) , x ( i , j t ) , | g ( i , j ) g ( i , j t ) | ) t o V . 5: Sort V decreasingl y by |g(i, j)-g(i, jt)|.</S>
+			<S sid ="108" ssid = "3">6: return (x(i, j) − x(i, jt), sign(g(i, j)-g(i, jt)) and (x(i, jt) x(i, j), sign(g(i, jt)-g(i, j))) for each of the first Ξ members of V . Figure 3: Result of synthetic data learning experiment for MERT and PRO, with and without added noise.</S>
+			<S sid ="109" ssid = "4">As the dimensionality increases MERT is unable to learn the original weights but PRO still performs adequately.</S>
+			<S sid ="110" ssid = "5">4.2 Scalability.</S>
+			<S sid ="111" ssid = "6">We repeated the scalability study from Section 3, now using our pairwise ranking optimization (hereafter, PRO) approach.</S>
+			<S sid ="112" ssid = "7">Throughout all experiments with PRO we choose Γ = 5000, Ξ = 50, and the following step function α for each αi: 6 0 if n &lt; 0.05 Figure 4: Pseudocode for our sampler.</S>
+			<S sid ="113" ssid = "8">Arguments: s = (∆, I , J, f, e, x) is a finite candidate space; g is a scoringfunction; Γ, Ξ, i are nonnegative integers; αi is a func tion from the nonnegative real numbers to the real interval [0, 1].</S>
+			<S sid ="114" ssid = "9">but added noise to each feature vector, drawn from a zero-mean Gaussian with a standard deviation of 500.</S>
+			<S sid ="115" ssid = "10">The results of the noisy synthetic experiments,.</S>
+			<S sid ="116" ssid = "11">also in Figure 3 (the lines labeled “Noisy”), show that the pairwise ranking approach is less successful than before at learning w∗ at high dimensionality, but still greatly outperforms MERT.</S>
+			<S sid ="117" ssid = "12">α(n) = 1 otherwise 4.3 Discussion.</S>
+			<S sid ="118" ssid = "13">We used MegaM (Daume´ III, 2004) as a binary classifier in our contrasting synthetic experiment and ran it “out of the box,” i.e., with all default settings for binary classification.7 Figure 3 shows that PROis able to learn w∗ nearly perfectly at all dimension alities from 10 to 1000.</S>
+			<S sid ="119" ssid = "14">As noted previously, though, this is a rather simple task.</S>
+			<S sid ="120" ssid = "15">To encourage a disconnect between g and hw and make the synthetic scenario look more like MT reality, we repeated the synthetic experiments that our primary goal is to ensure good translations are preferred to bad translations, and not to tease apart small differences.</S>
+	</SECTION>
+	<SECTION title="We  obtained  these parameters by trial-and-error experi-. " number = "6">
+			<S sid ="121" ssid = "1">mentation on a single MT system (UrduEnglish SBMT), then held them fixed throughout our experiments.</S>
+			<S sid ="122" ssid = "2">We obtained similar results using Γ = Ξ = 100, and for each αi , a logistic sigmoid function centered at the mean g differential of candidate translation pairs for the ith source sentence.</S>
+			<S sid ="123" ssid = "3">This alternative approach has the advantage of being agnostic about which gold scoring function is used.</S>
+			<S sid ="124" ssid = "4">7 With the sampling settings previously described and MegaM as our classifier we were able to optimize two to three times faster than with MERT’s line optimization.</S>
+			<S sid ="125" ssid = "5">The idea of learning from difference vectors also lies at the heart of the MIRA-based approaches (Watanabe et al., 2007; Chiang et al., 2008b) and the approach of Roth et al.</S>
+			<S sid ="126" ssid = "6">(2010), which, similar to our method, uses sampling to select vectors.</S>
+			<S sid ="127" ssid = "7">Here, we isolate these aspects of those approaches to create a simpler tuning technique that closely mirrors the ubiquitous MERT architecture.</S>
+			<S sid ="128" ssid = "8">Among other simplifications, we abstract away the choice of MIRA as the classification method (our approach can use any classification technique that learns a separating hyperplane), and we eliminate the need for oracle translations.</S>
+			<S sid ="129" ssid = "9">An important observation is that BLEU does not satisfy the decomposability assumption of Equation (1).</S>
+			<S sid ="130" ssid = "10">An advantage of MERT is that it can directly optimize for non-decomposable scoring functions like BLEU.</S>
+			<S sid ="131" ssid = "11">In our experiments, we use the BLEU+1 approximation to BLEU (Liang et al., 2006) to determine class labels.</S>
+			<S sid ="132" ssid = "12">We will nevertheless use BLEU to evaluate the trained systems.</S>
+			<S sid ="133" ssid = "13">P B M T S B M T L a n g u a g e E x p e r i m e n t f e a t s method B L E U t u n e test L a n g u a g e E x p e r i m e n t f e a t s method B L E U t u n e test U r d u E n g li s h M E R T b a s e M I R A P R O 2 0.</S>
+			<S sid ="134" ssid = "14">5 17.7 2 0.</S>
+			<S sid ="135" ssid = "15">5 17.9 2 0.</S>
+			<S sid ="136" ssid = "16">4 18.2 U r d u E n g li s h M E R T b a s e M I R A P R O 2 3.</S>
+			<S sid ="137" ssid = "17">4 21.4 2 3.</S>
+			<S sid ="138" ssid = "18">6 22.3 2 3.</S>
+			<S sid ="139" ssid = "19">4 22.2 e x t M I R A P R O 2 1.</S>
+			<S sid ="140" ssid = "20">8 17.8 2 1.</S>
+			<S sid ="141" ssid = "21">6 18.1 e x t M I R A P R O 2 5.</S>
+			<S sid ="142" ssid = "22">2 22.8 2 4.</S>
+			<S sid ="143" ssid = "23">2 22.8 A ra bic E n gl is h M E R T b a s e M I R A P R O 4 6.</S>
+			<S sid ="144" ssid = "24">8 41.2 4 7.</S>
+			<S sid ="145" ssid = "25">0 41.1 4 6.</S>
+			<S sid ="146" ssid = "26">9 41.1 A r a bi c E n gl is h M E R T b a s e M I R A P R O 4 4.</S>
+	</SECTION>
+	<SECTION title="39.0" number = "7">
+			<S sid ="147" ssid = "1">4 4.</S>
+			<S sid ="148" ssid = "2">6 39.0 4 4.</S>
+			<S sid ="149" ssid = "3">5 39.0 e x t M I R A P R O 4 7.</S>
+			<S sid ="150" ssid = "4">5 41.7 4 8.</S>
+			<S sid ="151" ssid = "5">5 41.9 e x t M I R A P R O 4 5.</S>
+	</SECTION>
+	<SECTION title="39.8" number = "8">
+			<S sid ="152" ssid = "1">4 5.</S>
+	</SECTION>
+	<SECTION title="40.3" number = "9">
+			<S sid ="153" ssid = "1">Ch in ese En gli sh M E R T b a s e M I R A P R O 2 3.</S>
+			<S sid ="154" ssid = "2">8 22.2 2 4.</S>
+			<S sid ="155" ssid = "3">1 22.5 2 3.</S>
+			<S sid ="156" ssid = "4">8 22.5 C hi ne se E ng lis h M E R T b a s e M I R A P R O 2 5.</S>
+			<S sid ="157" ssid = "5">5 22.7 2 5.</S>
+			<S sid ="158" ssid = "6">4 22.9 2 5.</S>
+			<S sid ="159" ssid = "7">5 22.9 e x t M I R A P R O 2 4.</S>
+			<S sid ="160" ssid = "8">8 22.6 2 4.</S>
+			<S sid ="161" ssid = "9">9 22.7 e x t M I R A P R O 2 6.</S>
+			<S sid ="162" ssid = "10">0 23.3 2 5.</S>
+			<S sid ="163" ssid = "11">6 23.5 Table 1: Machine translation performance for the experiments listed in this paper.</S>
+			<S sid ="164" ssid = "12">Scores are case-sensitive IBM BLEU.</S>
+			<S sid ="165" ssid = "13">For every choice of system, language pair, and feature set, PRO performs comparably with the other methods.</S>
+			<S sid ="166" ssid = "14">5 Experiments.</S>
+			<S sid ="167" ssid = "15">We now turn to real machine translation conditions to validate our thesis: We can cleanly replace MERT’s line optimization with pairwise ranking optimization and immediately realize the benefits of high-dimension tuning.</S>
+			<S sid ="168" ssid = "16">We now detail the three language pairs, two feature scenarios, and two MT models used for our experiments.</S>
+			<S sid ="169" ssid = "17">For each language pair and each MT model we used MERT, MIRA, and PRO to tune with a standard set of baseline features, and used the latter two methods to tune with an extended set of features.8 At the end of every experiment we used the final feature weights to decode a held-out test set and evaluated it with case-sensitive BLEU.</S>
+			<S sid ="170" ssid = "18">The results are in Table 1.</S>
+			<S sid ="171" ssid = "19">5.1 Systems.</S>
+			<S sid ="172" ssid = "20">We used two systems, each based on a different MT model.</S>
+			<S sid ="173" ssid = "21">Our syntax-based system (hereafter, SBMT) follows the model of Galley et al.</S>
+			<S sid ="174" ssid = "22">(2004).</S>
+			<S sid ="175" ssid = "23">Our 8 MERT could not run to a satisfactory completion in any extended feature scenario; as implied in the synthetic data experiment of Section 3, the algorithm makes poor choices for its weights and this leads to low-quality k-best lists and dismal performance, near 0 BLEU in every iteration.</S>
+			<S sid ="176" ssid = "24">phrase-based system (hereafter, PBMT) follows the model of Och and Ney (2004).</S>
+			<S sid ="177" ssid = "25">In both systems we learn alignments with GIZA++ (Och and Ney, 2000) using IBM Model 4; for UrduEnglish and ChineseEnglish we merged alignments with the refined method, and for ArabicEnglish we merged with the union method.</S>
+			<S sid ="178" ssid = "26">5.2 Data.</S>
+			<S sid ="179" ssid = "27">Table 2 notes the sizes of the datasets used in our experiments.</S>
+			<S sid ="180" ssid = "28">All tune and test data have four English reference sets for the purposes of scoring.</S>
+			<S sid ="181" ssid = "29">D a t a U E A E C E T r a i n l i n e s w o r d s 51 5 K 2.</S>
+			<S sid ="182" ssid = "30">2 M 6.</S>
+			<S sid ="183" ssid = "31">5 M 17 5 M 7.</S>
+			<S sid ="184" ssid = "32">9 M 17 3 M T u n e l i n e s w o r d s 9 2 3 1 6 K 1 9 9 4 6 5 K 1 6 1 5 4 2 K T e s t l i n e s w o r d s 9 3 8 1 8 K 1 3 5 7 4 7 K 1 3 5 7 3 7 K Table 2: Data sizes for the experiments reported in this paper (English words shown).</S>
+			<S sid ="185" ssid = "33">C l a s s U r d u E n g l i s h P B M T S B M T b a s e ext base ext A r a b i c E n g l i s h P B M T S B M T b a s e ext base ext C h i n e s e E n g l i s h P B M T S B M T b a s e ext base ext b a s e l i n e t a r g e t w o r d d i s c o u n t n o d e c o u n t r u l e o v e r l a p w o r d p a i r ph ra se le n gt h 1 5 15 19 19 – 51 – 50 – 11 – 11 – – – 99 – – – 98 – 2110 – – – 63 – – 1 5 15 19 19 – 51 – 50 – 11 – 10 – – – 138 – – – 136 – 6193 – – – 63 – – 1 5 15 19 19 – 51 – 299 – 11 – 10 – – – 96 – – – 93 – 1688 – – – 63 – – t o t a l 1 5 2250 19 277 1 5 6333 18 352 1 5 1828 19 517 Table 3: Summary of features used in experiments in this paper.</S>
+			<S sid ="186" ssid = "34">5.2.1 UrduEnglish The training data for UrduEnglish is that made available in the constrained track in the NIST 2009 MT evaluation.</S>
+			<S sid ="187" ssid = "35">This includes many lexicon entries and other single-word data, which accounts for the large number of lines relative to word count.</S>
+			<S sid ="188" ssid = "36">The NIST 2008 evaluation set, which contains newswire and web data, is split into two parts; we used roughly half each for tune and test.</S>
+			<S sid ="189" ssid = "37">We trained a 5-gram English language model on the English side of the training data.</S>
+			<S sid ="190" ssid = "38">5.2.2 ArabicEnglish The training data for Arabic English is that made available in the constrained track in the NIST 2008 MT evaluation.</S>
+			<S sid ="191" ssid = "39">The tune set, which contains only newswire data, is a mix from NIST MT evaluation sets from 2003–2006 and from GALE development data.</S>
+			<S sid ="192" ssid = "40">The test set, which contains both web and newswire data, is the evaluation set from the NIST 2008 MT evaluation.</S>
+			<S sid ="193" ssid = "41">We trained a 4-gram English.</S>
+			<S sid ="194" ssid = "42">language model on the English side of the training data.</S>
+			<S sid ="195" ssid = "43">5.2.3 ChineseEnglish For ChineseEnglish we used 173M words of training data from GALE 2008.</S>
+			<S sid ="196" ssid = "44">For SBMT we used a 32M word subset for extracting rules and building a language model, but used the entire training data for alignments, and for all PBMT training.</S>
+			<S sid ="197" ssid = "45">The tune and test sets both contain web and newswire data.</S>
+			<S sid ="198" ssid = "46">The tune set is selected from NIST MT evaluation sets from 2003–2006.</S>
+			<S sid ="199" ssid = "47">The test set is the evaluation set from the NIST 2008 MT evaluation.</S>
+			<S sid ="200" ssid = "48">We trained a 3-gram English language model on the English side of the training data.</S>
+			<S sid ="201" ssid = "49">5.3 Features.</S>
+			<S sid ="202" ssid = "50">For each of our systems we identify two feature sets: baseline, which correspond to the typical small feature set reported in current MT literature, and extended, a superset of baseline, which adds hundreds or thousands of features.</S>
+			<S sid ="203" ssid = "51">Specifically, we use 15 baseline features for PBMT, similar to the baseline features described by Watanabe et al.</S>
+			<S sid ="204" ssid = "52">(2007).</S>
+			<S sid ="205" ssid = "53">We use 19 baseline features for SBMT, similar to the baseline features described by Chiang et al.</S>
+			<S sid ="206" ssid = "54">(2008b).</S>
+			<S sid ="207" ssid = "55">We used the following feature classes in SBMT and PBMT extended scenarios: • Discount features for rule frequency bins (cf.</S>
+			<S sid ="208" ssid = "56">Chiang et al.</S>
+			<S sid ="209" ssid = "57">(2009), Section 4.1) • Target word insertion features9 We used the following feature classes in SBMT extended scenarios only (cf.</S>
+			<S sid ="210" ssid = "58">Chiang et al.</S>
+			<S sid ="211" ssid = "59">(2009), Section 4.1):10 • Rule overlap features • Node count features 9 For ChineseEnglish and UrduEnglish SBMT these features only fired when the inserted target word was unaligned to any source word.</S>
+	</SECTION>
+	<SECTION title="The parser used for Arabic-English  had a different nonter-. " number = "10">
+			<S sid ="212" ssid = "1">minal set than that used for the other two SBMT systems, accounting for the wide disparity in feature count for these feature classes.</S>
+			<S sid ="213" ssid = "2">UrduEnglish SBMT baseline feature tuning 26 25 MERT.</S>
+			<S sid ="214" ssid = "3">UrduEnglish SBMT extended feature tuning 26 25 TUNE 24 23 22 21 TEST.</S>
+			<S sid ="215" ssid = "4">20 MIRA PRO 24 TUNE.</S>
+			<S sid ="216" ssid = "5">23 22 TEST 21 20 MIRA PRO 0 5 10 15 20 25 30 Iteration 0 5 10 15 20 25 30 Iteration Figure 5: Comparison of MERT, PRO, and MIRA on tuning UrduEnglish SBMT systems, and test results at every iteration.</S>
+			<S sid ="217" ssid = "6">PRO performs comparably to MERT and MIRA.</S>
+			<S sid ="218" ssid = "7">We used the following feature classes in PBMT extended scenarios only: • Unigram word pair features for the 80 most frequent words in both languages plus tokens for unaligned and all other words (cf.</S>
+			<S sid ="219" ssid = "8">Watanabe et the accumulated k-best list does not change in an iteration.</S>
+			<S sid ="220" ssid = "9">In every tuning iteration we ran MERT once with weights initialized to the last iteration’s chosen weight set and 19 times with random weights, and chose the the best of the 20 ending points according to G on the development set.</S>
+			<S sid ="221" ssid = "10">The G we optimize al.</S>
+			<S sid ="222" ssid = "11">(2007), Section 3.2.1)11 • Source, target, and joint phrase length features from 1 to 7, e.g. “tgt=4”, “src=2”, and “src/tgt=2,4” is tokenized, lower-cased 4-gram B al., 2002).</S>
+			<S sid ="223" ssid = "12">5.4.2 MIRA LEU (Papineni et The feature classes and number of features used within those classes for each language pair are summarized in Table 3.</S>
+			<S sid ="224" ssid = "13">5.4 Tuning settings.</S>
+			<S sid ="225" ssid = "14">Each of the three approaches we compare in this study has various details associated with it that may prove useful to those wishing to reproduce our results.</S>
+			<S sid ="226" ssid = "15">We list choices made for the various tuning methods here, and note that all our decisions were made in keeping with best practices for each algorithm.</S>
+			<S sid ="227" ssid = "16">5.4.1 MERT We used David Chiang’s CMERT implementation We for the most part follow the MIRA algorithm for machine translation as described by Chiang et al.</S>
+			<S sid ="228" ssid = "17">(2009)12 but instead of using the 10-best of each of the best hw , hw +g, and hw -g, we use the 30-best according to hw .13 We use the same sentence-level BLEU calculated in the context of previous 1-best translations as Chiang et al.</S>
+			<S sid ="229" ssid = "18">(2008b; 2009).</S>
+			<S sid ="230" ssid = "19">We ran MIRA for 30 iterations.</S>
+			<S sid ="231" ssid = "20">5.4.3 PRO We used the MegaM classifier and sampled as described in Section 4.2.</S>
+			<S sid ="232" ssid = "21">As previously noted, we used BLEU+1 (Liang et al., 2006) for g. MegaM was easy to set up and ran fairly quickly, however any linear binary classifier that operates on real-valued features can be used, and in fact we obtained similar results of MERT that is available with the Moses system (Koehn et al., 2007).</S>
+			<S sid ="233" ssid = "22">We ran MERT for up to 30 iterations, using k = 1500, and stopping early when 11 This constitutes 6,723 features in principle (822 − 1 since “unalignedunaligned” is not considered) but in practice far fewer co-occurrences were seen.</S>
+			<S sid ="234" ssid = "23">Table 3 shows the number of actual unigram word pair features observed in data.</S>
+			<S sid ="235" ssid = "24">12 and acknowledge the use of David Chiang’s code 13 This is a more realistic scenario for would-be implementers of MIRA, as obtaining the so-called “hope” and “fear” translations from the lattice or forest is significantly more complicated than simply obtaining a k-best list.</S>
+			<S sid ="236" ssid = "25">Other tests comparing these methods have shown between 0.1 to 0.3 BLEU drop using 30 best hw on ChineseEnglish (Wang, 2011).</S>
+			<S sid ="237" ssid = "26">using the support vector machine module of WEKA (Hall et al., 2009) as well as the Stanford classifier (Manning and Klein, 2003).</S>
+			<S sid ="238" ssid = "27">We ran for up to 30 iterations and used the same k and stopping criterion as was used for MERT, though variability of sampling precluded list convergence.</S>
+			<S sid ="239" ssid = "28">While MERT and MIRA use each iteration’s final weights as a starting point for hill-climbing the next iteration, the pairwise ranking approach has no explicit tie to previous iterations.</S>
+			<S sid ="240" ssid = "29">To incorporate such stability into our process we interpolated the weights wt learned by the classifier in iteration t with those from iteration t − 1 by a factor of Ψ, such that wt = Ψ · wt + (1 − Ψ) · wt−1.</S>
+			<S sid ="241" ssid = "30">We found Ψ = 0.1 gave good performance across the board.</S>
+			<S sid ="242" ssid = "31">5.5 Discussion.</S>
+			<S sid ="243" ssid = "32">We implore the reader to avoid the natural tendency to compare results using baseline vs. extended features or between PBMT and SBMT on the same language pair.</S>
+			<S sid ="244" ssid = "33">Such discussions are indeed interesting, and could lead to improvements in feature engineering or sartorial choices due to the outcome of wagers (Goodale, 2008), but they distract from our thesis.</S>
+			<S sid ="245" ssid = "34">As can be seen in Table 1, for each of the 12 choices of system, language pair, and feature set, the PRO method performed nearly the same as or better than MIRA and MERT on test data.</S>
+			<S sid ="246" ssid = "35">In Figure 5 we show the tune and test BLEU using the weights learned at every iteration for each UrduEnglish SBMT experiment.</S>
+			<S sid ="247" ssid = "36">Typical of the rest of the experiments, we can clearly see that PRO appears to proceed more monotonically than the other methods.</S>
+			<S sid ="248" ssid = "37">We quantified PRO’s stability as compared to MERT by repeating the UrduEnglish baseline PBMT experiment five times with each configuration.</S>
+			<S sid ="249" ssid = "38">The tune and test BLEU at each iteration is depicted in Figure 6.</S>
+			<S sid ="250" ssid = "39">The standard deviation of the final test BLEU of MERT was 0.13 across the five experiment instances, while PRO had a standard deviation of just 0.05.</S>
+			<S sid ="251" ssid = "40">6 Related Work.</S>
+			<S sid ="252" ssid = "41">Several works (Shen et al., 2004; Cowan et al., 2006; Watanabe et al., 2006) have used discriminative techniques to re-rank k-best lists for MT. Till- mann and Zhang (2005) used a customized form of UrduEnglish PBMT tuning stability 21 20 MERT.</S>
+			<S sid ="253" ssid = "42">TUNE PRO 19 18 17 TEST.</S>
+			<S sid ="254" ssid = "43">0 5 10 15 20 25 30 Iteration Figure 6: Tune and test curves of five repetitions of the same UrduEnglish PBMT baseline feature experiment.</S>
+			<S sid ="255" ssid = "44">PRO is more stable than MERT.</S>
+			<S sid ="256" ssid = "45">multi-class stochastic gradient descent to learn feature weights for an MT model.</S>
+			<S sid ="257" ssid = "46">Och and Ney (2002) used maximum entropy to tune feature weights but did not compare pairs of derivations.</S>
+			<S sid ="258" ssid = "47">Ittycheriah and Roukos (2005) used a maximum entropy classifier to train an alignment model using hand-labeled data.</S>
+			<S sid ="259" ssid = "48">Xiong et al.</S>
+			<S sid ="260" ssid = "49">(2006) also used a maximum entropy classifier, in this case to train the reordering component of their MT model.</S>
+			<S sid ="261" ssid = "50">Lattice- and hypergraph- based variants of MERT (Macherey et al., 2008; Ku- mar et al., 2009) are more stable than traditional MERT, but also require significant engineering efforts.</S>
+			<S sid ="262" ssid = "51">7 Conclusion.</S>
+			<S sid ="263" ssid = "52">We have described a simple technique for tuning an MT system that is on par with the leading techniques, exhibits reliable behavior, scales gracefully to high-dimension feature spaces, and is remarkably easy to implement.</S>
+			<S sid ="264" ssid = "53">We have demonstrated, via a litany of experiments, that our claims are valid and that this technique is widely applicable.</S>
+			<S sid ="265" ssid = "54">It is our hope that the adoption of PRO tuning leads to fewer headaches during tuning and motivates advanced MT feature engineering research.</S>
+	</SECTION>
+	<SECTION title="Acknowledgments">
+			<S sid ="266" ssid = "55">Thanks to Markus Dreyer, Kevin Knight, Saiyam Kohli, Greg Langmead, Daniel Marcu, Dragos Munteanu, and Wei Wang for their assistance.</S>
+			<S sid ="267" ssid = "56">Thanks also to the anonymous reviewers, especially the reviewer who implemented PRO during the review period and replicated our results.</S>
+	</SECTION>
+</PAPER>

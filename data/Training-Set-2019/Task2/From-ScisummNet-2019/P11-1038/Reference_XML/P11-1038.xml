@@ -1,0 +1,233 @@
+<PAPER>
+  <S sid="0">Lexical Normalisation of Short Text Messages: Makn Sens a #twitter</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">hanb@student.unimelb.edu.au tb@ldwin.net Abstract Twitter provides access to large volumes of data in real time, but is notoriously noisy, hampering its utility for NLP.</S>
+    <S sid="2" ssid="2">In this paper, we target out-of-vocabulary words in short text messages and propose a method for identifying and normalising ill-formed words.</S>
+    <S sid="3" ssid="3">Our method uses a classifier to detect ill-formed words, and generates correction candidates based on morphophonemic similarity.</S>
+    <S sid="4" ssid="4">Both word similarity and context are then exploited to select the most probable correction candidate for the word.</S>
+    <S sid="5" ssid="5">The proposed method doesn&#8217;t require any annotations, and achieves state-of-the-art performance over an SMS corpus and a novel dataset based on Twitter.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="6" ssid="1">Twitter and other micro-blogging services are highly attractive for information extraction and text mining purposes, as they offer large volumes of real-time data, with around 65 millions tweets posted on Twitter per day in June 2010 (Twitter, 2010).</S>
+    <S sid="7" ssid="2">The quality of messages varies significantly, however, ranging from high quality newswire-like text to meaningless strings.</S>
+    <S sid="8" ssid="3">Typos, ad hoc abbreviations, phonetic substitutions, ungrammatical structures and emoticons abound in short text messages, causing grief for text processing tools (Sproat et al., 2001; Ritter et al., 2010).</S>
+    <S sid="9" ssid="4">For instance, presented with the input u must be talkin bout the paper but I was thinkin movies (&#8220;You must be talking about the paper but I was thinking movies&#8221;),' the Stanford parser (Klein and 'Throughout the paper, we will provide a normalised version of examples as a gloss in double quotes.</S>
+    <S sid="10" ssid="5">Manning, 2003; de Marneffe et al., 2006) analyses bout the paper and thinkin movies as a clause and noun phrase, respectively, rather than a prepositional phrase and verb phrase.</S>
+    <S sid="11" ssid="6">If there were some way of preprocessing the message to produce a more canonical lexical rendering, we would expect the quality of the parser to improve appreciably.</S>
+    <S sid="12" ssid="7">Our aim in this paper is this task of lexical normalisation of noisy English text, with a particular focus on Twitter and SMS messages.</S>
+    <S sid="13" ssid="8">In this paper, we will collectively refer to individual instances of typos, ad hoc abbreviations, unconventional spellings, phonetic substitutions and other causes of lexical deviation as &#8220;illformed words&#8221;.</S>
+    <S sid="14" ssid="9">The message normalisation task is challenging.</S>
+    <S sid="15" ssid="10">It has similarities with spell checking (Peterson, 1980), but differs in that ill-formedness in text messages is often intentional, whether due to the desire to save characters/keystrokes, for social identity, or due to convention in this text sub-genre.</S>
+    <S sid="16" ssid="11">We propose to go beyond spell checkers, in performing deabbreviation when appropriate, and recovering the canonical word form of commonplace shorthands like b4 &#8220;before&#8221;, which tend to be considered beyond the remit of spell checking (Aw et al., 2006).</S>
+    <S sid="17" ssid="12">The free writing style of text messages makes the task even more complex, e.g. with word lengthening such as goooood being commonplace for emphasis.</S>
+    <S sid="18" ssid="13">In addition, the detection of ill-formed words is difficult due to noisy context.</S>
+    <S sid="19" ssid="14">Our objective is to restore ill-formed words to their canonical lexical forms in standard English.</S>
+    <S sid="20" ssid="15">Through a pilot study, we compared OOV words in Twitter and SMS data with other domain corpora, revealing their characteristics in OOV word distribution.</S>
+    <S sid="21" ssid="16">We found Twitter data to have an unsurprisingly long tail of OOV words, suggesting that conventional supervised learning will not perform well due to data sparsity.</S>
+    <S sid="22" ssid="17">Additionally, many illformed words are ambiguous, and require context to disambiguate.</S>
+    <S sid="23" ssid="18">For example, Gooood may refer to Good or God depending on context.</S>
+    <S sid="24" ssid="19">This provides the motivation to develop a method which does not require annotated training data, but is able to leverage context for lexical normalisation.</S>
+    <S sid="25" ssid="20">Our approach first generates a list of candidate canonical lexical forms, based on morphological and phonetic variation.</S>
+    <S sid="26" ssid="21">Then, all candidates are ranked according to a list of features generated from noisy context and similarity between ill-formed words and candidates.</S>
+    <S sid="27" ssid="22">Our proposed cascaded method is shown to achieve state-of-the-art results on both SMS and Twitter data.</S>
+    <S sid="28" ssid="23">Our contributions in this paper are as follows: (1) we conduct a pilot study on the OOV word distribution of Twitter and other text genres, and analyse different sources of non-standard orthography in Twitter; (2) we generate a text normalisation dataset based on Twitter data; (3) we propose a novel normalisation approach that exploits dictionary lookup, word similarity and word context, without requiring annotated data; and (4) we demonstrate that our method achieves state-of-the-art accuracy over both SMS and Twitter data.</S>
+  </SECTION>
+  <SECTION title="2 Related work" number="2">
+    <S sid="29" ssid="1">The noisy channel model (Shannon, 1948) has traditionally been the primary approach to tackling text normalisation.</S>
+    <S sid="30" ssid="2">Suppose the ill-formed text is T and its corresponding standard form is S, the approach aims to find arg max P(S|T) by computing arg maxP(T|S)P(S), in which P(S) is usually a language model and P (T |S) is an error model.</S>
+    <S sid="31" ssid="3">Brill and Moore (2000) characterise the error model by computing the product of operation probabilities on slice-by-slice string edits.</S>
+    <S sid="32" ssid="4">Toutanova and Moore (2002) improve the model by incorporating pronunciation information.</S>
+    <S sid="33" ssid="5">Choudhury et al. (2007) model the word-level text generation process for SMS messages, by considering graphemic/phonetic abbreviations and unintentional typos as hidden Markov model (HMM) state transitions and emissions, respectively (Rabiner, 1989).</S>
+    <S sid="34" ssid="6">Cook and Stevenson (2009) expand the error model by introducing inference from different erroneous formation processes, according to the sampled error distribution.</S>
+    <S sid="35" ssid="7">While the noisy channel model is appropriate for text normalisation, P(T|S), which encodes the underlying error production process, is hard to approximate accurately.</S>
+    <S sid="36" ssid="8">Additionally, these methods make the strong assumption that a token tz E T only depends on sz E S, ignoring the context around the token, which could be utilised to help in resolving ambiguity.</S>
+    <S sid="37" ssid="9">Statistical machine translation (SMT) has been proposed as a means of context-sensitive text normalisation, by treating the ill-formed text as the source language, and the standard form as the target language.</S>
+    <S sid="38" ssid="10">For example, Aw et al. (2006) propose a phrase-level SMT SMS normalisation method with bootstrapped phrase alignments.</S>
+    <S sid="39" ssid="11">SMT approaches tend to suffer from a critical lack of training data, however.</S>
+    <S sid="40" ssid="12">It is labor intensive to construct an annotated corpus to sufficiently cover ill-formed words and context-appropriate corrections.</S>
+    <S sid="41" ssid="13">Furthermore, it is hard to harness SMT for the lexical normalisation problem, as even if phrase-level re-ordering is suppressed by constraints on phrase segmentation, word-level re-orderings within a phrase are still prevalent.</S>
+    <S sid="42" ssid="14">Some researchers have also formulated text normalisation as a speech recognition problem.</S>
+    <S sid="43" ssid="15">For example, Kobus et al. (2008) firstly convert input text tokens into phonetic tokens and then restore them to words by phonetic dictionary lookup.</S>
+    <S sid="44" ssid="16">Beaufort et al. (2010) use finite state methods to perform French SMS normalisation, combining the advantages of SMT and the noisy channel model.</S>
+    <S sid="45" ssid="17">Kaufmann and Kalita (2010) exploit a machine translation approach with a preprocessor for syntactic (rather than lexical) normalisation.</S>
+    <S sid="46" ssid="18">Predominantly, however, these methods require large-scale annotated training data, limiting their adaptability to new domains or languages.</S>
+    <S sid="47" ssid="19">In contrast, our proposed method doesn&#8217;t require annotated data.</S>
+    <S sid="48" ssid="20">It builds on the work on SMS text normalisation, and adapts it to Twitter data, exploiting multiple data sources for normalisation.</S>
+  </SECTION>
+  <SECTION title="3 Scoping Text Normalisation" number="3">
+    <S sid="49" ssid="1">We define the task of text normalisation to be a mapping from &#8220;ill-formed&#8221; OOV lexical items to their standard lexical forms, focusing exclusively on English for the purposes of this paper.</S>
+    <S sid="50" ssid="2">We define the task as follows: Given this definition, our first step is to identify candidate tokens for lexical normalisation, where we examine all tokens that consist of alphanumeric characters, and categorise them into in-vocabulary (IV) and out-of-vocabulary (OOV) words, relative to a dictionary.</S>
+    <S sid="51" ssid="3">The OOV word definition is somewhat rough, because it includes neologisms and proper nouns like hopeable or WikiLeaks which have not made their way into the dictionary.</S>
+    <S sid="52" ssid="4">However, it greatly simplifies the candidate identification task, at the cost of pushing complexity downstream to the word detection task, in that we need to explicitly distinguish between correct OOV words and illformed OOV words such as typos (e.g. earthquak &#8220;earthquake&#8221;), register-specific single-word abbreviations (e.g. lv &#8220;love&#8221;), and phonetic substitutions (e.g.</S>
+    <S sid="53" ssid="5">2morrow &#8220;tomorrow&#8221;).</S>
+    <S sid="54" ssid="6">An immediate implication of our task definition is that ill-formed words which happen to coincide with an IV word (e.g. the misspelling of can&#8217;t as cant) are outside the scope of this research.</S>
+    <S sid="55" ssid="7">We also consider that deabbreviation largely falls outside the scope of text normalisation, as abbreviations can be formed freely in standard English.</S>
+    <S sid="56" ssid="8">Note that single-word abbreviations such as govt &#8220;government&#8221; are very much within the scope of lexical normalisation, as they are OOV and match to a single token in their standard lexical form.</S>
+    <S sid="57" ssid="9">Throughout this paper, we use the GNU aspell dictionary (v0.60.6)2 to determine whether a token is OOV.</S>
+    <S sid="58" ssid="10">In tokenising the text, hyphenanted tokens and tokens containing apostrophes (e.g. take-off and won&#8217;t, resp.) are treated as a single token.</S>
+    <S sid="59" ssid="11">Twitter mentions (e.g.</S>
+    <S sid="60" ssid="12">@twitter), hashtags (e.g.</S>
+    <S sid="61" ssid="13">#twitter) and urls (e.g. twitter.com) are excluded from consideration for normalisation, but left in situ for context modelling purposes.</S>
+    <S sid="62" ssid="14">Dictionary lookup of Internet slang is performed relative to a dictionary of 5021 items collected from the Internet.3 To get a sense of the relative need for lexical normalisation, we perform analysis of the distribution of OOV words in different text types.</S>
+    <S sid="63" ssid="15">In particular, we calculate the proportion of OOV tokens per message (or sentence, in the case of edited text), bin the messages according to the OOV token proportion, and plot the probability mass contained in each bin for a given text type.</S>
+    <S sid="64" ssid="16">The three corpora we compare are the New York Times (NYT),4 SMS,5 and Twitter.6 The results are presented in Figure 1.</S>
+    <S sid="65" ssid="17">Both SMS and Twitter have a relatively flat distribution, with Twitter having a particularly large tail: around 15% of tweets have 50% or more OOV tokens.</S>
+    <S sid="66" ssid="18">This has implications for any context modelling, as we cannot rely on having only isolated occurrences of OOV words.</S>
+    <S sid="67" ssid="19">In contrast, NYT shows a more Zipfian distribution, despite the large number of proper names it contains.</S>
+    <S sid="68" ssid="20">While this analysis confirms that Twitter and SMS are similar in being heavily laden with OOV tokens, it does not shed any light on the relative similarity in the makeup of OOV tokens in each case.</S>
+    <S sid="69" ssid="21">To further analyse the two data sources, we extracted the set of OOV terms found exclusively in SMS and Twitter, and analysed each.</S>
+    <S sid="70" ssid="22">Manual analysis of the two sets revealed that most OOV words found only in SMS were personal names.</S>
+    <S sid="71" ssid="23">The Twitter-specific set, on the other hand, contained a heterogeneous collection of ill-formed words and proper nouns.</S>
+    <S sid="72" ssid="24">This suggests that Twitter is a richer/noisier data source, and that text normalisation for Twitter needs to be more nuanced than for SMS.</S>
+    <S sid="73" ssid="25">To further analyse the ill-formed words in Twitter, we randomly selected 449 tweets and manually analysed the sources of lexical variation, to determine the phenomena that lexical normalisation needs to deal with.</S>
+    <S sid="74" ssid="26">We identified 254 token instances of lexical normalisation, and broke them down into categories, as listed in Table 1.</S>
+    <S sid="75" ssid="27">&#8220;Letter&#8221; refers to instances where letters are missing or there are extraneous letters, but the lexical correspondence to the target word form is trivially accessible (e.g. shuld &#8220;should&#8221;).</S>
+    <S sid="76" ssid="28">&#8220;Number Substitution&#8221; refers to instances of letter&#8211;number substitution, where numbers have been substituted for phonetically-similar sequences of letters (e.g.</S>
+    <S sid="77" ssid="29">4 &#8220;for&#8221;).</S>
+    <S sid="78" ssid="30">&#8220;Letter&amp;Number&#8221; refers to instances which have both extra/missing letters and number substitution (e.g. b4 &#8220;before&#8221;).</S>
+    <S sid="79" ssid="31">&#8220;Slang&#8221; refers to instances of Internet slang (e.g. lol &#8220;laugh out loud&#8221;), as found in a slang dictionary (see Section 3.1).</S>
+    <S sid="80" ssid="32">&#8220;Other&#8221; is the remainder of the instances, which is predominantly made up of occurrences of spaces having being deleted between words (e.g. sucha &#8220;such a&#8221;).</S>
+    <S sid="81" ssid="33">If a given instance belongs to multiple error categories (e.g.</S>
+    <S sid="82" ssid="34">&#8220;Letter&amp;Number&#8221; and it is also found in a slang dictionary), we classify it into the higher-occurring category in Table 1.</S>
+    <S sid="83" ssid="35">From Table 1, it is clear that &#8220;Letter&#8221; accounts for the majority of ill-formed words in Twitter, and that most ill-formed words are based on morphophonemic variations.</S>
+    <S sid="84" ssid="36">This empirical finding assists in shaping our strategy for lexical normalisation.</S>
+  </SECTION>
+  <SECTION title="4 Lexical normalisation" number="4">
+    <S sid="85" ssid="1">Our proposed lexical normalisation strategy involves three general steps: (1) confusion set generation, where we identify normalisation candidates for a given word; (2) ill-formed word identification, where we classify a word as being ill-formed or not, relative to its confusion set; and (3) candidate selection, where we select the standard form for tokens which have been classified as being ill formed.</S>
+    <S sid="86" ssid="2">In confusion set generation, we generate a set of IV normalisation candidates for each OOV word type based on morphophonemic variation.</S>
+    <S sid="87" ssid="3">We call this set the confusion set of that OOV word, and aim to include all feasible normalisation candidates for the word type in the confusion set.</S>
+    <S sid="88" ssid="4">The confusion candidates are then filtered for each token occurrence of a given OOV word, based on their local context fit with a language model.</S>
+    <S sid="89" ssid="5">Revisiting our manual analysis from Section 3.2, most ill-formed tokens in Twitter are morphophonemically derived.</S>
+    <S sid="90" ssid="6">First, inspired by Kaufmann and Kalita (2010), any repititions of more than 3 letters are reduced back to 3 letters (e.g. cooool is reduced to coool).</S>
+    <S sid="91" ssid="7">Second, IV words within a threshold T, character edit distance of the given OOV word are calculated, as is widely used in spell checkers.</S>
+    <S sid="92" ssid="8">Third, the double metaphone algorithm (Philips, 2000) is used to decode the pronunciation of all IV words, and IV words within a threshold Tp edit distance of the given OOV word under phonemic transcription, are included in the confusion set; this allows us to capture OOV words such as earthquick &#8220;earthquake&#8221;.</S>
+    <S sid="93" ssid="9">In Table 2, we list the recall and average size of the confusion set generated by the final two strategies with different threshold settings, based on our evaluation dataset (see Section 5.1).</S>
+    <S sid="94" ssid="10">The recall for lexical edit distance with T, &lt; 2 is moderately high, but it is unable to detect the correct candidate for about one quarter of words.</S>
+    <S sid="95" ssid="11">The combination of the lexical and phonemic strategies with T, &lt; 2 V Tp &lt; 2 is more impressive, but the number of candidates has also soared.</S>
+    <S sid="96" ssid="12">Note that increasing the edit distance further in both cases leads to an explosion in the average number of candidates, with serious computational implications for downstream processing.</S>
+    <S sid="97" ssid="13">Thankfully, T, &lt; 2 V Tp &lt; 1 leads to an extra increment in recall to 88.8%, with only a slight increase in the average number of candidates.</S>
+    <S sid="98" ssid="14">Based on these results, we use T, &lt; 2VTp &lt; 1 as the basis for confusion set generation.</S>
+    <S sid="99" ssid="15">Examples of ill-formed words where we are unable to generate the standard lexical form are clippings such as fav &#8220;favourite&#8221; and convo &#8220;conversation&#8221;.</S>
+    <S sid="100" ssid="16">In addition to generating the confusion set, we rank the candidates based on a trigram language model trained over 1.5GB of clean Twitter data, i.e. tweets which consist of all IV words: despite the prevalence of OOV words in Twitter, the sheer volume of the data means that it is relatively easy to collect large amounts of all-IV messages.</S>
+    <S sid="101" ssid="17">To train the language model, we used SRILM (Stolcke, 2002) with the -&lt;unk&gt; option.</S>
+    <S sid="102" ssid="18">If we truncate the ranking to the top 10% of candidates, the recall drops back to 84% with a 90% reduction in candidates.</S>
+    <S sid="103" ssid="19">The next step is to detect whether a given OOV word in context is actually an ill-formed word or not, relative to its confusion set.</S>
+    <S sid="104" ssid="20">To the best of our knowledge, we are the first to target the task of ill-formed word detection in the context of short text messages, although related work exists for text with lower relative occurrences of OOV words (Izumi et al., 2003; Sun et al., 2007).</S>
+    <S sid="105" ssid="21">Due to the noisiness of the data, it is impractical to use full-blown syntactic or semantic features.</S>
+    <S sid="106" ssid="22">The most direct source of evidence is IV words around an OOV word.</S>
+    <S sid="107" ssid="23">Inspired by work on labelled sequential pattern extraction (Sun et al., 2007), we exploit large-scale edited corpus data to construct dependency-based features.</S>
+    <S sid="108" ssid="24">First, we use the Stanford parser (Klein and Manning, 2003; de Marneffe et al., 2006) to extract dependencies from the NYT corpus (see Section 3.2).</S>
+    <S sid="109" ssid="25">For example, from a sentence such as One obvious difference is the way they look, we would extract dependencies such as rcmod(way-6,look-8) and nsubj(look-8,they-7).</S>
+    <S sid="110" ssid="26">We then transform the dependencies into relational features for each OOV word.</S>
+    <S sid="111" ssid="27">Assuming that way were an OOV word, e.g., we would extract dependencies of the form (look,way,+2), indicating that look occurs 2 words after way.</S>
+    <S sid="112" ssid="28">We choose dependencies to represent context because they are an effective way of capturing key relationships between words, and similar features can easily be extracted from tweets.</S>
+    <S sid="113" ssid="29">Note that we don&#8217;t record the dependency type here, because we have no intention of dependency parsing text messages, due to their noisiness and the volume of the data.</S>
+    <S sid="114" ssid="30">The counts of dependency forms are combined together to derive a confidence score, and the scored dependencies are stored in a dependency bank.</S>
+    <S sid="115" ssid="31">Given the dependency-based features, a linear kernel SVM classifier (Fan et al., 2008) is trained on clean Twitter data, i.e. the subset of Twitter messages without OOV words.</S>
+    <S sid="116" ssid="32">Each word is represented by its IV words within a context window of three words to either side of the target word, together with their relative positions in the form of (word1,word2,position) tuples, and their score in the dependency bank.</S>
+    <S sid="117" ssid="33">These form the positive training exemplars.</S>
+    <S sid="118" ssid="34">Negative exemplars are automatically constructed by replacing target words with highly-ranked candidates from their confusion set.</S>
+    <S sid="119" ssid="35">Note that the classifier does not require any hand annotation, as all training exemplars are constructed automatically.</S>
+    <S sid="120" ssid="36">To predict whether a given OOV word is ill-formed, we form an exemplar for each of its confusion candidates, and extract (word1,word2,position) features.</S>
+    <S sid="121" ssid="37">If all its candidates are predicted to be negative by the model, we mark it as correct; otherwise, we treat it as ill-formed, and pass all candidates (not just positively-classified candidates) on to the candidate selection step.</S>
+    <S sid="122" ssid="38">For example, given the message way yu lookin shuld be a sin and the OOV word lookin, we would generate context features for each candidate word such as (way,looking,-2), and classify each such candidate.</S>
+    <S sid="123" ssid="39">In training, it is possible for the exact same feature vector to occur as both positive and negative exemplars.</S>
+    <S sid="124" ssid="40">To prevent positive exemplars being contaminated from the automatic generation, we remove all negative instances in such cases.</S>
+    <S sid="125" ssid="41">The (word1,word2,position) features are sparse and sometimes lead to conservative results in illformed word detection.</S>
+    <S sid="126" ssid="42">That is, without valid features, the SVM classifier tends to label uncertain cases as correct rather than ill-formed words.</S>
+    <S sid="127" ssid="43">This is arguably the right approach to normalisation, in choosing to under- rather than over-normalise in cases of uncertainty.</S>
+    <S sid="128" ssid="44">As the context for a target word often contains OOV words which don&#8217;t occur in the dependency bank, we expand the dependency features to include context tokens up to a phonemic edit distance of 1 from context tokens in the dependency bank.</S>
+    <S sid="129" ssid="45">In this way, we generate dependency-based features for context words such as seee &#8220;see&#8221; in (seee, flm, +2) (based on the target word flm in the context of flm to seee).</S>
+    <S sid="130" ssid="46">However, expanded dependency features may introduce noise, and we therefore introduce expanded dependency weights wd E 10.0, 0.5, 1.0} to ameliorate the effects of noise: a weight of wd = 0.0 means no expansion, while 1.0 means expanded dependencies are indistinguishable from non-expanded (strict match) dependencies.</S>
+    <S sid="131" ssid="47">We separately introduce a threshold td E 11, 2, ...,10} on the number of positive predictions returned by the detection classifier over the set of normalisation candidates for a given OOV token: the token is considered to be ill-formed iff td or more candidates are positively classified, i.e. predicted to be correct candidates.</S>
+    <S sid="132" ssid="48">For OOV words which are predicted to be illformed, we select the most likely candidate from the confusion set as the basis of normalisation.</S>
+    <S sid="133" ssid="49">The final selection is based on the following features, in line with previous work (Wong et al., 2006; Cook and Stevenson, 2009).</S>
+    <S sid="134" ssid="50">Lexical edit distance, phonemic edit distance, prefix substring, suffix substring, and the longest common subsequence (LCS) are exploited to capture morphophonemic similarity.</S>
+    <S sid="135" ssid="51">Both lexical and phonemic edit distance (ED) are normalised by the reciprocal of exp(ED).</S>
+    <S sid="136" ssid="52">The prefix and suffix features are intended to capture the fact that leading and trailing characters are frequently dropped from words, e.g. in cases such as ish and talkin.</S>
+    <S sid="137" ssid="53">We calculate the ratio of the LCS over the maximum string length between ill-formed word and the candidate, since the ill-formed word can be either longer or shorter than (or the same size as) the standard form.</S>
+    <S sid="138" ssid="54">For example, mve can be restored to either me or move, depending on context.</S>
+    <S sid="139" ssid="55">We normalise these ratios following Cook and Stevenson (2009).</S>
+    <S sid="140" ssid="56">For context inference, we employ both language model- and dependency-based frequency features.</S>
+    <S sid="141" ssid="57">Ranking by language model score is intuitively appealing for candidate selection, but our trigram model is trained only on clean Twitter data and illformed words often don&#8217;t have sufficient context for the language model to operate effectively, as in bt &#8220;but&#8221; in say 2 sum1 bt nt gonna say &#8220;say to someone but not going to say&#8221;.</S>
+    <S sid="142" ssid="58">To consolidate the context modelling, we obtain dependencies from the dependency bank used in ill-formed word detection.</S>
+    <S sid="143" ssid="59">Although text messages are of a different genre to edited newswire text, we assume they form similar dependencies based on the common goal of getting across the message effectively.</S>
+    <S sid="144" ssid="60">The dependency features can be used in noisy contexts and are robust to the effects of other ill-formed words, as they do not rely on contiguity.</S>
+    <S sid="145" ssid="61">For example, uz &#8220;use&#8221; in i did #tt uz me and yu, dependencies can capture relationships like aux(use-4, do-2), which is beyond the capabilities of the language model due to the hashtag being treated as a correct OOV word.</S>
+  </SECTION>
+  <SECTION title="5 Experiments" number="5">
+    <S sid="146" ssid="1">The aim of our experiments is to compare the effectiveness of different methodologies over text messages, based on two datasets: (1) an SMS corpus (Choudhury et al., 2007); and (2) a novel Twitter dataset developed as part of this research, based on a random sampling of 549 English tweets.</S>
+    <S sid="147" ssid="2">The English tweets were annotated by three independent annotators.</S>
+    <S sid="148" ssid="3">All OOV words were pre-identified, and the annotators were requested to determine: (a) whether each OOV word was ill-formed or not; and (b) what the standard form was for ill-formed words, subject to the task definition outlined in Section 3.1.</S>
+    <S sid="149" ssid="4">The total number of ill-formed words contained in the SMS and Twitter datasets were 3849 and 1184, respectively.'</S>
+    <S sid="150" ssid="5">The language filtering of Twitter to automatically identify English tweets was based on the language identification method of Baldwin and Lui (2010), using the EuroGOV dataset as training data, a mixed unigram/bigram/trigram byte feature representation, and a skew divergence nearest prototype classifier.</S>
+    <S sid="151" ssid="6">We reimplemented the state-of-art noisy channel model of Cook and Stevenson (2009) and SMT approach of Aw et al. (2006) as benchmark methods.</S>
+    <S sid="152" ssid="7">We implement the SMT approach in Moses (Koehn et al., 2007), with synthetic training and tuning data of 90,000 and 1000 sentence pairs, respectively.</S>
+    <S sid="153" ssid="8">This data is randomly sampled from the 1.5GB of clean Twitter data, and errors are generated according to distribution of SMS corpus.</S>
+    <S sid="154" ssid="9">The 10-fold cross-validated BLEU score (Papineni et al., 2002) over this data is 0.81.</S>
+    <S sid="155" ssid="10">In addition to comparing our method with competitor methods, we also study the contribution of different feature groups.</S>
+    <S sid="156" ssid="11">We separately compare dictionary lookup over our Internet slang dictionary, the contextual feature model, and the word similarity feature model, as well as combinations of these three.</S>
+    <S sid="157" ssid="12">The evaluation of lexical normalisation consists of two stages (Hirst and Budanitsky, 2005): (1) illformed word detection, and (2) candidate selection.</S>
+    <S sid="158" ssid="13">In terms of detection, we want to make sense of how well the system can identify ill-formed words and leave correct OOV words untouched.</S>
+    <S sid="159" ssid="14">This step is crucial to further normalisation, because if correct OOV words are identified as ill-formed, the candidate selection step can never be correct.</S>
+    <S sid="160" ssid="15">Conversely, if an ill-formed word is predicted to be correct, the candidate selection will have no chance to normalise it.</S>
+    <S sid="161" ssid="16">We evaluate detection performance by token-level precision, recall and F-score (Q = 1).</S>
+    <S sid="162" ssid="17">Previous work over the SMS corpus has assumed perfect ill-formed word detection and focused only on the candidate selection step, so we evaluate ill-formed word detection for the Twitter data only.</S>
+    <S sid="163" ssid="18">For candidate selection, we once again evaluate using token-level precision, recall and F-score.</S>
+    <S sid="164" ssid="19">Additionally, we evaluate using the BLEU score over the normalised form of each message, as the SMT method can lead to perturbations of the token stream, vexing standard precision, recall and F-score evaluation.</S>
+    <S sid="165" ssid="20">First, we test the impact of the wd and td values on ill-formed word detection effectiveness, based on dependencies from either the Spinn3r blog corpus (Blog: Burton et al. (2009)) or NYT.</S>
+    <S sid="166" ssid="21">The results for precision, recall and F-score are presented in Figure 2.</S>
+    <S sid="167" ssid="22">Some conclusions can be drawn from the graphs.</S>
+    <S sid="168" ssid="23">First, higher detection threshold values (td) give better precision but lower recall.</S>
+    <S sid="169" ssid="24">Generally, as td is raised from 1 to 10, the precision improves slightly but recall drops dramatically, with the net effect that the F-score decreases monotonically.</S>
+    <S sid="170" ssid="25">Thus, we use a smaller threshold, i.e. td = 1.</S>
+    <S sid="171" ssid="26">Second, there are differences between the two corpora, with dependencies from the Blog corpus producing slightly lower precision but higher recall, compared with the NYT corpus.</S>
+    <S sid="172" ssid="27">The lower precision for the Blog corpus appears to be due to the text not being as clean as NYT, introducing parser errors.</S>
+    <S sid="173" ssid="28">Nevertheless, the difference in F-score between the two corpora is insignificant.</S>
+    <S sid="174" ssid="29">Third, we obtain the best results, especially in terms of precision, for wd = 0.5, i.e. with expanded dependencies, but penalised relative to nonexpanded dependencies.</S>
+    <S sid="175" ssid="30">Overall, the best F-score is 71.2%, with a precision of 61.1% and recall of 85.3%, obtained over the Blog corpus with td = 1 and wd = 0.5.</S>
+    <S sid="176" ssid="31">Clearly there is significant room for immprovements in these results.</S>
+    <S sid="177" ssid="32">We leave the improvement of ill-formed word detection for future work, and perform evaluation of candidate selection for Twitter assuming perfect ill-formed word detection, as for the SMS data.</S>
+    <S sid="178" ssid="33">From Table 3, we see that the general performance of our proposed method on Twitter is better than that on SMS.</S>
+    <S sid="179" ssid="34">To better understand this trend, we examined the annotations in the SMS corpus, and found them to be looser than ours, because they have different task specifications than our lexical normalisation.</S>
+    <S sid="180" ssid="35">In our annotation, the annotators only normalised ill-formed word if they had high confidence of how to normalise, as with talkin &#8220;talking&#8221;.</S>
+    <S sid="181" ssid="36">For ill-formed words where they couldn&#8217;t be certain of the standard form, the tokens were left untouched.</S>
+    <S sid="182" ssid="37">However, in the SMS corpus, annotations such as sammis &#8220;same&#8221; are also included.</S>
+    <S sid="183" ssid="38">This leads to a performance drop for our method over the SMS corpus.</S>
+    <S sid="184" ssid="39">The noisy channel method of Cook and Stevenson (2009) shares similar features with word similarity (&#8220;WS&#8221;), However, when word similarity and context support are combined (&#8220;WS+CS&#8221;), our method outperforms the noisy channel method by about 7% and 12% in F-score over SMS and Twitter corpora, respectively.</S>
+    <S sid="185" ssid="40">This can be explained as follows.</S>
+    <S sid="186" ssid="41">First, the Cook and Stevenson (2009) method is typebased, so all token instances of a given ill-formed word will be normalised identically.</S>
+    <S sid="187" ssid="42">In the Twitter data, however, the same word can be normalised differently depending on context, e.g. hw &#8220;how&#8221; in so hw many time remaining so I can calculate it? vs. hw &#8220;homework&#8221; in I need to finish my hw first.</S>
+    <S sid="188" ssid="43">Second, the noisy channel method was developed specifically for SMS normalisation, in which clipping is the most prevalent form of lexical variation, while in the Twitter data, we commonly have instances of word lengthening for emphasis, such as moviiie &#8220;movie&#8221;.</S>
+    <S sid="189" ssid="44">Having said this, our method is superior to the noisy channel method over both the SMS and Twitter data.</S>
+    <S sid="190" ssid="45">The SMT approach is relatively stable on the two datasets, but well below the performance of our method.</S>
+    <S sid="191" ssid="46">This is due to the limitations of the training data: we obtain the ill-formed words and their standard forms from the SMS corpus, but the ill-formed words in the SMS corpus are not sufficient to cover those in the Twitter data (and we don&#8217;t have sufficient Twitter data to train the SMT method directly).</S>
+    <S sid="192" ssid="47">Thus, novel ill-formed words are missed in normalisation.</S>
+    <S sid="193" ssid="48">This shows the shortcoming of supervised data-driven approaches that require annotated data to cover all possibilities of ill-formed words in Twitter.</S>
+    <S sid="194" ssid="49">The dictionary lookup method (&#8220;DL&#8221;) unsurprisingly achieves the best precision, but the recall on Twitter is not competitive.</S>
+    <S sid="195" ssid="50">Consequently, the Twitter normalisation cannot be tackled with dictionary lookup alone, although it is an effective preprocessing strategy when combined with more robust techniques such as our proposed method, and effective at capturing common abbreviations such as gf &#8220;girlfriend&#8221;.</S>
+    <S sid="196" ssid="51">Of the component methods proposed in this research, word similarity (&#8220;WS&#8221;) achieves higher precision and recall than context support (&#8220;CS&#8221;), signifying that many of the ill-formed words emanate from morphophonemic variations.</S>
+    <S sid="197" ssid="52">However, when combined with word similarity features, context support improves over the basic method at a level of statistical significance (based on randomised estimation, p &lt; 0.05: Yeh (2000)), indicating the complementarity of the two methods, especially on Twitter data.</S>
+    <S sid="198" ssid="53">The best F-score is achieved when combining dictionary lookup, word similarity and context support (&#8220;DL+WS+CS&#8221;), in which ill-formed words are first looked up in the slang dictionary, and only if no match is found do we apply our normalisation method.</S>
+    <S sid="199" ssid="54">We found several limitations in our proposed approach by analysing the output of our method.</S>
+    <S sid="200" ssid="55">First, not all ill-formed words offer useful context.</S>
+    <S sid="201" ssid="56">Some highly noisy tweets contain almost all misspellings and unique symbols, and thus no context features can be extracted.</S>
+    <S sid="202" ssid="57">This also explains why &#8220;CS&#8221; features often fail.</S>
+    <S sid="203" ssid="58">For such cases, the method falls back to context-independent normalisation.</S>
+    <S sid="204" ssid="59">We found that only 32.6% ill-formed words have all IV words in their context windows.</S>
+    <S sid="205" ssid="60">Moreover, the IV words may not occur in the dependency bank, further decreasing the effectiveness of context support features.</S>
+    <S sid="206" ssid="61">Second, the different features are linearly combined, where a weighted combination is likely to give better results, although it also requires a certain amount of well-sampled annotations for tuning.</S>
+  </SECTION>
+  <SECTION title="6 Conclusion and Future Work" number="6">
+    <S sid="207" ssid="1">In this paper, we have proposed the task of lexical normalisation for short text messages, as found in Twitter and SMS data.</S>
+    <S sid="208" ssid="2">We found that most illformed words are based on morphophonemic variation and proposed a cascaded method to detect and normalise ill-formed words.</S>
+    <S sid="209" ssid="3">Our ill-formed word detector requires no explicit annotations, and the dependency-based features were shown to be somewhat effective, however, there was still a lot of room for improvement at ill-formed word detection.</S>
+    <S sid="210" ssid="4">In normalisation, we compared our method with two benchmark methods from the literature, and achieved that highest F-score and BLEU score by integrating dictionary lookup, word similarity and context support modelling.</S>
+    <S sid="211" ssid="5">In future work, we propose to pursue a number of directions.</S>
+    <S sid="212" ssid="6">First, we plan to improve our ill-formed word detection classifier by introducing an OOV word whitelist.</S>
+    <S sid="213" ssid="7">Furthermore, we intend to alleviate noisy contexts with a bootstrapping approach, in which ill-formed words with high confidence and no ambiguity will be replaced by their standard forms, and fed into the normalisation model as new training data.</S>
+  </SECTION>
+  <SECTION title="Acknowledgements" number="7">
+    <S sid="214" ssid="1">NICTA is funded by the Australian government as represented by Department of Broadband, Communication and Digital Economy, and the Australian Research Council through the ICT centre of Excellence programme.</S>
+  </SECTION>
+</PAPER>

@@ -1,0 +1,209 @@
+<PAPER>
+  <S sid="0">Better Word Alignments with Supervised ITG Models</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">This work investigates supervised word alignment methods that exploit inversion transduction grammar (ITG) constraints.</S>
+    <S sid="2" ssid="2">We consider maximum margin and conditional likelihood objectives, including the presentation of a new normal form grammar for canonicalizing derivations.</S>
+    <S sid="3" ssid="3">Even for non-ITG sentence pairs, we show that it is possible learn ITG alignment models by simple relaxations of structured discriminative learning objectives.</S>
+    <S sid="4" ssid="4">For efficiency, we describe a set of pruning techniques that together allow us to align sentences two orders of magnitude faster than naive bitext CKY parsing.</S>
+    <S sid="5" ssid="5">Finally, we introduce many-to-one block alignment features, which significantly improve our ITG models.</S>
+    <S sid="6" ssid="6">Altogether, our method results in the best reported AER numbers for Chinese-English and a performance improvement of 1.1 BLEU over GIZA++ alignments.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="7" ssid="1">Inversion transduction grammar (ITG) constraints (Wu, 1997) provide coherent structural constraints on the relationship between a sentence and its translation.</S>
+    <S sid="8" ssid="2">ITG has been extensively explored in unsupervised statistical word alignment (Zhang and Gildea, 2005; Cherry and Lin, 2007a; Zhang et al., 2008) and machine translation decoding (Cherry and Lin, 2007b; Petrov et al., 2008).</S>
+    <S sid="9" ssid="3">In this work, we investigate large-scale, discriminative ITG word alignment.</S>
+    <S sid="10" ssid="4">Past work on discriminative word alignment has focused on the family of at-most-one-to-one matchings (Melamed, 2000; Taskar et al., 2005; Moore et al., 2006).</S>
+    <S sid="11" ssid="5">An exception to this is the work of Cherry and Lin (2006), who discriminatively trained one-to-one ITG models, albeit with limited feature sets.</S>
+    <S sid="12" ssid="6">As they found, ITG approaches offer several advantages over general matchings.</S>
+    <S sid="13" ssid="7">First, the additional structural constraint can result in superior alignments.</S>
+    <S sid="14" ssid="8">We confirm and extend this result, showing that one-toone ITG models can perform as well as, or better than, general one-to-one matching models, either using heuristic weights or using rich, learned features.</S>
+    <S sid="15" ssid="9">A second advantage of ITG approaches is that they admit a range of training options.</S>
+    <S sid="16" ssid="10">As with general one-to-one matchings, we can optimize margin-based objectives.</S>
+    <S sid="17" ssid="11">However, unlike with general matchings, we can also efficiently compute expectations over the set of ITG derivations, enabling the training of conditional likelihood models.</S>
+    <S sid="18" ssid="12">A major challenge in both cases is that our training alignments are often not one-to-one ITG alignments.</S>
+    <S sid="19" ssid="13">Under such conditions, directly training to maximize margin is unstable, and training to maximize likelihood is ill-defined, since the target alignment derivations don&#8217;t exist in our hypothesis class.</S>
+    <S sid="20" ssid="14">We show how to adapt both margin and likelihood objectives to learn good ITG aligners.</S>
+    <S sid="21" ssid="15">In the case of likelihood training, two innovations are presented.</S>
+    <S sid="22" ssid="16">The simple, two-rule ITG grammar exponentially over-counts certain alignment structures relative to others.</S>
+    <S sid="23" ssid="17">Because of this, Wu (1997) and Zens and Ney (2003) introduced a normal form ITG which avoids this over-counting.</S>
+    <S sid="24" ssid="18">We extend this normal form to null productions and give the first extensive empirical comparison of simple and normal form ITGs, for posterior decoding under our likelihood models.</S>
+    <S sid="25" ssid="19">Additionally, we show how to deal with training instances where the gold alignments are outside of the hypothesis class by instead optimizing the likelihood of a set of minimum-loss alignments.</S>
+    <S sid="26" ssid="20">Perhaps the greatest advantage of ITG models is that they straightforwardly permit blockstructured alignments (i.e. phrases), which general matchings cannot efficiently do.</S>
+    <S sid="27" ssid="21">The need for block alignments is especially acute in ChineseEnglish data, where oracle AERs drop from 10.2 without blocks to around 1.2 with them.</S>
+    <S sid="28" ssid="22">Indeed, blocks are the primary reason for gold alignments being outside the space of one-to-one ITG alignments.</S>
+    <S sid="29" ssid="23">We show that placing linear potential functions on many-to-one blocks can substantially improve performance.</S>
+    <S sid="30" ssid="24">Finally, to scale up our system, we give a combination of pruning techniques that allows us to sum ITG alignments two orders of magnitude faster than naive inside-outside parsing.</S>
+    <S sid="31" ssid="25">All in all, our discriminatively trained, block ITG models produce alignments which exhibit the best AER on the NIST 2002 Chinese-English alignment data set.</S>
+    <S sid="32" ssid="26">Furthermore, they result in a 1.1 BLEU-point improvement over GIZA++ alignments in an end-to-end Hiero (Chiang, 2007) machine translation system.</S>
+  </SECTION>
+  <SECTION title="2 Alignment Families" number="2">
+    <S sid="33" ssid="1">In order to structurally restrict attention to reasonable alignments, word alignment models must constrain the set of alignments considered.</S>
+    <S sid="34" ssid="2">In this section, we discuss and compare alignment families used to train our discriminative models.</S>
+    <S sid="35" ssid="3">Initially, as in Taskar et al. (2005) and Moore et al.</S>
+    <S sid="36" ssid="4">(2006), we assume the score a of a potential alignment a) decomposes as where sij are word-to-word potentials and siE and sEj represent English null and foreign null potentials, respectively.</S>
+    <S sid="37" ssid="5">We evaluate our proposed alignments (a) against hand-annotated alignments, which are marked with sure (s) and possible (p) alignments.</S>
+    <S sid="38" ssid="6">The alignment error rate (AER) is given by, The class of at most 1-to-1 alignment matchings, A1-1, has been considered in several works (Melamed, 2000; Taskar et al., 2005; Moore et al., 2006).</S>
+    <S sid="39" ssid="7">The alignment that maximizes a set of potentials factored as in Equation (1) can be found in O(n3) time using a bipartite matching algorithm (Kuhn, 1955).1 On the other hand, summing over A1-1 is #P-hard (Valiant, 1979).</S>
+    <S sid="40" ssid="8">Initially, we consider heuristic alignment potentials given by Dice coefficients where Cef is the joint count of words (e, f) appearing in aligned sentence pairs, and Ce and Cf are monolingual unigram counts.</S>
+    <S sid="41" ssid="9">We extracted such counts from 1.1 million French-English aligned sentence pairs of Hansards data (see Section 6.1).</S>
+    <S sid="42" ssid="10">For each sentence pair in the Hansards test set, we predicted the alignment from A1-1 which maximized the sum of Dice potentials.</S>
+    <S sid="43" ssid="11">This yielded 30.6 AER.</S>
+    <S sid="44" ssid="12">Wu (1997)&#8217;s inversion transduction grammar (ITG) is a synchronous grammar formalism in which derivations of sentence pairs correspond to alignments.</S>
+    <S sid="45" ssid="13">In its original formulation, there is a single non-terminal X spanning a bitext cell with an English and foreign span.</S>
+    <S sid="46" ssid="14">There are three rule types: Terminal unary productions X &#8212;* (e, f), where e and f are an aligned English and foreign word pair (possibly with one being null); normal binary rules X _* X(L)X(R), where the English and foreign spans are constructed from the children as (X(L)X(R), X(L)X(R)i; and inverted binary rules X --* X(L)X(R), where the foreign span inverts the order of the children (X (L)X(R), X(R)X(L)i.2 In general, we will call a bitext cell a normal cell if it was constructed with a normal rule and inverted if constructed with an inverted rule.</S>
+    <S sid="47" ssid="15">Each ITG derivation yields some alignment.</S>
+    <S sid="48" ssid="16">The set of such ITG alignments, AITG, are a strict subset of A1-1 (Wu, 1997).</S>
+    <S sid="49" ssid="17">Thus, we will view ITG as a constraint on A1-1 which we will argue is generally beneficial.</S>
+    <S sid="50" ssid="18">The maximum scoring alignment from AITG can be found in O(n6) time with synchronous CFG parsing; in practice, we can make ITG parsing efficient using a variety of pruning techniques.</S>
+    <S sid="51" ssid="19">One computational advantage of AITG over A1-1 alignments is that summation over AITG is tractable.</S>
+    <S sid="52" ssid="20">The corresponding dynamic program allows us to utilize likelihoodbased objectives for learning alignment models (see Section 4).</S>
+    <S sid="53" ssid="21">Using the same heuristic Dice potentials on the Hansards test set, the maximal scoring alignment from AITG yields 28.4 AER&#8212;2.4 better than A1-1 &#8212;indicating that ITG can be beneficial as a constraint on heuristic alignments.</S>
+    <S sid="54" ssid="22">An important alignment pattern disallowed by A1-1 is the many-to-one alignment block.</S>
+    <S sid="55" ssid="23">While not prevalent in our hand-aligned French Hansards dataset, blocks occur frequently in our handaligned Chinese-English NIST data.</S>
+    <S sid="56" ssid="24">Figure 1 contains an example.</S>
+    <S sid="57" ssid="25">Extending A1-1 to include blocks is problematic, because finding a maximal 1-1 matching over phrases is NP-hard (DeNero and Klein, 2008).</S>
+    <S sid="58" ssid="26">With ITG, it is relatively easy to allow contiguous many-to-one alignment blocks without added complexity.3 This is accomplished by adding additional unary terminal productions aligning a foreign phrase to a single English terminal or vice versa.</S>
+    <S sid="59" ssid="27">We will use BITG to refer to this block ITG variant and ABITG to refer to the alignment family, which is neither contained in nor contains A1-1.</S>
+    <S sid="60" ssid="28">For this alignment family, we expand the alignment potential decomposition in Equation (1) to incorporate block potentials sef and sef which represent English and foreign many-to-one alignment blocks, respectively.</S>
+    <S sid="61" ssid="29">One way to evaluate alignment families is to consider their oracle AER.</S>
+    <S sid="62" ssid="30">In the 2002 NIST Chinese-English hand-aligned data (see Section 6.2), we constructed oracle alignment potentials as follows: sij is set to +1 if (i, j) is a sure or possible alignment in the hand-aligned data, 1 otherwise.</S>
+    <S sid="63" ssid="31">All null potentials (si, and s&#65533;j) are set to 0.</S>
+    <S sid="64" ssid="32">A max-matching under these potentials is generally a minimal loss alignment in the family.</S>
+    <S sid="65" ssid="33">The oracle AER computed in this was is 10.1 for A1-1 and 10.2 for AITG.</S>
+    <S sid="66" ssid="34">The ABITG alignment family has an oracle AER of 1.2.</S>
+    <S sid="67" ssid="35">These basic experiments show that AITG outperforms A1-1 for heuristic alignments, and ABITG provide a much closer fit to true Chinese-English alignments than A1-1.</S>
+  </SECTION>
+  <SECTION title="3 Margin-Based Training" number="3">
+    <S sid="68" ssid="1">In this and the next section, we discuss learning alignment potentials.</S>
+    <S sid="69" ssid="2">As input, we have a training set D = (x1, a&#8727;1), ... , (x, a&#8727;&#65533;) of hand-aligned data, where x refers to a sentence pair.</S>
+    <S sid="70" ssid="3">We will assume the score of a alignment is given as a linear function of a feature vector &#966;(x, a).</S>
+    <S sid="71" ssid="4">We will further assume the feature representation of an alignment, &#966;(x, a) decomposes as in Equation (1), In the framework of loss-augmented margin learning, we seek a w such that w &#183; &#966;(x, a&#8727;) is larger than w &#183; &#966;(x, a) + L(a, a&#8727;) for all a in an alignment family, where L(a, a&#8727;) is the loss between a proposed alignment a and the gold alignment a&#8727;.</S>
+    <S sid="72" ssid="5">As in Taskar et al. (2005), we utilize a loss that decomposes across alignments.</S>
+    <S sid="73" ssid="6">Specifically, for each alignment cell (i, j) which is not a possible alignment in a*, we incur a loss of 1 when azo =6 a*zo; note that if (i, j) is a possible alignment, our loss is indifferent to its presence in the proposal alignment.</S>
+    <S sid="74" ssid="7">A simple loss-augmented learning procedure is the margin infused relaxed algorithm (MIRA) (Crammer et al., 2006).</S>
+    <S sid="75" ssid="8">MIRA is an online procedure, where at each time step s.t. w &#183; O(x, a*) &#8805; w &#183; O(x, a) + L(a, a*) where a&#65533; = arg max aEA In our data sets, many a* are not in A1-1 (and thus not in AITG), implying the minimum infamily loss must exceed 0.</S>
+    <S sid="76" ssid="9">Since MIRA operates in an online fashion, this can cause severe stability problems.</S>
+    <S sid="77" ssid="10">On the Hansards data, the simple averaging technique described by Collins (2002) yields a reasonable model.</S>
+    <S sid="78" ssid="11">On the Chinese NIST data, however, where almost no alignment is in A1-1, the update rule from Equation (2) is completely unstable, and even the averaged model does not yield high-quality results.</S>
+    <S sid="79" ssid="12">We instead use a variant of MIRA similar to Chiang et al. (2008).</S>
+    <S sid="80" ssid="13">First, rather than update towards the hand-labeled alignment a*, we update towards an alignment which achieves minimal loss within the family.4 We call this bestin-class alignment a*&#65533;.</S>
+    <S sid="81" ssid="14">Second, we perform lossaugmented inference to obtain a.</S>
+    <S sid="82" ssid="15">This yields the modified QP, where a&#65533; = arg max aEA wt &#183; O(x, a) + AL(a, a*&#65533;) By setting A = 0, we recover the MIRA update from Equation (2).</S>
+    <S sid="83" ssid="16">As A grows, we increase our preference that a&#65533; have high loss (relative to a*&#65533;) rather than high model score.</S>
+    <S sid="84" ssid="17">With this change, MIRA is stable, but still performs suboptimally.</S>
+    <S sid="85" ssid="18">The reason is that initially the score for all alignments is low, so we are biased toward only using very high loss alignments in our constraint.</S>
+    <S sid="86" ssid="19">This slows learning and prevents us from finding a useful weight vector.</S>
+    <S sid="87" ssid="20">Instead, in all the experiments we report here, we begin with A = 0 and slowly increase it to A = 0.5.</S>
+  </SECTION>
+  <SECTION title="4 Likelihood Objective" number="4">
+    <S sid="88" ssid="1">An alternative to margin-based training is a likelihood objective, which learns a conditional alignment distribution Pw(a|x) parametrized as follows, where the log-denominator represents a sum over the alignment family A.</S>
+    <S sid="89" ssid="2">This alignment probability only places mass on members of A.</S>
+    <S sid="90" ssid="3">The likelihood objective is given by, Optimizing this objective with gradient methods requires summing over alignments.</S>
+    <S sid="91" ssid="4">For AITG and ABITG, we can efficiently sum over the set of ITG derivations in 0(n6) time using the inside-outside algorithm.</S>
+    <S sid="92" ssid="5">However, for the ITG grammar presented in Section 2.2, each alignment has multiple grammar derivations.</S>
+    <S sid="93" ssid="6">In order to correctly sum over the set of ITG alignments, we need to alter the grammar to ensure a bijective correspondence between alignments and derivations.</S>
+    <S sid="94" ssid="7">There are two ways in which ITG derivations double count alignments.</S>
+    <S sid="95" ssid="8">First, n-ary productions are not binarized to remove ambiguity; this results in an exponential number of derivations for diagonal alignments.</S>
+    <S sid="96" ssid="9">This source of overcounting is considered and fixed by Wu (1997) and Zens and Ney (2003), which we briefly review here.</S>
+    <S sid="97" ssid="10">The resulting grammar, which does not handle null alignments, consists of a symbol N to represent a bitext cell produced by a normal rule and I for a cell formed by an inverted rule; alignment terminals can be either N or I.</S>
+    <S sid="98" ssid="11">In order to ensure unique derivations, we stipulate that a N cell can be constructed only from a sequence of smaller inverted cells I. Binarizing the rule N &#8594; I2+ introduces the intermediary symbol N (see Figure 2(a)).</S>
+    <S sid="99" ssid="12">Similarly for inverse cells, we insist an I cell only be built by an inverted combination of N cells; binarization of I --* N2+ requires the introduction of the intermediary symbol I (see Figure 2(b)).</S>
+    <S sid="100" ssid="13">Null productions are also a source of double counting, as there are many possible orders in which to attach null alignments to a bitext cell; we address this by adapting the grammar to force a null attachment order.</S>
+    <S sid="101" ssid="14">We introduce symbols N00, N10, and N11 to represent whether a normal cell has taken no nulls, is accepting foreign nulls, or is accepting English nulls, respectively.</S>
+    <S sid="102" ssid="15">We also introduce symbols I00, I10, and I11 to represent inverse cells at analogous stages of taking nulls.</S>
+    <S sid="103" ssid="16">As Figures 2 (c) and (d) illustrate, the directions in which nulls are attached to normal and inverse cells differ.</S>
+    <S sid="104" ssid="17">The N00 symbol is constructed by one or more &#8216;complete&#8217; inverted cells I11 terminated by a no-null I00.</S>
+    <S sid="105" ssid="18">By placing I00 in the lower right hand corner, we allow the larger N00 to unambiguously attach nulls.</S>
+    <S sid="106" ssid="19">N00 transitions to the N10 symbol and accepts any number of (e, &#183;) English terminal alignments.</S>
+    <S sid="107" ssid="20">Then N10 transitions to N11 and accepts any number of (&#183;, f) foreign terminal alignments.</S>
+    <S sid="108" ssid="21">An analogous set of grammar rules exists for the inverted case (see Figure 2(d) for an illustration).</S>
+    <S sid="109" ssid="22">Given this normal form, we can efficiently compute model expectations over ITG alignments without double counting.5 To our knowledge, the alteration of the normal form to accommodate null emissions is novel to this work.</S>
+    <S sid="110" ssid="23">A crucial obstacle for using the likelihood objective is that a given a* may not be in the alignment family.</S>
+    <S sid="111" ssid="24">As in our alteration to MIRA (Section 3), we could replace a* with a minimal loss in-class alignment a*&#65533;.</S>
+    <S sid="112" ssid="25">However, in contrast to MIRA, the likelihood objective will implicitly penalize proposed alignments which have loss equal to a*&#65533;.</S>
+    <S sid="113" ssid="26">We opt instead to maximize the probability of the set of alignments M(a*) which achieve the same optimal in-class loss.</S>
+    <S sid="114" ssid="27">Concretely, let m* be the minimal loss achievable relative to a* in A.</S>
+    <S sid="115" ssid="28">Then, When a* is an ITG alignment (i.e., m* is 0), M(a*) consists only of alignments which have all the sure alignments in a*, but may have some subset of the possible alignments in a*.</S>
+    <S sid="116" ssid="29">See Figure 3 for a specific example where m* = 1.</S>
+    <S sid="117" ssid="30">Our modified likelihood objective is given by, Note that this objective is no longer convex, as it involves a logarithm of a summation, however we still utilize gradient-based optimization.</S>
+    <S sid="118" ssid="31">Summing and obtaining feature expectations over M(a*) can be done efficiently using a constrained variant of the inside-outside algorithm where sure alignments not present in a* are disallowed, and the number of missing sure alignments is appended to the state of the bitext cell.6 One advantage of the likelihood-based objective is that we can obtain posteriors over individual alignment cells, We obtain posterior ITG alignments by including all alignment cells (i, j) such that PIV((i, j)|x) exceeds a fixed threshold t. Posterior thresholding allows us to easily trade-off precision and recall in our alignments by raising or lowering t.</S>
+  </SECTION>
+  <SECTION title="5 Dynamic Program Pruning" number="5">
+    <S sid="119" ssid="1">Both discriminative methods require repeated model inference: MIRA depends upon lossaugmented Viterbi parsing, while conditional likelihood uses the inside-outside algorithm for computing cell posteriors.</S>
+    <S sid="120" ssid="2">Exhaustive computation of these quantities requires an O(n6) dynamic program that is prohibitively slow even on small supervised training sets.</S>
+    <S sid="121" ssid="3">However, most of the search space can safely be pruned using posterior predictions from a simpler alignment models.</S>
+    <S sid="122" ssid="4">We use posteriors from two jointly estimated HMM models to make pruning decisions during ITG inference (Liang et al., 2006).</S>
+    <S sid="123" ssid="5">Our first pruning technique is broadly similar to Cherry and Lin (2007a).</S>
+    <S sid="124" ssid="6">We select high-precision alignment links from the HMM models: those word pairs that have a posterior greater than 0.9 in either model.</S>
+    <S sid="125" ssid="7">Then, we prune all bitext cells that would invalidate more than 8 of these high-precision alignments.</S>
+    <S sid="126" ssid="8">Our second pruning technique is to prune all one-by-one (word-to-word) bitext cells that have a posterior below 10&#8722;4 in both HMM models.</S>
+    <S sid="127" ssid="9">Pruning a one-by-one cell also indirectly prunes larger cells containing it.</S>
+    <S sid="128" ssid="10">To take maximal advantage of this indirect pruning, we avoid explicitly attempting to build each cell in the dynamic program.</S>
+    <S sid="129" ssid="11">Instead, we track bounds on the spans for which we have successfully built ITG cells, and we only iterate over larger spans that fall within those bounds.</S>
+    <S sid="130" ssid="12">The details of a similar bounding approach appear in DeNero et al. (2009).</S>
+    <S sid="131" ssid="13">In all, pruning reduces MIRA iteration time from 175 to 5 minutes on the NIST ChineseEnglish dataset with negligible performance loss.</S>
+    <S sid="132" ssid="14">Likelihood training time is reduced by nearly two orders of magnitude.</S>
+  </SECTION>
+  <SECTION title="6 Alignment Quality Experiments" number="6">
+    <S sid="133" ssid="1">We present results which measure the quality of our models on two hand-aligned data sets.</S>
+    <S sid="134" ssid="2">Our first is the English-French Hansards data set from the 2003 NAACL shared task (Mihalcea and Pedersen, 2003).</S>
+    <S sid="135" ssid="3">Here we use the same 337/100 train/test split of the labeled data as Taskar et al. (2005); we compute external features from the same unlabeled data, 1.1 million sentence pairs.</S>
+    <S sid="136" ssid="4">Our second is the Chinese-English hand-aligned portion of the 2002 NIST MT evaluation set.</S>
+    <S sid="137" ssid="5">This dataset has 491 sentences, which we split into a training set of 150 and a test set of 191.</S>
+    <S sid="138" ssid="6">When we trained external Chinese models, we used the same unlabeled data set as DeNero and Klein (2007), including the bilingual dictionary.</S>
+    <S sid="139" ssid="7">For likelihood based models, we set the L2 regularization parameter, U2, to 100 and the threshold for posterior decoding to 0.33.</S>
+    <S sid="140" ssid="8">We report results using the simple ITG grammar (ITG-S, Section 2.2) where summing over derivations double counts alignments, as well as the normal form ITG grammar (ITG-N,Section 4.1) which does not double count.</S>
+    <S sid="141" ssid="9">We ran our annealed lossaugmented MIRA for 15 iterations, beginning with A at 0 and increasing it linearly to 0.5.</S>
+    <S sid="142" ssid="10">We compute Viterbi alignments using the averaged weight vector from this procedure.</S>
+    <S sid="143" ssid="11">The French Hansards data are well-studied data sets for discriminative word alignment (Taskar et al., 2005; Cherry and Lin, 2006; Lacoste-Julien et al., 2006).</S>
+    <S sid="144" ssid="12">For this data set, it is not clear that improving alignment error rate beyond that of GIZA++ is useful for translation (Ganchev et al., 2008).</S>
+    <S sid="145" ssid="13">Table 1 illustrates results for the Hansards data set.</S>
+    <S sid="146" ssid="14">The first row uses dice and the same distance features as Taskar et al. (2005).</S>
+    <S sid="147" ssid="15">The first two rows repeat the experiments of Taskar et al. (2005) and Cherry and Lin (2006), but adding ITG models that are trained to maximize conditional likelihood.</S>
+    <S sid="148" ssid="16">The last row includes the posterior of the jointly-trained HMM of Liang et al. (2006) as a feature.</S>
+    <S sid="149" ssid="17">This model alone achieves an AER of 5.4.</S>
+    <S sid="150" ssid="18">No model significantly improves over the HMM alone, which is consistent with the results of Taskar et al. (2005).</S>
+    <S sid="151" ssid="19">Chinese-English alignment is a much harder task than French-English alignment.</S>
+    <S sid="152" ssid="20">For example, the HMM aligner achieves an AER of 20.7 when using the competitive thresholding heuristic of DeNero and Klein (2007).</S>
+    <S sid="153" ssid="21">On this data set, our block ITG models make substantial performance improvements over the HMM, and moreover these results do translate into downstream improvements in BLEU score for the Chinese-English language pair.</S>
+    <S sid="154" ssid="22">Because of this, we will briefly describe the features used for these models in detail.</S>
+    <S sid="155" ssid="23">For features on one-by-one cells, we consider Dice, the distance features from (Taskar et al., 2005), dictionary features, and features for the 50 most frequent lexical pairs.</S>
+    <S sid="156" ssid="24">We also trained an HMM aligner as described in DeNero and Klein (2007) and used the posteriors of this model as features.</S>
+    <S sid="157" ssid="25">The first two columns of Table 2 illustrate these features for ITG and one-to-one matchings.</S>
+    <S sid="158" ssid="26">For our block ITG models, we include all of these features, along with variants designed for many-to-one blocks.</S>
+    <S sid="159" ssid="27">For example, we include the average Dice of all the cells in a block.</S>
+    <S sid="160" ssid="28">In addition, we also created three new block-specific features types.</S>
+    <S sid="161" ssid="29">The first type comprises bias features for each block length.</S>
+    <S sid="162" ssid="30">The second type comprises features computed from N-gram statistics gathered from a large monolingual corpus.</S>
+    <S sid="163" ssid="31">These include features such as the number of occurrences of the phrasal (multi-word) side of a many-to-one block, as well as pointwise mutual information statistics for the multi-word parts of many-to-one blocks.</S>
+    <S sid="164" ssid="32">These features capture roughly how &#8220;coherent&#8221; the multi-word side of a block is.</S>
+    <S sid="165" ssid="33">The final block feature type consists of phrase shape features.</S>
+    <S sid="166" ssid="34">These are designed as follows: For each word in a potential many-to-one block alignment, we map an individual word to X if it is not one of the 25 most frequent words.</S>
+    <S sid="167" ssid="35">Some example features of this type are, For English blocks, for example, these features capture the behavior of phrases such as in spite of or in front of that are rendered as one word in Chinese.</S>
+    <S sid="168" ssid="36">For Chinese blocks, these features capture the behavior of phrases containing classifier phrases like --- ^ or --- %, which are rendered as English indefinite determiners.</S>
+    <S sid="169" ssid="37">The right-hand three columns in Table 2 present supervised results on our Chinese English data set using block features.</S>
+    <S sid="170" ssid="38">We note that almost all of our performance gains (relative to both the HMM and 1-1 matchings) come from BITG and block features.</S>
+    <S sid="171" ssid="39">The maximum likelihood-trained normal form ITG model outperforms the HMM, even without including any features derived from the unlabeled data.</S>
+    <S sid="172" ssid="40">Once we include the posteriors of the HMM as a feature, the AER decreases to 14.4.</S>
+    <S sid="173" ssid="41">The previous best AER result on this data set is 15.9 from Ayan and Dorr (2006), who trained stacked neural networks based on GIZA++ alignments.</S>
+    <S sid="174" ssid="42">Our results are not directly comparable (they used more labeled data, but did not have the HMM posteriors as an input feature).</S>
+    <S sid="175" ssid="43">We further evaluated our alignments in an end-toend Chinese to English translation task using the publicly available hierarchical pipeline JosHUa (Li and Khudanpur, 2008).</S>
+    <S sid="176" ssid="44">The pipeline extracts a Hiero-style synchronous context-free grammar (Chiang, 2007), employs suffix-array based rule extraction (Lopez, 2007), and tunes model parameters with minimum error rate training (Och, 2003).</S>
+    <S sid="177" ssid="45">We trained on the FBIS corpus using sentences up to length 40, which includes 2.7 million English words.</S>
+    <S sid="178" ssid="46">We used a 5-gram language model trained on 126 million words of the Xinhua section of the English Gigaword corpus, estimated with SRILM (Stolcke, 2002).</S>
+    <S sid="179" ssid="47">We tuned on 300 sentences of the NIST MT04 test set.</S>
+    <S sid="180" ssid="48">Results on the NIST MT05 test set appear in Table 3.</S>
+    <S sid="181" ssid="49">We compared four sets of alignments.</S>
+    <S sid="182" ssid="50">The GIZA++ alignments7 are combined across directions with the grow-diag-final heuristic, which outperformed the union.</S>
+    <S sid="183" ssid="51">The joint HMM alignments are generated from competitive posterior thresholding (DeNero and Klein, 2007).</S>
+    <S sid="184" ssid="52">The ITG Viterbi alignments are the Viterbi output of the ITG model with all features, trained to maximize log likelihood.</S>
+    <S sid="185" ssid="53">The ITG Posterior alignments result from applying competitive thresholding to alignment posteriors under the ITG model.</S>
+    <S sid="186" ssid="54">Our supervised ITG model gave a 1.1 BLEU increase over GIZA++.</S>
+  </SECTION>
+  <SECTION title="7 Conclusion" number="7">
+    <S sid="187" ssid="1">This work presented the first large-scale application of ITG to discriminative word alignment.</S>
+    <S sid="188" ssid="2">We empirically investigated the performance of conditional likelihood training of ITG word aligners under simple and normal form grammars.</S>
+    <S sid="189" ssid="3">We showed that through the combination of relaxed learning objectives, many-to-one block alignment potential, and efficient pruning, ITG models can yield state-of-the art word alignments, even when the underlying gold alignments are highly nonITG.</S>
+    <S sid="190" ssid="4">Our models yielded the lowest published error for Chinese-English alignment and an increase in downstream translation performance.</S>
+  </SECTION>
+</PAPER>

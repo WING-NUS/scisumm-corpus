@@ -1,0 +1,216 @@
+<PAPER>
+	<S sid="0">Learning Question Classifiers</S><ABSTRACT>
+		<S sid="1" ssid="1">In order to respond correctly to a free form factual question given a large collection of texts, one needs to un derstand the question to a level that allows determiningsome of the constraints the question imposes on a pos sible answer.</S>
+		<S sid="2" ssid="2">These constraints may include a semantic classification of the sought after answer and may even suggest using different strategies when looking for and verifying a candidate answer.</S>
+		<S sid="3" ssid="3">This paper presents a machine learning approach toquestion classification.</S>
+		<S sid="4" ssid="4">We learn a hierarchical classifier that is guided by a layered semantic hierarchy of answer types, and eventually classifies questions into finegrained classes.</S>
+		<S sid="5" ssid="5">We show accurate results on a large col lection of free-form questions used in TREC 10.</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number="1">
+			<S sid="6" ssid="6">Open-domain question answering (Lehnert, 1986; Harabagiu et al, 2001; Light et al, 2001) and storycomprehension (Hirschman et al, 1999) have become important directions in natural language pro cessing.</S>
+			<S sid="7" ssid="7">Question answering is a retrieval task morechallenging than common search engine tasks be cause its purpose is to find an accurate and conciseanswer to a question rather than a relevant docu ment.</S>
+			<S sid="8" ssid="8">The difficulty is more acute in tasks such as story comprehension in which the target text is less likely to overlap with the text in the questions.</S>
+			<S sid="9" ssid="9">For this reason, advanced natural language techniques rather than simple key term extraction are needed.One of the important stages in this process is analyz ing the question to a degree that allows determining the ?type?</S>
+			<S sid="10" ssid="10">of the sought after answer.</S>
+			<S sid="11" ssid="11">In the TRECcompetition (Voorhees, 2000), participants are requested to build a system which, given a set of En glish questions, can automatically extract answers (a short phrase) of no more than 50 bytes from a5-gigabyte document library.</S>
+			<S sid="12" ssid="12">Participants have re Research supported by NSF grants IIS-9801638 and ITR IIS 0085836 and an ONR MURI Award.</S>
+			<S sid="13" ssid="13">alized that locating an answer accurately hinges on first filtering out a wide range of candidates (Hovy et al, 2001; Ittycheriah et al, 2001) based on some categorization of answer types.</S>
+			<S sid="14" ssid="14">This work develops a machine learning approach to question classification (QC) (Harabagiu et al, 2001; Hermjakob, 2001).</S>
+			<S sid="15" ssid="15">Our goal is to categorize questions into different semantic classes that impose constraints on potential answers, so that they can be utilized in later stages of the question answeringprocess.</S>
+			<S sid="16" ssid="16">For example, when considering the question Q: What Canadian city has the largest popula tion?, the hope is to classify this question as havinganswer type city, implying that only candidate an swers that are cities need consideration.Based on the SNoW learning architecture, we develop a hierarchical classifier that is guided by a lay ered semantic hierarchy of answer types and is able to classify questions into fine-grained classes.</S>
+			<S sid="17" ssid="17">Wesuggest that it is useful to consider this classifica tion task as a multi-label classification and find that it is possible to achieve good classification results(over 90%) despite the fact that the number of dif ferent labels used is fairly large, 50.</S>
+			<S sid="18" ssid="18">We observe thatlocal features are not sufficient to support this accu racy, and that inducing semantic features is crucial for good performance.</S>
+			<S sid="19" ssid="19">The paper is organized as follows: Sec.</S>
+			<S sid="20" ssid="20">2 presents the question classification problem; Sec.</S>
+			<S sid="21" ssid="21">3 discusses the learning issues involved in QC and presents ourlearning approach; Sec.</S>
+			<S sid="22" ssid="22">4 describes our experimen tal study.</S>
+	</SECTION>
+	<SECTION title="Question Classification. " number="2">
+			<S sid="23" ssid="1">We define Question Classification(QC) here to be the task that, given a question, maps it to one of k classes, which provide a semantic constraint on the sought-after answer1.</S>
+			<S sid="24" ssid="2">The intension is that this 1We do not address questions like ?Do you have a light??, which calls for an action, but rather only factual Wh-questions.</S>
+			<S sid="25" ssid="3">classification, potentially with other constraints on the answer, will be used by a downstream process which selects a correct answer from among several candidates.A question classification module in a question an swering system has two main requirements.</S>
+			<S sid="26" ssid="4">First, it provides constraints on the answer types that allow further processing to precisely locate and verify theanswer.</S>
+			<S sid="27" ssid="5">Second, it provides information that downstream processes may use in determining answer se lection strategies that may be answer type specific,rather than uniform.</S>
+			<S sid="28" ssid="6">For example, given the ques tion ?Who was the first woman killed in the Vietnam War??</S>
+			<S sid="29" ssid="7">we do not want to test every noun phrase in a document to see whether it provides an answer.</S>
+			<S sid="30" ssid="8">At the very least, we would like to know that the target of this question is a person, thereby reducingthe space of possible answers significantly.</S>
+			<S sid="31" ssid="9">The fol lowing examples, taken from the TREC 10 question collection, exhibit several aspects of this point.</S>
+			<S sid="32" ssid="10">Q: What is a prism?</S>
+			<S sid="33" ssid="11">Identifying that the target of this question is a definition, strategies that are specific fordefinitions (e.g., using predefined templates) may be use ful.</S>
+			<S sid="34" ssid="12">Similarly, in: Q: Why is the sun yellow?</S>
+			<S sid="35" ssid="13">Identifying that this question asks for a reason, may lead to using a specific strategy for reasons.The above examples indicate that, given that dif ferent answer types may be searched using different strategies, a good classification module may helpthe question answering task.</S>
+			<S sid="36" ssid="14">Moreover, determin ing the specific semantic type of the answer couldalso be beneficial in locating the answer and veri fying it.</S>
+			<S sid="37" ssid="15">For example, in the next two questions, knowing that the targets are a city or country willbe more useful than just knowing that they are loca tions.</S>
+			<S sid="38" ssid="16">Q: What Canadian city has the largest population?</S>
+			<S sid="39" ssid="17">Q: Which country gave New York the Statue of Liberty?However, confined by the huge amount of man ual work needed for constructing a classifier for a complicated taxonomy of questions, most questionanswering systems can only perform a coarse clas sification for no more than 20 classes.</S>
+			<S sid="40" ssid="18">As a result, existing approaches, as in (Singhal et al, 2000), have adopted a small set of simple answer entitytypes, which consisted of the classes: Person, Location, Organization, Date, Quantity, Duration, Lin ear Measure.</S>
+			<S sid="41" ssid="19">The rules used in the classification were of the following forms: ? If a query starts with Who or Whom: type Person.</S>
+			<S sid="42" ssid="20">If a query starts with Where: type Location.</S>
+			<S sid="43" ssid="21">If a query contains Which or What, the head noun phrase determines the class, as for What X questions.While the rules used have large coverage and rea sonable accuracy, they are not sufficient to supportfine-grained classification.</S>
+			<S sid="44" ssid="22">One difficulty in supporting fine-grained classification is the need to ex tract from the questions finer features that require syntactic and semantic analysis of questions, and possibly, many of them.</S>
+			<S sid="45" ssid="23">The approach we adoptedis a multi-level learning approach: some of our fea tures rely on finer analysis of the questions that are outcomes of learned classifiers; the QC module then applies learning with these as input features.</S>
+			<S sid="46" ssid="24">2.1 Classification Standard.</S>
+			<S sid="47" ssid="25">Earlier works have suggested various standards of classifying questions.</S>
+			<S sid="48" ssid="26">Wendy Lehnert?s conceptual taxonomy (Lehnert, 1986), for example, proposesabout 13 conceptual classes including causal antecedent, goal orientation, enablement, causal consequent, verification, disjunctive, and so on.</S>
+			<S sid="49" ssid="27">How ever, in the context of factual questions that are of interest to us here, conceptual categories do notseem to be helpful; instead, our goal is to se mantically classify questions, as in earlier work on TREC (Singhal et al, 2000; Hovy et al, 2001; Harabagiu et al, 2001; Ittycheriah et al, 2001).</S>
+			<S sid="50" ssid="28">The key difference, though, is that we attempt todo that with a significantly finer taxonomy of answer types; the hope is that with the semantic an swer types as input, one can easily locate answercandidates, given a reasonably accurate named en tity recognizer for documents.</S>
+			<S sid="51" ssid="29">2.2 Question Hierarchy.</S>
+			<S sid="52" ssid="30">We define a two-layered taxonomy, which repre sents a natural semantic classification for typicalanswers in the TREC task.</S>
+			<S sid="53" ssid="31">The hierarchy con tains 6 coarse classes (ABBREVIATION, ENTITY,DESCRIPTION, HUMAN, LOCATION and NU MERIC VALUE) and 50 fine classes, Table 1 showsthe distribution of these classes in the 500 ques tions of TREC 10.</S>
+			<S sid="54" ssid="32">Each coarse class contains anon-overlapping set of fine classes.</S>
+			<S sid="55" ssid="33">The motiva tion behind adding a level of coarse classes is that of compatibility with previous work?s definitions, andcomprehensibility.</S>
+			<S sid="56" ssid="34">We also hoped that a hierarchi cal classifier would have a performance advantage over a multi-class classifier; this point, however is not fully supported by our experiments.</S>
+			<S sid="57" ssid="35">Class # Class # ABBREV.</S>
+			<S sid="58" ssid="36">9 description 7 abb 1 manner 2 exp 8 reason 6 ENTITY 94 HUMAN 65 animal 16 group 6 body 2 individual 55 color 10 title 1 creative 0 description 3 currency 6 LOCATION 81 dis.med.</S>
+			<S sid="59" ssid="37">2 city 18 event 2 country 3 food 4 mountain 3 instrument 1 other 50 lang 2 state 7 letter 0 NUMERIC 113 other 12 code 0 plant 5 count 9 product 4 date 47 religion 0 distance 16 sport 1 money 3 substance 15 order 0 symbol 0 other 12 technique 1 period 8 term 7 percent 3 vehicle 4 speed 6 word 0 temp 5 DESCRIPTION 138 size 0 definition 123 weight 4 Table 1: The distribution of 500 TREC 10 questions over the question hierarchy.</S>
+			<S sid="60" ssid="38">Coarse classes (in bold) are followed by their fine class refinements.</S>
+			<S sid="61" ssid="39">2.3 The Ambiguity Problem.</S>
+			<S sid="62" ssid="40">One difficulty in the question classification task is that there is no completely clear boundary between classes.</S>
+			<S sid="63" ssid="41">Therefore, the classification of a specific question can be quite ambiguous.</S>
+			<S sid="64" ssid="42">Consider 1.</S>
+			<S sid="65" ssid="43">What is bipolar disorder?.</S>
+			<S sid="66" ssid="44">2.</S>
+			<S sid="67" ssid="45">What do bats eat?.</S>
+	</SECTION>
+	<SECTION title="What is the PH scale?. " number="3">
+			<S sid="68" ssid="1">Question 1 could belong to definition or dis ease medicine; Question 2 could belong to food,plant or animal; And Question 3 could be a numeric value or a definition.</S>
+			<S sid="69" ssid="2">It is hard to catego rize those questions into one single class and it islikely that mistakes will be introduced in the down stream process if we do so.</S>
+			<S sid="70" ssid="3">To avoid this problem,we allow our classifiers to assign multiple class la bels for a single question.</S>
+			<S sid="71" ssid="4">This method is better than only allowing one label because we can apply all the classes in the later precessing steps without any loss.</S>
+			<S sid="72" ssid="5">3 Learning a Question Classifier.</S>
+			<S sid="73" ssid="6">Using machine learning methods for question clas sification is advantageous over manual methods forseveral reasons.</S>
+			<S sid="74" ssid="7">The construction of a manual clas sifier for questions is a tedious task that requiresthe analysis of a large number of questions.</S>
+			<S sid="75" ssid="8">More over, mapping questions into fine classes requiresthe use of lexical items (specific words) and there fore an explicit representation of the mapping may be very large.</S>
+			<S sid="76" ssid="9">On the other hand, in our learning approach one can define only a small number of ?types?</S>
+			<S sid="77" ssid="10">of features, which are then expanded in adata-driven way to a potentially large number of features (Cumby and Roth, 2000), relying on the abil ity of the learning process to handle it.</S>
+			<S sid="78" ssid="11">It is hard to imagine writing explicitly a classifier that depends on thousands or more features.</S>
+			<S sid="79" ssid="12">Finally, a learnedclassifier is more flexible to reconstruct than a man ual one because it can be trained on a new taxonomy in a very short time.One way to exhibit the difficulty in manually con structing a classifier is to consider reformulations of a question: What tourist attractions are there in Reims?</S>
+			<S sid="80" ssid="13">What are the names of the tourist attractions in Reims?</S>
+			<S sid="81" ssid="14">What do most tourists visit in Reims?</S>
+			<S sid="82" ssid="15">What attracts tourists to Reims?</S>
+			<S sid="83" ssid="16">What is worth seeing in Reims?</S>
+			<S sid="84" ssid="17">All these reformulations target the same answertype Location.</S>
+			<S sid="85" ssid="18">However, different words and syntactic structures make it difficult for a manual clas sifier based on a small set of rules to generalize well and map all these to the same answer type.</S>
+			<S sid="86" ssid="19">Good learning methods with appropriate features, on the other hand, may not suffer from the fact that the number of potential features (derived from wordsand syntactic structures) is so large and would gen eralize and classify these cases correctly.</S>
+			<S sid="87" ssid="20">3.1 A Hierarchical ClassifierQuestion classification is a multi-class classification.</S>
+			<S sid="88" ssid="21">A question can be mapped to one of 50 pos sible classes (We call the set of all possible class labels for a given question a confusion set (Golding and Roth, 1999)).</S>
+			<S sid="89" ssid="22">Our learned classifier is based on the SNoW learning architecture (Carlson et al, 1999; Roth, 1998)2 where, in order to allow the classifier to output more than one class label, wemap the classifier?s output activation into a condi tional probability of the class labels and threshold it.</S>
+			<S sid="90" ssid="23">The question classifier makes use of a sequence of two simple classifiers (Even-Zohar and Roth, 2001), each utilizing the Winnow algorithm within SNoW.</S>
+			<S sid="91" ssid="24">The first classifies questions into coarse classes (Coarse Classifier) and the second into fineclasses (Fine Classifier).</S>
+			<S sid="92" ssid="25">A feature extractor automatically extracts the same features for each clas sifier.</S>
+			<S sid="93" ssid="26">The second classifier depends on the first in2Freely available at http://L2R.cs.uiuc.edu/cogcomp/cc software.html ABBR, ENTITY,DESC,HUMAN,LOC,NUM ABBR, ENTITY ENTITY, HUMAN ENTITY, LOC,NUM DESC Coarse Classifier Fine Classifier abb,exp ind, plant date abb, animal, food, plant?</S>
+			<S sid="94" ssid="27">food,plant, ind,group?</S>
+			<S sid="95" ssid="28">food, plant, city, state?</S>
+			<S sid="96" ssid="29">definition, reason,?</S>
+			<S sid="97" ssid="30">Map coarse classes to fine classes C0 C1 C2 C3 abb,def animal,food all possible subsets of C0 wih size = 5 all possible subsets of C2 with size =5 Figure 1: The hierarchical classifier that its candidate labels are generated by expanding the set of retained coarse classes from the first into a set of fine classes; this set is then treated as the confusion set for the second classifier.Figure 1 shows the basic structure of the hierar chical classifier.</S>
+			<S sid="98" ssid="31">During either the training or the testing stage, a question is processed along one path top-down to get classified.</S>
+			<S sid="99" ssid="32">The initial confusion set of any question is C 0 = fc 1 ; c 2 ; : : : ; c n g, the set of all the coarse classes.</S>
+			<S sid="100" ssid="33">The coarse classifier determines a set of preferred labels, C 1 = Coarse Classifier(C 0 ), C 1  C 0 so that jC 1 j  5.</S>
+			<S sid="101" ssid="34">Then each coarse class label in C 1 is expanded to a fixed set of fine classesdetermined by the class hierarchy.</S>
+			<S sid="102" ssid="35">That is, sup pose the coarse class c i is mapped into the set c i = ff i1 ; f i2 ; : : : ; f im g of fine classes, then C 2 = S c i 2C 1 c i . The fine classifier determines a set of.</S>
+			<S sid="103" ssid="36">preferred labels, C 3 = Fine Classifier(C 2 ) so that C 3  C 2 and jC 3 j  5.</S>
+			<S sid="104" ssid="37">C 1 and C 3are the ul timate outputs from the whole classifier which are used in our evaluation.</S>
+			<S sid="105" ssid="38">3.2 Feature Space.</S>
+			<S sid="106" ssid="39">Each question is analyzed and represented as a listof features to be treated as a training or test exam ple for learning.</S>
+			<S sid="107" ssid="40">We use several types of features and investigate below their contribution to the QC accuracy.</S>
+			<S sid="108" ssid="41">The primitive feature types extracted for eachquestion include words, pos tags, chunks (non overlapping phrases) (Abney, 1991), named entities,head chunks (e.g., the first noun chunk in a sen tence) and semantically related words (words that often occur with a specific question class).</S>
+			<S sid="109" ssid="42">Over these primitive features (which we call ?sensors?)</S>
+			<S sid="110" ssid="43">we use a set of operators to composemore complex features, such as conjunctive (n grams) and relational features, as in (Cumby and Roth, 2000; Roth and Yih, 2001).</S>
+			<S sid="111" ssid="44">A simple script that describes the ?types?</S>
+			<S sid="112" ssid="45">of features used, (e.g., conjunction of two consecutive words and their postags) is written and the features themselves are ex tracted in a data driven way.</S>
+			<S sid="113" ssid="46">Only ?active?</S>
+			<S sid="114" ssid="47">features are listed in our representation so that despite the large number of potential features, the size of each example is small.</S>
+			<S sid="115" ssid="48">Among the 6 primitive feature types, pos tags, chunks and head chunks are syntactic features while named entities and semantically related words are semantic features.</S>
+			<S sid="116" ssid="49">Pos tags are extracted using a SNoW-based pos tagger (Even-Zohar and Roth, 2001).</S>
+			<S sid="117" ssid="50">Chunks are extracted using a previously learned classifier (Punyakanok and Roth, 2001; Li and Roth, 2001).</S>
+			<S sid="118" ssid="51">The named entity classifier isalso learned and makes use of the same technol ogy developed for the chunker (Roth et al, 2002).The ?related word?</S>
+			<S sid="119" ssid="52">sensors were constructed semi automatically.</S>
+			<S sid="120" ssid="53">Most question classes have a semantically related word list.</S>
+			<S sid="121" ssid="54">Features will be extracted for this class ifa word in a question belongs to the list.</S>
+			<S sid="122" ssid="55">For exam ple, when ?away?, which belongs to a list of words semantically related to the class distance, occurs inthe sentence, the sensor Rel(distance) will be ac tive.</S>
+			<S sid="123" ssid="56">We note that the features from these sensors are different from those achieved using named entitysince they support more general ?semantic catego rization?</S>
+			<S sid="124" ssid="57">and include nouns, verbs, adjectives rather than just named entities.</S>
+			<S sid="125" ssid="58">For the sake of the experimental comparison, wedefine six feature sets, each of which is an incre mental combination of the primitive feature types.</S>
+			<S sid="126" ssid="59">That is, Feature set 1 (denoted by Word) contains word features; Feature set 2 (Pos) contains featurescomposed of words and pos tags and so on; The fi nal feature set, Feature set 6 (RelWord) contains all the feature types and is the only one that containsthe related words lists.</S>
+			<S sid="127" ssid="60">The classifiers will be experimented with different feature sets to test the influ ence of different features.</S>
+			<S sid="128" ssid="61">Overall, there are about 200; 000 features in the feature space of RelWorddue to the generation of complex features over sim ple feature types.</S>
+			<S sid="129" ssid="62">For each question, up to a couple of hundreds of them are active.</S>
+			<S sid="130" ssid="63">3.3 Decision Model.</S>
+			<S sid="131" ssid="64">For both the coarse and fine classifiers, the same decision model is used to choose class labels for a question.</S>
+			<S sid="132" ssid="65">Given a confusion set and a question, SNoW outputs a density over the classes derived from the activation of each class.</S>
+			<S sid="133" ssid="66">After ranking the classes in the decreasing order of density values, we have the possible class labels C = fc 1 ; c 2 ; : : : ; c n g, with their densities P = fp 1 ; p 2 ; : : : ; p n g (where, P n 1 p i = 1, 0  p i 1, 1  i  n).</S>
+			<S sid="134" ssid="67">As dis cussed earlier, for each question we output the first k classes (1  k  5), c 1 ; c 2 ; : : : c kwhere k satis fies, k = min(argmin t ( t X 1 p i  T ); 5) (1) T is a threshold value in [0,1].</S>
+			<S sid="135" ssid="68">If we treat p i as the probability that a question belongs to Class i, the decision model yields a reasonable probabilistic interpretation.</S>
+			<S sid="136" ssid="69">We use T = 0:95 in the experiments.</S>
+	</SECTION>
+	<SECTION title="Experimental Study. " number="4">
+			<S sid="137" ssid="1">We designed two experiments to test the accuracy ofour classifier on TREC questions.</S>
+			<S sid="138" ssid="2">The first experi ment evaluates the contribution of different featuretypes to the quality of the classification.</S>
+			<S sid="139" ssid="3">Our hi erarchical classifier is trained and tested using oneof the six feature sets defined in Sect.</S>
+			<S sid="140" ssid="4">3.2 (we re peated the experiments on several different trainingand test sets).</S>
+			<S sid="141" ssid="5">In the second experiment, we evaluate the advantage we get from the hierarchical clas sifier.</S>
+			<S sid="142" ssid="6">We construct a multi-class classifier only for fine classes.</S>
+			<S sid="143" ssid="7">This flat classifier takes all fine classes as its initial confusion set and classifies a questioninto fine classes directly.</S>
+			<S sid="144" ssid="8">Its parameters and deci sion model are the same as those of the hierarchicalone.</S>
+			<S sid="145" ssid="9">By comparing this flat classifier with our hi erarchical classifier in classifying fine classes, we hope to know whether the hierarchical classifier hasany advantage in performance, in addition to the ad vantages it might have in downstream processing and comprehensibility.</S>
+			<S sid="146" ssid="10">4.1 Data.</S>
+			<S sid="147" ssid="11">Data are collected from four sources: 4,500 English questions published by USC (Hovy et al, 2001), about 500 manually constructed questions for a few rare classes, 894 TREC 8 and TREC 9 questions, and also 500 questions from TREC 10 which serves as our test set3.These questions were manually labeled accord ing to our question hierarchy.</S>
+			<S sid="148" ssid="12">Although we allow multiple labels for one question in our classifiers, in our labeling, for simplicity, we assigned exactly 3The annotated data and experimental results are available from http://L2R.cs.uiuc.edu/cogcomp/one label to each question.</S>
+			<S sid="149" ssid="13">Our annotators were requested to choose the most suitable class accord ing to their own understanding.</S>
+			<S sid="150" ssid="14">This methodology might cause slight problems in training, when the labels are ambiguous, since some questions are not treated as positive examples for possible classes as they should be.</S>
+			<S sid="151" ssid="15">In training, we divide the 5,500 questions from the first three sources randomly into 5 training sets of 1,000, 2,000, 3,000, 4,000 and 5,500 questions.</S>
+			<S sid="152" ssid="16">All 500 TREC 10 questions are used as the test set.</S>
+			<S sid="153" ssid="17">4.2 Evaluation.</S>
+			<S sid="154" ssid="18">In this paper, we count the number of correctly clas sified questions by two different precision standards P 1 and P 5 . Suppose k. ilabels are output for the i th question (k i  5) and are ranked in a decreasing order according to their density values.</S>
+			<S sid="155" ssid="19">We define I ij = f 1; if the correct label of the ith question is output in rank j; 0; otherwise: (2) Then, P 1 = P m i=1 I i1 =m and P 5 = P m i=1 P k i j=1 I ij =m where m is the total number of test examples.</S>
+			<S sid="156" ssid="20">P 1corresponds to the usual defini tion of precision which allows only one label for each question, while P 5 allows multiple labels.</S>
+			<S sid="157" ssid="21">P 5reflects the accuracy of our classifier with respect to later stages in a question answering sys tem.</S>
+			<S sid="158" ssid="22">As the results below show, although questionclasses are still ambiguous, few mistakes are intro duced by our classifier in this step.</S>
+			<S sid="159" ssid="23">4.3 Experimental Results.</S>
+			<S sid="160" ssid="24">Performance of the hierarchical classifier Table 2 shows the P 5precision of the hierarchi cal classifier when trained on 5,500 examples andtested on the 500 TREC 10 questions.</S>
+			<S sid="161" ssid="25">The re sults are quite encouraging; question classification is shown to be solved effectively using machine learning techniques.</S>
+			<S sid="162" ssid="26">It also shows the contribution of the feature sets we defined.</S>
+			<S sid="163" ssid="27">Overall, we get a98.80% precision for coarse classes with all the fea tures and 95% for the fine classes.</S>
+			<S sid="164" ssid="28">P =5 Word Pos Chunk NE Head RelWord Coarse 92.00 96.60 97.00 97.00 97.80 98.80 Fine 86.00 86.60 87.60 88.60 89.40 95.00Table 2: Classification results of the hierarchical clas sifier on 500 TREC 10 questions.</S>
+			<S sid="165" ssid="29">Training is done on 5,500 questions.</S>
+			<S sid="166" ssid="30">Columns show the performance for difference feature sets and rows show the precision forcoarse and fine classes, resp.</S>
+			<S sid="167" ssid="31">All the results are evalu ated using P 5 . Inspecting the data carefully, we can observe the significant contribution of the features constructed based on semantically related words sensors.</S>
+			<S sid="168" ssid="32">It is interesting to observe that this improvement is even more significant for fine classes.</S>
+			<S sid="169" ssid="33">No. Train Test P 1 P =5 1 1000 500 83.80 95.60 2 2000 500 84.80 96.40 3 3000 500 91.00 98.00 4 4000 500 90.80 98.00 Table 3: Classification accuracy for coarse classes ondifferent training sets using the feature set RelWord.</S>
+			<S sid="170" ssid="34">Re sults are evaluated using P 1 and P 5 . No.</S>
+			<S sid="171" ssid="35">Train Test P 1 P =5 1 1000 500 71.00 83.80 2 2000 500 77.80 88.20 3 3000 500 79.80 90.60 4 4000 500 80.00 91.20Table 4: Classification accuracy for fine classes on different training sets using the feature set RelWord.</S>
+			<S sid="172" ssid="36">Re sults are evaluated using P 1 and P 5 . Tables 3 and 4 show the P 1 and P 5 accuracyof the hierarchical classifier on training sets of dif ferent sizes and exhibit the learning curve for this problem.We note that the average numbers of labels out put by the coarse and fine classifiers are 1.54 and 2.05 resp., (using the feature set RelWord and 5,500 training examples), which shows the decision model is accurate as well as efficient.</S>
+			<S sid="173" ssid="37">Comparison of the hierarchical and the flat classifier The flat classifier consists of one classifier which isalmost the same as the fine classifier in the hierar chical case, except that its initial confusion set is the whole set of fine classes.</S>
+			<S sid="174" ssid="38">Our original hope was that the hierarchical classifier would have a better performance, given that its fine classifier only needs to deal with a smaller confusion set.</S>
+			<S sid="175" ssid="39">However, it turns out that there is a tradeoff between this factor and the inaccuracy, albeit small, of the coarse levelprediction.</S>
+			<S sid="176" ssid="40">As the results show, there is no perfor mance advantage for using a level of coarse classes, and the semantically appealing coarse classes do not contribute to better performance.</S>
+			<S sid="177" ssid="41">Figure 2 give some more intuition on the flat vs. hierarchical issue.</S>
+			<S sid="178" ssid="42">We define the tendency of Class i to be confused with Class j as follows: D ij = Err ij  2=(N i + N j ); (3) where (when using P 1 ), Err ij is the number ofquestions in Class i that are misclassified as belong P 1 Word Pos Chunk NE Head RelWord h 77.60 78.20 77.40 78.80 78.80 84.20 f 52.40 77.20 77.00 78.40 76.80 84.00 P =5 Word Pos Chunk NE Head RelWord h 86.00 86.60 87.60 88.60 89.40 95.00 f 83.20 86.80 86.60 88.40 89.80 95.60 Table 5: Comparing accuracy of the hierarchical (h) and flat (f) classifiers on 500 TREC 10 question; training is done on 5,500 questions.</S>
+			<S sid="179" ssid="43">Results are shown for different feature sets using P 1 and P 5 . Fine Classes 1?50 Fi ne C la ss es 1 ?5 0 2 24 28 32 37 50 2 24 28 32 37 50 Figure 2: The gray?scale map of the matrix D[n,n].</S>
+			<S sid="180" ssid="44">The color of the small box in position (i,j) denotes D ij . The.</S>
+			<S sid="181" ssid="45">larger D ij is, the darker the color is. The dotted lines separate the 6 coarse classes.</S>
+			<S sid="182" ssid="46">ing to Class j, and N i ; N jare the numbers of ques tions in Class i and j resp.</S>
+			<S sid="183" ssid="47">Figure 2 is a gray-scale map of the matrix D[n,n].</S>
+			<S sid="184" ssid="48">D[n,n] is so sparse that most parts of the graph areblank.</S>
+			<S sid="185" ssid="49">We can see that there is no good cluster ing of fine classes mistakes within a coarse class,which explains intuitively why the hierarchical clas sifier with an additional level coarse classes does not work much better.</S>
+			<S sid="186" ssid="50">4.4 Discussion and Examples.</S>
+			<S sid="187" ssid="51">We have shown that the overall accuracy of our clas sifier is satisfactory.</S>
+			<S sid="188" ssid="52">Indeed, all the reformulation questions that we exemplified in Sec.</S>
+			<S sid="189" ssid="53">3 have been correctly classified.</S>
+			<S sid="190" ssid="54">Nevertheless, it is constructive to consider some cases in which the classifier fails.Below are some examples misclassified by the hier archical classifier.What French ruler was defeated at the battle of Water loo?</S>
+			<S sid="191" ssid="55">The correct label is individual, but the classifier, failing to relate the word ?ruler?</S>
+			<S sid="192" ssid="56">to a person, since it was not in any semantic list, outputs event.</S>
+			<S sid="193" ssid="57">What is the speed hummingbirds fly ? The correct label is speed, but the classifier outputs animal.</S>
+			<S sid="194" ssid="58">Our feature sensors fail to determine that the focus of the question is ?speed?.</S>
+			<S sid="195" ssid="59">This example illustrates the necessity of identifying the question focus by analyzing syntactic structures.</S>
+			<S sid="196" ssid="60">What do you call a professional map drawer ? The classifier returns other entities instead ofequivalent term.</S>
+			<S sid="197" ssid="61">In this case, both classes are ac ceptable.</S>
+			<S sid="198" ssid="62">The ambiguity causes the classifier not to output equivalent term as the first choice.</S>
+	</SECTION>
+	<SECTION title="Conclusion. " number="5">
+			<S sid="199" ssid="1">This paper presents a machine learning approach to question classification.</S>
+			<S sid="200" ssid="2">We developed a hierarchicalclassifier that is guided by a layered semantic hierarchy of answers types, and used it to classify questions into fine-grained classes.</S>
+			<S sid="201" ssid="3">Our experimental re sults prove that the question classification problemcan be solved quite accurately using a learning ap proach, and exhibit the benefits of features based on semantic analysis.</S>
+			<S sid="202" ssid="4">In future work we plan to investigate further the application of deeper semantic analysis (including better named entity and semantic categorization) to feature extraction, automate the generation of thesemantic features and develop a better understand ing to some of the learning issues involved in thedifference between a flat and a hierarchical classi fier.</S>
+	</SECTION>
+</PAPER>

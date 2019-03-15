@@ -1,0 +1,214 @@
+<PAPER>
+  <S sid="0">Batch Tuning Strategies for Statistical Machine Translation</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">There has been a proliferation of recent work on SMT tuning algorithms capable of handling larger feature sets than the traditional MERT approach.</S>
+    <S sid="2" ssid="2">We analyze a number of these algorithms in terms of their sentencelevel loss functions, which motivates several new approaches, including a Structured SVM.</S>
+    <S sid="3" ssid="3">We perform empirical comparisons of eight different tuning strategies, including MERT, in a variety of settings.</S>
+    <S sid="4" ssid="4">Among other results, we find that a simple and efficient batch version of MIRA performs at least as well as training online, and consistently outperforms other options.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="5" ssid="1">The availability of linear models and discriminative tuning algorithms has been a huge boon to statistical machine translation (SMT), allowing the field to move beyond the constraints of generative noisy channels (Och and Ney, 2002).</S>
+    <S sid="6" ssid="2">The ability to optimize these models according to an error metric has become a standard assumption in SMT, due to the wide-spread adoption of Minimum Error Rate Training or MERT (Och, 2003).</S>
+    <S sid="7" ssid="3">However, MERT has trouble scaling to more than 30 features, which has led to a surge in research on tuning schemes that can handle high-dimensional feature spaces.</S>
+    <S sid="8" ssid="4">These methods fall into a number of broad categories.</S>
+    <S sid="9" ssid="5">Minimum risk approaches (Och, 2003; Smith and Eisner, 2006) have been quietly capable of handling many features for some time, but have yet to see widespread adoption.</S>
+    <S sid="10" ssid="6">Online methods (Liang et al., 2006; Watanabe et al., 2007), are recognized to be effective, but require substantial implementation efforts due to difficulties with parallelization.</S>
+    <S sid="11" ssid="7">Pairwise ranking (Shen et al., 2004; Hopkins and May, 2011) recasts tuning as classification, and can be very easy to implement, as it fits nicely into the established MERT infrastructure.</S>
+    <S sid="12" ssid="8">The MERT algorithm optimizes linear weights relative to a collection of k-best lists or lattices, which provide an approximation to the true search space.</S>
+    <S sid="13" ssid="9">This optimization is wrapped in an outer loop that iterates between optimizing weights and re-decoding with those weights to enhance the approximation.</S>
+    <S sid="14" ssid="10">Our primary contribution is to empirically compare eight tuning algorithms and variants, focusing on methods that work within MERT&#8217;s established outer loop.</S>
+    <S sid="15" ssid="11">This is the first comparison to include all three categories of optimizer.</S>
+    <S sid="16" ssid="12">Furthermore, we introduce three tuners that have not been previously tested.</S>
+    <S sid="17" ssid="13">In particular, we test variants of Chiang et al.&#8217;s (2008) hope-fear MIRA that use k-best or lattice-approximated search spaces, producing a Batch MIRA that outperforms a popular mechanism for parallelizing online learners.</S>
+    <S sid="18" ssid="14">We also investigate the direct optimization of hinge loss on k-best lists, through the use of a Structured SVM (Tsochantaridis et al., 2004).</S>
+    <S sid="19" ssid="15">We review and organize the existing tuning literature, providing sentence-level loss functions for minimum risk, online and pairwise training.</S>
+    <S sid="20" ssid="16">Finally, since randomization plays a different role in each tuner, we also suggest a new method for testing an optimizer&#8217;s stability (Clark et al., 2011), which sub-samples the tuning set instead of varying a random seed.</S>
+  </SECTION>
+  <SECTION title="2 Background" number="2">
+    <S sid="21" ssid="1">We begin by establishing some notation.</S>
+    <S sid="22" ssid="2">We view our training set as a list of triples [f, R, &#163;]Z1, where f is a source-language sentence, R is a set of targetlanguage reference sentences, and &#163; is the set of all reachable hypotheses; that is, each e &#8712; Ei is a target-language derivation that can be decoded from fi.</S>
+    <S sid="23" ssid="3">The function ~hi(e) describes e&#8217;s relationship to its source fi using features that decompose into the decoder.</S>
+    <S sid="24" ssid="4">A linear model w~ scores derivations according to their features, meaning that the decoder solves: Assuming we wish to optimize our decoder&#8217;s BLEU score (Papineni et al., 2002), the natural objective of learning would be to find a w~ such that BLEU([e(~w), R]n1) is maximal.</S>
+    <S sid="25" ssid="5">In most machine learning papers, this would be the point where we would say, &#8220;unfortunately, this objective is unfeasible.&#8221; But in SMT, we have been happily optimizing exactly this objective for years using MERT.</S>
+    <S sid="26" ssid="6">However, it is now acknowledged that the MERT approach is not feasible for more than 30 or so features.</S>
+    <S sid="27" ssid="7">This is due to two main factors: The problems with MERT can be addressed through the use of surrogate loss functions.</S>
+    <S sid="28" ssid="8">In this paper, we focus on linear losses that decompose over training examples.</S>
+    <S sid="29" ssid="9">Using Ri and Ei, each loss `i(~w) indicates how poorly w~ performs on the i&#65533;h training example.</S>
+    <S sid="30" ssid="10">This requires a sentence-level approximation of BLEU, which we re-encode into a cost &#916;i(e) on derivations, where a high cost indicates that e receives a low BLEU score.</S>
+    <S sid="31" ssid="11">Unless otherwise stated, we will assume the use of sentence BLEU with add1 smoothing (Lin and Och, 2004).</S>
+    <S sid="32" ssid="12">The learners differ in their definition of ` and &#916;, and in how they employ their loss functions to tune their weights.</S>
+    <S sid="33" ssid="13">1This is true of any evaluation metric that considers only the ranking of hypotheses and not their model scores; ie, it is true of all common MT metrics.</S>
+    <S sid="34" ssid="14">First employed in SMT by Watanabe et al. (2007), and refined by Chiang et al.</S>
+    <S sid="35" ssid="15">(2008; 2009), the Margin Infused Relaxed Algorithm (MIRA) employs a structured hinge loss: where ez is an oracle derivation, and cost is defined as &#916;i(e) = BLEUi(ez) &#8722; BLEUi(e), so that &#916;i(ez) = 0.</S>
+    <S sid="36" ssid="16">The loss `i(~w) is 0 only if w~ separates each e &#8712; Ei from ez by a margin proportional to their BLEU differentials.</S>
+    <S sid="37" ssid="17">MIRA is an instance of online learning, repeating the following steps: visit an example i, decode according to ~w, and update w~ to reduce `i(~w).</S>
+    <S sid="38" ssid="18">Each update makes the smallest change to w~ (subject to a step-size cap C) that will separate the oracle from a number of negative hypotheses.</S>
+    <S sid="39" ssid="19">The work of Crammer et al. (2006) shows that updating away from a single &#8220;fear&#8221; hypothesis that maximizes (2) admits a closed-form update that performs well.</S>
+    <S sid="40" ssid="20">Let ez be the e &#8712; Ei that maximizes `i(~w); the update can be performed in two steps: To improve generalization, the average of all weights seen during learning is used on unseen data.</S>
+    <S sid="41" ssid="21">Chiang et al. (2008) take advantage of MIRA&#8217;s online nature to modify each update to better suit SMT.</S>
+    <S sid="42" ssid="22">The cost &#916;i is defined using a pseudocorpus BLEU that tracks the n-gram statistics of the model-best derivations from the last few updates.</S>
+    <S sid="43" ssid="23">This modified cost matches corpus BLEU better than add-1 smoothing, but it also makes &#916;i time-dependent: each update for an example i will be in the context of a different pseudo-corpus.</S>
+    <S sid="44" ssid="24">The oracle ez also shifts with each update to ~w, as it is defined as a &#8220;hope&#8221; derivation, which maximizes w~ &#183; ~hi(e) + BLEUi(e).</S>
+    <S sid="45" ssid="25">Hope updating ensures that MIRA aims for ambitious, reachable derivations.</S>
+    <S sid="46" ssid="26">In our implementation, we make a number of small, empirically verified deviations from Chiang et al. (2008).</S>
+    <S sid="47" ssid="27">These include the above-mentioned use of a single hope and fear hypothesis, and the use of hope hypotheses (as opposed to model-best hypotheses) to build the pseudo-corpus for calculating BLEUi.</S>
+    <S sid="48" ssid="28">These changes were observed to be neutral with respect to translation quality, but resulted in faster running time and simplified implementation.</S>
+    <S sid="49" ssid="29">With the exception of MIRA, the tuning approaches discussed in this paper are direct optimizers.</S>
+    <S sid="50" ssid="30">That is, each solves the following optimization problem: where the first term provides regularization, weighted by &#955;.</S>
+    <S sid="51" ssid="31">Throughout this paper, (4) is optimized with respect to a fixed approximation of the decoder&#8217;s true search space, represented as a collection of k-best lists.</S>
+    <S sid="52" ssid="32">The various methods differ in their definition of loss and in how they optimize their objective.</S>
+    <S sid="53" ssid="33">Without the complications added by hope decoding and a time-dependent cost function, unmodified MIRA can be shown to be carrying out dual coordinate descent for an SVM training objective (Martins et al., 2010).</S>
+    <S sid="54" ssid="34">However, exactly what objective hopefear MIRA is optimizing remains an open question.</S>
+    <S sid="55" ssid="35">Gimpel and Smith (2012) discuss these issues in greater detail, while also providing an interpretable alternative to MIRA.</S>
+    <S sid="56" ssid="36">Introduced by Hopkins and May (2011), Pairwise Ranking Optimization (PRO) aims to handle large feature sets inside the traditional MERT architecture.</S>
+    <S sid="57" ssid="37">That is, PRO employs a growing approximation of &#163;i by aggregating the k-best hypotheses from a series of increasingly refined models.</S>
+    <S sid="58" ssid="38">This architecture is desirable, as most groups have infrastructure to k-best decode their tuning sets in parallel.</S>
+    <S sid="59" ssid="39">For a given approximate &#65533;&#163;i, PRO creates a sample Si of (eg, eb) pairs, such that BLEUi(eg) &gt; BLEUi(eb).</S>
+    <S sid="60" ssid="40">It then uses a binary classifier to separate each pair.</S>
+    <S sid="61" ssid="41">We describe the resulting loss in terms of an SVM classifier, to highlight similarities with MIRA.</S>
+    <S sid="62" ssid="42">In terms of (4), PRO defines where (x)+ = max(0, x).</S>
+    <S sid="63" ssid="43">The hinge loss is multiplied by 2 to account for PRO&#8217;s use of two examples (positive and negative) for each sampled pair.</S>
+    <S sid="64" ssid="44">This sum of hinge-losses is 0 only if each pair is separated by a model score of 1.</S>
+    <S sid="65" ssid="45">Given [S]Z1, this convex objective can be optimized using any binary SVM.2 Unlike MIRA, the margin here is fixed to 1; cost enters into PRO through its sampling routine, which performs a large uniform sample and then selects a subset of pairs with large BLEU differentials.</S>
+    <S sid="66" ssid="46">The PRO loss uses a sum over pairs in place of MIRA&#8217;s max, which allows PRO to bypass oracle selection, and to optimize with off-the-shelf classifiers.</S>
+    <S sid="67" ssid="47">This sum is potentially a weakness, as PRO receives credit for each correctly ordered pair in its sample, and these pairs are not equally relevant to the final BLEU score.</S>
+    <S sid="68" ssid="48">Minimum risk training (MR) interprets w~ as a probabilistic model, and optimizes expected BLEU.</S>
+    <S sid="69" ssid="49">We focus on expected sentence costs (Och, 2003; Zens et al., 2007; Li and Eisner, 2009), as this risk is simple to optimize and fits nicely into our mathematical framework.</S>
+    <S sid="70" ssid="50">Variants that use the expected sufficient statistics of BLEU also exist (Smith and Eisner, 2006; Pauls et al., 2009; Rosti et al., 2011).</S>
+    <S sid="71" ssid="51">We again assume a MERT-like tuning architecture.</S>
+    <S sid="72" ssid="52">Let Ai(e) = &#8722;BLEUi(e) and let This expected cost becomes increasingly small as greater probability mass is placed on derivations with high BLEU scores.</S>
+    <S sid="73" ssid="53">This smooth, non-convex objective can be solved to a local minimum using gradient-based optimizers; we have found stochastic gradient descent to be quite effective (Bottou, 2010).</S>
+    <S sid="74" ssid="54">Like PRO, MR requires no oracle derivation, and fits nicely into the established MERT architecture.</S>
+    <S sid="75" ssid="55">The expectations needed to calculate the gradient 2Hopkins and May (2011) advocate a maximum-entropy version of PRO, which is what we evaluate in our empirical comparison.</S>
+    <S sid="76" ssid="56">It can be obtained using a logit loss fi(97) _ are trivial to extract from a k-best list of derivations.</S>
+    <S sid="77" ssid="57">Each downward step along this gradient moves the model toward likely derivations, and away from likely derivations that incur high costs.</S>
+  </SECTION>
+  <SECTION title="3 Novel Methods" number="3">
+    <S sid="78" ssid="1">We have reviewed three tuning methods, all of which address MERT&#8217;s weakness with large features by using surrogate loss functions.</S>
+    <S sid="79" ssid="2">Additionally, MIRA has the following advantages over PRO and MR: Both of these advantages come at a cost: operating on the true &#163;i sacrifices easy parallelization, while using a fluid pseudo-corpus creates an unstable learning objective.</S>
+    <S sid="80" ssid="3">We develop two large-margin tuners that explore these trade-offs.</S>
+    <S sid="81" ssid="4">Online training makes it possible to learn with the decoder in the loop, forgoing the need to approximate the search space, but it is not necessarily convenient to do so.</S>
+    <S sid="82" ssid="5">Online algorithms are notoriously difficult to parallelize, as they assume each example is visited in sequence.</S>
+    <S sid="83" ssid="6">Parallelization is important for efficient SMT tuning, as decoding is still relatively expensive.</S>
+    <S sid="84" ssid="7">The parallel online updates suggested by Chiang et al. (2008) involve substantial inter-process communication, which may not be easily supported by all clusters.</S>
+    <S sid="85" ssid="8">McDonald et al. (2010) suggest a simpler distributed strategy that is amenable to map-reduce-like frameworks, which interleaves online training on shards with weight averaging across shards.</S>
+    <S sid="86" ssid="9">This strategy has been adopted by Moses (Hasler et al., 2011), and it is the one we adopt in our MIRA implementation.</S>
+    <S sid="87" ssid="10">However, online training using the decoder may not be necessary for good performance.</S>
+    <S sid="88" ssid="11">The success of MERT, PRO and MR indicates that their shared search approximation is actually quite reasonable.</S>
+    <S sid="89" ssid="12">Therefore, we propose Batch MIRA, which sits exactly where MERT sits in the standard tuning architecture, greatly simplifying parallelization: where BatchMIRA() trains the SMT-adapted MIRA algorithm to completion on the current approximation &#163;, without parallelization.3 The only change we make to MIRA is to replace the hope-fear decoding of sentences with the hope-fear re-ranking of k-best lists.</S>
+    <S sid="90" ssid="13">Despite its lack of parallelization, each call to BatchMIRA() is extremely fast, as SMT tuning sets are small enough to load all of [&#163;]n 1 into memory.</S>
+    <S sid="91" ssid="14">We test two Batch MIRA variants, which differ in their representation of &#163;.</S>
+    <S sid="92" ssid="15">Pseudo-code that covers both is provided in Algorithm 1.</S>
+    <S sid="93" ssid="16">Note that if we set &#163; = &#163;, Algorithm 1 also describes online MIRA.</S>
+    <S sid="94" ssid="17">Batch k-best MIRA inherits all of the MERT architecture.</S>
+    <S sid="95" ssid="18">It is very easy to implement; the hope-fear decoding steps can by carried out by simply evaluating BLEU score and model score for each hypothesis in the k-best list.</S>
+    <S sid="96" ssid="19">Batch Lattice MIRA replaces k-best decoding in step 1 with decoding to lattices.</S>
+    <S sid="97" ssid="20">To enable loading all of the lattices into memory at once, we prune to a density of 50 edges per reference word.</S>
+    <S sid="98" ssid="21">The hopefear decoding step requires the same oracle lattice decoding algorithms as online MIRA (Chiang et al., 2008).</S>
+    <S sid="99" ssid="22">The lattice aggregation in the outer loop can be kept reasonable by aggregating only those paths corresponding to hope or fear derivations.</S>
+    <S sid="100" ssid="23">While MIRA takes a series of local hinge-loss reducing steps, it is also possible to directly minimize the sum of hinge-losses using a batch algorithm, creating a structured SVM (Tsochantaridis et al., 2004).</S>
+    <S sid="101" ssid="24">To avoid fixing an oracle before optimization begins, we adapt Yu and Joachim&#8217;s (2009) latent SVM to our task, which allows the oracle derivation for each sentence to vary during training.</S>
+    <S sid="102" ssid="25">Again we assume a MERT-like architecture, which approximates &#163; with an &#163; constructed from aggregated k-best lists.</S>
+    <S sid="103" ssid="26">Inspired by the local oracle of Liang et al. (2006), we define &#65533;&#163;i* to be an oracle set: Algorithm 1 BatchMIRA input [f, R, &#65533;&#163;]n1, ~w, max epochs J, step cap C, and pseudo-corpus decay &#947;. init Pseudo-corpus BG to small positive counts. init t = 1; ~wt = w~ for j from 1 to J do for i from 1 to n in random order do // Hope-fear decode in &#65533;&#163;i et = arg maxeE &#163;i [~wt ~hi(e) + BLEUi(e)] et = arg maxeE &#163;i [~wt ~hi(e) &#8722; BLEUi(e)] // Update weights This loss is 0 only if some hypothesis in the oracle set is separated from all others by a margin proportional to their BLEUi differentials.</S>
+    <S sid="104" ssid="27">With loss defined in this manner, we can minimize (4) to local minimum by using an alternating training procedure.</S>
+    <S sid="105" ssid="28">For each example i, we select a fixed ez E &#65533;&#163;i* that maximizes model score; that is, w~ is used to break ties in BLEU for oracle selection.</S>
+    <S sid="106" ssid="29">With the oracle fixed, the objective becomes a standard structured SVM objective, which can be minimized using a cutting-plane algorithm, as described by Tsochantaridis et al. (2004).</S>
+    <S sid="107" ssid="30">After doing so, we can drive the loss lower still by iterating this process: re-select each oracle (breaking ties with the new ~w), then re-optimize ~w.</S>
+    <S sid="108" ssid="31">We do so 10 times.</S>
+    <S sid="109" ssid="32">We were surprised by the impact of these additional iterations on the final loss; for some sentences, &#65533;&#163;i* can be quite large.</S>
+    <S sid="110" ssid="33">Despite the fact that both algorithms use a structured hinge loss, there are several differences between our SVM and MIRA.</S>
+    <S sid="111" ssid="34">The SVM has an explicit regularization term &#955; that is factored into its global objective, while MIRA regularizes implicitly by taking small steps.</S>
+    <S sid="112" ssid="35">The SVM requires a stable objective to optimize, meaning that it must forgo the pseudo-corpus used by MIRA to calculate Ai; instead, the SVM uses an interpolated sentence-level BLEU (Liang et al., 2006).4 Finally, MIRA&#8217;s oracle is selected with hope decoding.</S>
+    <S sid="113" ssid="36">With a sufficiently large ~w, any e E &#163; can potentially become the oracle.</S>
+    <S sid="114" ssid="37">In contrast, the SVM&#8217;s local oracle is selected from a small set &#163;*, which was done to more closely match the assumptions of the Latent SVM.</S>
+    <S sid="115" ssid="38">To solve the necessary quadratic programming sub-problems, we use a multiclass SVM similar to LIBLINEAR (Hsieh et al., 2008).</S>
+    <S sid="116" ssid="39">Like Batch MIRA and PRO, the actual optimization is very fast, as the cutting plane converges quickly and all of [&#65533;&#163;]n1 can be loaded into memory at once.</S>
+    <S sid="117" ssid="40">We have reviewed three tuning methods and introduced three tuning methods.</S>
+    <S sid="118" ssid="41">All six methods employ sentence-level loss functions, which in turn employ sentence-level BLEU approximations.</S>
+    <S sid="119" ssid="42">Except for online MIRA, all methods plug nicely into the existing MERT architecture.</S>
+    <S sid="120" ssid="43">These methods can be split into two groups: MIRA variants (online, batch k-best, batch lattice), and direct optimizers (PRO, MR and SVM).</S>
+    <S sid="121" ssid="44">The MIRA variants use pseudocorpus BLEU in place of smoothed BLEU, and provide access to richer hypothesis spaces through the use of online training or lattices.5 The direct optimizers have access to a tunable regularization parameter &#955;, and do not require special purpose code for hope and fear lattice decoding.</S>
+    <S sid="122" ssid="45">Batch k-best MIRA straddles the two groups, benefiting from pseudo-corpus BLEU and easy implementation, while being restricted to a k-best list.</S>
+  </SECTION>
+  <SECTION title="4 Experimental Design" number="4">
+    <S sid="123" ssid="1">We evaluated the six tuning strategies described in this paper, along with two MERT baselines, on three language pairs (French-English (Fr-En), English-French (En-Fr) and Chinese-English (ZhEn)), across three different feature-set sizes.</S>
+    <S sid="124" ssid="2">Each setting was run five times over randomized variants to improve reliability.</S>
+    <S sid="125" ssid="3">To cope with the resulting large number of configurations, we ran all experiments using an efficient phrase-based decoder similar to Moses (Koehn et al., 2007).</S>
+    <S sid="126" ssid="4">All tuning methods that use an approximate &#163; perform 15 iterations of the outer loop and return the weights that achieve the best development BLEU score.</S>
+    <S sid="127" ssid="5">When present, A was coarsely tuned (trying 3 values differing by magnitudes of 10) in our largefeature Chinese-English setting.</S>
+    <S sid="128" ssid="6">C = 0.01.</S>
+    <S sid="129" ssid="7">Online parallelization follows McDonald et al. (2010), using 8 shards.</S>
+    <S sid="130" ssid="8">We tested 20, 15, 10, 8 and 5 shards during development. tings that performed well in general.</S>
+    <S sid="131" ssid="9">Reported results use MegaM6 with a maximum of 30 iterations (as is done in Moses; the early stopping provides a form of regularization) for our six English/French tests, and MegaM with 100 iterations and a reduced initial uniform sample (50 pairs instead of 5000) for our three English/Chinese tests. gradient descent, with qo tuned to optimize the training loss achieved after one epoch (Bottou, 2010).</S>
+    <S sid="132" ssid="10">Upon reaching a local optimum, we reshuffle our data, re-tune our learning rate, and re-start from the optimum, repeating this process 5 times.</S>
+    <S sid="133" ssid="11">We do not sharpen our distribution with a temperature or otherwise control for entropy; instead, we trust A = 50 to maintain a reasonable distribution.</S>
+    <S sid="134" ssid="12">Systems for English/French were trained on Canadian Hansard data (years 2001&#8211;2009) summarized in table 1.7 The dev and test sets were chosen randomly from among the most recent 5 days of Hansard transcripts.</S>
+    <S sid="135" ssid="13">The system for Zh-En was trained on data from the NIST 2009 Chinese MT evaluation, summarized in table 2.</S>
+    <S sid="136" ssid="14">The dev set was taken from the NIST 05 evaluation set, augmented with some material reserved from other NIST corpora.</S>
+    <S sid="137" ssid="15">The NIST 04, 06, and 08 evaluation sets were used for testing.</S>
+    <S sid="138" ssid="16">For all language pairs, phrases were extracted with a length limit of 7 from separate word alignments performed by IBM2 and HMM models and symmetrized using diag-and (Koehn et al., 2003).</S>
+    <S sid="139" ssid="17">Conditional phrase probabilities in both directions were estimated from relative frequencies, and from lexical probabilities (Zens and Ney, 2004).</S>
+    <S sid="140" ssid="18">Language models were estimated with Kneser-Ney smoothing using SRILM.</S>
+    <S sid="141" ssid="19">Six-feature lexicalized distortion models were estimated and applied as in Moses.</S>
+    <S sid="142" ssid="20">For each language pair, we defined roughly equivalent systems (exactly equivalent for En-Fr and FrEn, which are mirror images) for each of three nested feature sets: Small, Medium, and Big.</S>
+    <S sid="143" ssid="21">The Small set defines a minimal 7-feature system intended to be within easy reach of all tuning strategies.</S>
+    <S sid="144" ssid="22">It comprises 4 TM features, one LM, and length and distortion features.</S>
+    <S sid="145" ssid="23">For the Chinese system, the LM is a 5-gram trained on the NIST09 Gigaword corpus; for English/French, it is a 4-gram trained on the target half of the parallel Hansard.</S>
+    <S sid="146" ssid="24">The Medium set is a more competitive 18-feature system.</S>
+    <S sid="147" ssid="25">It adds 4 TM features, one LM, and 6 lexicalized distortion features.</S>
+    <S sid="148" ssid="26">For Zh-En, Small&#8217;s TM (trained on both train1 and train2 in table 2) is replaced by 2 separate TMs from these sub-corpora; for En/Fr, the extra TM (4 features) comes from a forced-decoding alignment of the training corpus, as proposed by Wuebker et al. (2010).</S>
+    <S sid="149" ssid="27">For Zh-En, the extra LM is a 4-gram trained on the target half of the parallel corpus; for En/Fr, it is a 4-gram trained on 5m sentences of similar parliamentary data.</S>
+    <S sid="150" ssid="28">The Big set adds sparse Boolean features to Medium, for a maximum of 6,848 features.</S>
+    <S sid="151" ssid="29">We used sparse feature templates that are equivalent to the PBMT set described in (Hopkins and May, 2011): tgt unal picks out each of the 50 most frequent target words to appear unaligned in the phrase table; count bin uniquely bins joint phrase pair counts with upper bounds 1,2,4,8,16,32,64,128,1k,10k,00; word pair fires when each of the 80 most frequent words in each language appear aligned 1-1 to each other, to some other word, or not 1-1; and length bin captures each possible phrase length and length pair.</S>
+    <S sid="152" ssid="30">Table 3 summarizes the feature templates, showing the maximum number of features each can generate, and the number of features that received non-zero weights in the final model tuned by MR for each language pair.</S>
+    <S sid="153" ssid="31">Feature weights are initialized to 1.0 for each of the TM, LM and distortion penalty features.</S>
+    <S sid="154" ssid="32">All other weights are initialized to 0.0.</S>
+    <S sid="155" ssid="33">We follow Clark et al (2011), and perform multiple randomized replications of each experiment.</S>
+    <S sid="156" ssid="34">However, their method of using different random seeds is not applicable in our context, since randomization does not play the same role for all tuning methods.</S>
+    <S sid="157" ssid="35">Our solution was to randomly draw and fix four different sub-samples of each dev set, retaining each sentence with a probability of 0.9.</S>
+    <S sid="158" ssid="36">For each tuning method and setting, we then optimize on the original dev and all sub-samples.</S>
+    <S sid="159" ssid="37">The resulting standard deviations provide an indication of stability.</S>
+  </SECTION>
+  <SECTION title="5 Results" number="5">
+    <S sid="160" ssid="1">The results of our survey of tuning methods can be seen in Tables 4, 5 and 6.</S>
+    <S sid="161" ssid="2">Results are averaged over test sets (2 for Fr/En, 3 for Zh/En), and over 5 subsampled runs per test set.</S>
+    <S sid="162" ssid="3">The SD column reports the standard deviation of the average test score across the 5 sub-samples.</S>
+    <S sid="163" ssid="4">It may be dismaying to see only small score improvements when transitioning from Medium to Big.</S>
+    <S sid="164" ssid="5">This is partially due to the fact that our Big feature set affects only phrase-table scores.</S>
+    <S sid="165" ssid="6">Our phrase tables are already strong, through our use of large data or leave-one-out forced decoding.</S>
+    <S sid="166" ssid="7">The important baseline when assessing the utility of a method is Medium k-best MERT.</S>
+    <S sid="167" ssid="8">In all language pairs, our Big systems generally outperform this baseline by 0.4 BLEU points.</S>
+    <S sid="168" ssid="9">It is interesting to note that most methods achieve the bulk of this improvement on the Medium feature set.8 This indicates that MERT begins to show some problems even in an 18-feature setting, which can be mitigated through the use of Lattice MERT.</S>
+    <S sid="169" ssid="10">When examining score differentials, recall that the reported scores average over multiple test sets and sub-sampled tuning runs.</S>
+    <S sid="170" ssid="11">Using Small features, all of the tested methods are mostly indistinguishable, but as we move to Medium and Big, Batch Lattice MIRA emerges as our method of choice.</S>
+    <S sid="171" ssid="12">It is the top scoring system in all Medium settings, and in two of three Big settings (in Big Zh-En, the SVM comes first, with batch lattice MIRA placing second).</S>
+    <S sid="172" ssid="13">However, all of the MIRA variants perform similarly, though our implementation of online MIRA is an order of magnitude slower, mostly due to its small number of shards.</S>
+    <S sid="173" ssid="14">It is interesting that our batch lattice variant consistently outperforms online MIRA.</S>
+    <S sid="174" ssid="15">We attribute this to our parallelization strategy, Chiang et al.&#8217;s (2008) more complex solution may perform better.</S>
+    <S sid="175" ssid="16">There may be settings where an explicit regularization parameter is desirable, thus we also make a recommendation among the direct optimizers (PRO, MR and SVM).</S>
+    <S sid="176" ssid="17">Though these systems all tend to show a fair amount of variance across language and feature sets (likely due to their use sentence-level BLEU), MR performs the most consistently, and is always within 0.2 of batch lattice MIRA.</S>
+    <S sid="177" ssid="18">The SVM&#8217;s performance on Big Zh-En is an intriguing outlier in our results.</S>
+    <S sid="178" ssid="19">Note that it not only performs best on the test set, but also achieves the best tuning score by a large margin.</S>
+    <S sid="179" ssid="20">We suspect we have simply found a setting where interpolated BLEU and our choice of A work particularly well.</S>
+    <S sid="180" ssid="21">We intend to investigate this case to see if this level of success can be replicated consistently, perhaps through improved sentence BLEU approximation or improved oracle selection.</S>
+    <S sid="181" ssid="22">One main difference between MIRA and the direct optimizers is the availability of an explicit regularization term A.</S>
+    <S sid="182" ssid="23">To measure the impact of this parameter, we designed a feature set explicitly for overfitting.</S>
+    <S sid="183" ssid="24">This set uses our Big Fr-En features, with the count bin template modified to distinguish each joint count observed in the tuning set.</S>
+    <S sid="184" ssid="25">These new features, which expand the set to 20k+ features, should generalize poorly.</S>
+    <S sid="185" ssid="26">We tested MR and SVM on our Fr-En data using this feature set, varying their respective regularization parameters by factors of 10.</S>
+    <S sid="186" ssid="27">We compared this to Batch Lattice MIRA&#8217;s step-size cap C, which controls its regularization (Martins et al., 2010).</S>
+    <S sid="187" ssid="28">The results are shown in Figure 1.</S>
+    <S sid="188" ssid="29">Looking at the tuning scores, one can see that A affords much greater control over tuning performance than MIRA&#8217;s C. Looking at test scores, MIRA&#8217;s narrow band of regularization appears to be just about right; however, there is no reason to expect this to always be the case.</S>
+  </SECTION>
+  <SECTION title="6 Conclusion" number="6">
+    <S sid="189" ssid="1">We have presented three new, large-margin tuning methods for SMT that can handle thousands of features.</S>
+    <S sid="190" ssid="2">Batch lattice and k-best MIRA carry out their online training within approximated search spaces, reducing costs in terms of both implementation and training time.</S>
+    <S sid="191" ssid="3">The Structured SVM optimizes a sum of hinge losses directly, exposing an explicit regularization term.</S>
+    <S sid="192" ssid="4">We have organized the literature on tuning, and carried out an extensive comparison of linear-loss SMT tuners.</S>
+    <S sid="193" ssid="5">Our experiments show Batch Lattice MIRA to be the most consistent of the tested methods.</S>
+    <S sid="194" ssid="6">In the future, we intend to investigate improved sentence-BLEU approximations to help narrow the gap between MIRA and the direct optimizers.</S>
+  </SECTION>
+  <SECTION title="Acknowledgements" number="7">
+    <S sid="195" ssid="1">Thanks to Mark Hopkins, Zhifei Li and Jonathan May for their advice while implementing the methods in this review, and to Kevin Gimpel, Roland Kuhn and the anonymous reviewers for their valuable comments on an earlier draft.</S>
+  </SECTION>
+</PAPER>

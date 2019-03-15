@@ -1,0 +1,125 @@
+<PAPER>
+  <S sid="0">cdec: A Decoder Alignment and Learning Framework for Finite-State and Context-Free Translation Models</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">present an open source framework for decoding, aligning with, and training a number of statistical machine translation models, including word-based models, phrase-based models, and models based on synchronous context-free grammars.</S>
+    <S sid="2" ssid="2">Using a single unified internal representation for translation forests, the decoder strictly separates model-specific translation logic from general rescoring, pruning, and inference algorithms.</S>
+    <S sid="3" ssid="3">From this unified representation, the decoder can not only the 1or translations, but also alignments to a reference, or the quantities necessary to drive discriminative training using gradient-based or gradient-free optimization techniques.</S>
+    <S sid="4" ssid="4">Its efficient C++ implementation means that memory use and runtime performance are significantly better than comparable decoders.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="5" ssid="1">The dominant models used in machine translation and sequence tagging are formally based on either weighted finite-state transducers (FSTs) or weighted synchronous context-free grammars (SCFGs) (Lopez, 2008).</S>
+    <S sid="6" ssid="2">Phrase-based models (Koehn et al., 2003), lexical translation models (Brown et al., 1993), and finite-state conditional random fields (Sha and Pereira, 2003) exemplify the former, and hierarchical phrase-based models the latter (Chiang, 2007).</S>
+    <S sid="7" ssid="3">We introduce a software package called cdec that manipulates both classes in a unified way.1 Although open source decoders for both phrasebased and hierarchical translation models have been available for several years (Koehn et al., 2007; Li et al., 2009), their extensibility to new models and algorithms is limited by two significant design flaws that we have avoided with cdec.</S>
+    <S sid="8" ssid="4">First, their implementations tightly couple the translation, language model integration (which we call rescoring), and pruning algorithms.</S>
+    <S sid="9" ssid="5">This makes it difficult to explore alternative translation models without also re-implementing rescoring and pruning logic.</S>
+    <S sid="10" ssid="6">In cdec, model-specific code is only required to construct a translation forest (&#167;3).</S>
+    <S sid="11" ssid="7">General rescoring (with language models or other models), pruning, inference, and alignment algorithms then apply to the unified data structure (&#167;4).</S>
+    <S sid="12" ssid="8">Hence all model types benefit immediately from new algorithms (for rescoring, inference, etc.</S>
+    <S sid="13" ssid="9">); new models can be more easily prototyped; and controlled comparison of models is made easier.</S>
+    <S sid="14" ssid="10">Second, existing open source decoders were designed with the traditional phrase-based parameterization using a very small number of dense features (typically less than 10). cdec has been designed from the ground up to support any parameterization, from those with a handful of dense features up to models with millions of sparse features (Blunsom et al., 2008; Chiang et al., 2009).</S>
+    <S sid="15" ssid="11">Since the inference algorithms necessary to compute a training objective (e.g. conditional likelihood or expected BLEU) and its gradient operate on the unified data structure (&#167;5), any model type can be trained using with any of the supported training criteria.</S>
+    <S sid="16" ssid="12">The software package includes general function optimization utilities that can be used for discriminative training (&#167;6).</S>
+    <S sid="17" ssid="13">These features are implemented without compromising on performance.</S>
+    <S sid="18" ssid="14">We show experimentally that cdec uses less memory and time than comparable decoders on a controlled translation task (&#167;7).</S>
+  </SECTION>
+  <SECTION title="2 Decoder workflow" number="2">
+    <S sid="19" ssid="1">The decoding pipeline consists of two phases.</S>
+    <S sid="20" ssid="2">The first (Figure 1) transforms input, which may be represented as a source language sentence, lattice (Dyer et al., 2008), or context-free forest (Dyer and Resnik, 2010), into a translation forest that has been rescored with all applicable models.</S>
+    <S sid="21" ssid="3">In cdec, the only model-specific logic is confined to the first step in the process where an input string (or lattice, etc.) is transduced into the unified hypergraph representation.</S>
+    <S sid="22" ssid="4">Since the model-specific code need not worry about integration with rescoring models, it can be made quite simple and efficient.</S>
+    <S sid="23" ssid="5">Furthermore, prior to language model integration (and distortion model integration, in the case of phrase based translation), pruning is unnecessary for most kinds of models, further simplifying the model-specific code.</S>
+    <S sid="24" ssid="6">Once this unscored translation forest has been generated, any non-coaccessible states (i.e., states that are not reachable from the goal node) are removed and the resulting structure is rescored with language models using a user-specified intersection/pruning strategy (&#167;4) resulting in a rescored translation forest and completing phase 1.</S>
+    <S sid="25" ssid="7">The second phase of the decoding pipeline (depicted in Figure 2) computes a value from the rescored forest: 1- or k-best derivations, feature expectations, or intersection with a target language reference (sentence or lattice).</S>
+    <S sid="26" ssid="8">The last option generates an alignment forest, from which a word alignment or feature expectations can be extracted.</S>
+    <S sid="27" ssid="9">Most of these values are computed in a time complexity that is linear in the number of edges and nodes in the translation hypergraph using cdec&#8217;s semiring framework (&#167;5).</S>
+    <S sid="28" ssid="10">Alignment is the process of determining if and how a translation model generates a (source, target) string pair.</S>
+    <S sid="29" ssid="11">To compute an alignment under a translation model, the phase 1 translation hypergraph is reinterpreted as a synchronous contextfree grammar and then used to parse the target sentence.2 This results in an alignment forest, which is a compact representation of all the derivations of the sentence pair under the translation model.</S>
+    <S sid="30" ssid="12">From this forest, the Viterbi or maximum a posteriori word alignment can be generated.</S>
+    <S sid="31" ssid="13">This alignment algorithm is explored in depth by Dyer (2010).</S>
+    <S sid="32" ssid="14">Note that if the phase 1 forest has been pruned in some way, or the grammar does not derive the sentence pair, the target intersection parse may fail, meaning that an alignment will not be recoverable.</S>
+  </SECTION>
+  <SECTION title="3 Translation hypergraphs" number="3">
+    <S sid="33" ssid="1">Recent research has proposed a unified representation for the various translation and tagging formalisms that is based on weighted logic programming (Lopez, 2009).</S>
+    <S sid="34" ssid="2">In this view, translation (or tagging) deductions have the structure of a context-free forest, or directed hypergraph, where edges have a single head and 0 or more tail nodes (Nederhof, 2003).</S>
+    <S sid="35" ssid="3">Once a forest has been constructed representing the possible translations, general inference algorithms can be applied.</S>
+    <S sid="36" ssid="4">In cdec&#8217;s translation hypergraph, a node represents a contiguous sequence of target language words.</S>
+    <S sid="37" ssid="5">For SCFG models and sequential tagging models, a node also corresponds to a source span and non-terminal type, but for word-based and phrase-based models, the relationship to the source string (or lattice) may be more complicated.</S>
+    <S sid="38" ssid="6">In a phrase-based translation hypergraph, the node will correspond to a source coverage vector (Koehn et al., 2003).</S>
+    <S sid="39" ssid="7">In word-based models, a single node may derive multiple different source language coverages since word based models impose no requirements on covering all words in the input.</S>
+    <S sid="40" ssid="8">Figure 3 illustrates two example hypergraphs, one generated using a SCFG model and other from a phrase-based model.</S>
+    <S sid="41" ssid="9">Edges are associated with exactly one synchronous production in the source and target language, and alternative translation possibilities are expressed as alternative edges.</S>
+    <S sid="42" ssid="10">Edges are further annotated with feature values, and are annotated with the source span vector the edge corresponds to.</S>
+    <S sid="43" ssid="11">An edge&#8217;s output label may contain mixtures of terminal symbol yields and positions indicating where a child node&#8217;s yield should be substituted.</S>
+    <S sid="44" ssid="12">2The parser is smart enough to detect the left-branching grammars generated by lexical translation and tagging models, and use a more efficient intersection algorithm. specifies what path is taken from the input (one of the bold ovals) to a unified translation hypergraph.</S>
+    <S sid="45" ssid="13">The highlighted path is the workflow used in the test reported in &#167;7.</S>
+    <S sid="46" ssid="14">In the case of SCFG grammars, the edges correspond simply to rules in the synchronous grammar.</S>
+    <S sid="47" ssid="15">For non-SCFG translation models, there are two kinds of edges.</S>
+    <S sid="48" ssid="16">The first have zero tail nodes (i.e., an arity of 0), and correspond to word or phrase translation pairs (with all translation options existing on edges deriving the same head node), or glue rules that glue phrases together.</S>
+    <S sid="49" ssid="17">For tagging, word-based, and phrase-based models, these are strictly arranged in a monotone, leftbranching structure.</S>
+  </SECTION>
+  <SECTION title="4 Rescoring with weighted FSTs" number="4">
+    <S sid="50" ssid="1">The design of cdec separates the creation of a translation forest from its rescoring with a language models or similar models.3 Since the structure of the unified search space is context free (&#167;3), we use the logic for language model rescoring described by Chiang (2007), although any weighted intersection algorithm can be applied.</S>
+    <S sid="51" ssid="2">The rescoring models need not be explicitly represented as FSTs&#8212;the state space can be inferred.</S>
+    <S sid="52" ssid="3">Although intersection using the Chiang algorithm runs in polynomial time and space, the resulting rescored forest may still be too large to represent completely. cdec therefore supports three pruning strategies that can be used during intersection: full unpruned intersection (useful for tagging models to incorporate, e.g., Markov features, but not generally practical for translation), cube pruning, and cube growing (Huang and Chiang, 2007).</S>
+  </SECTION>
+  <SECTION title="5 Semiring framework" number="5">
+    <S sid="53" ssid="1">Semirings are a useful mathematical abstraction for dealing with translation forests since many useful quantities can be computed using a single linear-time algorithm but with different semirings.</S>
+    <S sid="54" ssid="2">A semiring is a 5-tuple (K, &#174;, &#174;, 0,1) that indicates the set from which the values will be drawn, K, a generic addition and multiplication operation, &#174; and &#174;, and their identities 0 and 1.</S>
+    <S sid="55" ssid="3">Multiplication and addition must be associative.</S>
+    <S sid="56" ssid="4">Multiplication must distribute over addition, and v &#174; 0 must equal 0.</S>
+    <S sid="57" ssid="5">Values that can be computed using the semirings include the number of derivations, the expected translation length, the entropy of the translation posterior distribution, and the expected values of feature functions (Li and Eisner, 2009).</S>
+    <S sid="58" ssid="6">Since semirings are such a useful abstraction, cdec has been designed to facilitate implementation of new semirings.</S>
+    <S sid="59" ssid="7">Table 1 shows the C++ representation used for semirings.</S>
+    <S sid="60" ssid="8">Note that because of our representation, built-in types like double, int, and bool (together with their default operators) are semirings.</S>
+    <S sid="61" ssid="9">Beyond these, the type prob t is provided which stores the logarithm of the value it represents, which helps avoid underflow and overflow problems that may otherwise be encountered.</S>
+    <S sid="62" ssid="10">A generic first-order expectation semiring is also provided (Li and Eisner, 2009).</S>
+    <S sid="63" ssid="11">Three standard algorithms parameterized with semirings are provided: INSIDE, OUTSIDE, and INSIDEOUTSIDE, and the semiring is specified using C++ generics (templates).</S>
+    <S sid="64" ssid="12">Additionally, each algorithm takes a weight function that maps from hypergraph edges to a value in K, making it possible to use many different semirings without altering the underlying hypergraph.</S>
+    <S sid="65" ssid="13">Although Viterbi and k-best extraction algorithms are often expressed as INSIDE algorithms with the tropical semiring, cdec provides a separate derivation extraction framework that makes use of a &lt; operator (Huang and Chiang, 2005).</S>
+    <S sid="66" ssid="14">Thus, many of the semiring types define not only the elements shown in Table 1 but T::operator&lt; as well.</S>
+    <S sid="67" ssid="15">The k-best extraction algorithm is also parameterized by an optional predicate that can filter out derivations at each node, enabling extraction of only derivations that yield different strings as in Huang et al. (2006).</S>
+  </SECTION>
+  <SECTION title="6 Model training" number="6">
+    <S sid="68" ssid="1">Two training pipelines are provided with cdec.</S>
+    <S sid="69" ssid="2">The first, called Viterbi envelope semiring training, VEST, implements the minimum error rate training (MERT) algorithm, a gradient-free optimization technique capable of maximizing arbitrary loss functions (Och, 2003).</S>
+    <S sid="70" ssid="3">Rather than computing an error surface using kbest approximations of the decoder search space, cdec&#8217;s implementation performs inference over the full hypergraph structure (Kumar et al., 2009).</S>
+    <S sid="71" ssid="4">In particular, by defining a semiring whose values are sets of line segments, having an addition operation equivalent to union, and a multiplication operation equivalent to a linear transformation of the line segments, Och&#8217;s line search can be computed simply using the INSIDE algorithm.</S>
+    <S sid="72" ssid="5">Since the translation hypergraphs generated by cdec may be quite large making inference expensive, the logic for constructing error surfaces is factored according to the MapReduce programming paradigm (Dean and Ghemawat, 2004), enabling parallelization across a cluster of machines.</S>
+    <S sid="73" ssid="6">Implementations of the BLEU and TER loss functions are provided (Papineni et al., 2002; Snover et al., 2006).</S>
+    <S sid="74" ssid="7">In addition to the widely used MERT algorithm, cdec also provides a training pipeline for discriminatively trained probabilistic translation models (Blunsom et al., 2008; Blunsom and Osborne, 2008).</S>
+    <S sid="75" ssid="8">In these models, the translation model is trained to maximize conditional log likelihood of the training data under a specified grammar.</S>
+    <S sid="76" ssid="9">Since log likelihood is differentiable with respect to the feature weights in an exponential model, it is possible to use gradient-based optimization techniques to train the system, enabling the parameterization of the model using millions of sparse features.</S>
+    <S sid="77" ssid="10">While this training approach was originally proposed for SCFG-based translation models, it can be used to train any model type in cdec.</S>
+    <S sid="78" ssid="11">When used with sequential tagging models, this pipeline is identical to traditional sequential CRF training (Sha and Pereira, 2003).</S>
+    <S sid="79" ssid="12">Both the objective (conditional log likelihood) and its gradient have the form of a difference in two quantities: each has one term that is computed over the translation hypergraph which is subtracted from the result of the same computation over the alignment hypergraph (refer to Figures 1 and 2).</S>
+    <S sid="80" ssid="13">The conditional log likelihood is the difference in the log partition of the translation and alignment hypergraph, and is computed using the INSIDE algorithm.</S>
+    <S sid="81" ssid="14">The gradient with respect to a particular feature is the difference in this feature&#8217;s expected value in the translation and alignment hypergraphs, and can be computed using either INSIDEOUTSIDE or the expectation semiring and INSIDE.</S>
+    <S sid="82" ssid="15">Since a translation forest is generated as an intermediate step in generating an alignment forest (&#167;2) this computation is straightforward.</S>
+    <S sid="83" ssid="16">Since gradient-based optimization techniques may require thousands of evaluations to converge, the batch training pipeline is split into map and reduce components, facilitating distribution over very large clusters.</S>
+    <S sid="84" ssid="17">Briefly, the cdec is run as the map function, and sentence pairs are mapped over.</S>
+    <S sid="85" ssid="18">The reduce function aggregates the results and performs the optimization using standard algorithms, including LBFGS (Liu et al., 1989), RPROP (Riedmiller and Braun, 1993), and stochastic gradient descent.</S>
+  </SECTION>
+  <SECTION title="7 Experiments" number="7">
+    <S sid="86" ssid="1">Table 2 compares the performance of cdec, Hiero, and Joshua 1.3 (running with 1 or 8 threads) decoding using a hierarchical phrase-based translation grammar and identical pruning settings.4 Figure 4 shows the cdec configuration and weights file used for this test.</S>
+    <S sid="87" ssid="2">The workstation used has two 2GHz quad-core Intel Xenon processors, 32GB RAM, is running Linux kernel version 2.6.18 and gcc version 4.1.2.</S>
+    <S sid="88" ssid="3">All decoders use SRI&#8217;s language model toolkit, version 1.5.9 (Stolcke, 2002).</S>
+    <S sid="89" ssid="4">Joshua was run on the Sun HotSpot JVM, version 1.6.0 12.</S>
+    <S sid="90" ssid="5">A hierarchical phrase-based translation grammar was extracted for the NIST MT03 Chinese-English translation using a suffix array rule extractor (Lopez, 2007).</S>
+    <S sid="91" ssid="6">A non-terminal span limit of 15 was used, and all decoders were configured to use cube pruning with a limit of 30 candidates at each node and no further pruning.</S>
+    <S sid="92" ssid="7">All decoders produced a BLEU score between 31.4 and 31.6 (small differences are accounted for by different tie-breaking behavior and OOV handling). formalism=scfg grammar=grammar.mt03.scfg.gz add pass through rules=true scfg max span limit=15 feature function=LanguageModel en.3gram.pruned.lm.gz -o 3 feature function=WordPenalty intersection strategy=cube pruning cubepruning pop limit=30 8 Future work C. Dyer.</S>
+    <S sid="93" ssid="8">2010.</S>
+    <S sid="94" ssid="9">Two monolingual parses are better than one (synchronous parse).</S>
+    <S sid="95" ssid="10">In Proc. of HLT-NAACL. cdec continues to be under active development.</S>
+    <S sid="96" ssid="11">We are taking advantage of its modular design to study alternative algorithms for language model integration.</S>
+    <S sid="97" ssid="12">Further training pipelines are under development, including minimum risk training using a linearly decomposable approximation of BLEU (Li and Eisner, 2009), and MIRA training (Chiang et al., 2009).</S>
+    <S sid="98" ssid="13">All of these will be made publicly available as the projects progress.</S>
+    <S sid="99" ssid="14">We are also improving support for parallel training using Hadoop (an open-source implementation of MapReduce).</S>
+  </SECTION>
+  <SECTION title="Acknowledgements" number="8">
+    <S sid="100" ssid="1">This work was partially supported by the GALE program of the Defense Advanced Research Projects Agency, Contract No.</S>
+    <S sid="101" ssid="2">HR0011-06-2-001.</S>
+    <S sid="102" ssid="3">Any opinions, findings, conclusions or recommendations expressed in this paper are those of the authors and do not necessarily reflect the views of the sponsors.</S>
+    <S sid="103" ssid="4">Further support was provided the EuroMatrix project funded by the European Commission (7th Framework Programme).</S>
+    <S sid="104" ssid="5">Discussions with Philipp Koehn, Chris Callison-Burch, Zhifei Li, Lane Schwarz, and Jimmy Lin were likewise crucial to the successful execution of this project.</S>
+  </SECTION>
+</PAPER>

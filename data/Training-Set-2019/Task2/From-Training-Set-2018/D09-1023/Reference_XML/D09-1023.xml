@@ -1,0 +1,285 @@
+<PAPER>
+<S sid ="0" ssid = "0">Feature-Rich Translation by Quasi-Synchronous Lattice Parsing</S>
+	<ABSTRACT>
+		<S sid ="1" ssid = "1">We present a machine translation framework that can incorporate arbitrary features of both input and output sentences.</S>
+		<S sid ="2" ssid = "2">The core of the approach is a novel decoder based on lattice parsing with quasi- synchronous grammar (Smith and Eisner, 2006), a syntactic formalism that does not require source and target trees to be isomorphic.</S>
+		<S sid ="3" ssid = "3">Using generic approximate dynamic programming techniques, this decoder can handle “non-local” features.</S>
+		<S sid ="4" ssid = "4">Similar approximate inference techniques support efficient parameter estimation with hidden variables.</S>
+		<S sid ="5" ssid = "5">We use the decoder to conduct controlled experiments on a German-to-English translation task, to compare lexical phrase, syntax, and combined models, and to measure effects of various restrictions on non- isomorphism.</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number = "1">
+			<S sid ="6" ssid = "6">We have seen rapid recent progress in machine translation through the use of rich features and the development of improved decoding algorithms, often based on grammatical formalisms.1 If we view MT as a machine learning problem, features and formalisms imply structural independence assumptions, which are in turn exploited by efficient inference algorithms, including decoders (Koehn et al., 2003; Yamada and Knight, 2001).</S>
+			<S sid ="7" ssid = "7">Hence a tension is visible in the many recent research efforts aiming to decode with “non-local” features (Chiang, 2007; Huang and Chiang, 2007).</S>
+			<S sid ="8" ssid = "8">Lopez (2009) recently argued for a separation between features/formalisms (and the indepen 1 Informally, features are “parts” of a parallel sentence pair and/or their mutual derivation structure (trees, alignments, etc.).</S>
+			<S sid ="9" ssid = "9">Features are often implied by a choice of formalism.</S>
+			<S sid ="10" ssid = "10">dence assumptions they imply) from inference algorithms in MT; this separation is widely appreciated in machine learning.</S>
+			<S sid ="11" ssid = "11">Here we take first steps toward such a “universal” decoder, making the following contributions:Arbitrary feature model (§2): We define a sin gle, direct log-linear translation model (Papineni et al., 1997; Och and Ney, 2002) that encodes most popular MT features and can be used to encode any features on source and target sentences, dependency trees, and alignments.</S>
+			<S sid ="12" ssid = "12">The trees are optional and can be easily removed, allowing simulation of “string-to-tree,” “tree-to-string,” “tree- to-tree,” and “phrase-based” models, among many others.</S>
+			<S sid ="13" ssid = "13">We follow the widespread use of log-linear modeling for direct translation modeling; the novelty is in the use of richer feature sets than have been previously used in a single model.</S>
+			<S sid ="14" ssid = "14">Decoding as QG parsing (§3–4): We present anovel decoder based on lattice parsing with quasi synchronous grammar (QG; Smith and Eisner, 2006).2 Further, we exploit generic approximate inference techniques to incorporate arbitrary “non- local” features in the dynamic programming algorithm (Chiang, 2007; Gimpel and Smith, 2009).Parameter estimation (§5): We exploit simi lar approximate inference methods in regularized pseudolikelihood estimation (Besag, 1975) with hidden variables to discriminatively and efficiently train our model.</S>
+			<S sid ="15" ssid = "15">Because we start with inference (the key subroutine in training), many other learning algorithms are possible.</S>
+			<S sid ="16" ssid = "16">Experimental platform (§6): The flexibility of our model/decoder permits carefully controlled experiments.</S>
+			<S sid ="17" ssid = "17">We compare lexical phrase and dependency syntax features, as well as a novel com 2 To date, QG has been used for word alignment (Smith and Eisner, 2006), adaptation and projection in parsing (Smith and Eisner, 2009), and various monolingual recognition and scoring tasks (Wang et al., 2007; Das and Smith, 2009); this paper represents its first application to MT. 219 Proceedings of the 2009 Conference on Empirical Methods in Natural Language Processing, pages 219–228, Singapore, 67 August 2009.</S>
+			<S sid ="18" ssid = "18">Qc 2009 ACL and AFNLP Σ, T Trans : Σ ∪ {NULL} → 2T s = (s0 , . . .</S>
+			<S sid ="19" ssid = "19">, sn ) ∈ Σn t = (t1 , . . .</S>
+			<S sid ="20" ssid = "20">, tm ) ∈ Tm τs : {1, . . .</S>
+			<S sid ="21" ssid = "21">, n} → {0, . . .</S>
+			<S sid ="22" ssid = "22">, n} τt : {1, . . .</S>
+			<S sid ="23" ssid = "23">, m} → {0, . . .</S>
+			<S sid ="24" ssid = "24">, m} a : {1, . . .</S>
+			<S sid ="25" ssid = "25">, m} → 2{1,...,n} θ source and target language vocabularies, respectively function mapping each source word to target words to which it may translate source language sentence (s0 is the NULL word) target language sentence, translation of s dependency tree of s, where τs (i) is the index of the parent of si (0 is the root, $) dependency tree of t, where τt (i) is the index of the parent of ti (0 is the root, $) alignments from words in t to words in s; ∅ denotes alignment to NULL parameters of the model gtrans (s, a, t) f lex (s, t) j f phr (si , tk ) lexical translation features (§2.1): word-to-word translation features for translating s as t phrase-to-phrase translation features for translating sj as t i k glm (t) j f N (tj−N +1 ) language model features (§2.2): N -gram probabilities gsyn (t, τt ) f att (t, j, tl, k) f val (t, j, I ) target syntactic features (§2.3): syntactic features for attaching target word tl at position k to target word t at position j syntactic valence features with word t at position j having children I ⊆ {1, . . .</S>
+			<S sid ="26" ssid = "26">, m} greor (s, τs , a, t, τt ) f dist (i, j) reordering features (§2.4): distortion features for a source word at position i aligned to a target word at position j gtree 2 (τs , a, τt ) f qg (i, il, j, k) tree-to-tree syntactic features (§3): configuration features for source pair si /sil being aligned to target pair tj /tk gcov (a) f scov (a), f zth (a), f sunc (a) coverage features (§4.2) counters for “covering” each s word each time, the zth time, and leaving it “uncovered” Table 1: Key notation.</S>
+			<S sid ="27" ssid = "27">Feature factorings are elaborated in Tab.</S>
+			<S sid ="28" ssid = "28">2.</S>
+			<S sid ="29" ssid = "29">bination of the two.</S>
+			<S sid ="30" ssid = "30">We quantify the effects of our approximate inference.</S>
+			<S sid ="31" ssid = "31">We explore the effects of various ways of restricting syntactic non-isomorphism between source and target trees through the QG.</S>
+			<S sid ="32" ssid = "32">We do not report state-of-the-art performance, but these experiments reveal interesting trends that will inform continued research.</S>
+	</SECTION>
+	<SECTION title="Model. " number = "2">
+			<S sid ="33" ssid = "1">(Table 1 explains notation.)</S>
+			<S sid ="34" ssid = "2">Given a sentence s and its parse tree τs, we formulate the translation on the feasibility of inference, including decoding.</S>
+			<S sid ="35" ssid = "3">Typically these feature functions are chosen to factor into local parts of the overall structure.</S>
+			<S sid ="36" ssid = "4">We next define some key features used in current MT systems, explaining how they factor.</S>
+			<S sid ="37" ssid = "5">We will use subscripts on g to denote different groups of features, which may depend on subsets of the structures t, τt, a, s, and τs. When these features factor into parts, we will use f to denote the factored vectors, so that if x is an object that breaks into parts {xi}i, then g(x) = �i f (xi).</S>
+			<S sid ="38" ssid = "6">4 problem as finding the target sentence t∗ (along with its parse tree τ ∗ source tree) such that3 and alignment a∗ to the 2.1 Lexical.</S>
+			<S sid ="39" ssid = "7">Translations Classical lexical translation features depend on s and t and the alignment a between them.</S>
+			<S sid ="40" ssid = "8">The sim (t∗, τ ∗, a∗) = argmax p(t, τt, a | s, τs) (1) t,τt ,aa In order to include overlapping features and permit hidden variables during training, we use a single globally-normalized conditional log-linear model.</S>
+			<S sid ="41" ssid = "9">That is, p(t, τt, a | s, τs) = exp{θTg(s, τs, a, t, τt)} plest are word-to-word features, estimated as the conditional probabilities p(t | s) and p(s | t) for s ∈ Σ and t ∈ T. Phrase-to-phrase features generalize these, estimated as p(tl | sl) and p(sl | tl) where sl (respectively, tl) is a substring of s (t).</S>
+			<S sid ="42" ssid = "10">A major difference between the phrase features used in this work and those used elsewhere is that we do not assume that phrases segment into �al,tl,τ l exp{θTg(s, τs, al, tl, τ l)} (2) disjoint parts of the source and target sentences t t 4 There are two conventional definitions of feature func-.</S>
+			<S sid ="43" ssid = "11">where the g are arbitrary feature functions and the θ are feature weights.</S>
+			<S sid ="44" ssid = "12">If one or both parse trees or the word alignments are unavailable, they can be ignored or marginalized out as hidden variables.</S>
+			<S sid ="45" ssid = "13">In a log-linear model over structured objects, the choice of feature functions g has a huge effect 3 We assume in this work that s is parsed.</S>
+			<S sid ="46" ssid = "14">In principle, we might include source-side parsing as part of decoding.</S>
+			<S sid ="47" ssid = "15">tions.</S>
+			<S sid ="48" ssid = "16">One is to let the range of these functions be conditional probability estimates (Och and Ney, 2002).</S>
+			<S sid ="49" ssid = "17">These estimates are usually heuristic and inconsistent (Koehn et al., 2003).</S>
+			<S sid ="50" ssid = "18">An alternative is to instantiate features for different structural patterns (Liang et al., 2006; Blunsom et al., 2008).</S>
+			<S sid ="51" ssid = "19">This offers more expressive power but may require much more training data to avoid overfitting.</S>
+			<S sid ="52" ssid = "20">For this reason, and to keep training fast, we opt for the former convention, though our decoder can handle both, and the factorings we describe are agnostic about this choice.</S>
+			<S sid ="53" ssid = "21">(Koehn et al., 2003); they can overlap.5 Additionally, since phrase features can be any func g (s, a, t) = Pm i∈a(j) f lex (si , tj ) (3) tion of words and alignments, we permit features + P f (slast (i,j) , tj ) that consider phrase pairs in which a target word g (t) = P i,j:1≤i&lt;j≤m Pm+1 phr first (i,j) i j lm N ∈{2,3} j=1 f N (tj−N +1 ) (4) outside the target phrase aligns to a source word inside the source phrase, as well as phrase pairs with gaps (Chiang, 2005; Ittycheriah and Roukos, gsyn (t, τt ) = Pm j τ (j) , τt (j)) val t (j)) (5) 2007).</S>
+			<S sid ="54" ssid = "22">g (s, τs , a, t, τt ) = Pm m P i∈a(j) f dist (i, j) (6) Lexical translation features factor as in Eq. 3 (Tab.</S>
+			<S sid ="55" ssid = "23">2).</S>
+			<S sid ="56" ssid = "24">We score all phrase pairs in a sentence pair that pair a target phrase with the smallest gtree 2 (τs , a, τt ) = X f qg (a(j), a(τt (j)), j, τt (j)) (7) j=1 source phrase that contains all of the alignments in Table 2: Factoring of global feature collections g into f . xj denotes (xi , . . .</S>
+			<S sid ="57" ssid = "25">xj ) in sequence x = (x1 , . . .).</S>
+			<S sid ="58" ssid = "26">the target phrase; if k:i≤k≤j a(k) = ∅, no phrase i first (i, j) = mink:i≤k≤j (min(a(k))) and last (i, j) = feature fires for tj . maxk:i≤k≤j (max(a(k))).</S>
+			<S sid ="59" ssid = "27">2.2 N -gram Language Model N -gram language models have become standard in machine translation systems.</S>
+			<S sid ="60" ssid = "28">For bigrams and trigrams (used in this paper), the factoring is in Eq. 4 (Tab.</S>
+			<S sid ="61" ssid = "29">2).</S>
+			<S sid ="62" ssid = "30">2.3 Target Syntax.</S>
+			<S sid ="63" ssid = "31">There have been many features proposed that consider source- and target-language syntax during translation.</S>
+			<S sid ="64" ssid = "32">Syntax-based MT systems often use features on grammar rules, frequently maximum likelihood estimates of conditional probabilities in a probabilistic grammar, but other syntactic features are possible.</S>
+			<S sid ="65" ssid = "33">For example, Quirk et al.</S>
+			<S sid ="66" ssid = "34">(2005) use features involving phrases and source- side dependency trees and Mi et al.</S>
+			<S sid ="67" ssid = "35">(2008) use features from a forest of parses of the source sentence.</S>
+			<S sid ="68" ssid = "36">There is also substantial work in the use of target-side syntax (Galley et al., 2006; Marcu et al., 2006; Shen et al., 2008).</S>
+			<S sid ="69" ssid = "37">In addition, researchers have recently added syntactic features to phrase-based and hierarchical phrase-based models (Gimpel and Smith, 2008; Haque et al., 2009; Chiang et al., 2008).</S>
+			<S sid ="70" ssid = "38">In this work, we focus on syntactic features of target-side dependency trees, τt, along with the words t. These include attachment features that relate a word to its syntactic parent, and valence features.</S>
+			<S sid ="71" ssid = "39">They factor as in Eq. 5 (Tab.</S>
+			<S sid ="72" ssid = "40">2).</S>
+			<S sid ="73" ssid = "41">Features that consider only target-side syntax and words without considering s can be seen as “syntactic language model” features (Shen et al., 2008).</S>
+			<S sid ="74" ssid = "42">5 Segmentation might be modeled as a hidden variable in future work.</S>
+			<S sid ="75" ssid = "43">2.4 Reordering Reordering features take many forms in MT. In phrase-based systems, reordering is accomplished both within phrase pairs (local reordering) as well as through distance-based distortion models (Koehn et al., 2003) and lexicalized reordering models (Koehn et al., 2007).</S>
+			<S sid ="76" ssid = "44">In syntax-based systems, reordering is typically parameterized by grammar rules.</S>
+			<S sid ="77" ssid = "45">For generality we permit these features to “see” all structures and denote them greor (s, τs, a, t, τt).</S>
+			<S sid ="78" ssid = "46">Eq. 6 (Tab.</S>
+			<S sid ="79" ssid = "47">2) shows a factoring of reordering features based on absolute positions of aligned words.</S>
+			<S sid ="80" ssid = "48">We turn next to the “backbone” model for our decoder; the formalism and the properties of its decoding algorithm will inspire two additional sets of features.</S>
+	</SECTION>
+	<SECTION title="Quasi-Synchronous. " number = "3">
+			<S sid ="81" ssid = "1">Grammars A quasi-synchronous dependency grammar (QDG; Smith and Eisner, 2006) specifies a conditional model p(t, τt, a | s, τs).</S>
+			<S sid ="82" ssid = "2">Given a source sentence s and its parse τs, a QDG induces a probabilistic monolingual dependency grammar over sentences “inspired” by the source sentence and tree.</S>
+			<S sid ="83" ssid = "3">We denote this grammar by Gs,τs ; its (weighted) language is the set of translations of s. Each word generated by Gs,τs is annotated with a “sense,” which consists of zero or more words from s. The senses imply an alignment (a) between words in t and words in s, or equivalently, between nodes in τt and nodes in τs. In principle, any portion of τt may align to any portion of τs, but in practice we often make restrictions on the alignments to simplify computation.</S>
+			<S sid ="84" ssid = "4">Smith and Eisner, for example, restricted |a(j)| for all words tj to be at most one, so that each target word aligned to at most one source word, which we also do here.6 lem.)</S>
+			<S sid ="85" ssid = "5">As usual, the normalization constant is not required for decoding; it suffices to solve: t , a ) = argmax θ g(s, τ , a, t, τ ) (8)Which translations are possible depends heav ily on the configurations that the QDG permits.</S>
+			<S sid ="86" ssid = "6">(t∗, τ ∗ ∗ T s t t,τt ,aa Formally, for a parent-child pair (tτt (j), tj ) in τt, we consider the relationship between a(τt(j)) and a(j), the source-side words to which tτt (j) and tj align.</S>
+			<S sid ="87" ssid = "7">If, for example, we require that, for all j, a(τt(j)) = τs(a(j)) or a(j) = 0, and that the root of τt must align to the root of τs or to NULL, then strict isomorphism must hold between τs and τt, and we have implemented a synchronous CF dependency grammar (Alshawi et al., 2000; Ding and Palmer, 2005).</S>
+			<S sid ="88" ssid = "8">Smith and Eisner (2006) grouped all possible configurations into eight classes and explored the effects of permitting different sets of classes in word alignment.</S>
+			<S sid ="89" ssid = "9">(“a(τt(j)) = τs(a(j))” corresponds to their “parent-child” configuration; see Fig.</S>
+			<S sid ="90" ssid = "10">3 in Smith and Eisner (2006) for illustrations of the rest.)</S>
+			<S sid ="91" ssid = "11">More generally, we can define features on tree pairs that factor into these local configurations, as shown in Eq. 7 (Tab.</S>
+			<S sid ="92" ssid = "12">2).</S>
+			<S sid ="93" ssid = "13">Note that the QDG instantiates the model in Eq. 2.</S>
+			<S sid ="94" ssid = "14">Of the features discussed in §2, f lex , f att , f val , and f dist can be easily incorporated into theQDG as described while respecting the indepen dence assumptions implied by the configuration features.</S>
+			<S sid ="95" ssid = "15">The others (f phr , f 2, and f 3) are non- local, or involve parts of the structure that, from the QDG’s perspective, are conditionally independent given intervening material.</S>
+			<S sid ="96" ssid = "16">Note that “non locality” is relative to a choice of formalism; in §2 we did not commit to any formalism, so it is only now that we can describe phrase and N -gram features as non-local.</S>
+			<S sid ="97" ssid = "17">Non-local features will present a challenge for decoding and training (§4.3).</S>
+	</SECTION>
+	<SECTION title="Decoding. " number = "4">
+			<S sid ="98" ssid = "1">Given a sentence s and its parse τs, at decoding time we seek the target sentence t∗, the target tree For a QDG model, the decoding problem has not been addressed before.</S>
+			<S sid ="99" ssid = "2">It equates to finding the most probable derivation under the s/τs-specific grammar Gs,τs . We solve this by lattice parsing, assuming that an upper bound on m (the length of t) is known.</S>
+			<S sid ="100" ssid = "3">The advantage offered by this approach (like most other grammar-based translation approaches) is that decoding becomes dynamic programming (DP), a technique that is both widely understood in NLP and for which practical, efficient, generic techniques exist.</S>
+			<S sid ="101" ssid = "4">A major advantage of DP is that, with small modifications, summing over structures is also possible with “inside” DP algorithms.</S>
+			<S sid ="102" ssid = "5">We will exploit this in training(§5).</S>
+			<S sid ="103" ssid = "6">Efficient summing opens up many possibilities for training θ, such as likelihood and pseudo likelihood, and provides principled ways to handle hidden variables during learning.</S>
+			<S sid ="104" ssid = "7">4.1 Translation as Monolingual Parsing.</S>
+			<S sid ="105" ssid = "8">We decode by performing lattice parsing on a lattice encoding the set of possible translations.</S>
+			<S sid ="106" ssid = "9">The lattice is a weighted “sausage” lattice that permits sentences up to some maximum length £; £ is derived from the source sentence length.</S>
+			<S sid ="107" ssid = "10">Let the states be numbered 0 to £; states from lρ£J to £ are final states (for some ρ ∈ (0, 1)).</S>
+			<S sid ="108" ssid = "11">For every position between consecutive states j − 1 and j (0 &lt; j ≤ £), and for every word si in s, and for every word t ∈ Trans(si), we instantiate an arc annotated with t and i. The weight of such an arc is exp{θTf }, where f is the sum of feature functions that fire when si translates as t in target position j (e.g., f lex (si, t) and f dist (i, j)).</S>
+			<S sid ="109" ssid = "12">Given the lattice and Gs,τs , lattice parsing is a straightforward generalization of standard context-free dependency parsing DP algorithms τt , and the alignments a∗ that are most probable, (Eisner, 1997).</S>
+			<S sid ="110" ssid = "13">This decoder accounts for f lex ,as defined in Eq. 1.7 (In §5 we will consider kbest and all-translations variations on this prob 6 I.e., from here on, a : {1, . . .</S>
+			<S sid ="111" ssid = "14">, m} → {0, . . .</S>
+			<S sid ="112" ssid = "15">, n} where 0 denotes alignment to NULL.</S>
+			<S sid ="113" ssid = "16">f att , f val , f dist , and f qg as local features.</S>
+			<S sid ="114" ssid = "17">Figure 1 gives an example, showing a German sentence and dependency tree from an automatic parser, an English reference, and a lattice repre 7 Arguably, we seek argmax.</S>
+			<S sid ="115" ssid = "18">p(t | s), marginalizing out senting possible translations.</S>
+			<S sid ="116" ssid = "19">In each bundle, the everything else.</S>
+			<S sid ="117" ssid = "20">Approximate solutions have been proposed for that problem in several settings (Blunsom and Osborne, 2008; Sun and Tsujii, 2009); we leave their combination with our approach to future work.</S>
+			<S sid ="118" ssid = "21">arcs are listed in decreasing order according to weight and for clarity only the first five are shown.</S>
+			<S sid ="119" ssid = "22">The output of the decoder consists of lattice arcs Source: $ konnten sie es übersetzen ? Reference: could you translate it ? Decoder output: $ konnten:could konnten:could es:it ?:?</S>
+			<S sid ="120" ssid = "23">übersetzen: ?:?</S>
+			<S sid ="121" ssid = "24">übersetzen: sie:you sie:you konnten:could translate übersetzen: translate übersetzen: konnten:couldn es:it sie :you translated translated konnten:might es:it sie:let sie:them ?:?</S>
+			<S sid ="122" ssid = "25">übersetzen: translate es:it konnten:could es:it NULL:to ...</S>
+			<S sid ="123" ssid = "26">Figure 1: Decoding as lattice parsing, with the highest-scoring translation denoted by black lattice arcs (others are grayed out) and thicker blue arcs forming a dependency tree over them.</S>
+			<S sid ="124" ssid = "27">selected at each position and a dependency tree over them.</S>
+			<S sid ="125" ssid = "28">4.2 Source-Side Coverage Features.</S>
+			<S sid ="126" ssid = "29">Most MT decoders enforce a notion of “coverage” covered the zth time (z ∈ {2, 3, 4}) and fire again all subsequent times it is covered; these are denoted f 2nd, f 3rd, and f 4th.</S>
+			<S sid ="127" ssid = "30">• A counter of uncovered source words: of the source sentence during translation: all parts f sunc (a) = �n δ(|a−1(i)|, 0).</S>
+			<S sid ="128" ssid = "31">of s should be aligned to some part of t (alignment to NULL incurs an explicit cost).</S>
+			<S sid ="129" ssid = "32">Phrase-based systems such as Moses (Koehn et al., 2007) explicitly search for the highest-scoring string in which all source words are translated.</S>
+			<S sid ="130" ssid = "33">Systems based on synchronous grammars proceed by parsing the source sentence with the synchronous grammar, ensuring that every phrase and word has an analogue in τt (or a deliberate choice is made by the decoder to translate it to NULL).</S>
+			<S sid ="131" ssid = "34">In such systems, we do not need to use features to implement source-side coverage, as it is assumed as a hard constraint always respected by the decoder.</S>
+			<S sid ="132" ssid = "35">Our QDG decoder has no way to enforce coverage; it does not track any kind of state in τs apart from a single recently aligned word.</S>
+			<S sid ="133" ssid = "36">This is a problem with other direct translation models, such as IBM model 1 used as a direct model rather than a channel model (Brown et al., 1993).</S>
+			<S sid ="134" ssid = "37">Thissacrifice is the result of our choice to use a condi Of these, only f scov is local.</S>
+			<S sid ="135" ssid = "38">4.3 Non-Local Features.</S>
+			<S sid ="136" ssid = "39">The lattice QDG parsing decoder incorporates many of the features we have discussed, but not all of them.</S>
+			<S sid ="137" ssid = "40">Phrase lexicon features f phr , language model features f N for N &gt; 1, and most coverage features are non-local with respect to our QDG.</S>
+			<S sid ="138" ssid = "41">Recently Chiang (2007) introduced “cube pruning” as an approximate decoding method that extends a DP decoder with the ability to incorporate features that break the Markovian independence assumptions DP exploits.</S>
+			<S sid ="139" ssid = "42">Techniques like cube pruning can be used to include the non-local features in our decoder.8</S>
+	</SECTION>
+	<SECTION title="Training. " number = "5">
+			<S sid ="140" ssid = "1">Training requires us to learn values for the parameters θ in Eq. 2.</S>
+			<S sid ="141" ssid = "2">Given T training examples of the tional model (§2).</S>
+			<S sid ="142" ssid = "3">form (t (i) , τ (i), s (i) , τ (i)), for i = 1, ..., T , max The solution is to introduce a set of coverageimum likelihood estimation for this model con 9 features gcov (a).</S>
+			<S sid ="143" ssid = "4">Here, these include: sists of solving Eq. 9 (Tab.</S>
+			<S sid ="144" ssid = "5">3).</S>
+			<S sid ="145" ssid = "6">Note that the • A counter for the number of times each source 8 A full discussion is omitted for space, but in fact we use “cube decoding,” a slightly less approximate, slightly more word is covered: f scov (a) = �n |a−1(i)|.</S>
+			<S sid ="146" ssid = "7">expensive method that is more closely related to the approximate inference methods we use for training, discussed in §5.</S>
+			<S sid ="147" ssid = "8">• Features that fire once when a source word is 9 In practice, we regularize by including a term −c θ 2 ..</S>
+			<S sid ="148" ssid = "9">T T P exp{θTg(s(i) , τ (i) , a, t(i) , τ (i) )} T “numerator” LL(θ) = X log p(t(i) , τ (i) | s(i) , τ (i) ) = X log a s t = X log (9) i=1 t s i=1 T t,τt ,a exp{θ g(s (i) , τ (i) , a, t, τ )} T i=1 “denominator” PL(θ) = X log„X p(t(i) , a « τ (i) , s(i) , τ (i) ) X log„X p(τ (i) , a « t(i) , s(i) , τ (i) ) (10) “denominator” of i=1 a n X X 1 | t s l n T ` + t | i=1 a l l s o (11) term 1 in Eq. 10 = i=0 tl ∈Trans(si ) S(τt (0), i, t ) × exp θ f lex (si , t ) + f att ($, 0, t , k) + f qg (0, i, 0, k)´ n S(j, i, t) = Y X X S(k, il, tl) × exp θT „ lex (sil , tl) + f 1 att (t, j, tl, k)+ «ff (12) k∈τ −1 (j) il =0 tl ∈Trans(sil ) f val (t, j, τ − (j)) + f qg (i, il, j, k) S(j, i, t) = exp nθT `f (t, j, τ −1 (j))´o if τ −1 (j) = ∅ (13) val t t Table 3: Eq. 9: Log-likelihood.</S>
+			<S sid ="149" ssid = "10">Eq. 10: Pseudolikelihood.</S>
+			<S sid ="150" ssid = "11">In both cases we maximize w.r.t. θ.</S>
+			<S sid ="151" ssid = "12">Eqs.</S>
+			<S sid ="152" ssid = "13">11–13: Recursive DP equations for summing over t and a. alignments are treated as a hidden variable to be marginalized out.10 Optimization problems of this form are by now widely known in NLP (Koo and Collins, 2005), and have recently been used for machine translation as well (Blunsom et al., 2008).</S>
+			<S sid ="153" ssid = "14">Such problems are typically solved using variations of gradient ascent; in our experiments, we will use an online method called stochastic gradient ascent (SGA).</S>
+			<S sid ="154" ssid = "15">This requires us to calculate the function’s gradient (vector of first derivatives) with respect to θ.11 Computing the numerator in Eq. 9 involves summing over all possible alignments; with QDG and a hard bound of 1 on |a(j)| for all j, a fast “inside” DP solution is known (Smith and Eisner, 2006; Wang et al., 2007).</S>
+			<S sid ="155" ssid = "16">It runs in O(mn2) time and O(mn) space.</S>
+			<S sid ="156" ssid = "17">Computing the denominator in Eq. 9 requires summing over all word sequences and dependency trees for the target language sentence and all word alignments between the sentences.</S>
+			<S sid ="157" ssid = "18">With a maximum length imposed, this is tractable using the “inside” version of the maximizing DP algorithm of Sec.</S>
+			<S sid ="158" ssid = "19">4, but it is prohibitively expensive.</S>
+			<S sid ="159" ssid = "20">We therefore optimize pseudo-likelihood instead, making the following approximation (Be 10 Alignments could be supplied by automatic word alignment algorithms.</S>
+			<S sid ="160" ssid = "21">We chose to leave them hidden so that we could make the best use of our parsed training data when configuration constraints are imposed, since it is not always possible to reconcile automatic word alignments with automatic parses.</S>
+			<S sid ="161" ssid = "22">11 When the function’s value is computed by “inside” DP, the corresponding “outside” algorithm can be used to obtain the gradient.</S>
+			<S sid ="162" ssid = "23">Because outside algorithms can be automatically derived from inside ones, we discuss only inside algorithms in this paper; see Eisner et al.</S>
+			<S sid ="163" ssid = "24">(2005).</S>
+			<S sid ="164" ssid = "25">sag, 1975): p(t, τt | s, τs) ≈ p(t | τt, s, τs) × p(τt | t, s, τs) Plugging this into Eq. 9, we arrive at Eq. 10 (Tab.</S>
+			<S sid ="165" ssid = "26">3).</S>
+			<S sid ="166" ssid = "27">The two parenthesized terms in Eq. 10 each have their own numerators and denominators (not shown).</S>
+			<S sid ="167" ssid = "28">The numerators are identical to each other and to that in Eq. 9.</S>
+			<S sid ="168" ssid = "29">The denominators are much more manageable than in Eq. 9, never requiring summation over more than two structures at a time.</S>
+			<S sid ="169" ssid = "30">We must sum over target word sequences and word alignments (with fixed τt), and separately over target trees and word alignments (with fixed t).</S>
+			<S sid ="170" ssid = "31">5.1 Summing over t and a. The summation over target word sequences and alignments given fixed τt bears a resemblance to the inside algorithm, except that the tree structure is fixed (Pereira and Schabes, 1992).</S>
+			<S sid ="171" ssid = "32">Let S(j, i, t) denote the sum of all translations rooted at position j in τt such that a(j) = i and tj = t. Tab.</S>
+			<S sid ="172" ssid = "33">3 gives the equations for this DP: Eq. 11 is the quantity of interest, Eq. 12 is the recursion, and Eq. 13 shows the base cases for leaves of τt.Letting q = max0≤i≤n |Trans(si)|, this algo rithm runs in O(mn2q2) time and O(mnq) space.</S>
+			<S sid ="173" ssid = "34">For efficiency we place a hard upper bound on q during training (details in §6).</S>
+			<S sid ="174" ssid = "35">5.2 Summing over τt and a. For the summation over dependency trees and alignments given fixed t, required for p(τt | t, s, τs), we perform “inside” lattice parsing with Gs,τs . The technique is the summing variant of the decoding method in §4, except for each state j, the sausage lattice only includes arcs from j − 1 to j that are labeled with the known target word tj . If a is the number of arcs in the lattice, which is O(mn), this algorithm runs in O(a3) time and requires O(a2) space.</S>
+			<S sid ="175" ssid = "36">Because we use a hard upper bound on |Trans(s)| for all s ∈ Σ, this summation is much faster in practice than the one over words and alignments.</S>
+			<S sid ="176" ssid = "37">5.3 Handling Non-Local Features.</S>
+			<S sid ="177" ssid = "38">So far, all of our algorithms have exploited DP, disallowing any non-local features (e.g., f phr , f N for N &gt; 1, f zth, f sunc ).</S>
+			<S sid ="178" ssid = "39">We recently proposed “cube summing,” an approximate technique that permits the use of non-local features for inside DP algorithms (Gimpel and Smith, 2009).</S>
+			<S sid ="179" ssid = "40">Cube summing is based on a slightly less greedy variation of cube pruning (Chiang, 2007) that maintains k-best lists of derivations for each DP chart item.</S>
+			<S sid ="180" ssid = "41">Cube summing augments the k-best list with a residual term that sums over remaining structures not in the k-best list, albeit without their non-local features.</S>
+			<S sid ="181" ssid = "42">Using the machinery of cube summing, it is straightforward to include the desired non-local features in the summations required for pseudo- likelihood, as well as to compute their approximate gradients.</S>
+			<S sid ="182" ssid = "43">ment set of 934 sentences, and a test set of 500 sentences.</S>
+			<S sid ="183" ssid = "44">We evaluate translation output using case-insensitive BLEU (Papineni et al., 2001), as provided by NIST, and METEOR (Banerjee and Lavie, 2005), version 0.6, with Porter stemming and WordNet synonym matching.</S>
+			<SUBSECTION>6.2 Features.</SUBSECTION>
+			<S sid ="184" ssid = "45">Our base system uses features as discussed in §2.</S>
+			<S sid ="185" ssid = "46">To obtain lexical translation features gtrans (s, a, t), we use the Moses pipeline (Koehn et al., 2007).</S>
+			<S sid ="186" ssid = "47">We perform word alignment using GIZA++ (Och and Ney, 2003), symmetrize the alignments using the “grow-diag-final-and” heuristic, and extract phrases up to length 3.</S>
+			<S sid ="187" ssid = "48">We define f lex by the lexical probabilities p(t | s) and p(s | t) estimated from the symmetrized align ments.</S>
+			<S sid ="188" ssid = "49">After discarding phrase pairs with only one target-side word (since we only allow a target word to align to at most one source word), we define f phr by 8 features: {2, 3} target words × phrase conditional and “lexical smoothing” probabilities × two conditional directions.</S>
+			<S sid ="189" ssid = "50">Bigram and trigam language model features, f 2 and f 3, are estimated using the SRI toolkit (Stolcke, 2002) with modified KneserNey smoothing (Chen and Goodman, 1998).Our approach permits an alternative to mini mum error-rate training (MERT; Och, 2003); it is For our target-language syntactic features g syn , discriminative but handles latent structure and regularization in more principled ways.</S>
+			<S sid ="190" ssid = "51">The pseudo- likelihood calculations for a sentence pair, taken together, are faster than (k-best) decoding, making SGA’s inner loop faster than MERT’s inner loop.</S>
+	</SECTION>
+	<SECTION title="Experiments. " number = "6">
+			<S sid ="191" ssid = "1">Our decoding framework allows us to perform many experiments with the same feature representation and inference algorithms, including combining and comparing phrase-based and syntax-based features and examining how isomorphism constraints of synchronous formalisms affect translation output.</S>
+			<S sid ="192" ssid = "2">6.1 Data and Evaluation.</S>
+			<S sid ="193" ssid = "3">We use the GermanEnglish portion of the Basic Travel Expression Corpus (BTEC).</S>
+			<S sid ="194" ssid = "4">The corpus has approximately 100K sentence pairs.</S>
+			<S sid ="195" ssid = "5">We filter sentences of length more than 15 words, which only removes 6% of the data.</S>
+			<S sid ="196" ssid = "6">We end up with a training set of 82,299 sentences, a develop we use features similar to lexicalized CFG events (Collins, 1999), specifically following the dependency model of Klein and Manning (2004).</S>
+			<S sid ="197" ssid = "7">These include probabilities associated with individual attachments (f att ) and child-generation valence probabilities (f val ).</S>
+			<S sid ="198" ssid = "8">These probabilities are estimated on the training corpus parsed using the Stanford factored parser (Klein and Manning, 2003).</S>
+			<S sid ="199" ssid = "9">The same probabilities are also included using 50 hard word classes derived from the parallel corpus using the GIZA++ mkcls utility (Och and Ney, 2003).</S>
+			<S sid ="200" ssid = "10">In total, there are 7 lexical and 7 word-class syntax features.</S>
+			<S sid ="201" ssid = "11">For reordering, we use a single absolute distortion feature f dist (i, j) that returns |i−j| whenever a(j) = i and i, j &gt; 0.</S>
+			<S sid ="202" ssid = "12">(Unlike the other feature functions, which returned probabilities, this feature function returns a nonnegative integer.)</S>
+			<S sid ="203" ssid = "13">The tree-to-tree syntactic features gtree 2 in our model are binary features f qg that fire for particular QG configurations.</S>
+			<S sid ="204" ssid = "14">We use one feature for each of the configurations in (Smith and Eisner, 2006), adding 7 additional features that score configura Phrase Syntactic Features: features: +f att ∪ f val +f qg (base) (target) (tree-to-tree) (base) 0.3727 0.4458 0.4424 +f phr 0.4682 0.4971 0.5142 Table 4: Feature set comparison (BLEU).</S>
+			<S sid ="205" ssid = "15">tions involving root words and NULL-alignments more finely.</S>
+			<S sid ="206" ssid = "16">There are 14 features in this category.</S>
+			<S sid ="207" ssid = "17">Coverage features gcov are as described in §4.2.</S>
+			<S sid ="208" ssid = "18">In all, 46 feature weights are learned.</S>
+			<S sid ="209" ssid = "19">6.3 Experimental Procedure.</S>
+			<S sid ="210" ssid = "20">Our model permits training the system on the full set of parallel data, but we instead use the parallel data to estimate feature functions and learn θ on the development set.12 We trained using three iterations of SGA over the development data with a batch size of 1 and a fixed step size of 0.01.</S>
+			<S sid ="211" ssid = "21">We used £2 regularization with a fixed, untuned coefficient of 0.1.</S>
+			<S sid ="212" ssid = "22">Cube summing used a 10-best list for training and a 7-best list for decoding unless otherwise specified.</S>
+			<S sid ="213" ssid = "23">To obtain the translation lexicon (Trans) we first included the top three target words t for each s using p(s | t) × p(t | s) to score target words.</S>
+			<S sid ="214" ssid = "24">For any training sentence (s, t) and tj for which gcov . The results are shown in Table 4.</S>
+			<S sid ="215" ssid = "25">The second row contains scores when adding in the eight f phr features.</S>
+			<S sid ="216" ssid = "26">The second column shows scores when adding the 14 target syntax features (f att and f val ), and the third column adds to them the 14 additional tree-to-tree features (f qg ).</S>
+			<S sid ="217" ssid = "27">We find large gains in BLEU by adding more features, and find that gains obtained through phrase features and syntactic features are partially additive, suggesting that these feature sets are making complementary contributions to translation quality.</S>
+			<S sid ="218" ssid = "28">6.5 Varying k During Decoding.</S>
+			<S sid ="219" ssid = "29">For models without syntactic features, we constrained the decoder to produce dependency trees in which every word’s parent is immediately to its right and ignored syntactic features while scoring structures.</S>
+			<S sid ="220" ssid = "30">This causes decoding to proceed left- to-right in the lattice, the way phrase-based decoders operate.</S>
+			<S sid ="221" ssid = "31">Since these models do not search over trees, they are substantially faster during decoding than those that use syntactic features and do not require any pruning of the lattice.</S>
+			<S sid ="222" ssid = "32">Therefore, we explored varying the value of k used during k-best cube decoding; results are shown in Fig.</S>
+			<S sid ="223" ssid = "33">2.</S>
+			<S sid ="224" ssid = "34">Scores improve when we increase k up tj /∈ n Trans(si), we added tj to Trans(si) to 10, but not much beyond, and there is still a i l l substantial gap (2.5 BLEU) between using phrase for = arg ma xil∈ I p(si |tj ) × p(tj |si ), wh ere I i i n Trans(si)| &lt; qi}.</S>
+			<S sid ="225" ssid = "35">features with k = 20 and using all features with We used q0 = 10 and q&gt;0 = 5, restricting k = 5.</S>
+			<S sid ="226" ssid = "36">Models without syntax perform poorly |Trans(NULL)| ≤ 10 and |Trans(s)| ≤ 5 for anys ∈ Σ.</S>
+			<S sid ="227" ssid = "37">This made 191 of the development sentences unreachable by the model, leaving 743 sen tences for learning θ.</S>
+			<S sid ="228" ssid = "38">During decoding, we generated lattices with all t ∈ Trans(si) for 0 ≤ i ≤ n, for every position.</S>
+			<S sid ="229" ssid = "39">We used ρ = 0.9, causing states within 90% of the source sentence length to be final states.</S>
+			<S sid ="230" ssid = "40">Between each pair of consecutive states, we pruned edges that fell outside a beam of 70% of the sum of edge weights (see §4.1; edge weights use f lex , f dist , and f scov ) of all edges between those two states.</S>
+			<S sid ="231" ssid = "41">6.4 Feature Set Comparison.</S>
+			<S sid ="232" ssid = "42">Our first set of experiments compares feature sets commonly used in phrase- and syntax-based trans when using a very small k, due to their reliance on non-local language model and phrase features.</S>
+			<S sid ="233" ssid = "43">By contrast, models with syntactic features, which are local in our decoder, perform relatively well even with k = 1.</S>
+			<S sid ="234" ssid = "44">6.6 QG Configuration Comparison.</S>
+			<S sid ="235" ssid = "45">We next compare different constraints on isomorphism between the source and target dependency 0.55 0.50 0.45 0.40 0.35 Phrase + Syntactic lation.</S>
+			<S sid ="236" ssid = "46">In particular, we compare the effects of combining phrase features and syntactic features.</S>
+			<S sid ="237" ssid = "47">The base model contains f lex , glm , greor , and 12 We made this choice both for similarity to standard MT. 0.30 0.25 0.20 Phrase Syntactic Neither 0 5 10 15 20 Value of k for Decoding systems and a more rapid experiment cycle.</S>
+			<S sid ="238" ssid = "48">Figure 2: Comparison of size of k-best list for cube decoding with various feature sets.</S>
+			<S sid ="239" ssid = "49">QD G Co nfi gu rati on s BL E U M ET E O R sy nc hr on ou s + nul ls, root an y + child par ent , sa me no de + sib lin g + gr an dp ar ent /ch ild + c co m ma nd + oth er 0.4 00 8 0.4 10 8 0.4 33 7 0.4 88 1 0.5 01 5 0.5 15 6 0.5 14 2 0 . 6 9 4 9 0 . 6 9 3 1 0 . 6 8 1 5 0 . 7 2 1 6 0 . 7 3 6 5 0 . 7 4 4 1 0 . 7 4 7 2 Table 5: QG configuration comparison.</S>
+			<S sid ="240" ssid = "50">The name of each configuration, following Smith and Eisner (2006), refers to the relationship between a(τt (j)) and a(j) in τs . trees.</S>
+			<S sid ="241" ssid = "51">To do this, we impose harsh penalties on some QDG configurations (§3) by fixing their feature weights to −1000.</S>
+			<S sid ="242" ssid = "52">Hence they are permit ted only when absolutely necessary in training and rarely in decoding.13 Each model uses all phrase and syntactic features; they differ only in the sets of configurations which have fixed negative weights.</S>
+			<S sid ="243" ssid = "53">Tab.</S>
+			<S sid ="244" ssid = "54">5 shows experimental results.</S>
+			<S sid ="245" ssid = "55">The base “synchronous” model permits parent-child (a(τt(j)) = τs(a(j))), any configuration where a(j) = 0, including both words being linked to NULL, and requires the root word in τt to be linked to the root word in τs or to NULL(5 of our 14 configurations).</S>
+			<S sid ="246" ssid = "56">The second row allows any configuration involving NULL, including those where tj aligns to a non-NULL word in s and its parent aligns to NULL, and allows the root in τt to be linked to any word in τs. Each subsequent row adds additional configurations (i.e., trains its θ rather than fixing it to −1000).</S>
+			<S sid ="247" ssid = "57">In general, wesee large improvements as we permit more con figurations, and the largest jump occurs when we add the “sibling” configuration (τs(a(τt(j))) = τs(a(j))).</S>
+			<S sid ="248" ssid = "58">The BLEU score does not increase, however, when we permit all configurations in the final row of the table, and the METEOR score increases only slightly.</S>
+			<S sid ="249" ssid = "59">While allowing certain categories of non-isomorphism clearly seems helpful, permitting arbitrary violations does not appear to be necessary for this dataset.</S>
+			<S sid ="250" ssid = "60">6.7 Discussion.</S>
+			<S sid ="251" ssid = "61">We note that these results are not state-of-the- art on this dataset (on this task, Moses/MERT achieves 0.6838 BLEU and 0.8523 METEOR with maximum phrase length 3).14 Our aim has been to 13 In fact, the strictest “synchronous” model used the almost-forbidden configurations in 2% of test sentences; this behavior disappears as configurations are legalized.</S>
+			<S sid ="252" ssid = "62">14 We believe one cause for this performance gap is the generation of the lattice and plan to address this in future work by allowing the phrase table to inform lattice generation.</S>
+			<S sid ="253" ssid = "63">illustrate how a single model can provide a controlled experimental framework for comparisons of features, of inference methods, and of constraints.</S>
+			<S sid ="254" ssid = "64">Our findings show that phrase features and dependency syntax produce complementary improvements to translation quality, that tree-to- tree configurations (a new feature in MT) are helpful for translation, and that substantial gains can be obtained by permitting certain types of non- isomorphism.</S>
+			<S sid ="255" ssid = "65">We have validated cube summing and decoding as practical methods for approximate inference.</S>
+			<S sid ="256" ssid = "66">Our framework permits exploration of alternative objectives, alternative approximate inference techniques, additional hidden variables (e.g., Moses’ phrase segmentation variable), and, of course, additional feature representations.</S>
+			<S sid ="257" ssid = "67">The system is publicly available at www.ark.cs.</S>
+			<S sid ="258" ssid = "68">cmu.edu/Quipu.</S>
+	</SECTION>
+	<SECTION title="Conclusion. " number = "7">
+			<S sid ="259" ssid = "1">We presented feature-rich MT using a principled probabilistic framework that separates features from inference.</S>
+			<S sid ="260" ssid = "2">Our novel decoder is based on efficient DP-based QG lattice parsing extended to handle “non-local” features using generic techniques that also support efficient parameter estimation.</S>
+			<S sid ="261" ssid = "3">Controlled experiments permitted with this system show interesting trends in the use of syntactic features and constraints.</S>
+	</SECTION>
+	<SECTION title="Acknowledgments">
+			<S sid ="262" ssid = "4">We thank three anonymous EMNLP reviewers, David Smith, and Stephan Vogel for helpful comments and feedback that improved this paper.</S>
+			<S sid ="263" ssid = "5">This research was supported by NSF IIS0836431 and IIS0844507, a grant from Google, and computational resources provided by Yahoo.</S>
+	</SECTION>
+</PAPER>

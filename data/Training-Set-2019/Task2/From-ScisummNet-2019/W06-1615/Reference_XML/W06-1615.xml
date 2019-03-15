@@ -1,0 +1,263 @@
+<PAPER>
+  <S sid="0">Domain Adaptation With Structural Correspondence Learning</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Discriminative learning methods are widely used in natural language processing.</S>
+    <S sid="2" ssid="2">These methods work best when their training and test data are drawn from the same distribution.</S>
+    <S sid="3" ssid="3">For many NLP tasks, however, we are confronted with new domains in which labeled data is scarce or non-existent.</S>
+    <S sid="4" ssid="4">In such cases, we seek to adapt existing models from a resourcerich source domain to a resource-poor domain.</S>
+    <S sid="5" ssid="5">We introduce learning automatically induce correspondences among features from different domains.</S>
+    <S sid="6" ssid="6">We test our technique on part of speech tagging and show performance gains for varying amounts of source and target training data, as well as improvements in target domain parsing accuracy using our improved tagger.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="7" ssid="1">Discriminative learning methods are ubiquitous in natural language processing.</S>
+    <S sid="8" ssid="2">Discriminative taggers and chunkers have been the state-of-the-art for more than a decade (Ratnaparkhi, 1996; Sha and Pereira, 2003).</S>
+    <S sid="9" ssid="3">Furthermore, end-to-end systems like speech recognizers (Roark et al., 2004) and automatic translators (Och, 2003) use increasingly sophisticated discriminative models, which generalize well to new data that is drawn from the same distribution as the training data.</S>
+    <S sid="10" ssid="4">However, in many situations we may have a source domain with plentiful labeled training data, but we need to process material from a target domain with a different distribution from the source domain and no labeled data.</S>
+    <S sid="11" ssid="5">In such cases, we must take steps to adapt a model trained on the source domain for use in the target domain (Roark and Bacchiani, 2003; Florian et al., 2004; Chelba and Acero, 2004; Ando, 2004; Lease and Charniak, 2005; Daum&#180;e III and Marcu, 2006).</S>
+    <S sid="12" ssid="6">This work focuses on using unlabeled data from both the source and target domains to learn a common feature representation that is meaningful across both domains.</S>
+    <S sid="13" ssid="7">We hypothesize that a discriminative model trained in the source domain using this common feature representation will generalize better to the target domain.</S>
+    <S sid="14" ssid="8">This representation is learned using a method we call structural correspondence learning (SCL).</S>
+    <S sid="15" ssid="9">The key idea of SCL is to identify correspondences among features from different domains by modeling their correlations with pivot features.</S>
+    <S sid="16" ssid="10">Pivot features are features which behave in the same way for discriminative learning in both domains.</S>
+    <S sid="17" ssid="11">Non-pivot features from different domains which are correlated with many of the same pivot features are assumed to correspond, and we treat them similarly in a discriminative learner.</S>
+    <S sid="18" ssid="12">Even on the unlabeled data, the co-occurrence statistics of pivot and non-pivot features are likely to be sparse, and we must model them in a compact way.</S>
+    <S sid="19" ssid="13">There are many choices for modeling co-occurrence data (Brown et al., 1992; Pereira et al., 1993; Blei et al., 2003).</S>
+    <S sid="20" ssid="14">In this work we choose to use the technique of structural learning (Ando and Zhang, 2005a; Ando and Zhang, 2005b).</S>
+    <S sid="21" ssid="15">Structural learning models the correlations which are most useful for semi-supervised learning.</S>
+    <S sid="22" ssid="16">We demonstrate how to adapt it for transfer learning, and consequently the structural part of structural correspondence learning is borrowed from it.1 SCL is a general technique, which one can apply to feature based classifiers for any task.</S>
+    <S sid="23" ssid="17">Here, 'Structural learning is different from learning with structured outputs, a common paradigm for discriminative natural language processing models.</S>
+    <S sid="24" ssid="18">To avoid terminological confusion, we refer throughout the paper to a specific structural learning method, alternating structural optimization (ASO) (Ando and Zhang, 2005a). we investigate its use in part of speech (PoS) tagging (Ratnaparkhi, 1996; Toutanova et al., 2003).</S>
+    <S sid="25" ssid="19">While PoS tagging has been heavily studied, many domains lack appropriate training corpora for PoS tagging.</S>
+    <S sid="26" ssid="20">Nevertheless, PoS tagging is an important stage in pipelined language processing systems, from information extractors to speech synthesizers.</S>
+    <S sid="27" ssid="21">We show how to use SCL to transfer a PoS tagger from the Wall Street Journal (financial news) to MEDLINE (biomedical abstracts), which use very different vocabularies, and we demonstrate not only improved PoS accuracy but also improved end-to-end parsing accuracy while using the improved tagger.</S>
+    <S sid="28" ssid="22">An important but rarely-explored setting in domain adaptation is when we have no labeled training data for the target domain.</S>
+    <S sid="29" ssid="23">We first demonstrate that in this situation SCL significantly improves performance over both supervised and semi-supervised taggers.</S>
+    <S sid="30" ssid="24">In the case when some in-domain labeled training data is available, we show how to use SCL together with the classifier combination techniques of Florian et al. (2004) to achieve even greater performance.</S>
+    <S sid="31" ssid="25">In the next section, we describe a motivating example involving financial news and biomedical data.</S>
+    <S sid="32" ssid="26">Section 3 describes the structural correspondence learning algorithm.</S>
+    <S sid="33" ssid="27">Sections 6 and 7 report results on adapting from the Wall Street Journal to MEDLINE.</S>
+    <S sid="34" ssid="28">We discuss related work on domain adaptation in section 8 and conclude in section 9.</S>
+  </SECTION>
+  <SECTION title="2 A Motivating Example" number="2">
+    <S sid="35" ssid="1">Figure 1 shows two PoS-tagged sentences, one each from the Wall Street Journal (hereafter WSJ) and MEDLINE.</S>
+    <S sid="36" ssid="2">We chose these sentences for two reasons.</S>
+    <S sid="37" ssid="3">First, we wish to visually emphasize the difference between the two domains.</S>
+    <S sid="38" ssid="4">The vocabularies differ significantly, and PoS taggers suffer accordingly.</S>
+    <S sid="39" ssid="5">Second, we want to focus on the phrase &#8220;with normal signal transduction&#8221; from the MEDLINE sentence, depicted in Figure 2(a).</S>
+    <S sid="40" ssid="6">The word &#8220;signal&#8221; in this sentence is a noun, but a tagger trained on the WSJ incorrectly classifies it as an adjective.</S>
+    <S sid="41" ssid="7">We introduce the notion ofpivot features.</S>
+    <S sid="42" ssid="8">Pivot features are features which occur frequently in the two domains and behave similarly in both.</S>
+    <S sid="43" ssid="9">Figure 2(b) shows some pivot features that occur together with the word &#8220;signal&#8221; in our biomedical unlabeled data.</S>
+    <S sid="44" ssid="10">In this case our pivot features are all of type &lt;the token on the right&gt;.</S>
+    <S sid="45" ssid="11">Note that &#8220;signal&#8221; is unambiguously a noun in these contexts.</S>
+    <S sid="46" ssid="12">Adjectives rarely precede past tense verbs such as &#8220;required&#8221; or prepositions such as &#8220;from&#8221; and &#8220;for&#8221;.</S>
+    <S sid="47" ssid="13">We now search for occurrences of the pivot features in the WSJ.</S>
+    <S sid="48" ssid="14">Figure 2(c) shows some words that occur together with the pivot features in the WSJ unlabeled data.</S>
+    <S sid="49" ssid="15">Note that &#8220;investment&#8221;, &#8220;buy-outs&#8221;, and &#8220;jail&#8221; are all common nouns in the financial domain.</S>
+    <S sid="50" ssid="16">Furthermore, since we have labeled WSJ data, we expect to be able to label at least some of these nouns correctly.</S>
+    <S sid="51" ssid="17">This example captures the intuition behind structural correspondence learning.</S>
+    <S sid="52" ssid="18">We want to use pivot features from our unlabeled data to put domain-specific words in correspondence.</S>
+    <S sid="53" ssid="19">That is, we want the pivot features to model the fact that in the biomedical domain, the word signal behaves similarly to the words investments, buyouts and jail in the financial news domain.</S>
+    <S sid="54" ssid="20">In practice, we use this technique to find correspondences among all features, not just word features.</S>
+  </SECTION>
+  <SECTION title="3 Structural Correspondence Learning" number="3">
+    <S sid="55" ssid="1">Structural correspondence learning involves a source domain and a target domain.</S>
+    <S sid="56" ssid="2">Both domains have ample unlabeled data, but only the source domain has labeled training data.</S>
+    <S sid="57" ssid="3">We refer to the task for which we have labeled training data as the supervised task.</S>
+    <S sid="58" ssid="4">In our experiments, the supervised task is part of speech tagging.</S>
+    <S sid="59" ssid="5">We require that the input x in both domains be a vector of binary features from a finite feature space.</S>
+    <S sid="60" ssid="6">The first step of SCL is to define a set of pivot features on the unlabeled data from both domains.</S>
+    <S sid="61" ssid="7">We then use these pivot features to learn a mapping 0 from the original feature spaces of both domains to a shared, low-dimensional real-valued feature space.</S>
+    <S sid="62" ssid="8">A high inner product in this new space indicates a high degree of correspondence.</S>
+    <S sid="63" ssid="9">During supervised task training, we use both the transformed and original features from the source domain.</S>
+    <S sid="64" ssid="10">During supervised task testing, we use the both the transformed and original features from the target domain.</S>
+    <S sid="65" ssid="11">If we learned a good mapping 0, then the classifier we learn on the source domain will also be effective on the target domain.</S>
+    <S sid="66" ssid="12">The SCL algorithm is given in Figure 3, and the remainder of this section describes it in detail.</S>
+    <S sid="67" ssid="13">Pivot features should occur frequently in the unlabeled data of both domains, since we must estimate their covariance with non-pivot features accurately, but they must also be diverse enough to adequately characterize the nuances of the supervised task.</S>
+    <S sid="68" ssid="14">A good example of this tradeoff are determiners in PoS tagging.</S>
+    <S sid="69" ssid="15">Determiners are good pivot features, since they occur frequently in any domain of written English, but choosing only determiners will not help us to discriminate between nouns and adjectives.</S>
+    <S sid="70" ssid="16">Pivot features correspond to the auxiliary problems of Ando and Zhang (2005a).</S>
+    <S sid="71" ssid="17">In section 2, we showed example pivot features of type &lt;the token on the right&gt;.</S>
+    <S sid="72" ssid="18">We also use pivot features of type &lt;the token on the left&gt; and &lt;the token in the middle&gt;.</S>
+    <S sid="73" ssid="19">In practice there are many thousands of pivot features, corresponding to instantiations of these three types for frequent words in both domains.</S>
+    <S sid="74" ssid="20">We choose m pivot features, which we index with E. From each pivot feature we create a binary classification problem of the form &#8220;Does pivot feature E occur in this instance?&#8221;.</S>
+    <S sid="75" ssid="21">One such example is &#8220;Is &lt;the token on the right&gt; required?&#8221; These binary classification problems can be trained from the unlabeled data, since they merely represent properties of the input.</S>
+    <S sid="76" ssid="22">If we represent our features as a binary vector x, we can solve these problems using m linear predictors.</S>
+    <S sid="77" ssid="23">Note that these predictors operate on the original feature space.</S>
+    <S sid="78" ssid="24">This step is shown in line 2 of Figure 3.</S>
+    <S sid="79" ssid="25">Here L(p, y) is a real-valued loss function for binary classification.</S>
+    <S sid="80" ssid="26">We follow Ando and Zhang (2005a) and use the modified Huber loss.</S>
+    <S sid="81" ssid="27">Since each instance contains features which are totally predictive of the pivot feature (the feature itself), we never use these features when making the binary prediction.</S>
+    <S sid="82" ssid="28">That is, we do not use any feature derived from the right word when solving a right token pivot predictor.</S>
+    <S sid="83" ssid="29">The pivot predictors are the key element in SCL.</S>
+    <S sid="84" ssid="30">The weight vectors *t encode the covariance of the non-pivot features with the pivot features.</S>
+    <S sid="85" ssid="31">If the weight given to the z&#8217;th feature by the E&#8217;th pivot predictor is positive, then feature z is positively correlated with pivot feature E. Since pivot features occur frequently in both domains, we expect non-pivot features from both domains to be correlated with them.</S>
+    <S sid="86" ssid="32">If two non-pivot features are correlated in the same way with many of the same pivot features, then they have a high degree of correspondence.</S>
+    <S sid="87" ssid="33">Finally, observe that *t is a linear projection of the original feature space onto R. Since each pivot predictor is a projection onto R, we could create m new real-valued features, one for each pivot.</S>
+    <S sid="88" ssid="34">For both computational and statistical reasons, though, we follow Ando and Zhang (2005a) and compute a low-dimensional linear approximation to the pivot predictor space.</S>
+    <S sid="89" ssid="35">Let W be the matrix whose columns are the pivot predictor weight vectors.</S>
+    <S sid="90" ssid="36">Now let W = UDVT be the singular value decomposition of W, so that 0 = UT[1:h&#65533;:] is the matrix whose rows are the top left singular vectors of W. The rows of 0 are the principal pivot predictors, which capture the variance of the pivot predictor space as best as possible in h dimensions.</S>
+    <S sid="91" ssid="37">Furthermore, 0 is a projection from the original feature space onto Rh.</S>
+    <S sid="92" ssid="38">That is, 0x is the desired mapping to the (low dimensional) shared feature representation.</S>
+    <S sid="93" ssid="39">This is step 3 of Figure 3.</S>
+    <S sid="94" ssid="40">To perform inference and learning for the supervised task, we simply augment the original feature vector with features obtained by applying the mapping 0.</S>
+    <S sid="95" ssid="41">We then use a standard discriminative learner on the augmented feature vector.</S>
+    <S sid="96" ssid="42">For training instance t, the augmented feature vector will contain all the original features xt plus the new shared features 0xt.</S>
+    <S sid="97" ssid="43">If we have designed the pivots well, then 0 should encode correspondences among features from different domains which are important for the supervised task, and the classifier we train using these new features on the source domain will perform well on the target domain.</S>
+  </SECTION>
+  <SECTION title="4 Model Choices" number="4">
+    <S sid="98" ssid="1">Structural correspondence learning uses the techniques of alternating structural optimization (ASO) to learn the correlations among pivot and non-pivot features.</S>
+    <S sid="99" ssid="2">Ando and Zhang (2005a) describe several free paramters and extensions to ASO, and we briefly address our choices for these here.</S>
+    <S sid="100" ssid="3">We set h, the dimensionality of our low-rank representation to be 25.</S>
+    <S sid="101" ssid="4">As in Ando and Zhang (2005a), we observed that setting h between 20 and 100 did not change results significantly, and a lower dimensionality translated to faster run-time.</S>
+    <S sid="102" ssid="5">We also implemented both of the extensions described in Ando and Zhang (2005a).</S>
+    <S sid="103" ssid="6">The first is to only use positive entries in the pivot predictor weight vectors to compute the SVD.</S>
+    <S sid="104" ssid="7">This yields a sparse representation which saves both time and space, and it also performs better.</S>
+    <S sid="105" ssid="8">The second is to compute block SVDs of the matrix W, where one block corresponds to one feature type.</S>
+    <S sid="106" ssid="9">We used the same 58 feature types as Ratnaparkhi (1996).</S>
+    <S sid="107" ssid="10">This gave us a total of 1450 projection features for both semisupervised ASO and SCL.</S>
+    <S sid="108" ssid="11">We found it necessary to make a change to the ASO algorithm as described in Ando and Zhang (2005a).</S>
+    <S sid="109" ssid="12">We rescale the projection features to allow them to receive more weight from a regularized discriminative learner.</S>
+    <S sid="110" ssid="13">Without any rescaling, we were not able to reproduce the original ASO results.</S>
+    <S sid="111" ssid="14">The rescaling parameter is a single number, and we choose it using heldout data from our source domain.</S>
+    <S sid="112" ssid="15">In all our experiments, we rescale our projection features to have average L1 norm on the training set five times that of the binary-valued features.</S>
+    <S sid="113" ssid="16">Finally, we also make one more change to make optimization faster.</S>
+    <S sid="114" ssid="17">We select only half of the ASO features for use in the final model.</S>
+    <S sid="115" ssid="18">This is done by running a few iterations of stochastic gradient descent on the PoS tagging problem, then choosing the features with the largest weightvariance across the different labels.</S>
+    <S sid="116" ssid="19">This cut in half training time and marginally improved performance in all our experiments.</S>
+  </SECTION>
+  <SECTION title="5 Data Sets and Supervised Tagger" number="5">
+    <S sid="117" ssid="1">We used sections 02-21 of the Penn Treebank (Marcus et al., 1993) for training.</S>
+    <S sid="118" ssid="2">This resulted in 39,832 training sentences.</S>
+    <S sid="119" ssid="3">For the unlabeled data, we used 100,000 sentences from a 1988 subset of the WSJ.</S>
+    <S sid="120" ssid="4">For unlabeled data we used 200,000 sentences that were chosen by searching MEDLINE for abstracts pertaining to cancer, in particular genomic variations and mutations.</S>
+    <S sid="121" ssid="5">For labeled training and testing purposes we use 1061 sentences that have been annotated by humans as part of the Penn BioIE project (PennBioIE, 2005).</S>
+    <S sid="122" ssid="6">We use the same 561sentence test set in all our experiments.</S>
+    <S sid="123" ssid="7">The partof-speech tag set for this data is a superset of the Penn Treebank&#8217;s including the two new tags HYPH (for hyphens) and AFX (for common postmodifiers of biomedical entities such as genes).</S>
+    <S sid="124" ssid="8">These tags were introduced due to the importance of hyphenated entities in biomedical text, and are used for 1.8% of the words in the test set.</S>
+    <S sid="125" ssid="9">Any tagger trained only on WSJ text will automatically predict wrong tags for those words.</S>
+    <S sid="126" ssid="10">Since SCL is really a method for inducing a set of cross-domain features, we are free to choose any feature-based classifier to use them.</S>
+    <S sid="127" ssid="11">For our experiments we use a version of the discriminative online large-margin learning algorithm MIRA (Crammer et al., 2006).</S>
+    <S sid="128" ssid="12">MIRA learns and outputs a linear classification score, s(x, y; w) = w &#183; f(x, y), where the feature representation f can contain arbitrary features of the input, including the correspondence features described earlier.</S>
+    <S sid="129" ssid="13">In particular, MIRA aims to learn weights so that the score of correct output, yt, for input xt is separated from the highest scoring incorrect outputs2, with a margin proportional to their Hamming losses.</S>
+    <S sid="130" ssid="14">MIRA has been used successfully for both sequence analysis (McDonald et al., 2005a) and dependency parsing (McDonald et al., 2005b).</S>
+    <S sid="131" ssid="15">As with any structured predictor, we need to factor the output space to make inference tractable.</S>
+    <S sid="132" ssid="16">We use a first-order Markov factorization, allowing for an efficient Viterbi inference procedure.</S>
+  </SECTION>
+  <SECTION title="6 Visualizing 0" number="6">
+    <S sid="133" ssid="1">In section 2 we claimed that good representations should encode correspondences between words like &#8220;signal&#8221; from MEDLINE and &#8220;investment&#8221; from the WSJ.</S>
+    <S sid="134" ssid="2">Recall that the rows of 0 are projections from the original feature space onto the real line.</S>
+    <S sid="135" ssid="3">Here we examine word features under these projections.</S>
+    <S sid="136" ssid="4">Figure 4 shows a row from the matrix 0.</S>
+    <S sid="137" ssid="5">Applying this projection to a word gives a real value on the horizontal dashed line axis.</S>
+    <S sid="138" ssid="6">The words below the horizontal axis occur only in the WSJ.</S>
+    <S sid="139" ssid="7">The words above the axis occur only in MEDLINE.</S>
+    <S sid="140" ssid="8">The verticle line in the middle represents the value zero.</S>
+    <S sid="141" ssid="9">Ticks to the left or right indicate relative positive or negative values for a word under this projection.</S>
+    <S sid="142" ssid="10">This projection discriminates between nouns (negative) and adjectives (positive).</S>
+    <S sid="143" ssid="11">A tagger which gives high positive weight to the features induced by applying this projection will be able to discriminate among the associated classes of biomedical words, even when it has never observed the words explicitly in the WSJ source training set.</S>
+  </SECTION>
+  <SECTION title="7 Empirical Results" number="7">
+    <S sid="144" ssid="1">All the results we present in this section use the MIRA tagger from Section 5.3.</S>
+    <S sid="145" ssid="2">The ASO and structural correspondence results also use projection features learned using ASO and SCL.</S>
+    <S sid="146" ssid="3">Section 7.1 presents results comparing structural correspondence learning with the supervised baseline and ASO in the case where we have no labeled data in the target domain.</S>
+    <S sid="147" ssid="4">Section 7.2 gives results for the case where we have some limited data in the target domain.</S>
+    <S sid="148" ssid="5">In this case, we use classifiers as features as described in Florian et al. (2004).</S>
+    <S sid="149" ssid="6">Finally, we show in Section 7.3 that our SCL PoS tagger improves the performance of a dependency parser on the target domain.</S>
+    <S sid="150" ssid="7">For the results in this section, we trained a structural correspondence learner with 100,000 sentences of unlabeled data from the WSJ and 100,000 sentences of unlabeled biomedical data.</S>
+    <S sid="151" ssid="8">We use as pivot features words that occur more than 50 times in both domains.</S>
+    <S sid="152" ssid="9">The supervised baseline does not use unlabeled data.</S>
+    <S sid="153" ssid="10">The ASO baseline is an implementation of Ando and Zhang (2005b).</S>
+    <S sid="154" ssid="11">It uses 200,000 sentences of unlabeled MEDLINE data but no unlabeled WSJ data.</S>
+    <S sid="155" ssid="12">For ASO we used as auxiliary problems words that occur more than 500 times in the MEDLINE unlabeled data.</S>
+    <S sid="156" ssid="13">Figure 5(a) plots the accuracies of the three models with varying amounts of WSJ training data.</S>
+    <S sid="157" ssid="14">With one hundred sentences of training data, structural correspondence learning gives a 19.1% relative reduction in error over the supervised baseline, and it consistently outperforms both baseline models.</S>
+    <S sid="158" ssid="15">Figure 5(b) gives results for 40,000 sentences, and Figure 5(c) shows corresponding significance tests, with p &lt; 0.05 being significant.</S>
+    <S sid="159" ssid="16">We use a McNemar paired test for labeling disagreements (Gillick and Cox, 1989).</S>
+    <S sid="160" ssid="17">Even when we use all the WSJ training data available, the SCL model significantly improves accuracy over both the supervised and ASO baselines.</S>
+    <S sid="161" ssid="18">The second column of Figure 5(b) gives unknown word accuracies on the biomedical data.</S>
+    <S sid="162" ssid="19">Of thirteen thousand test instances, approximately three thousand were unknown.</S>
+    <S sid="163" ssid="20">For unknown words, SCL gives a relative reduction in error of 19.5% over Ratnaparkhi (1996), even with 40,000 sentences of source domain training data.</S>
+    <S sid="164" ssid="21">In this section we give results for small amounts of target domain training data.</S>
+    <S sid="165" ssid="22">In this case, we make use of the out-of-domain data by using features of the source domain tagger&#8217;s predictions in training and testing the target domain tagger (Florian et al., 2004).</S>
+    <S sid="166" ssid="23">Though other methods for incorporating small amounts of training data in the target domain were available, such as those proposed by Chelba and Acero (2004) and by Daum&#180;e III and Marcu (2006), we chose this method for its simplicity and consistently good performance.</S>
+    <S sid="167" ssid="24">We use as features the current predicted tag and all tag bigrams in a 5-token window around the current token.</S>
+    <S sid="168" ssid="25">Figure 6(a) plots tagging accuracy for varying amounts of MEDLINE training data.</S>
+    <S sid="169" ssid="26">The two horizontal lines are the fixed accuracies of the SCL WSJ-trained taggers using one thousand and forty thousand sentences of training data.</S>
+    <S sid="170" ssid="27">The five learning curves are for taggers trained with varying amounts of target domain training data.</S>
+    <S sid="171" ssid="28">They use features on the outputs of taggers from section 7.1.</S>
+    <S sid="172" ssid="29">The legend indicates the kinds of features used in the target domain (in addition to the standard features).</S>
+    <S sid="173" ssid="30">For example, &#8220;40k-SCL&#8221; means that the tagger uses features on the outputs of an SCL source tagger trained on forty thousand sentences of WSJ data.</S>
+    <S sid="174" ssid="31">&#8220;nosource&#8221; indicates a target tagger that did not use any tagger trained on the source domain.</S>
+    <S sid="175" ssid="32">With 1000 source domain sentences and 50 target domain sentences, using SCL tagger features gives a 20.4% relative reduction in error over using supervised tagger features and a 39.9% relative reduction in error over using no source features.</S>
+    <S sid="176" ssid="33">Figure 6(b) is a table of accuracies for 500 target domain training sentences, and Figure 6(c) gives corresponding significance scores.</S>
+    <S sid="177" ssid="34">With 1000 source domain sentences and 500 target domain sentences, using supervised tagger features gives no improvement over using no source features.</S>
+    <S sid="178" ssid="35">Using SCL features still does, however.</S>
+    <S sid="179" ssid="36">We emphasize the importance of PoS tagging in a pipelined NLP system by incorporating our SCL tagger into a WSJ-trained dependency parser and and evaluate it on MEDLINE data.</S>
+    <S sid="180" ssid="37">We use the parser described by McDonald et al. (2005b).</S>
+    <S sid="181" ssid="38">That parser assumes that a sentence has been PoStagged before parsing.</S>
+    <S sid="182" ssid="39">We train the parser and PoS tagger on the same size of WSJ data.</S>
+    <S sid="183" ssid="40">Figure 7 shows dependency parsing accuracy on our 561-sentence MEDLINE test set.</S>
+    <S sid="184" ssid="41">We parsed the sentences using the PoS tags output by our source domain supervised tagger, the SCL tagger from subsection 7.1, and the gold PoS tags.</S>
+    <S sid="185" ssid="42">All of the differences in this figure are significant according to McNemar&#8217;s test.</S>
+    <S sid="186" ssid="43">The SCL tags consistently improve parsing performance over the tags output by the supervised tagger.</S>
+    <S sid="187" ssid="44">This is a rather indirect method of improving parsing performance with SCL.</S>
+    <S sid="188" ssid="45">In the future, we plan on directly incorporating SCL features into a discriminative parser to improve its adaptation properties.</S>
+  </SECTION>
+  <SECTION title="8 Related Work" number="8">
+    <S sid="189" ssid="1">Domain adaptation is an important and wellstudied area in natural language processing.</S>
+    <S sid="190" ssid="2">Here we outline a few recent advances.</S>
+    <S sid="191" ssid="3">Roark and Bacchiani (2003) use a Dirichlet prior on the multinomial parameters of a generative parsing model to combine a large amount of training data from a source corpus (WSJ), and small amount of training data from a target corpus (Brown).</S>
+    <S sid="192" ssid="4">Aside from Florian et al. (2004), several authors have also given techniques for adapting classification to new domains.</S>
+    <S sid="193" ssid="5">Chelba and Acero (2004) first train a classifier on the source data.</S>
+    <S sid="194" ssid="6">Then they use maximum a posteriori estimation of the weights of a maximum entropy target domain classifier.</S>
+    <S sid="195" ssid="7">The prior is Gaussian with mean equal to the weights of the source domain classifier.</S>
+    <S sid="196" ssid="8">Daum&#180;e III and Marcu (2006) use an empirical Bayes model to estimate a latent variable model grouping instances into domain-specific or common across both domains.</S>
+    <S sid="197" ssid="9">They also jointly estimate the parameters of the common classification model and the domain specific classification models.</S>
+    <S sid="198" ssid="10">Our work focuses on finding a common representation for features from different domains, not instances.</S>
+    <S sid="199" ssid="11">We believe this is an important distinction, since the same instance can contain some features which are common across domains and some which are domain specific.</S>
+    <S sid="200" ssid="12">The key difference between the previous four pieces of work and our own is the use of unlabeled data.</S>
+    <S sid="201" ssid="13">We do not require labeled training data in the new domain to demonstrate an improvement over our baseline models.</S>
+    <S sid="202" ssid="14">We believe this is essential, since many domains of application in natural language processing have no labeled training data.</S>
+    <S sid="203" ssid="15">Lease and Charniak (2005) adapt a WSJ parser to biomedical text without any biomedical treebanked data.</S>
+    <S sid="204" ssid="16">However, they assume other labeled resources in the target domain.</S>
+    <S sid="205" ssid="17">In Section 7.3 we give similar parsing results, but we adapt a source domain tagger to obtain the PoS resources.</S>
+    <S sid="206" ssid="18">To the best of our knowledge, SCL is the first method to use unlabeled data from both domains for domain adaptation.</S>
+    <S sid="207" ssid="19">By using just the unlabeled data from the target domain, however, we can view domain adaptation as a standard semisupervised learning problem.</S>
+    <S sid="208" ssid="20">There are many possible approaches for semisupservised learning in natural language processing, and it is beyond the scope of this paper to address them all.</S>
+    <S sid="209" ssid="21">We chose to compare with ASO because it consistently outperforms cotraining (Blum and Mitchell, 1998) and clustering methods (Miller et al., 2004).</S>
+    <S sid="210" ssid="22">We did run experiments with the top-k version of ASO (Ando and Zhang, 2005a), which is inspired by cotraining but consistently outperforms it.</S>
+    <S sid="211" ssid="23">This did not outperform the supervised method for domain adaptation.</S>
+    <S sid="212" ssid="24">We speculate that this is because biomedical and financial data are quite different.</S>
+    <S sid="213" ssid="25">In such a situation, bootstrapping techniques are likely to introduce too much noise from the source domain to be useful.</S>
+    <S sid="214" ssid="26">Structural correspondence learning is most similar to that of Ando (2004), who analyzed a situation with no target domain labeled data.</S>
+    <S sid="215" ssid="27">Her model estimated co-occurrence counts from source unlabeled data and then used the SVD of this matrix to generate features for a named entity recognizer.</S>
+    <S sid="216" ssid="28">Our ASO baseline uses unlabeled data from the target domain.</S>
+    <S sid="217" ssid="29">Since this consistently outperforms unlabeled data from only the source domain, we report only these baseline results.</S>
+    <S sid="218" ssid="30">To the best of our knowledge, this is the first work to use unlabeled data from both domains to find feature correspondences.</S>
+    <S sid="219" ssid="31">One important advantage that this work shares with Ando (2004) is that an SCL model can be easily combined with all other domain adaptation techniques (Section 7.2).</S>
+    <S sid="220" ssid="32">We are simply inducing a feature representation that generalizes well across domains.</S>
+    <S sid="221" ssid="33">This feature representation can then be used in all the techniques described above.</S>
+  </SECTION>
+  <SECTION title="9 Conclusion" number="9">
+    <S sid="222" ssid="1">Structural correspondence learning is a marriage of ideas from single domain semi-supervised learning and domain adaptation.</S>
+    <S sid="223" ssid="2">It uses unlabeled data and frequently-occurring pivot features from both source and target domains to find correspondences among features from these domains.</S>
+    <S sid="224" ssid="3">Finding correspondences involves estimating the correlations between pivot and non-pivot feautres, and we adapt structural learning (ASO) (Ando and Zhang, 2005a; Ando and Zhang, 2005b) for this task.</S>
+    <S sid="225" ssid="4">SCL is a general technique that can be applied to any feature-based discriminative learner.</S>
+    <S sid="226" ssid="5">We showed results using SCL to transfer a PoS tagger from the Wall Street Journal to a corpus of MEDLINE abstracts.</S>
+    <S sid="227" ssid="6">SCL consistently outperformed both supervised and semi-supervised learning with no labeled target domain training data.</S>
+    <S sid="228" ssid="7">We also showed how to combine an SCL tagger with target domain labeled data using the classifier combination techniques from Florian et al. (2004).</S>
+    <S sid="229" ssid="8">Finally, we improved parsing performance in the target domain when using the SCL PoS tagger.</S>
+    <S sid="230" ssid="9">One of our next goals is to apply SCL directly to parsing.</S>
+    <S sid="231" ssid="10">We are also focusing on other potential applications, including chunking (Sha and Pereira, 2003), named entity recognition (Florian et al., 2004; Ando and Zhang, 2005b; Daum&#180;e III and Marcu, 2006), and speaker adaptation (Kuhn et al., 1998).</S>
+    <S sid="232" ssid="11">Finally, we are investigating more direct ways of applying structural correspondence learning when we have labeled data from both source and target domains.</S>
+    <S sid="233" ssid="12">In particular, the labeled data of both domains, not just the unlabeled data, should influence the learned representations.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="10">
+    <S sid="234" ssid="1">We thank Rie Kubota Ando and Tong Zhang for their helpful advice on ASO, Steve Carroll and Pete White of The Children&#8217;s Hospital of Philadelphia for providing the MEDLINE data, and the PennBioIE annotation team for the annotated MEDLINE data used in our test sets.</S>
+    <S sid="235" ssid="2">This material is based upon work partially supported by the Defense Advanced Research Projects Agency (DARPA) under Contract No.</S>
+    <S sid="236" ssid="3">NBCHD030010.</S>
+    <S sid="237" ssid="4">Any opinions, findings, and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of the DARPA or the Department of Interior-National Business Center (DOI-NBC).</S>
+    <S sid="238" ssid="5">Additional support was provided by NSF under ITR grant EIA-0205448.</S>
+  </SECTION>
+</PAPER>

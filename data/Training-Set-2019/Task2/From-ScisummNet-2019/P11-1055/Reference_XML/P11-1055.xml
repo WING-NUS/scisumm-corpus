@@ -1,0 +1,194 @@
+<PAPER>
+  <S sid="0">Knowledge-Based Weak Supervision for Information Extraction of Overlapping Relations</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Information extraction (IE) holds the promise of generating a large-scale knowledge base from the Web&#8217;s natural language text.</S>
+    <S sid="2" ssid="2">Knowledge-based weak supervision, using structured data to heuristically label a training corpus, works towards this goal by enabling the automated learning of a potentially unbounded number of relation extractors.</S>
+    <S sid="3" ssid="3">Recently, researchers have developed multiinstance learning algorithms to combat the noisy training data that can come from heuristic labeling, but their models assume are for example they extract the pair This paper presents a novel approach for multi-instance learning with overlapping relations that combines a sentence-level extraction model with a simple, corpus-level component for aggregating the individual facts.</S>
+    <S sid="4" ssid="4">We apply our model to learn extractors for NY Times text using weak supervision from Freebase.</S>
+    <S sid="5" ssid="5">Experiments show that the approach runs quickly and yields surprising gains in accuracy, at both the aggregate and sentence level.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="6" ssid="1">Information-extraction (IE), the process of generating relational data from natural-language text, continues to gain attention.</S>
+    <S sid="7" ssid="2">Many researchers dream of creating a large repository of high-quality extracted tuples, arguing that such a knowledge base could benefit many important tasks such as question answering and summarization.</S>
+    <S sid="8" ssid="3">Most approaches to IE use supervised learning of relation-specific examples, which can achieve high precision and recall.</S>
+    <S sid="9" ssid="4">Unfortunately, however, fully supervised methods are limited by the availability of training data and are unlikely to scale to the thousands of relations found on the Web.</S>
+    <S sid="10" ssid="5">A more promising approach, often called &#8220;weak&#8221; or &#8220;distant&#8221; supervision, creates its own training data by heuristically matching the contents of a database to corresponding text (Craven and Kumlien, 1999).</S>
+    <S sid="11" ssid="6">For example, suppose that r(e1, e2) = Founded(Jobs,Apple) is a ground tuple in the database and s =&#8220;Steve Jobs founded Apple, Inc.&#8221; is a sentence containing synonyms for both e1 = Jobs and e2 = Apple, then s may be a natural language expression of the fact that r(e1, e2) holds and could be a useful training example.</S>
+    <S sid="12" ssid="7">While weak supervision works well when the textual corpus is tightly aligned to the database contents (e.g., matching Wikipedia infoboxes to associated articles (Hoffmann et al., 2010)), Riedel et al. (2010) observe that the heuristic leads to noisy data and poor extraction performance when the method is applied more broadly (e.g., matching Freebase records to NY Times articles).</S>
+    <S sid="13" ssid="8">To fix this problem they cast weak supervision as a form of multi-instance learning, assuming only that at least one of the sentences containing e1 and e2 are expressing r(e1, e2), and their method yields a substantial improvement in extraction performance.</S>
+    <S sid="14" ssid="9">However, Riedel et al.&#8217;s model (like that of previous systems (Mintz et al., 2009)) assumes that relations do not overlap &#8212; there cannot exist two facts r(e1, e2) and q(e1, e2) that are both true for any pair of entities, e1 and e2.</S>
+    <S sid="15" ssid="10">Unfortunately, this assumption is often violated; for example both Founded(Jobs, Apple) and CEO-of(Jobs, Apple) are clearly true.</S>
+    <S sid="16" ssid="11">Indeed, 18.3% of the weak supervision facts in Freebase that match sentences in the NY Times 2007 corpus have overlapping relations.</S>
+    <S sid="17" ssid="12">This paper presents MULTIR, a novel model of weak supervision that makes the following contributions: Given a corpus of text, we seek to extract facts about entities, such as the company Apple or the city Boston.</S>
+    <S sid="18" ssid="13">A ground fact (or relation instance), is an expression r(e) where r is a relation name, for example Founded or CEO-of, and e = e1, ... , e,,, is a list of entities.</S>
+    <S sid="19" ssid="14">An entity mention is a contiguous sequence of textual tokens denoting an entity.</S>
+    <S sid="20" ssid="15">In this paper we assume that there is an oracle which can identify all entity mentions in a corpus, but the oracle doesn&#8217;t normalize or disambiguate these mentions.</S>
+    <S sid="21" ssid="16">We use eZ E E to denote both an entity and its name (i.e., the tokens in its mention).</S>
+    <S sid="22" ssid="17">A relation mention is a sequence of text (including one or more entity mentions) which states that some ground fact r(e) is true.</S>
+    <S sid="23" ssid="18">For example, &#8220;Steve Ballmer, CEO of Microsoft, spoke recently at CES.&#8221; contains three entity mentions as well as a relation mention for CEO-of(Steve Ballmer, Microsoft).</S>
+    <S sid="24" ssid="19">In this paper we restrict our attention to binary relations.</S>
+    <S sid="25" ssid="20">Furthermore, we assume that both entity mentions appear as noun phrases in a single sentence.</S>
+    <S sid="26" ssid="21">The task of aggregate extraction takes two inputs, E, a set of sentences comprising the corpus, and an extraction model; as output it should produce a set of ground facts, I, such that each fact r(e) E I is expressed somewhere in the corpus.</S>
+    <S sid="27" ssid="22">Sentential extraction takes the same input and likewise produces I, but in addition it also produces a function, F : I &#8212;* P(E), which identifies, for each r(e) E I, the set of sentences in E that contain a mention describing r(e).</S>
+    <S sid="28" ssid="23">In general, the corpuslevel extraction problem is easier, since it need only make aggregate predictions, perhaps using corpuswide statistics.</S>
+    <S sid="29" ssid="24">In contrast, sentence-level extraction must justify each extraction with every sentence which expresses the fact.</S>
+    <S sid="30" ssid="25">The knowledge-based weakly supervised learning problem takes as input (1) E, a training corpus, (2) E, a set of entities mentioned in that corpus, (3) R, a set of relation names, and (4), A, a set of ground facts of relations in R. As output the learner produces an extraction model.</S>
+  </SECTION>
+  <SECTION title="3 Modeling Overlapping Relations" number="2">
+    <S sid="31" ssid="1">We define an undirected graphical model that allows joint reasoning about aggregate (corpus-level) and sentence-level extraction decisions.</S>
+    <S sid="32" ssid="2">Figure 1(a) shows the model in plate form.</S>
+    <S sid="33" ssid="3">There exists a connected component for each pair of entities e = (e1, e2) E E x E that models all of the extraction decisions for this pair.</S>
+    <S sid="34" ssid="4">There is one Boolean output variable Y ' for each relation name r E R, which represents whether the ground fact r(e) is true.</S>
+    <S sid="35" ssid="5">Including this set of binary random variables enables our model to extract overlapping relations.</S>
+    <S sid="36" ssid="6">Let S(,,,,,) C E be the set of sentences which contain mentions of both of the entities.</S>
+    <S sid="37" ssid="7">For each sentence xZ E S(,,,,,) there exists a latent variable ZZ which ranges over the relation names r E R and, importantly, also the distinct value none.</S>
+    <S sid="38" ssid="8">Zi should tence level assignments Zi = zi signals a mention be assigned a value r E R only when xi expresses of r(e). the ground fact r(e), thereby modeling sentence- The extraction factors 4jextract are given by level extraction.</S>
+    <S sid="39" ssid="9">&#65533; Figure 1(b) shows an example instantiation of the &#65533;&#65533;&#65533;extract(zi, xi) def = exp &#952;j&#966;j(zi, xi) model with four relation names and three sentences. j We use a conditional probability model that defines a joint distribution over all of the extraction random variables defined above.</S>
+    <S sid="40" ssid="10">The model is undirected and includes repeated factors for making sentence level predictions as well as globals factors for aggregating these choices.</S>
+    <S sid="41" ssid="11">For each entity pair e = (e1, e2), define x to be a vector concatenating the individual sentences xi E S(e1,e2), Y to be vector of binary Yr random variables, one for each r E R, and Z to be the vector of Zi variables, one for each sentence xi.</S>
+    <S sid="42" ssid="12">Our conditional extraction model is defined as follows: where the parameter vector &#952; is used, below, to define the factor cfiextract.</S>
+    <S sid="43" ssid="13">The factors Voin are deterministic OR operators which are included to ensure that the ground fact r(e) is predicted at the aggregate level for the assignment Yr = yr only if at least one of the senwhere the features &#966;j are sensitive to the relation name assigned to extraction variable zi, if any, and cues from the sentence xi.</S>
+    <S sid="44" ssid="14">We will make use of the Mintz et al. (2009) sentence-level features in the expeiments, as described in Section 7.</S>
+    <S sid="45" ssid="15">This model was designed to provide a joint approach where extraction decisions are almost entirely driven by sentence-level reasoning.</S>
+    <S sid="46" ssid="16">However, defining the Yr random variables and tying them to the sentencelevel variables, Zi, provides a direct method for modeling weak supervision.</S>
+    <S sid="47" ssid="17">We can simply train the model so that the Y variables match the facts in the database, treating the Zi as hidden variables that can take any value, as long as they produce the correct aggregate predictions.</S>
+    <S sid="48" ssid="18">This approach is related to the multi-instance learning approach of Riedel et al. (2010), in that both models include sentence-level and aggregate random variables.</S>
+    <S sid="49" ssid="19">However, their sentence level variables are binary and they only have a single aggregate variable that takes values r E R U {none}, thereby ruling out overlapping relations.</S>
+    <S sid="50" ssid="20">Additionally, their aggregate decisions make use of Mintzstyle aggregate features (Mintz et al., 2009), that collect evidence from multiple sentences, while we use r(e1, e2) for r E R and ei E E. Given this form of supervision, we would like to Definitions: find the setting for 0 with the highest likelihood: We define the training set {(xi, yi)|i = 1... n}, O(0) = rl p(yi|xi; 0) = rl E p(yi, z|xi; 0) where i is an index corresponding to a particu- i i z lar entity pair (ej, ek) in A, xi contains all of However, this objective would be difficult to opthe sentences in E with mentions of this pair, and timize exactly, and algorithms for doing so would yi = relVector(ej, ek). be unlikely to scale to data sets of the size we conComputation: sider.</S>
+    <S sid="51" ssid="21">Instead, we make two approximations, deinitialize parameter vector O &lt;-- 0 scribed below, leading to a Perceptron-style addifort = 1...T do tive (Collins, 2002) parameter update scheme which for i = 1...n do has been modified to reason about hidden variables, (y', z') &lt;-- arg maxy,z p(y, z|xi; 0) similar in style to the approaches of (Liang et al., if y' =&#65533; yi then 2006; Zettlemoyer and Collins, 2007), but adapted z* &lt;-- arg maxz for our specific model.</S>
+    <S sid="52" ssid="22">This approximate algorithm p(z|xi, yi; 0) is computationally efficient and, as we will see, O &lt;-- O + O(xi, z*) &#8212; O(xi, z') works well in practice. end if Our first modification is to do online learning end for instead of optimizing the full objective.</S>
+    <S sid="53" ssid="23">Define the end for feature sums O(x, z) = Ej O(xj, zj) which range Return O over the sentences, as indexed by j.</S>
+    <S sid="54" ssid="24">Now, we can Figure 2: The MULTIR Learning Algorithm define an update based on the gradient of the local only the deterministic OR nodes.</S>
+    <S sid="55" ssid="25">Perhaps surpris- log likelihood for example i: ing, we are still able to improve performance at both &#8706; log Oi(&#952;) the sentential and aggregate extraction tasks.</S>
+    <S sid="56" ssid="26">= Ep(z|xi,yi;&#952;)[Oj(xi,z)] 4 Learning &#8706;&#952;&#65533; We now present a multi-instance learning algo- &#8212;Ep(y,z|xi;&#952;)[Oj(xi, z)] rithm for our weak-supervision model that treats the where the deterministic OR 4oin factors ensure that sentence-level extraction random variables Zi as la- the first expectation assigns positive probability only tent, and uses facts from a database (e.g., Freebase) to assignments that produce the labeled facts yi but as supervision for the aggregate-level variables Y'. that the second considers all valid sets of extractions.</S>
+    <S sid="57" ssid="27">As input we have (1) E, a set of sentences, (2) Of course, these expectations themselves, espeE, a set of entities mentioned in the sentences, (3) cially the second one, would be difficult to comR, a set of relation names, and (4) A, a database pute exactly.</S>
+    <S sid="58" ssid="28">Our second modification is to do of atomic facts of the form r(e1, e2) for r E R and a Viterbi approximation, by replacing the expectaei E E. Since we are using weak learning, the Y' tions with maximizations.</S>
+    <S sid="59" ssid="29">Specifically, we compute variables in Y are not directly observed, but can be the most likely sentence extractions for the label approximated from the database A.</S>
+    <S sid="60" ssid="30">We use a proce- facts arg maxz p(z|xi, yi; 0) and the most likely exdure, relVector(e1, e2) to return a bit vector whose traction for the input, without regard to the labels, jth bit is one if rj(e1, e2) E A.</S>
+    <S sid="61" ssid="31">The vector does not arg maxy,z p(y, z|xi; 0).</S>
+    <S sid="62" ssid="32">We then compute the feahave a bit for the special none relation; if there is no tures for these assignments and do a simple additive relation between the two entities, all bits are zero. update.</S>
+    <S sid="63" ssid="33">The final algorithm is detailed in Figure 2.</S>
+    <S sid="64" ssid="34">544</S>
+  </SECTION>
+  <SECTION title="5 Inference" number="3">
+    <S sid="65" ssid="1">To support learning, as described above, we need to compute assignments arg maxz p(z|x, y; &#952;) and arg maxy,z p(y, z|x; &#952;).</S>
+    <S sid="66" ssid="2">In this section, we describe algorithms for both cases that use the deterministic OR nodes to simplify the required computations.</S>
+    <S sid="67" ssid="3">Predicting the most likely joint extraction arg maxy,z p(y, z|x; &#952;) can be done efficiently given the structure of our model.</S>
+    <S sid="68" ssid="4">In particular, we note that the factors &#934;join represent deterministic dependencies between Z and Y, which when satisfied do not affect the probability of the solution.</S>
+    <S sid="69" ssid="5">It is thus sufficient to independently compute an assignment for each sentence-level extraction variable Zi, ignoring the deterministic dependencies.</S>
+    <S sid="70" ssid="6">The optimal setting for the aggregate variables Y is then simply the assignment that is consistent with these extractions.</S>
+    <S sid="71" ssid="7">The time complexity is O(|R |- |S|).</S>
+    <S sid="72" ssid="8">Predicting sentence level extractions given weak supervision facts, arg maxz p(z|x, y; &#952;), is more challenging.</S>
+    <S sid="73" ssid="9">We start by computing extraction scores &#934;extract(xi, zi) for each possible extraction assignment Zi = zi at each sentence xi E S, and storing the values in a dynamic programming table.</S>
+    <S sid="74" ssid="10">Next, we must find the most likely assignment z that respects our output variables y.</S>
+    <S sid="75" ssid="11">It turns out that this problem is a variant of the weighted, edge-cover problem, for which there exist polynomial time optimal solutions.</S>
+    <S sid="76" ssid="12">Let G = (&#163;, V = VS U Vy) be a complete weighted bipartite graph with one node vSi E VS for each sentence xi E S and one node vyr E Vy for each relation r E R where yr = 1.</S>
+    <S sid="77" ssid="13">The edge weights are given by c((vSi , vyr )) def= &#934;extract(xi, zi).</S>
+    <S sid="78" ssid="14">Our goal is to select a subset of the edges which maximizes the sum of their weights, subject to each node vSi E VS being incident to exactly one edge, and each node vr E Vy being incident to at least one edge. y Exact Solution An exact solution can be obtained by first computing the maximum weighted bipartite matching, and adding edges to nodes which are not incident to an edge.</S>
+    <S sid="79" ssid="15">This can be computed in time O(|V|(|&#163; |+ |V |log |V|)), which we can rewrite as O((|R |+ |S|)(|R||S |+ (|R |+ |S|) log(|R |+ |S|))).</S>
+    <S sid="80" ssid="16">Approximate Solution An approximate solution can be obtained by iterating over the nodes in Vy, and each time adding the highest weight incident edge whose addition doesn&#8217;t violate a constraint.</S>
+    <S sid="81" ssid="17">The running time is O(|R||S|).</S>
+    <S sid="82" ssid="18">This greedy search guarantees each fact is extracted at least once and allows any additional extractions that increase the overall probability of the assignment.</S>
+    <S sid="83" ssid="19">Given the computational advantage, we use it in all of the experimental evaluations.</S>
+  </SECTION>
+  <SECTION title="6 Experimental Setup" number="4">
+    <S sid="84" ssid="1">We follow the approach of Riedel et al. (2010) for generating weak supervision data, computing features, and evaluating aggregate extraction.</S>
+    <S sid="85" ssid="2">We also introduce new metrics for measuring sentential extraction performance, both relation-independent and relation-specific.</S>
+    <S sid="86" ssid="3">We used the same data sets as Riedel et al. (2010) for weak supervision.</S>
+    <S sid="87" ssid="4">The data was first tagged with the Stanford NER system (Finkel et al., 2005) and then entity mentions were found by collecting each continuous phrase where words were tagged identically (i.e., as a person, location, or organization).</S>
+    <S sid="88" ssid="5">Finally, these phrases were matched to the names of Freebase entities.</S>
+    <S sid="89" ssid="6">Given the set of matches, define &#931; to be set of NY Times sentences with two matched phrases, E to be the set of Freebase entities which were mentioned in one or more sentences, &#916; to be the set of Freebase facts whose arguments, e1 and e2 were mentioned in a sentence in &#931;, and R to be set of relations names used in the facts of &#916;.</S>
+    <S sid="90" ssid="7">These sets define the weak supervision data.</S>
+    <S sid="91" ssid="8">We use the set of sentence-level features described by Riedel et al. (2010), which were originally developed by Mintz et al.</S>
+    <S sid="92" ssid="9">(2009).</S>
+    <S sid="93" ssid="10">These include indicators for various lexical, part of speech, named entity, and dependency tree path properties of entity mentions in specific sentences, as computed with the Malt dependency parser (Nivre and Nilsson, 2004) and OpenNLP POS tagger1.</S>
+    <S sid="94" ssid="11">However, unlike the previous work, we did not make use of any features that explicitly aggregate these properties across multiple mention instances.</S>
+    <S sid="95" ssid="12">The MULTIR algorithm has a single parameter T, the number of training iterations, that must be specified manually.</S>
+    <S sid="96" ssid="13">We used T = 50 iterations, which performed best in development experiments.</S>
+    <S sid="97" ssid="14">Evaluation is challenging, since only a small percentage (approximately 3%) of sentences match facts in Freebase, and the number of matches is highly unbalanced across relations, as we will see in more detail later.</S>
+    <S sid="98" ssid="15">We use the following metrics.</S>
+    <S sid="99" ssid="16">Aggregate Extraction Let De be the set of extracted relations for any of the systems; we compute aggregate precision and recall by comparing De with D. This metric is easily computed but underestimates extraction accuracy because Freebase is incomplete and some true relations in De will be marked wrong.</S>
+    <S sid="100" ssid="17">Sentential Extraction Let 5e be the sentences where some system extracted a relation and 5F be the sentences that match the arguments of a fact in D. We manually compute sentential extraction accuracy by sampling a set of 1000 sentences from 5e U 5F and manually labeling the correct extraction decision, either a relation r E R or none.</S>
+    <S sid="101" ssid="18">We then report precision and recall for each system on this set of sampled sentences.</S>
+    <S sid="102" ssid="19">These results provide a good approximation to the true precision but can overestimate the actual recall, since we did not manually check the much larger set of sentences where no approach predicted extractions.</S>
+    <S sid="103" ssid="20">To compute precision / recall curves for the tasks, we ranked the MULTIR extractions as follows.</S>
+    <S sid="104" ssid="21">For sentence-level evaluations, we ordered according to the extraction factor score 4bextract(zi7 xi).</S>
+    <S sid="105" ssid="22">For aggregate comparisons, we set the score for an extraction Y' = true to be the max of the extraction factor scores for the sentences where r was extracted.</S>
+  </SECTION>
+  <SECTION title="7 Experiments" number="5">
+    <S sid="106" ssid="1">To evaluate our algorithm, we first compare it to an existing approach for using multi-instance learning with weak supervision (Riedel et al., 2010), using the same data and features.</S>
+    <S sid="107" ssid="2">We report both aggregate extraction and sentential extraction results.</S>
+    <S sid="108" ssid="3">We then investigate relation-specific performance of our system.</S>
+    <S sid="109" ssid="4">Finally, we report running time comparisons.</S>
+    <S sid="110" ssid="5">Figure 4 shows approximate precision / recall curves for three systems computed with aggregate metrics (Section 6.3) that test how closely the extractions match the facts in Freebase.</S>
+    <S sid="111" ssid="6">The systems include the original results reported by Riedel et al. (2010) as well as our new model (MULTIR).</S>
+    <S sid="112" ssid="7">We also compare with SOLOR, a reimplementation of their algorithm, which we built in Factorie (McCallum et al., 2009), and will use later to evaluate sentential extraction.</S>
+    <S sid="113" ssid="8">MULTIR achieves competitive or higher precision over all ranges of recall, with the exception of the very low recall range of approximately 01%.</S>
+    <S sid="114" ssid="9">It also significantly extends the highest recall achieved, from 20% to 25%, with little loss in precision.</S>
+    <S sid="115" ssid="10">To investigate the low precision in the 0-1% recall range, we manually checked the ten highest confidence extractions produced by MULTIR that were marked wrong.</S>
+    <S sid="116" ssid="11">We found that all ten were true facts that were simply missing from Freebase.</S>
+    <S sid="117" ssid="12">A manual evaluation, as we perform next for sentential extraction, would remove this dip.</S>
+    <S sid="118" ssid="13">Although their model includes variables to model sentential extraction, Riedel et al. (2010) did not report sentence level performance.</S>
+    <S sid="119" ssid="14">To generate the precision / recall curve we used the joint model assignment score for each of the sentences that contributed to the aggregate extraction decision.</S>
+    <S sid="120" ssid="15">Figure 4 shows approximate precision / recall curves for MULTIR and SOLOR computed against manually generated sentence labels, as defined in Section 6.3.</S>
+    <S sid="121" ssid="16">MULTIR achieves significantly higher recall with a consistently high level of precision.</S>
+    <S sid="122" ssid="17">At the highest recall point, MULTIR reaches 72.4% precision and 51.9% recall, for an F1 score of 60.5%.</S>
+    <S sid="123" ssid="18">Since the data contains an unbalanced number of instances of each relation, we also report precision and recall for each of the ten most frequent relations.</S>
+    <S sid="124" ssid="19">Let SM be the sentences where MULTIR extracted an instance of relation r E R, and let Sr be the sentences that match the arguments of a fact about relation r in A.</S>
+    <S sid="125" ssid="20">For each r, we sample 100 sentences from both SM and Sr and manually check accuracy.</S>
+    <S sid="126" ssid="21">To estimate precision Pr we compute the ratio of true relation mentions in SM , and to estimate recall Rr we take the ratio of true relation mentions in S&#65533;r which are returned by our system.</S>
+    <S sid="127" ssid="22">Table 1 presents this approximate precision and recall for MULTIR on each of the relations, along with statistics we computed to measure the quality of the weak supervision.</S>
+    <S sid="128" ssid="23">Precision is high for the majority of relations but recall is consistently lower.</S>
+    <S sid="129" ssid="24">We also see that the Freebase matches are highly skewed in quantity and can be low quality for some relations, with very few of them actually corresponding to true extractions.</S>
+    <S sid="130" ssid="25">The approach generally performs best on the relations with a sufficiently large number of true matches, in many cases even achieving precision that outperforms the accuracy of the heuristic matches, at reasonable recall levels.</S>
+    <S sid="131" ssid="26">Table 1 also highlights some of the effects of learning with overlapping relations.</S>
+    <S sid="132" ssid="27">For example, in the data, almost all of the matches for the administrative divisions relation overlap with the contains relation, because they both model relationships for a pair of locations.</S>
+    <S sid="133" ssid="28">Since, in general, sentences are much more likely to describe a contains relation, this overlap leads to a situation were almost none of the administrate division matches are true ones, and we cannot accurately learn an extractor.</S>
+    <S sid="134" ssid="29">However, we can still learn to accurately extract the contains relation, despite the distracting matches.</S>
+    <S sid="135" ssid="30">Similarly, the place of birth and place of death relations tend to overlap, since it is often the case that people are born and die in the same city.</S>
+    <S sid="136" ssid="31">In both cases, the precision outperforms the labeling accuracy and the recall is relatively high.</S>
+    <S sid="137" ssid="32">To measure the impact of modeling overlapping relations, we also evaluated a simple, restricted baseline.</S>
+    <S sid="138" ssid="33">Instead of labeling each entity pair with the set of all true Freebase facts, we created a dataset where each true relation was used to create a different training example.</S>
+    <S sid="139" ssid="34">Training MULTIR on this data simulates effects of conflicting supervision that can come from not modeling overlaps.</S>
+    <S sid="140" ssid="35">On average across relations, precision increases 12 points but recall drops 26 points, for an overall reduction in F1 score from 60.5% to 40.3%.</S>
+    <S sid="141" ssid="36">One final advantage of our model is the modest running time.</S>
+    <S sid="142" ssid="37">Our implementation of the Riedel et al. (2010) approach required approximately 6 hours to train on NY Times 05-06 and 4 hours to test on the NY Times 07, each without preprocessing.</S>
+    <S sid="143" ssid="38">Although they do sampling for inference, the global aggregation variables require reasoning about an exponentially large (in the number of sentences) sample space.</S>
+    <S sid="144" ssid="39">In contrast, our approach required approximately one minute to train and less than one second to test, on the same data.</S>
+    <S sid="145" ssid="40">This advantage comes from the decomposition that is possible with the deterministic OR aggregation variables.</S>
+    <S sid="146" ssid="41">For test, we simply consider each sentence in isolation and during training our approximation to the weighted assignment problem is linear in the number of sentences.</S>
+    <S sid="147" ssid="42">The sentential extraction results demonstrates the advantages of learning a model that is primarily driven by sentence-level features.</S>
+    <S sid="148" ssid="43">Although previous approaches have used more sophisticated features for aggregating the evidence from individual sentences, we demonstrate that aggregating strong sentence-level evidence with a simple deterministic OR that models overlapping relations is more effective, and also enables training of a sentence extractor that runs with no aggregate information.</S>
+    <S sid="149" ssid="44">While the Riedel et al. approach does include a model of which sentences express relations, it makes significant use of aggregate features that are primarily designed to do entity-level relation predictions and has a less detailed model of extractions at the individual sentence level.</S>
+    <S sid="150" ssid="45">Perhaps surprisingly, our model is able to do better at both the sentential and aggregate levels.</S>
+  </SECTION>
+  <SECTION title="8 Related Work" number="6">
+    <S sid="151" ssid="1">Supervised-learning approaches to IE were introduced in (Soderland et al., 1995) and are too numerous to summarize here.</S>
+    <S sid="152" ssid="2">While they offer high precision and recall, these methods are unlikely to scale to the thousands of relations found in text on the Web.</S>
+    <S sid="153" ssid="3">Open IE systems, which perform selfsupervised learning of relation-independent extractors (e.g., Preemptive IE (Shinyama and Sekine, 2006), TEXTRUNNER (Banko et al., 2007; Banko and Etzioni, 2008) and WOE (Wu and Weld, 2010)) can scale to millions of documents, but don&#8217;t output canonicalized relations.</S>
+    <S sid="154" ssid="4">Weak supervision (also known as distant- or self supervision) refers to a broad class of methods, but we focus on the increasingly-popular idea of using a store of structured data to heuristicaly label a textual corpus.</S>
+    <S sid="155" ssid="5">Craven and Kumlien (1999) introduced the idea by matching the Yeast Protein Database (YPD) to the abstracts of papers in PubMed and training a naive-Bayes extractor.</S>
+    <S sid="156" ssid="6">Bellare and McCallum (2007) used a database of BibTex records to train a CRF extractor on 12 bibliographic relations.</S>
+    <S sid="157" ssid="7">The KYLIN system aplied weak supervision to learn relations from Wikipedia, treating infoboxes as the associated database (Wu and Weld, 2007); Wu et al. (2008) extended the system to use smoothing over an automatically generated infobox taxonet al.</S>
+    <S sid="158" ssid="8">(2010) describe a system similar to KYLIN, ing database tuples to sentences is inherently heurisbut which dynamically generates lexicons in order tic, researchers have proposed multi-instance learnto handle sparse data, learning over 5000 Infobox ing algorithms as a means for coping with the resultrelations with an average F1 score of 61%.</S>
+    <S sid="159" ssid="9">Yao ing noisy data.</S>
+    <S sid="160" ssid="10">Unfortunately, previous approaches et al. (2010) perform weak supervision, while using assume that all relations are disjoint &#8212; for examselectional preference constraints to a jointly reason ple they cannot extract the pair Founded(Jobs, about entity types.</S>
+    <S sid="161" ssid="11">Apple) and CEO-of(Jobs, Apple), because The NELL system (Carlson et al., 2010) can also two relations are not allowed to have the same argube viewed as performing weak supervision.</S>
+    <S sid="162" ssid="12">Its ini- ments. tial knowledge consists of a selectional preference This paper presents a novel approach for multiconstraint and 20 ground fact seeds.</S>
+    <S sid="163" ssid="13">NELL then instance learning with overlapping relations that matches entity pairs from the seeds to a Web cor- combines a sentence-level extraction model with a pus, but instead of learning a probabilistic model, simple, corpus-level component for aggregating the it bootstraps a set of extraction patterns using semi- individual facts.</S>
+    <S sid="164" ssid="14">We apply our model to learn extracsupervised methods for multitask learning. tors for NY Times text using weak supervision from 8.2 Multi-Instance Learning Freebase.</S>
+    <S sid="165" ssid="15">Experiments show improvements for both Multi-instance learning was introduced in order to sentential and aggregate (corpus level) extraction, combat the problem of ambiguously-labeled train- and demonstrate that the approach is computationing data when predicting the activity of differ- ally efficient. ent drugs (Dietterich et al., 1997).</S>
+    <S sid="166" ssid="16">Bunescu and Our early progress suggests many interesting diMooney (2007) connect weak supervision with rections.</S>
+    <S sid="167" ssid="17">By joining two or more Freebase tables, multi-instance learning and extend their relational we can generate many more matches and learn more extraction kernel to this context. relations.</S>
+    <S sid="168" ssid="18">We also wish to refine our model in order Riedel et al. (2010), combine weak supervision to improve precision.</S>
+    <S sid="169" ssid="19">For example, we would like and multi-instance learning in a more sophisticated to add type reasoning about entities and selectional manner, training a graphical model, which assumes preference constraints for relations.</S>
+    <S sid="170" ssid="20">Finally, we are only that at least one of the matches between the also interested in applying the overall learning aparguments of a Freebase fact and sentences in the proaches to other tasks that could be modeled with corpus is a true relational mention.</S>
+    <S sid="171" ssid="21">Our model may weak supervision, such as coreference and named be seen as an extension of theirs, since both models entity classification. include sentence-level and aggregate random vari- The source code of our system, its outables.</S>
+    <S sid="172" ssid="22">However, Riedel et al. have only a single ag- put, and all data annotations are available at gregate variable that takes values r E R U {none}, http://cs.uw.edu/homes/raphaelh/mr. thereby ruling out overlapping relations.</S>
+    <S sid="173" ssid="23">We have Acknowledgments discussed the comparison in more detail throughout We thank Sebastian Riedel and Limin Yao for sharthe paper, including in the model formulation sec- ing their data and providing valuable advice.</S>
+    <S sid="174" ssid="24">This tion and experiments. material is based upon work supported by a WRF / 9 Conclusion TJ Cable Professorship, a gift from Google and by We argue that weak supervision is promising method the Air Force Research Laboratory (AFRL) under for scaling information extraction to the level where prime contract no.</S>
+    <S sid="175" ssid="25">FA8750-09-C-0181.</S>
+    <S sid="176" ssid="26">Any opinit can handle the myriad, different relations on the ions, findings, and conclusion or recommendations Web.</S>
+    <S sid="177" ssid="27">By using the contents of a database to heuris- expressed in this material are those of the author(s) tically label a training corpus, we may be able to and do not necessarily reflect the view of the Air 549 Force Research Laboratory (AFRL).</S>
+  </SECTION>
+</PAPER>

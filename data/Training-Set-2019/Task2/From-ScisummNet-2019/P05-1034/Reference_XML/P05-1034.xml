@@ -1,0 +1,204 @@
+<PAPER>
+  <S sid="0">Dependency Treelet Translation: Syntactically Informed Phrasal SMT</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We describe a novel approach to statistical machine translation that combines syntactic information in the source language with recent advances in phrasal translation.</S>
+    <S sid="2" ssid="2">This method requires a source-language dependency parser, target language word segmentation and an unsupervised word alignment component.</S>
+    <S sid="3" ssid="3">We align a parallel corpus, project the source dependency parse onto the target sentence, extract dependency treelet translation pairs, and train a tree-based ordering model.</S>
+    <S sid="4" ssid="4">We describe an efficient decoder and show that using these treebased models in combination with conventional SMT models provides a promising approach that incorporates the power of phrasal SMT with the linguistic generality available in a parser.</S>
+  </ABSTRACT>
+  <SECTION title="1." number="1">
+    <S sid="5" ssid="1">Over the past decade, we have witnessed a revolution in the field of machine translation (MT) toward statistical or corpus-based methods.</S>
+    <S sid="6" ssid="2">Yet despite this success, statistical machine translation (SMT) has many hurdles to overcome.</S>
+    <S sid="7" ssid="3">While it excels at translating domain-specific terminology and fixed phrases, grammatical generalizations are poorly captured and often mangled during translation (Thurmair, 04).</S>
+    <S sid="8" ssid="4">State-of-the-art phrasal SMT systems such as (Koehn et al., 03) and (Vogel et al., 03) model translations of phrases (here, strings of adjacent words, not syntactic constituents) rather than individual words.</S>
+    <S sid="9" ssid="5">Arbitrary reordering of words is allowed within memorized phrases, but typically only a small amount of phrase reordering is allowed, modeled in terms of offset positions at the string level.</S>
+    <S sid="10" ssid="6">This reordering model is very limited in terms of linguistic generalizations.</S>
+    <S sid="11" ssid="7">For instance, when translating English to Japanese, an ideal system would automatically learn largescale typological differences: English SVO clauses generally become Japanese SOV clauses, English post-modifying prepositional phrases become Japanese pre-modifying postpositional phrases, etc.</S>
+    <S sid="12" ssid="8">A phrasal SMT system may learn the internal reordering of specific common phrases, but it cannot generalize to unseen phrases that share the same linguistic structure.</S>
+    <S sid="13" ssid="9">In addition, these systems are limited to phrases contiguous in both source and target, and thus cannot learn the generalization that English not may translate as French ne...pas except in the context of specific intervening words.</S>
+  </SECTION>
+  <SECTION title="1.2." number="2">
+    <S sid="14" ssid="1">The hope in the SMT community has been that the incorporation of syntax would address these issues, but that promise has yet to be realized.</S>
+    <S sid="15" ssid="2">One simple means of incorporating syntax into SMT is by re-ranking the n-best list of a baseline SMT system using various syntactic models, but Och et al. (04) found very little positive impact with this approach.</S>
+    <S sid="16" ssid="3">However, an n-best list of even 16,000 translations captures only a tiny fraction of the ordering possibilities of a 20 word sentence; re-ranking provides the syntactic model no opportunity to boost or prune large sections of that search space.</S>
+    <S sid="17" ssid="4">Inversion Transduction Grammars (Wu, 97), or ITGs, treat translation as a process of parallel parsing of the source and target language via a synchronized grammar.</S>
+    <S sid="18" ssid="5">To make this process computationally efficient, however, some severe simplifying assumptions are made, such as using a single non-terminal label.</S>
+    <S sid="19" ssid="6">This results in the model simply learning a very high level preference regarding how often nodes should switch order without any contextual information.</S>
+    <S sid="20" ssid="7">Also these translation models are intrinsically word-based; phrasal combinations are not modeled directly, and results have not been competitive with the top phrasal SMT systems.</S>
+    <S sid="21" ssid="8">Along similar lines, Alshawi et al. (2000) treat translation as a process of simultaneous induction of source and target dependency trees using headtransduction; again, no separate parser is used.</S>
+    <S sid="22" ssid="9">Yamada and Knight (01) employ a parser in the target language to train probabilities on a set of operations that convert a target language tree to a source language string.</S>
+    <S sid="23" ssid="10">This improves fluency slightly (Charniak et al., 03), but fails to significantly impact overall translation quality.</S>
+    <S sid="24" ssid="11">This may be because the parser is applied to MT output, which is notoriously unlike native language, and no additional insight is gained via source language analysis.</S>
+    <S sid="25" ssid="12">Lin (04) translates dependency trees using paths.</S>
+    <S sid="26" ssid="13">This is the first attempt to incorporate large phrasal SMT-style memorized patterns together with a separate source dependency parser and SMT models.</S>
+    <S sid="27" ssid="14">However the phrases are limited to linear paths in the tree, the only SMT model used is a maximum likelihood channel model and there is no ordering model.</S>
+    <S sid="28" ssid="15">Reported BLEU scores are far below the leading phrasal SMT systems.</S>
+    <S sid="29" ssid="16">MSR-MT (Menezes &amp; Richardson, 01) parses both source and target languages to obtain a logical form (LF), and translates source LFs using memorized aligned LF patterns to produce a target LF.</S>
+    <S sid="30" ssid="17">It utilizes a separate sentence realization component (Ringger et al., 04) to turn this into a target sentence.</S>
+    <S sid="31" ssid="18">As such, it does not use a target language model during decoding, relying instead on MLE channel probabilities and heuristics such as pattern size.</S>
+    <S sid="32" ssid="19">Recently Aue et al. (04) incorporated an LF-based language model (LM) into the system for a small quality boost.</S>
+    <S sid="33" ssid="20">A key disadvantage of this approach and related work (Ding &amp; Palmer, 02) is that it requires a parser in both languages, which severely limits the language pairs that can be addressed.</S>
+  </SECTION>
+  <SECTION title="2." number="3">
+    <S sid="34" ssid="1">In this paper we propose a novel dependency treebased approach to phrasal SMT which uses treebased &#8216;phrases&#8217; and a tree-based ordering model in combination with conventional SMT models to produce state-of-the-art translations.</S>
+    <S sid="35" ssid="2">Our system employs a source-language dependency parser, a target language word segmentation component, and an unsupervised word alignment component to learn treelet translations from a parallel sentence-aligned corpus.</S>
+    <S sid="36" ssid="3">We begin by parsing the source text to obtain dependency trees and word-segmenting the target side, then applying an off-the-shelf word alignment component to the bitext.</S>
+    <S sid="37" ssid="4">The word alignments are used to project the source dependency parses onto the target sentences.</S>
+    <S sid="38" ssid="5">From this aligned parallel dependency corpus we extract a treelet translation model incorporating source and target treelet pairs, where a treelet is defined to be an arbitrary connected subgraph of the dependency tree.</S>
+    <S sid="39" ssid="6">A unique feature is that we allow treelets with a wildcard root, effectively allowing mappings for siblings in the dependency tree.</S>
+    <S sid="40" ssid="7">This allows us to model important phenomena, such as not ... ne...pas.</S>
+    <S sid="41" ssid="8">We also train a variety of statistical models on this aligned dependency tree corpus, including a channel model and an order model.</S>
+    <S sid="42" ssid="9">To translate an input sentence, we parse the sentence, producing a dependency tree for that sentence.</S>
+    <S sid="43" ssid="10">We then employ a decoder to find a combination and ordering of treelet translation pairs that cover the source tree and are optimal according to a set of models that are combined in a log-linear framework as in (Och, 03).</S>
+    <S sid="44" ssid="11">This approach offers the following advantages over string-based SMT systems: Instead of limiting learned phrases to contiguous word sequences, we allow translation by all possible phrases that form connected subgraphs (treelets) in the source and target dependency trees.</S>
+    <S sid="45" ssid="12">This is a powerful extension: the vast majority of surface-contiguous phrases are also treelets of the tree; in addition, we gain discontiguous phrases, including combinations such as verb-object, article-noun, adjective-noun etc. regardless of the number of intervening words.</S>
+    <S sid="46" ssid="13">Another major advantage is the ability to employ more powerful models for reordering source language constituents.</S>
+    <S sid="47" ssid="14">These models can incorporate information from the source analysis.</S>
+    <S sid="48" ssid="15">For example, we may model directly the probability that the translation of an object of a preposition in English should precede the corresponding postposition in Japanese, or the probability that a pre-modifying adjective in English translates into a post-modifier in French.</S>
+    <S sid="49" ssid="16">We require a source language dependency parser that produces unlabeled, ordered dependency trees and annotates each source word with a partof-speech (POS).</S>
+    <S sid="50" ssid="17">An example dependency tree is shown in Figure 1.</S>
+    <S sid="51" ssid="18">The arrows indicate the head annotation, and the POS for each candidate is listed underneath.</S>
+    <S sid="52" ssid="19">For the target language we only require word segmentation.</S>
+    <S sid="53" ssid="20">To obtain word alignments we currently use GIZA++ (Och &amp; Ney, 03).</S>
+    <S sid="54" ssid="21">We follow the common practice of deriving many-to-many alignments by running the IBM models in both directions and combining the results heuristically.</S>
+    <S sid="55" ssid="22">Our heuristics differ in that they constrain manyto-one alignments to be contiguous in the source dependency tree.</S>
+    <S sid="56" ssid="23">A detailed description of these heuristics can be found in Quirk et al. (04).</S>
+    <S sid="57" ssid="24">Given a word aligned sentence pair and a source dependency tree, we use the alignment to project the source structure onto the target sentence.</S>
+    <S sid="58" ssid="25">Oneto-one alignments project directly to create a target tree isomorphic to the source.</S>
+    <S sid="59" ssid="26">Many-to-one alignments project similarly; since the &#8216;many&#8217; source nodes are connected in the tree, they act as if condensed into a single node.</S>
+    <S sid="60" ssid="27">In the case of one-to-many alignments we project the source node to the rightmost2 of the &#8216;many&#8217; target words, and make the rest of the target words dependent on it.</S>
+    <S sid="61" ssid="28">2 If the target language is Japanese, leftmost may be more appropriate. startup properties and options propri&#233;t&#233;s et options de d&#233;marrage Unaligned target words3 are attached into the dependency structure as follows: assume there is an unaligned word tj in position j.</S>
+    <S sid="62" ssid="29">Let i &lt; j and k &gt; j be the target positions closest to j such that ti depends on tk or vice versa: attach tj to the lower of ti or tk.</S>
+    <S sid="63" ssid="30">If all the nodes to the left (or right) of position j are unaligned, attach tj to the left-most (or right-most) word that is aligned.</S>
+    <S sid="64" ssid="31">The target dependency tree created in this process may not read off in the same order as the target string, since our alignments do not enforce phrasal cohesion.</S>
+    <S sid="65" ssid="32">For instance, consider the projection of the parse in Figure 1 using the word alignment in Figure 2a.</S>
+    <S sid="66" ssid="33">Our algorithm produces the dependency tree in Figure 2b.</S>
+    <S sid="67" ssid="34">If we read off the leaves in a left-to-right in-order traversal, we do not get the original input string: de d&#233;marrage appears in the wrong place.</S>
+    <S sid="68" ssid="35">A second reattachment pass corrects this situation.</S>
+    <S sid="69" ssid="36">For each node in the wrong order, we reattach it to the lowest of its ancestors such that it is in the correct place relative to its siblings and parent.</S>
+    <S sid="70" ssid="37">In Figure 2c, reattaching d&#233;marrage to et suffices to produce the correct order.</S>
+    <S sid="71" ssid="38">From the aligned pairs of dependency trees we extract all pairs of aligned source and target treelets along with word-level alignment linkages, up to a configurable maximum size.</S>
+    <S sid="72" ssid="39">We also keep treelet counts for maximum likelihood estimation.</S>
+    <S sid="73" ssid="40">Phrasal SMT systems often use a model to score the ordering of a set of phrases.</S>
+    <S sid="74" ssid="41">One approach is to penalize any deviation from monotone decoding; another is to estimate the probability that a source phrase in position i translates to a target phrase in position j (Koehn et al., 03).</S>
+    <S sid="75" ssid="42">We attempt to improve on these approaches by incorporating syntactic information.</S>
+    <S sid="76" ssid="43">Our model assigns a probability to the order of a target tree given a source tree.</S>
+    <S sid="77" ssid="44">Under the assumption that constituents generally move as a whole, we predict the probability of each given ordering of modifiers independently.</S>
+    <S sid="78" ssid="45">That is, we make the following simplifying assumption (where c is a function returning the set of nodes modifying t): Furthermore, we assume that the position of each child can be modeled independently in terms of a head-relative position: Figure 3a demonstrates an aligned dependency tree pair annotated with head-relative positions; Figure 3b presents the same information in an alternate tree-like representation.</S>
+    <S sid="79" ssid="46">We currently use a small set of features reflecting very local information in the dependency tree to model P(pos(m,t)  |S, T): As an example, consider the children of propri&#233;t&#233; in Figure 3.</S>
+    <S sid="80" ssid="47">The head-relative positions One can also include features of siblings to produce a Markov ordering model.</S>
+    <S sid="81" ssid="48">However, we found that this had litt of its modifiers la and Cancel are -1 and +1, respectively.</S>
+    <S sid="82" ssid="49">Thus we try to predict as follows: Channel Models: We incorporate two distinct channel models, a maximum likelihood estimate (MLE) model and a model computed using Model-1 word-to-word alignment probabilities as in (Vogel et al., 03).</S>
+    <S sid="83" ssid="50">The MLE model effectively captures non-literal phrasal translations such as idioms, but suffers fr om data sparsity.</S>
+    <S sid="84" ssid="51">The wordto-word model does not typically suffer from data sparsity, but prefers more literal translations.</S>
+    <S sid="85" ssid="52">Given a set of treelet translation pairs that cover a given input dependency tree and produce a target dependency tree, we model the probability of source given target as the product of the individual treelet translation probabilities: we assume a uniform probability distribution over the decompositions of a tree into treelets.</S>
+    <S sid="86" ssid="53">Target Model: Given an ordered target language dependency tree, it is trivial to read off the surface string.</S>
+    <S sid="87" ssid="54">We evaluate this string using a trigram model with modified Kneser-Ney smoothing.</S>
+    <S sid="88" ssid="55">Miscellaneous Feature Functions: The log-linear framework allows us to incorporate other feature functions as &#8216;models&#8217; in the translation process.</S>
+    <S sid="89" ssid="56">For instance, using fewer, larger treelet translation pairs often provides better translations, since they capture more context and allow fewer possibilities for search and model error.</S>
+    <S sid="90" ssid="57">Therefore we add a feature function that counts the number of phrases used.</S>
+    <S sid="91" ssid="58">We also add a feature that counts the number of target words; this acts as an insertion/deletion bonus/penalty.</S>
+  </SECTION>
+  <SECTION title="3." number="4">
+    <S sid="92" ssid="1">The challenge of tree-based decoding is that the traditional left-to-right decoding approach of string-based systems is inapplicable.</S>
+    <S sid="93" ssid="2">Additional challenges are posed by the need to handle treelets&#8212;perhaps discontiguous or overlapping&#8212; and a combinatorially explosive ordering space.</S>
+    <S sid="94" ssid="3">Our decoding approach is influenced by ITG (Wu, 97) with several important extensions.</S>
+    <S sid="95" ssid="4">First, we employ treelet translation pairs instead of single word translations.</S>
+    <S sid="96" ssid="5">Second, instead of modeling rearrangements as either preserving source order or swapping source order, we allow the dependents of a node to be ordered in any arbitrary manner and use the order model described in section 2.4 to estimate probabilities.</S>
+    <S sid="97" ssid="6">Finally, we use a log-linear framework for model combination that allows any amount of other information to be modeled.</S>
+    <S sid="98" ssid="7">We will initially approach the decoding problem as a bottom up, exhaustive search.</S>
+    <S sid="99" ssid="8">We define the set of all possible treelet translation pairs of the subtree rooted at each input node in the following manner: A treelet translation pair x is said to match the input dependency tree S iff there is some connected subgraph S&#8217; that is identical to the source side of x.</S>
+    <S sid="100" ssid="9">We say that x covers all the nodes in S&#8217; and is rooted at source node s, where s is the root of matched subgraph S&#8217;.</S>
+    <S sid="101" ssid="10">We first find all treelet translation pairs that match the input dependency tree.</S>
+    <S sid="102" ssid="11">Each matched pair is placed on a list associated with the input node where the match is rooted.</S>
+    <S sid="103" ssid="12">Moving bottomup through the input dependency tree, we compute a list of candidate translations for the input subtree rooted at each node s, as follows: Consider in turn each treelet translation pair x rooted at s. The treelet pair x may cover only a portion of the input subtree rooted at s. Find all descendents s' of s that are not covered by x, but whose parent s&amp;quot; is covered by x.</S>
+    <S sid="104" ssid="13">At each such node s&amp;quot; look at all interleavings of the children of s&amp;quot; specified by x, if any, with each translation t' from the candidate translation list5 of each child s'.</S>
+    <S sid="105" ssid="14">Each such interleaving is scored using the models previously described and added to the candidate translation list for that input node.</S>
+    <S sid="106" ssid="15">The resultant translation is the best scoring candidate for the root input node.</S>
+    <S sid="107" ssid="16">As an example, see the example dependency tree in Figure 4a and treelet translation pair in 4b.</S>
+    <S sid="108" ssid="17">This treelet translation pair covers all the nodes in 4a except the subtrees rooted at software and is.</S>
+    <S sid="109" ssid="18">We first compute (and cache) the candidate translation lists for the subtrees rooted at software and is, then construct full translation candidates by attaching those subtree translations to install&#233;s in all possible ways.</S>
+    <S sid="110" ssid="19">The order of sur relative to install&#233;s is fixed; it remains to place the translated subtrees for the software and is.</S>
+    <S sid="111" ssid="20">Note that if c is the count of children specified in the mapping and r is the count of subtrees translated via recursive calls, then there are (c+r+1)!/(c+1)! orderings.</S>
+    <S sid="112" ssid="21">Thus (1+2+1)!/(1+1)!</S>
+    <S sid="113" ssid="22">= 12 candidate translations are produced for each combination of translations of the software and is.</S>
+    <S sid="114" ssid="23">Converting this exhaustive search to dynamic programming relies on the observation that scoring a translation candidate at a node depends on the following information from its descendents: the order model requires features from the root of a translated subtree, and the target language model is affected by the first and last two words in each subtree.</S>
+    <S sid="115" ssid="24">Therefore, we need to keep the best scoring translation candidate for a given subtree for each combination of (head, leading bigram, trailing bigram), which is, in the worst case, O(V5), where V is the vocabulary size.</S>
+    <S sid="116" ssid="25">The dynamic programming approach therefore does not allow for great savings in practice because a trigram target language model forces consideration of context external to each subtree.</S>
+    <S sid="117" ssid="26">To eliminate unnecessary ordering operations, we first check that a given set of words has not been previously ordered by the decoder.</S>
+    <S sid="118" ssid="27">We use an order-independent hash table where two trees are considered equal if they have the same tree structure and lexical choices after sorting each child list into a canonical order.</S>
+    <S sid="119" ssid="28">A simpler alternate approach would be to compare bags-ofwords.</S>
+    <S sid="120" ssid="29">However since our possible orderings are bound by the induced tree structure, we might overzealously prune a candidate with a different tree structure that allows a better target order.</S>
+    <S sid="121" ssid="30">The following optimizations do not preserve optimality, but work well in practice.</S>
+    <S sid="122" ssid="31">Instead of keeping the full list of translation candidates for a given input node, we keep a topscoring subset of the candidates.</S>
+    <S sid="123" ssid="32">While the decoder is no longer guaranteed to find the optimal translation, in practice the quality impact is minimal with a list size 10 (see Table 5.6).</S>
+    <S sid="124" ssid="33">Variable-sized n-best lists: A further speedup can be obtained by noting that the number of translations using a given treelet pair is exponential in the number of subtrees of the input not covered by that pair.</S>
+    <S sid="125" ssid="34">To limit this explosion we vary the size of the n-best list on any recursive call in inverse proportion to the number of subtrees uncovered by the current treelet.</S>
+    <S sid="126" ssid="35">This has the intuitive appeal of allowing a more thorough exploration of large treelet translation pairs (that are likely to result in better translations) than of smaller, less promising pairs.</S>
+    <S sid="127" ssid="36">Channel model scores and treelet size are powerful predictors of translation quality.</S>
+    <S sid="128" ssid="37">Heuristically pruning low scoring treelet translation pairs before the search starts allows the decoder to focus on combinations and orderings of high quality treelet pairs. translation pairs rooted at that node, as ranked first by size, then by MLE channel model score, then by Model 1 score.</S>
+    <S sid="129" ssid="38">The impact of this optimization is explored in Table 5.6.</S>
+    <S sid="130" ssid="39">The complexity of the ordering step at each node grows with the factorial of the number of children to be ordered.</S>
+    <S sid="131" ssid="40">This can be tamed by noting that given a fixed pre- and post-modifier count, our order model is capable of evaluating a single ordering decision independently from other ordering decisions.</S>
+    <S sid="132" ssid="41">One version of the decoder takes advantage of this to severely limit the number of ordering possibilities considered.</S>
+    <S sid="133" ssid="42">Instead of considering all interleavings, it considers each potential modifier position in turn, greedily picking the most probable child for that slot, moving on to the next slot, picking the most probable among the remaining children for that slot and so on.</S>
+    <S sid="134" ssid="43">The complexity of greedy ordering is linear, but at the cost of a noticeable drop in BLEU score (see Table 5.4).</S>
+    <S sid="135" ssid="44">Under default settings our system tries to decode a sentence with exhaustive ordering until a specified timeout, at which point it falls back to greedy ordering.</S>
+  </SECTION>
+  <SECTION title="4." number="5">
+    <S sid="136" ssid="1">We evaluated the translation quality of the system using the BLEU metric (Papineni et al., 02) under a variety of configurations.</S>
+    <S sid="137" ssid="2">We compared against two radically different types of systems to demonstrate the competitiveness of this approach: We used a parallel English-French corpus containing 1.5 million sentences of Microsoft technical data (e.g., support articles, product documentation).</S>
+    <S sid="138" ssid="3">We selected a cleaner subset of this data by eliminating sentences with XML or HTML tags as well as very long (&gt;160 characters) and very short (&lt;40 characters) sentences.</S>
+    <S sid="139" ssid="4">We held out 2,000 sentences for development testing and parameter tuning, 10,000 sentences for testing, and 250 sentences for lambda training.</S>
+    <S sid="140" ssid="5">We ran experiments on subsets of the training data ranging from 1,000 to 300,000 sentences.</S>
+    <S sid="141" ssid="6">Table 4.1 presents details about this dataset.</S>
+    <S sid="142" ssid="7">We parsed the source (English) side of the corpus using NLPWIN, a broad-coverage rule-based parser developed at Microsoft Research able to produce syntactic analyses at varying levels of depth (Heidorn, 02).</S>
+    <S sid="143" ssid="8">For the purposes of these experiments we used a dependency tree output with part-of-speech tags and unstemmed surface words.</S>
+    <S sid="144" ssid="9">For word alignment, we used GIZA++, following a standard training regimen of five iterations of Model 1, five iterations of the HMM Model, and five iterations of Model 4, in both directions.</S>
+    <S sid="145" ssid="10">We then projected the dependency trees and used the aligned dependency tree pairs to extract treelet translation pairs and train the order model as described above.</S>
+    <S sid="146" ssid="11">The target language model was trained using only the French side of the corpus; additional data may improve its performance.</S>
+    <S sid="147" ssid="12">Finally we trained lambdas via Maximum BLEU (Och, 03) on 250 held-out sentences with a single reference translation, and tuned the decoder optimization parameters (n-best list size, timeouts etc) on the development test set.</S>
+    <S sid="148" ssid="13">The same GIZA++ alignments as above were used in the Pharaoh decoder.</S>
+    <S sid="149" ssid="14">We used the heuristic combination described in (Och &amp; Ney, 03) and extracted phrasal translation pairs from this combined alignment as described in (Koehn et al., 03).</S>
+    <S sid="150" ssid="15">Except for the order model (Pharaoh uses its own ordering approach), the same models were used: MLE channel model, Model 1 channel model, target language model, phrase count, and word count.</S>
+    <S sid="151" ssid="16">Lambdas were trained in the same manner (Och, 03).</S>
+  </SECTION>
+  <SECTION title="MSR-MT" number="6">
+    <S sid="152" ssid="1">MSR-MT used its own word alignment approach as described in (Menezes &amp; Richardson, 01) on the same training data.</S>
+    <S sid="153" ssid="2">MSR-MT does not use lambdas or a target language model.</S>
+  </SECTION>
+  <SECTION title="5." number="7">
+    <S sid="154" ssid="1">We present BLEU scores on an unseen 10,000 sentence test set using a single reference translation for each sentence.</S>
+    <S sid="155" ssid="2">Speed numbers are the end-to-end translation speed in sentences per minute.</S>
+    <S sid="156" ssid="3">All results are based on a training set size of 100,000 sentences and a phrase size of 4, except Table 5.2 which varies the phrase size and Table 5.3 which varies the training set size.</S>
+    <S sid="157" ssid="4">Results for our system and the comparison systems are presented in Table 5.1.</S>
+    <S sid="158" ssid="5">Pharaoh monotone refers to Pharaoh with phrase reordering disabled.</S>
+    <S sid="159" ssid="6">The difference between Pharaoh and the Treelet system is significant at the 99% confidence level under a two-tailed paired t-test.</S>
+    <S sid="160" ssid="7">Table 5.2 compares Pharaoh and the Treelet system at different phrase sizes.</S>
+    <S sid="161" ssid="8">While all the differences are statistically significant at the 99% confidence level, the wide gap at smaller phrase sizes is particularly striking.</S>
+    <S sid="162" ssid="9">We infer that whereas Pharaoh depends heavily on long phrases to encapsulate reordering, our dependency treebased ordering model enables credible performance even with single-word &#8216;phrases&#8217;.</S>
+    <S sid="163" ssid="10">We conjecture that in a language pair with large-scale ordering differences, such as English-Japanese, even long phrases are unlikely to capture the necessary reorderings, whereas our tree-based ordering model may prove more robust.</S>
+    <S sid="164" ssid="11">Table 5.3 compares the same systems at different training corpus sizes.</S>
+    <S sid="165" ssid="12">All of the differences are statistically significant at the 99% confidence level.</S>
+    <S sid="166" ssid="13">Noting that the gap widens at smaller corpus sizes, we suggest that our tree-based approach is more suitable than string-based phrasal SMT when translating from English into languages or domains with limited parallel data.</S>
+    <S sid="167" ssid="14">We also ran experiments varying different system parameters.</S>
+    <S sid="168" ssid="15">Table 5.4 explores different ordering strategies, Table 5.5 looks at the impact of discontiguous phrases and Table 5.6 looks at the impact of decoder optimizations such as treelet pruning and n-best list size.</S>
+  </SECTION>
+  <SECTION title="6." number="8">
+    <S sid="169" ssid="1">We presented a novel approach to syntacticallyinformed statistical machine translation that leverages a parsed dependency tree representation of the source language via a tree-based ordering model and treelet phrase extraction.</S>
+    <S sid="170" ssid="2">We showed that it significantly outperforms a leading phrasal SMT system over a wide range of training set sizes and phrase sizes.</S>
+    <S sid="171" ssid="3">Constituents vs. dependencies: Most attempts at syntactic SMT have relied on a constituency analysis rather than dependency analysis.</S>
+    <S sid="172" ssid="4">While this is a natural starting point due to its wellunderstood nature and commonly available tools, we feel that this is not the most effective representation for syntax in MT.</S>
+    <S sid="173" ssid="5">Dependency analysis, in contrast to constituency analysis, tends to bring semantically related elements together (e.g., verbs become adjacent to all their arguments) and is better suited to lexicalized models, such as the ones presented in this paper.</S>
+  </SECTION>
+  <SECTION title="7." number="9">
+    <S sid="174" ssid="1">The most important contribution of our system is a linguistically motivated ordering approach based on the source dependency tree, yet this paper only explores one possible model.</S>
+    <S sid="175" ssid="2">Different model structures, machine learning techniques, and target feature representations all have the potential for significant improvements.</S>
+    <S sid="176" ssid="3">Currently we only consider the top parse of an input sentence.</S>
+    <S sid="177" ssid="4">One means of considering alternate possibilities is to build a packed forest of dependency trees and use this in decoding translations of each input sentence.</S>
+    <S sid="178" ssid="5">As noted above, our approach shows particular promise for language pairs such as EnglishJapanese that exhibit large-scale reordering and have proven difficult for string-based approaches.</S>
+    <S sid="179" ssid="6">Further experimentation with such language pairs is necessary to confirm this.</S>
+    <S sid="180" ssid="7">Our experience has been that the quality of GIZA++ alignments for such language pairs is inadequate.</S>
+    <S sid="181" ssid="8">Following up on ideas introduced by (Cherry &amp; Lin, 03) we plan to explore ways to leverage the dependency tree to improve alignment quality.</S>
+  </SECTION>
+</PAPER>

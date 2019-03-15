@@ -1,0 +1,288 @@
+<PAPER>
+	<S sid="0">What is the Jeopardy Model? A Quasi-Synchronous Grammar for QA</S><ABSTRACT>
+		<S sid="1" ssid="1">This paper presents a syntax-driven ap proach to question answering, specifically the answer-sentence selection problem forshort-answer questions.</S>
+		<S sid="2" ssid="2">Rather than using syntactic features to augment exist ing statistical classifiers (as in previouswork), we build on the idea that ques tions and their (correct) answers relate toeach other via loose but predictable syntactic transformations.</S>
+		<S sid="3" ssid="3">We propose a probabilistic quasi-synchronous grammar, inspired by one proposed for machine translation (D. Smith and Eisner, 2006), and parameterized by mixtures of a robust non lexical syntax/alignment model with a(n optional) lexical-semantics-driven log-linear model.</S>
+		<S sid="4" ssid="4">Our model learns soft alignments as a hidden variable in discriminative training.</S>
+		<S sid="5" ssid="5">Experimental results using the TREC dataset are shown to significantly outperform strong state-of-the-art baselines.</S>
+	</ABSTRACT>
+	<SECTION title="Motivation" number="1">
+			<S sid="6" ssid="6">Open-domain question answering (QA) is a widelystudied and fast-growing research problem.</S>
+			<S sid="7" ssid="7">State of-the-art QA systems are extremely complex.</S>
+			<S sid="8" ssid="8">They usually take the form of a pipeline architecture, chaining together modules that perform tasks such as answer type analysis (identifying whether the correct answer will be a person, location, date,etc.), document retrieval, answer candidate extrac tion, and answer reranking.</S>
+			<S sid="9" ssid="9">This architecture is so predominant that each task listed above has evolvedinto its own sub-field and is often studied and evalu ated independently (Shima et al, 2006).</S>
+			<S sid="10" ssid="10">At a high level, the QA task boils down to only two essential steps (Echihabi andMarcu, 2003).</S>
+			<S sid="11" ssid="11">The first step, retrieval, narrows down the search spacefrom a corpus of millions of documents to a focused set of maybe a few hundred using an IR engine, where efficiency and recall are the main focus.</S>
+			<S sid="12" ssid="12">The second step, selection, assesses each can didate answer string proposed by the first step, and finds the one that is most likely to be an answerto the given question.</S>
+			<S sid="13" ssid="13">The granularity of the tar get answer string varies depending on the type ofthe question.</S>
+			<S sid="14" ssid="14">For example, answers to factoid ques tions (e.g., Who, When, Where) are usually single words or short phrases, while definitional questions and other more complex question types (e.g., How, Why) look for sentences or short passages.</S>
+			<S sid="15" ssid="15">In this work, we fix the granularity of an answer to a single sentence.</S>
+			<S sid="16" ssid="16">Earlier work on answer selection relies only on the surface-level text information.</S>
+			<S sid="17" ssid="17">Two approaches are most common: surface pattern matching, andsimilarity measures on the question and answer, represented as bags of words.</S>
+			<S sid="18" ssid="18">In the former, pat terns for a certain answer type are either craftedmanually (Soubbotin and Soubbotin, 2001) or acquired from training examples automatically (Itty cheriah et al, 2001; Ravichandran et al, 2003; Licuanan and Weischedel, 2003).</S>
+			<S sid="19" ssid="19">In the latter,measures like cosine-similarity are applied to (usu ally) bag-of-words representations of the question and answer.</S>
+			<S sid="20" ssid="20">Although many of these systems haveachieved very good results in TREC-style evaluations, shallow methods using the bag-of-word repre sentation clearly have their limitations.</S>
+			<S sid="21" ssid="21">Examples of 22 cases where the bag-of-words approach fails abound in QA literature; here we borrow an example used by Echihabi and Marcu (2003).</S>
+			<S sid="22" ssid="22">The question is ?Who is the leader of France??, and the sentence ?Henri Hadjenberg, who is the leader of France ?s Jewish community, endorsed ...?</S>
+			<S sid="23" ssid="23">(note tokenization), which is not the correct answer, matches all keywords inthe question in exactly the same order.</S>
+			<S sid="24" ssid="24">(The cor rect answer is found in ?Bush later met with French President Jacques Chirac.?)</S>
+			<S sid="25" ssid="25">This example illustrates two types of variation that need to be recognized in order to connect this question-answer pair.</S>
+			<S sid="26" ssid="26">The first variation is thechange of the word ?leader?</S>
+			<S sid="27" ssid="27">to its semantically re lated term ?president?.</S>
+			<S sid="28" ssid="28">The second variation is the syntactic shift from ?leader of France?</S>
+			<S sid="29" ssid="29">to ?French president.?</S>
+			<S sid="30" ssid="30">It is also important to recognize that?France?</S>
+			<S sid="31" ssid="31">in the first sentence is modifying ?com munity?, and therefore ?Henri Hadjenberg?</S>
+			<S sid="32" ssid="32">is the ?leader of ... community?</S>
+			<S sid="33" ssid="33">rather than the ?leader ofFrance.?</S>
+			<S sid="34" ssid="34">These syntactic and semantic variations occur in almost every question-answer pair, and typi cally they cannot be easily captured using shallow representations.</S>
+			<S sid="35" ssid="35">It is also worth noting that such syntactic and semantic variations are not unique to QA; they can be found in many other closely related NLP tasks, motivating extensive community efforts in syntactic and semantic processing.</S>
+			<S sid="36" ssid="36">Indeed, in this work, we imagine a generative story for QA in which the question is generatedfrom the answer sentence through a series of syn tactic and semantic transformations.</S>
+			<S sid="37" ssid="37">The same story has been told for machine translation (Yamada and Knight, 2001, inter alia), in which a target languagesentence (the desired output) has undergone seman tic transformation (word to word translation) and syntactic transformation (syntax divergence acrosslanguages) to generate the source language sen tence (noisy-channel model).</S>
+			<S sid="38" ssid="38">Similar stories can also be found in paraphrasing (Quirk et al, 2004; Wu, 2005) and textual entailment (Harabagiu and Hickl, 2006; Wu, 2005).</S>
+			<S sid="39" ssid="39">Our story makes use of a weighted formalism known as quasi-synchronous grammar (hereafter, QG), originally developed by D. Smith and Eisner(2006) for machine translation.</S>
+			<S sid="40" ssid="40">Unlike most synchronous formalisms, QG does not posit a strict iso morphism between the two trees, and it providesan elegant description for the set of local configura tions.</S>
+			<S sid="41" ssid="41">In Section 2 we situate our contribution in thecontext of earlier work, and we give a brief discus sion of quasi-synchronous grammars in Section 3.</S>
+			<S sid="42" ssid="42">Our version of QG, called the Jeopardy model, and our parameter estimation method are described inSection 4.</S>
+			<S sid="43" ssid="43">Experimental results comparing our ap proach to two state-of-the-art baselines are presented in Section 5.</S>
+			<S sid="44" ssid="44">We discuss portability to cross-lingual QA and other applied semantic processing tasks in Section 6.</S>
+	</SECTION>
+	<SECTION title="Related Work. " number="2">
+			<S sid="45" ssid="1">To model the syntactic transformation process, re searchers in these fields?especially in machine translation?have developed powerful grammatical formalisms and statistical models for representing and learning these tree-to-tree relations (Wu and Wong, 1998; Eisner, 2003; Gildea, 2003; Melamed, 2004; Ding and Palmer, 2005; Quirk et al, 2005;Galley et al, 2006; Smith and Eisner, 2006, in ter alia).</S>
+			<S sid="46" ssid="2">We can also observe a trend in recent work in textual entailment that more emphasis is put onexplicit learning of the syntactic graph mapping between the entailed and entailed-by sentences (Mac Cartney et al, 2006).</S>
+			<S sid="47" ssid="3">However, relatively fewer attempts have been made in the QA community.</S>
+			<S sid="48" ssid="4">As pointed out by Katz and Lin (2003), most early experiments in QA that tried to bring in syntactic or semantic features showed little or no improvement, and itwas often the case that performance actually de graded (Litkowski, 1999; Attardi et al, 2001).</S>
+			<S sid="49" ssid="5">Morerecent attempts have tried to augment the bag-of words representation?which, after all, is simply a real-valued feature vector?with syntactic features.</S>
+			<S sid="50" ssid="6">The usual similarity measures can then be used onthe new feature representation.</S>
+			<S sid="51" ssid="7">For example, Punyakanok et al (2004) used approximate tree match ing and tree-edit-distance to compute a similarity score between the question and answer parse trees.Similarly, Shen et al (2005) experimented with de pendency tree kernels to compute similarity between parse trees.</S>
+			<S sid="52" ssid="8">Cui et al (2005) measured sentencesimilarity based on similarity measures between de pendency paths among aligned words.</S>
+			<S sid="53" ssid="9">They used heuristic functions similar to mutual information to 23 assign scores to matched pairs of dependency links.</S>
+			<S sid="54" ssid="10">Shen and Klakow (2006) extend the idea furtherthrough the use of log-linear models to learn a scor ing function for relation pairs.Echihabi and Marcu (2003) presented a noisy channel approach in which they adapted the IBM model 4 from statistical machine translation (Brown et al, 1990; Brown et al, 1993) and applied it to QA.Similarly, Murdock and Croft (2005) adopted a sim ple translation model from IBM model 1 (Brown et al., 1990; Brown et al, 1993) and applied it to QA.Porting the translation model to QA is not straight forward; it involves parse-tree pruning heuristics (the first two deterministic steps in Echihabi andMarcu, 2003) and also replacing the lexical trans lation table with a monolingual ?dictionary?</S>
+			<S sid="55" ssid="11">which simply encodes the identity relation.</S>
+			<S sid="56" ssid="12">This brings usto the question that drives this work: is there a statistical translation-like model that is natural and accu rate for question answering?</S>
+			<S sid="57" ssid="13">We propose Smith andEisner?s (2006) quasi-synchronous grammar (Sec tion 3) as a general solution and the Jeopardy model (Section 4) as a specific instance.</S>
+	</SECTION>
+	<SECTION title="Quasi-Synchronous Grammar. " number="3">
+			<S sid="58" ssid="1">For a formal description of QG, we recommendSmith and Eisner (2006).</S>
+			<S sid="59" ssid="2">We briefly review the central idea here.</S>
+			<S sid="60" ssid="3">QG arose out of the empirical observation that translated sentences often have some isomorphic syntactic structure, but not usually in en tirety, and the strictness of the isomorphism may vary across words or syntactic rules.</S>
+			<S sid="61" ssid="4">The idea is that, rather than a synchronous structure over the source and target sentences, a tree over the target sentence is modeled by a source-sentence-specific grammar that is inspired by the source sentence?s tree.1 This is implemented by a ?sense??really just a subsetof nodes in the source tree?attached to each gram mar node in the target tree.</S>
+			<S sid="62" ssid="5">The senses define an alignment between the trees.</S>
+			<S sid="63" ssid="6">Because it only loosely links the two sentences?</S>
+			<S sid="64" ssid="7">syntactic structure, QG is particularly well-suited for QA insofar as QA is like ?free?</S>
+			<S sid="65" ssid="8">translation.</S>
+			<S sid="66" ssid="9">A concrete example that is easy to understand is a binary quasi-synchronous context-free grammar 1Smith and Eisner also show how QG formalisms generalize synchronous grammar formalisms.(denoted QCFG).</S>
+			<S sid="67" ssid="10">Let VS be the set of constituent to kens in the source tree.</S>
+			<S sid="68" ssid="11">QCFG rules would take the augmented form ?X, S1?</S>
+			<S sid="69" ssid="12">?Y, S2??Z, S3?</S>
+			<S sid="70" ssid="13">?X, S1?</S>
+			<S sid="71" ssid="14">w where X,Y, and Z are ordinary CFG nonterminals, each Si ? 2VS (subsets of nodes in the source treeto which the nonterminals align), and w is a targetlanguage word.</S>
+			<S sid="72" ssid="15">QG can be made more or less ?lib eral?</S>
+			<S sid="73" ssid="16">by constraining the cardinality of the Si (weforce all |Si| = 1), and by constraining the relation ships among the Si mentioned in a single rule.</S>
+			<S sid="74" ssid="17">These are called permissible ?configurations.?</S>
+			<S sid="75" ssid="18">An example of a strict configuration is that a target parent-childpair must align (respectively) to a source parent child pair.</S>
+			<S sid="76" ssid="19">Configurations are shown in Table 1.</S>
+			<S sid="77" ssid="20">Here, following Smith and Eisner (2006), we usea weighted, quasi-synchronous dependency grammar.</S>
+			<S sid="78" ssid="21">Apart from the obvious difference in appli cation task, there are a few important differences with their model.</S>
+			<S sid="79" ssid="22">First, we are not interested in thealignments per se; we will sum them out as a hid den variable when scoring a question-answer pair.</S>
+			<S sid="80" ssid="23">Second, our probability model includes an optional mixture component that permits arbitrary features?we experiment with a small set of WordNet lexicalsemantics features (see Section 4.4).</S>
+			<S sid="81" ssid="24">Third, we apply a more discriminative training method (condi tional maximum likelihood estimation, Section 4.5).</S>
+	</SECTION>
+	<SECTION title="The Jeopardy Model. " number="4">
+			<S sid="82" ssid="1">Our model, informally speaking, aims to follow theprocess a player of the television game show Jeop ardy!</S>
+			<S sid="83" ssid="2">might follow.</S>
+			<S sid="84" ssid="3">The player knows the answer (or at least thinks he knows the answer) and must quickly turn it into a question.2 The question-answer pairs used on Jeopardy!</S>
+			<S sid="85" ssid="4">are not precisely what we have in mind for the real task (the questions are notspecific enough), but the syntactic transformation in spires our model.</S>
+			<S sid="86" ssid="5">In this section we formally define 2A round of Jeopardy!</S>
+			<S sid="87" ssid="6">involves a somewhat involved and specific ?answer?</S>
+			<S sid="88" ssid="7">presented to the competitors, and the first competitor to hit a buzzer proposes the ?question?</S>
+			<S sid="89" ssid="8">that leads tothe answer.</S>
+			<S sid="90" ssid="9">For example, an answer might be, This Eastern Eu ropean capital is famous for defenestrations.</S>
+			<S sid="91" ssid="10">In Jeopardy!</S>
+			<S sid="92" ssid="11">the players must respond with a queston: What is Prague?</S>
+			<S sid="93" ssid="12">24this probability model and present the necessary al gorithms for parameter estimation.</S>
+			<S sid="94" ssid="13">4.1 Probabilistic Model.</S>
+			<S sid="95" ssid="14">The Jeopardy model is a QG designed for QA.</S>
+			<S sid="96" ssid="15">Let q = ?q1, ..., qn?</S>
+			<S sid="97" ssid="16">be a question sentence (each qi is aword), and let a = ?a1, ..., am?</S>
+			<S sid="98" ssid="17">be a candidate an swer sentence.</S>
+			<S sid="99" ssid="18">(We will use w to denote an abstract sequence that could be a question or an answer.)</S>
+			<S sid="100" ssid="19">Inpractice, these sequences may include other infor mation, such as POS, but for clarity we assume justwords in the exposition.</S>
+			<S sid="101" ssid="20">Let A be the set of can didate answers under consideration.</S>
+			<S sid="102" ssid="21">Our aim is to choose: a?</S>
+			<S sid="103" ssid="22">= argmax a?A p(a | q) (1) At a high level, we make three adjustments.</S>
+			<S sid="104" ssid="23">The first is to apply Bayes?</S>
+			<S sid="105" ssid="24">rule, p(a | q) ? p(q | a) ? p(a).</S>
+			<S sid="106" ssid="25">Because A is known and is assumed to be generated by an external extraction system, we could use that extraction system to assign scores(and hence, probabilities p(a)) to the candidate an swers.</S>
+			<S sid="107" ssid="26">Other scores could also be used, such as reputability of the document the answer came from, grammaticality, etc. Here, aiming for simplicity, we do not aim to use such information.</S>
+			<S sid="108" ssid="27">Hence we treat p(a) as uniform over A.3 The second adjustment adds a labeled, directed dependency tree to the question and the answer.The tree is produced by a state-of-the-art depen dency parser (McDonald et al, 2005) trained on the Wall Street Journal Penn Treebank (Marcus et al., 1993).</S>
+			<S sid="109" ssid="28">A dependency tree on a sequence w =?w1, ..., wk?</S>
+			<S sid="110" ssid="29">is a mapping of indices of words to in dices of their syntactic parents and a label for the syntactic relation, ? : {1, ..., k} ? {0, ..., k} ? L. Each word wi has a single parent, denoted w?(i).par .Cycles are not permitted.</S>
+			<S sid="111" ssid="30">w0 is taken to be the invis ible ?wall?</S>
+			<S sid="112" ssid="31">symbol at the left edge of the sentence; it has a single child (|{i : ?(i) = 0}| = 1).</S>
+			<S sid="113" ssid="32">The label for wi is denoted ?(i).lab.</S>
+			<S sid="114" ssid="33">The third adjustment involves a hidden variable X , the alignment between question and answer3The main motivation for modeling p(q | a) is that it is easier to model deletion of information (such as the part of the sen tence that answers the question) than insertion.</S>
+			<S sid="115" ssid="34">Our QG doesnot model the real-world knowledge required to fill in an an swer; its job is to know what answers are likely to look like, syntactically.</S>
+			<S sid="116" ssid="35">words.</S>
+			<S sid="117" ssid="36">In our model, each question-word maps to exactly one answer-word.</S>
+			<S sid="118" ssid="37">Let x : {1, ..., n} ? {1, ...,m} be a mapping from indices of words in qto indices of words in a.</S>
+			<S sid="119" ssid="38">(It is for computational rea sons that we assume |x(i)| = 1; in general x couldrange over subsets of {1, ...,m}.)</S>
+			<S sid="120" ssid="39">Because we de fine the correspondence in this direction, note that it is possible for multple question words to map to the same answer word.Why do we treat the alignmentX as a hidden vari able?</S>
+			<S sid="121" ssid="40">In prior work, the alignment is assumed to be known given the sentences, but we aim to discoverit from data.</S>
+			<S sid="122" ssid="41">Our guide in this learning is the struc ture inherent in the QG: the configurations betweenparent-child pairs in the question and their corre sponding, aligned words in the answer.</S>
+			<S sid="123" ssid="42">The hidden variable treatment lets us avoid commitment to any one x mapping, making the method more robust tonoisy parses (after all, the parser is not 100% ac curate) and any wrong assumptions imposed by the model (that |x(i)| = 1, for example, or that syntactic transformations can explain the connection between q and a at all).4 Our model, then, defines p(q, ?q | a, ?a) = ? x p(q, ?q, x | a, ?a) (2) where ?q and ?a are the question tree and answer tree, respectively.</S>
+			<S sid="124" ssid="43">The stochastic process defined by our model factors cleanly into recursive steps thatderive the question from the top down.</S>
+			<S sid="125" ssid="44">The QG defines a grammar for this derivation; the grammar de pends on the specific answer.</S>
+			<S sid="126" ssid="45">Let ? iw refer to the subtree of ?w rooted at wi.</S>
+			<S sid="127" ssid="46">The model is defined by: p(?</S>
+			<S sid="128" ssid="47">iq | qi, ?q(i), x(i), ?a) = (3) p#kids(|{j : ?q(j) = i, j &lt; i}| | qi, left) ?p#kids(|{j : ?q(j) = i, j &gt; i}| | qi, right) ? ?</S>
+			<S sid="129" ssid="48">j:?q(j)=i m?</S>
+			<S sid="130" ssid="49">x(j)=0 pkid (qj , ?q(j).lab | qi, ?q(i), x(i), x(j), ?a) ?p(?</S>
+			<S sid="131" ssid="50">jq | qj , ?q(j), x(j), ?a) 4If parsing performance is a concern, we might also treat the question and/or answer parse trees as hidden variables, thoughthat makes training and testing more computationally expen sive.</S>
+			<S sid="132" ssid="51">25 Note the recursion in the last line.</S>
+			<S sid="133" ssid="52">While the above may be daunting, in practice it boils down only to defining the conditional distribution pkid , since the number of left and right children of each node need not be modeled (the trees are assumed known)?</S>
+			<S sid="134" ssid="53">p#kids is included above for completeness, but in the model applied here we do not condition it on qi and therefore do not need to estimate it (since the trees are fixed).</S>
+			<S sid="135" ssid="54">pkid defines a distribution over syntactic children of qi and their labels, given (1) the word qi, (2) the parent of qi, (3) the dependency relation between qi and its parent, (4) the answer-word qi is aligned to, (5) the answer-word the child being predicted is aligned to, and (6) the remainder of the answer tree.</S>
+			<S sid="136" ssid="55">4.2 Dynamic Programming.</S>
+			<S sid="137" ssid="56">Given q, the score for an answer is simply p(q, ?q | a, ?a).</S>
+			<S sid="138" ssid="57">Computing the score requires summing over alignments and can be done efficiently by bottom-up dynamic programming.</S>
+			<S sid="139" ssid="58">Let S(j, `) refer to the score of ? jq, assuming that the parent of qj , ?q(j).par , is aligned to a`.</S>
+			<S sid="140" ssid="59">The base case, for leaves of ?q, is: S(j, `) = (4) p#kids(0 | qj , left) ? p#kids(0 | qj , right) ? m? k=0 pkid (qj , ?q(j).lab | q?q(j) , `, k, ?a) Note that k ranges over indices of answer-words to be aligned to qj . The recursive case is S(i, `) = (5) p#kids(|{j : ?q(j) = i, j &lt; i}| | qj , left) ?p#kids(|{j : ?q(j) = i, j &gt; i}| | qj , right) ? m? k=0 pkid (qi, ?q(i).lab | q?q(i), `, k, ?a) ? ?</S>
+			<S sid="141" ssid="60">j:?q(j)=i S(j, k) Solving these equations bottom-up can be done in O(nm2) time and O(nm) space; in practice this is very efficient.</S>
+			<S sid="142" ssid="61">In our experiments, computing the value of a question-answer pair took two seconds on average.5 We turn next to the details of pkid , the core of the model.</S>
+			<S sid="143" ssid="62">4.3 Base Model.</S>
+			<S sid="144" ssid="63">Our base model factors pkid into three conditional multinomial distributions.</S>
+			<S sid="145" ssid="64">pbasekid (qi, ?q(i).lab | q?q(i), `, k, ?a) = p(qi.pos | ak.pos) ? p(qi.ne | ak.ne) ?p(?q(i).lab | config(?q, ?a, i)) (6) where qi.pos is question-word i?s POS label and qi.ne is its named-entity label.</S>
+			<S sid="146" ssid="65">config maps question-word i, its parent, and their alignees to a QG configuration as described in Table 1; notethat some configurations are extended with addi tional tree information.</S>
+			<S sid="147" ssid="66">The base model does not directly predict the specific words in the question?</S>
+			<S sid="148" ssid="67">only their parts-of-speech, named-entity labels, anddependency relation labels.</S>
+			<S sid="149" ssid="68">This model is very sim ilar to Smith and Eisner (2006).</S>
+			<S sid="150" ssid="69">Because we are interested in augmenting the QG with additional lexical-semantic knowledge, we also estimate pkid by mixing the base model with a model that exploits WordNet (Miller et al, 1990) lexical-semantic relations.</S>
+			<S sid="151" ssid="70">The mixture is given by: pkid (?</S>
+			<S sid="152" ssid="71">| ?) = ?p base kid (?</S>
+			<S sid="153" ssid="72">| ?)+(1??)p ls kid (?</S>
+			<S sid="154" ssid="73">(7) 4.4 Lexical-Semantics Log-Linear Model.</S>
+			<S sid="155" ssid="74">The lexical-semantics model plskid is defined by pre dicting a (nonempty) subset of the thirteen classes for the question-side word given the identity ofits aligned answer-side word.</S>
+			<S sid="156" ssid="75">These classes in clude WordNet relations: identical-word, synonym,antonym (also extended and indirect antonym), hy pernym, hyponym, derived form, morphological variation (e.g., plural form), verb group, entailment,entailed-by, see-also, and causal relation.</S>
+			<S sid="157" ssid="76">In addition, to capture the special importance of Whwords in questions, we add a special semantic re lation called ?q-word?</S>
+			<S sid="158" ssid="77">between any word and any Wh-word.</S>
+			<S sid="159" ssid="78">This is done through a log-linear model with one feature per relation.</S>
+			<S sid="160" ssid="79">Multiple relations may fire, motivating the log-linear model, which permits ?overlapping?</S>
+			<S sid="161" ssid="80">features, and, therefore prediction of 5Experiments were run on a 64-bit machine with 2?</S>
+			<S sid="162" ssid="81">2.2GHz dual-core CPUs and 4GB of memory.</S>
+			<S sid="163" ssid="82">26 any of the possible 213 ? 1 nonempty subsets.</S>
+			<S sid="164" ssid="83">It is important to note that this model assigns zero probability to alignment of an answer-word with any question-word that is not directly related to it through any relation.</S>
+			<S sid="165" ssid="84">Such words may be linked in the mixture model, however, via pbasekid . 6 (It is worth pointing out that log-linear models provide great flexibility in defining new features.</S>
+			<S sid="166" ssid="85">It is straightforward to extend the feature set to include more domain-specific knowledge or other kinds of morphological, syntactic, or semantic information.Indeed, we explored some additional syntactic fea tures, fleshing out the configurations in Table 1 inmore detail, but did not see any interesting improve ments.)parent-child Question parent-child pair align respectively to answer parent-child pair.</S>
+			<S sid="167" ssid="86">Augmented with the q.-side dependency la bel.child-parent Question parent-child pair align respectively to answer child-parent pair.</S>
+			<S sid="168" ssid="87">Augmented with the q.-side dependency la bel.grandparent-child Question parent-child pair align respec tively to answer grandparent-child pair.</S>
+			<S sid="169" ssid="88">Augmented with the q.-side dependency label.</S>
+			<S sid="170" ssid="89">same node Question parent-child pair align to the same answer-word.siblings Question parent-child pair align to sib lings in the answer.</S>
+			<S sid="171" ssid="90">Augmented withthe tree-distance between the a.-side sib lings.</S>
+			<S sid="172" ssid="91">c-command The parent of one answer-side word is an ancestor of the other answer-side word.other A catch-all for all other types of config urations, which are permitted.Table 1: Syntactic alignment configurations are partitioned into these sets for prediction under the Jeop ardy model.</S>
+			<S sid="173" ssid="92">4.5 Parameter Estimation.</S>
+			<S sid="174" ssid="93">The parameters to be estimated for the Jeopardy model boil down to the conditional multinomialdistributions in pbasekid , the log-linear weights in side of plskid , and the mixture coefficient ?.</S>
+			<S sid="175" ssid="94">7 Stan-.</S>
+			<S sid="176" ssid="95">6It is to preserve that robustness property that the models are mixed, and not combined some other way.</S>
+			<S sid="177" ssid="96">7In our experiments, all log-linear weights are initialized tobe 1; all multinomial distributions are initialized as uniform disdard applications of log-linear models apply con ditional maximum likelihood estimation, which for our case involves using an empirical distribution p?over question-answer pairs (and their trees) to opti mize as follows: max ? ?</S>
+			<S sid="178" ssid="97">q,?q,a,?a p?(q, ?q,a, ?a) log p?(q, ?q | a, ?a) ? ??</S>
+			<S sid="179" ssid="98">P x p?(q,?q,x|a,?a) (8) Note the hidden variable x being summed out; that makes the optimization problem non-convex.</S>
+			<S sid="180" ssid="99">Thissort of problem can be solved in principle by conditional variants of the Expectation-Maximization al gorithm (Baum et al, 1970; Dempster et al, 1977; Meng and Rubin, 1993; Jebara and Pentland, 1999).</S>
+			<S sid="181" ssid="100">We use a quasi-Newton method known as L-BFGS(Liu and Nocedal, 1989) that makes use of the gradient of the above function (straightforward to com pute, but omitted for space).</S>
+	</SECTION>
+	<SECTION title="Experiments. " number="5">
+			<S sid="182" ssid="1">To evaluate our model, we conducted experiments using Text REtrieval Conference (TREC) 8?13 QA dataset.8 5.1 Experimental Setup.</S>
+			<S sid="183" ssid="2">The TREC dataset contains questions and answer patterns, as well as a pool of documents returned byparticipating teams.</S>
+			<S sid="184" ssid="3">Our task is the same as Pun yakanok et al (2004) and Cui et al (2005), where we search for single-sentence answers to factoid questions.</S>
+			<S sid="185" ssid="4">We follow a similar setup to Shen and Klakow (2006) by automatically selecting answer candidate sentences and then comparing against a human-judged gold standard.</S>
+			<S sid="186" ssid="5">We used the questions in TREC 8?12 for training and set aside TREC 13 questions for development(84 questions) and testing (100 questions).</S>
+			<S sid="187" ssid="6">To gen erate the candidate answer set for development and testing, we automatically selected sentences from each question?s document pool that contains one ormore non-stopwords from the question.</S>
+			<S sid="188" ssid="7">For gen erating the training candidate set, in addtion to thesentences that contain non-stopwords from the ques tion, we also added sentences that contain correct tributions; ? is initialized to be 0.1.</S>
+			<S sid="189" ssid="8">8We thank the organizers and NIST for making the dataset publicly available.</S>
+			<S sid="190" ssid="9">27 answer pattern.</S>
+			<S sid="191" ssid="10">Manual judgement was produced for the entire TREC 13 set, and also for the first 100questions from the training set TREC 8?12.9 On av erage, each question in the development set has 3.1 positive and 17.1 negative answers.</S>
+			<S sid="192" ssid="11">There are 3.6 positive and 20.0 negative answers per question in the test set.We tokenized sentences using the standard tree bank tokenization script, and then we performedpart-of-speech tagging using MXPOST tagger (Ratnaparkhi, 1996).</S>
+			<S sid="193" ssid="12">The resulting POS-tagged sentences were then parsed using MSTParser (McDon ald et al, 2005), trained on the entire Penn Treebank to produce labeled dependency parse trees (we used a coarse dependency label set that includes twelve label types).</S>
+			<S sid="194" ssid="13">We used BBN Identifinder (Bikel et al, 1999) for named-entity tagging.As answers in our task are considered to be sin gle sentences, our evaluation differs slightly from TREC, where an answer string (a word or phrase like 1977 or George Bush) has to be accompaniedby a supporting document ID. As discussed by Punyakanok et al (2004), the single-sentence assump tion does not simplify the task, since the hardest part of answer finding is to locate the correct sentence.</S>
+			<S sid="195" ssid="14">From an end-user?s point of view, presenting thesentence that contains the answer is often more in formative and evidential.</S>
+			<S sid="196" ssid="15">Furthermore, although the judgement data in our case are more labor-intensiveto obtain, we believe our evaluation method is a better indicator than the TREC evaluation for the qual ity of an answer selection algorithm.To illustrate the point, consider the example question, ?When did James Dean die??</S>
+			<S sid="197" ssid="16">The correct an9More human-judged data are desirable, though we will address training from noisy, automatically judged data in Section 5.4.</S>
+			<S sid="198" ssid="17">It is important to note that human judgement of answer sentence correctness was carried out prior to any experi ments, and therefore is unbiased.</S>
+			<S sid="199" ssid="18">The total number of questions in TREC 13 is 230.</S>
+			<S sid="200" ssid="19">We exclude from the TREC 13 set questions that either have no correct answer candidates (27 questions), or no incorrect answer candidates (19 questions).</S>
+			<S sid="201" ssid="20">Any algorithm will get the same performance on these questions, and thereforeobscures the evaluation results.</S>
+			<S sid="202" ssid="21">6 such questions were also excluded from the 100 manually-judged training questions, result ing in 94 questions for training.</S>
+			<S sid="203" ssid="22">For computational reasons (the cost of parsing), we also eliminated answer candidate sentences that are longer than 40 words from the training and evaluation set.</S>
+			<S sid="204" ssid="23">After these data preparation steps, we have 348 positive Q-A pairs for training, 1,415 Q-A pairs in the development set, and 1,703 Q-A pairs in the test set.</S>
+			<S sid="205" ssid="24">swer as appeared in the sentence ?In 1955, actor James Dean was killed in a two-car collision nearCholame, Calif.?</S>
+			<S sid="206" ssid="25">is 1955.</S>
+			<S sid="207" ssid="26">But from the same docu ment, there is another sentence which also contains 1955: ?In 1955, the studio asked him to become a technical adviser on Elia Kazan?s ?East of Eden,?</S>
+			<S sid="208" ssid="27">starring James Dean.?</S>
+			<S sid="209" ssid="28">If a system missed the first sentence but happened to have extracted 1955 fromthe second one, the TREC evaluation grants it a ?cor rect and well-supported?</S>
+			<S sid="210" ssid="29">point, since the document ID matches the correct document ID?even though the latter answer does not entail the true answer.</S>
+			<S sid="211" ssid="30">Our evaluation does not suffer from this problem.We report two standard evaluation measures commonly used in IR and QA research: mean av erage precision (MAP) and mean reciprocal rank (MRR).</S>
+			<S sid="212" ssid="31">All results are produced using the standard trec eval program.</S>
+			<S sid="213" ssid="32">5.2 Baseline Systems.</S>
+			<S sid="214" ssid="33">We implemented two state-of-the-art answer-finding algorithms (Cui et al, 2005; Punyakanok et al, 2004) as strong baselines for comparison.</S>
+			<S sid="215" ssid="34">Cui et al.</S>
+			<S sid="216" ssid="35">(2005) is the answer-finding algorithm behindone of the best performing systems in TREC eval uations.</S>
+			<S sid="217" ssid="36">It uses a mutual information-inspired scorecomputed over dependency trees and a single alignment between them.</S>
+			<S sid="218" ssid="37">We found the method to be brit tle, often not finding a score for a testing instance because alignment was not possible.</S>
+			<S sid="219" ssid="38">We extendedthe original algorithm, allowing fuzzy word align ments through WordNet expansion; both results are reported.The second baseline is the approximate tree matching work by Punyakanok et al (2004).</S>
+			<S sid="220" ssid="39">Their algorithm measures the similarity between ?q and ?a by computing tree edit distance.</S>
+			<S sid="221" ssid="40">Our replication is close to the algorithm they describe, with one subtle difference.</S>
+			<S sid="222" ssid="41">Punyakanok et al used answer-typing in computing edit distance; this is not available in our dataset (and our method does not explicitly carry out answer-typing).</S>
+			<S sid="223" ssid="42">Their heuristics for reformulating questions into statements were not replicated.</S>
+			<S sid="224" ssid="43">Wedid, however, apply WordNet type-checking and ap proximate, penalized lexical matching.</S>
+			<S sid="225" ssid="44">Both results are reported.</S>
+			<S sid="226" ssid="45">28 development set test set training dataset model MAP MRR MAP MRR 100 manually-judged TreeMatch 0.4074 0.4458 0.3814 0.4462 +WN 0.4328 0.4961 0.4189 0.4939 Cui et al 0.4715 0.6059 0.4350 0.5569 +WN 0.5311 0.6162 0.4271 0.5259 Jeopardy (base only) 0.5189 0.5788 0.4828 0.5571 Jeopardy 0.6812 0.7636 0.6029 0.6852 +2,293 noisy Cui et al 0.2165 0.3690 0.2833 0.4248 +WN 0.4333 0.5363 0.3811 0.4964 Jeopardy (base only) 0.5174 0.5570 0.4922 0.5732 Jeopardy 0.6683 0.7443 0.5655 0.6687 Table 2: Results on development and test sets.</S>
+			<S sid="227" ssid="46">TreeMatch is our implementation of Punyakanok et al (2004); +WN modifies their edit distance function using WordNet.</S>
+			<S sid="228" ssid="47">We also report our implementation of Cui et al (2005), along with our WordNet expansion (+WN).</S>
+			<S sid="229" ssid="48">The Jeopardy base model and mixture with the lexical-semantics log-linear model perform best; both are trained using conditional maximum likelihood estimation.</S>
+			<S sid="230" ssid="49">The top part of the table shows performance using 100 manually-annotated question examples (questions 1?100 in TREC 8?12), and the bottom part adds noisily, automatically annotated questions 101?</S>
+			<S sid="231" ssid="50">2,393.</S>
+			<S sid="232" ssid="51">Boldface marks the best score in a column and any scores in that column not significantly worse under a a two-tailed paired t-test (p &lt; 0.03).</S>
+			<S sid="233" ssid="52">5.3 Results.</S>
+			<S sid="234" ssid="53">Evaluation results on the development and test setsof our model in comparison with the baseline algo rithms are shown in Table 2.</S>
+			<S sid="235" ssid="54">Both our model and the model in Cui et al (2005) are trained on the manually-judged training set (questions 1-100 fromTREC 8?12).</S>
+			<S sid="236" ssid="55">The approximate tree matching algorithm in Punyakanok et al (2004) uses fixed edit distance functions and therefore does not require training.</S>
+			<S sid="237" ssid="56">From the table we can see that our model signif icantly outperforms the two baseline algorithms?</S>
+			<S sid="238" ssid="57">even when they are given the benefit of WordNet?</S>
+			<S sid="239" ssid="58">on both development and test set, and on both MRR and MAP.</S>
+			<S sid="240" ssid="59">5.4 Experiments with Noisy Training Data.</S>
+			<S sid="241" ssid="60">Although manual annotation of the remaining 2,293 training sentences?</S>
+			<S sid="242" ssid="61">answers in TREC 8?12 was too labor-intensive, we did experiment with a simple, noisy automatic labeling technique.</S>
+			<S sid="243" ssid="62">Any answer that had at least three non-stop word types seen in the question and contains the answer pattern defined in the dataset was labeled as ?correct?</S>
+			<S sid="244" ssid="63">and used intraining.</S>
+			<S sid="245" ssid="64">The bottom part of Table 2 shows the re sults.</S>
+			<S sid="246" ssid="65">Adding the noisy data hurts all methods, butthe Jeopardy model maintains its lead and consis tently suffers less damage than Cui et al (2005).</S>
+			<S sid="247" ssid="66">(The TreeMatch method of Punyakanok et al (2004) does not use training examples.)</S>
+			<S sid="248" ssid="67">5.5 Summing vs. Maximizing.</S>
+			<S sid="249" ssid="68">Unlike most previous work, our model does not try to find a single correspondence between words in the question and words in the answer, during training or during testing.</S>
+			<S sid="250" ssid="69">An alternative method might choose the best (most probable) alignment, rather than the sum of all alignment scores.</S>
+			<S sid="251" ssid="70">This involves a slight change to Equation 3, replacing the summation with a maximization.</S>
+			<S sid="252" ssid="71">The change could be made during training, during testing, or both.</S>
+			<S sid="253" ssid="72">Table 3 shows that summing is preferable, especially during training.</S>
+	</SECTION>
+	<SECTION title="Discussion. " number="6">
+			<S sid="254" ssid="1">The key experimental result of this work is that loose syntactic transformations are an effective way to carry out statistical question answering.One unique advantage of our model is the mix ture of a factored, multinomial-based base model and a potentially very rich log-linear model.</S>
+			<S sid="255" ssid="2">Thebase model gives our model robustness, and the log 29 test set training decoding MAP MRR ? ?</S>
+			<S sid="256" ssid="3">0.6029 0.6852 ? max 0.5822 0.6489 max ? 0.5559 0.6250 max max 0.5571 0.6365Table 3: Experimental results on comparing sum ming over alignments (?)</S>
+			<S sid="257" ssid="4">with maximizing (max) over alignments on the test set.</S>
+			<S sid="258" ssid="5">Boldface marks the best score in a column and any scores in that columnnot significantly worse under a a two-tailed paired t test (p &lt; 0.03).linear model allows us to throw in task- or domainspecific features.</S>
+			<S sid="259" ssid="6">Using a mixture gives the advantage of smoothing (in the base model) without hav ing to normalize the log-linear model by summing over large sets.</S>
+			<S sid="260" ssid="7">This powerful combination leads us to believe that our model can be easily ported to other semantic processing tasks where modeling syntactic and semantic transformations is the key,such as textual entailment, paraphrasing, and cross lingual QA.</S>
+			<S sid="261" ssid="8">The traditional approach to cross-lingual QA isthat translation is either a pre-processing or post processing step done independently from the main QA task.</S>
+			<S sid="262" ssid="9">Notice that the QG formalism that we have employed in this work was originally proposed formachine translation.</S>
+			<S sid="263" ssid="10">We might envision transformations that are performed together to form ques tions from answers (or vice versa) and to translate?</S>
+			<S sid="264" ssid="11">a Jeopardy!</S>
+			<S sid="265" ssid="12">game in which bilingual players must ask a question in a different language than that in which the answer is posed.</S>
+	</SECTION>
+	<SECTION title="Conclusion. " number="7">
+			<S sid="266" ssid="1">We described a statistical syntax-based model that softly aligns a question sentence with a candidateanswer sentence and returns a score.</S>
+			<S sid="267" ssid="2">Discriminative training and a relatively straightforward, barelyengineered feature set were used in the implementation.</S>
+			<S sid="268" ssid="3">Our scoring model was found to greatly out perform two state-of-the-art baselines on an answer selection task using the TREC dataset.</S>
+			<S sid="269" ssid="4">Acknowledgments The authors acknowledge helpful input from three anonymous reviewers, Kevin Gimpel, and David Smith.</S>
+			<S sid="270" ssid="5">This work is supported in part by ARDA/DTO Advanced Question Answering for Intelligence (AQUAINT) program award number NBCHC040164.</S>
+	</SECTION>
+</PAPER>

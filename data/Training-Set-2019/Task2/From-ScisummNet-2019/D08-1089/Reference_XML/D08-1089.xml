@@ -1,0 +1,211 @@
+<PAPER>
+	<S sid="0">A Simple and Effective Hierarchical Phrase Reordering Model</S><ABSTRACT>
+		<S sid="1" ssid="1">While phrase-based statistical machine translation systems currently deliver state-of-the art performance, they remain weak on word order changes.</S>
+		<S sid="2" ssid="2">Current phrase reordering models can properly handle swaps between adjacent phrases, but they typically lack theability to perform the kind of long-distance re orderings possible with syntax-based systems.</S>
+		<S sid="3" ssid="3">In this paper, we present a novel hierarchical phrase reordering model aimed at improvingnon-local reorderings, which seamlessly in tegrates with a standard phrase-based system with little loss of computational efficiency.</S>
+		<S sid="4" ssid="4">Weshow that this model can successfully han dle the key examples often used to motivate syntax-based systems, such as the rotation of a prepositional phrase around a noun phrase.</S>
+		<S sid="5" ssid="5">We contrast our model with reordering models commonly used in phrase-based systems, and show that our approach provides statistically significant BLEU point gains for two language pairs: Chinese-English (+0.53 on MT05 and +0.71 on MT08) and Arabic-English (+0.55 on MT05).</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number="1">
+			<S sid="6" ssid="6">Statistical phrase-based systems (Och and Ney,2004; Koehn et al, 2003) have consistently delivered state-of-the-art performance in recent machine translation evaluations, yet these systems remain weak at handling word order changes.</S>
+			<S sid="7" ssid="7">The re ordering models used in the original phrase-basedsystems penalize phrase displacements proportionally to the amount of nonmonotonicity, with no con sideration of the fact that some words are far more M M D S D !" #$ %&amp; '( )* +, -.</S>
+			<S sid="8" ssid="8">/ eue nviro nme nt m inist ers hold mee tings in l uxem burg . 01 23 45 67 8 / the d evel opm ent and prog ress of the regi on . D M D D (b)(a)Figure 1: Phase orientations (monotone, swap, discontin uous) for Chinese-to-English translation.</S>
+			<S sid="9" ssid="9">While previouswork reasonably models phrase reordering in simple ex amples (a), it fails to capture more complex reorderings, such as the swapping of ?of the region?</S>
+			<S sid="10" ssid="10">(b).likely to be displaced than others (e.g., in English-to Japanese translation, a verb should typically move to the end of the clause).</S>
+			<S sid="11" ssid="11">Recent efforts (Tillman, 2004; Och et al, 2004; Koehn et al, 2007) have directly addressed this issue by introducing lexicalized reordering models into phrase-based systems, which condition reordering probabilities on the words of each phrase pair.</S>
+			<S sid="12" ssid="12">These models distinguish three orientations with respect to the previous phrase?monotone (M), swap (S), anddiscontinuous (D)?and as such are primarily de signed to handle local re-orderings of neighboring phrases.</S>
+			<S sid="13" ssid="13">Fig.</S>
+			<S sid="14" ssid="14">1(a) is an example where such a modeleffectively swaps the prepositional phrase in Luxembourg with a verb phrase, and where the noun min isters remains in monotone order with respect to the previous phrase EU environment.</S>
+			<S sid="15" ssid="15">While these lexicalized re-ordering models have shown substantial improvements over unlexicalized phrase-based systems, these models only have a 848limited ability to capture sensible long distance re orderings, as can be seen in Fig.</S>
+			<S sid="16" ssid="16">1(b).</S>
+			<S sid="17" ssid="17">The phrase of the region should swap with the rest of the noun phrase, yet these previous approaches are unable to model this movement, and assume the orientation of this phrase is discontinuous (D).</S>
+			<S sid="18" ssid="18">Observe that, in a shortened version of the same sentence (withoutand progress), the phrase orientation would be different (S), even though the shortened version has es sentially the same sentence structure.</S>
+			<S sid="19" ssid="19">Coming from the other direction, such observations about phrase reordering between different languages are precisely the kinds of facts that parsing approaches to machinetranslation are designed to handle and do success fully handle (Wu, 1997; Melamed, 2003; Chiang, 2005).</S>
+			<S sid="20" ssid="20">In this paper, we introduce a novel orientationmodel for phrase-based systems that aims to bet ter capture long distance dependencies, and that presents a solution to the problem illustrated in Fig.</S>
+			<S sid="21" ssid="21">1(b).</S>
+			<S sid="22" ssid="22">In this example, our reordering modeleffectively treats the adjacent phrases the develop ment and and progress as one single phrase, and the displacement of of the region with respect to thisphrase can be treated as a swap.</S>
+			<S sid="23" ssid="23">To be able iden tify that adjacent blocks (e.g., the development and and progress) can be merged into larger blocks, ourmodel infers binary (non-linguistic) trees reminis cent of (Wu, 1997; Chiang, 2005).</S>
+			<S sid="24" ssid="24">Crucially, our work distinguishes itself from previous hierarchical models in that it does not rely on any cubic-timeparsing algorithms such as CKY (used in, e.g., (Chiang, 2005)) or the Earley algorithm (used in (Watan abe et al, 2006)).</S>
+			<S sid="25" ssid="25">Since our reordering model doesnot attempt to resolve natural language ambiguities, we can effectively rely on (linear-time) shiftreduce parsing, which is done jointly with left-toright phrase-based beam decoding and thus intro duces no asymptotic change in running time.</S>
+			<S sid="26" ssid="26">Assuch, the hierarchical model presented in this paper maintains all the effectiveness and speed advantages of statistical phrase-based systems, while be ing able to capture some key linguistic phenomena (presented later in this paper) which have motivated the development of parsing-based approaches.</S>
+			<S sid="27" ssid="27">We also illustrate this with results that are significantly better than previous approaches, in particular the lexical reordering models of Moses, a widely used phrase-based SMT system (Koehn et al, 2007).This paper is organized as follows: the train ing of lexicalized re-ordering models is described in Section 3.</S>
+			<S sid="28" ssid="28">In Section 4, we describe how to combine shift-reduce parsing with left-to-right beamsearch phrase-based decoding with the same asymptotic running time as the original phrase-based decoder.</S>
+			<S sid="29" ssid="29">We finally show in Section 6 that our ap proach yields results that are significantly better thanprevious approaches for two language pairs and dif ferent test sets.</S>
+	</SECTION>
+	<SECTION title="Lexicalized Reordering Models. " number="2">
+			<S sid="30" ssid="1">We compare our re-ordering model with related work (Tillman, 2004; Koehn et al, 2007) using alog-linear approach common to many state-of-the art statistical machine translation systems (Och and Ney, 2004).</S>
+			<S sid="31" ssid="2">Given an input sentence f, which is to be translated into a target sentence e, the decodersearches for the most probable translation e?</S>
+			<S sid="32" ssid="3">accord ing to the following decision rule: e?</S>
+			<S sid="33" ssid="4">= argmax e { p(e|f) } (1) = argmax e { J ? j=1 ? jh j(f,e) } (2) h j(f,e) are J arbitrary feature functions over sentence pairs.</S>
+			<S sid="34" ssid="5">These features include lexicalized re-ordering models, which are parameterized as follows: given an input sentence f, a sequence of target-language phrases e = (e1, . . .</S>
+			<S sid="35" ssid="6">,en) currently hypothesized by the decoder, and a phrase alignment a = (a1, . . .</S>
+			<S sid="36" ssid="7">,an) that defines a source f ai for eachtranslated phrase ei, these models estimate the prob ability of a sequence of orientations o = (o1, . . .</S>
+			<S sid="37" ssid="8">,on) p(o|e, f) = n ? i=1 p(oi|ei, f ai ,ai?1,ai), (3)where each oi takes values over the set of possi ble orientations O = {M,S,D}.1 The probability is conditioned on both ai?1 and ai to make sure that the label oi is consistent with the phrase alignment.</S>
+			<S sid="38" ssid="9">Specifically, probabilities in these models can be 1We note here that the parameterization and terminology in (Tillman, 2004) is slightly different.</S>
+			<S sid="39" ssid="10">We purposely ignore thesedifferences in order to enable a direct comparison between Till man?s, Moses?, and our approach.</S>
+			<S sid="40" ssid="11">849 ..</S>
+			<S sid="41" ssid="12">b i . . .</S>
+			<S sid="42" ssid="13">b i ..</S>
+			<S sid="43" ssid="14">(a) (b) (c) b i s u v u v uv s s Figure 2: Occurrence of a swap according to the threeorientation models: word-based, phrase-based, and hier archical.</S>
+			<S sid="44" ssid="15">Black squares represent word alignments, and gray squares represent blocks identified by phrase-extract.In (a), block bi = (ei, fai) is recognized as a swap accord ing to all three models.</S>
+			<S sid="45" ssid="16">In (b), bi is not recognized as a swap by the word-based model.</S>
+			<S sid="46" ssid="17">In (c), bi is recognized as a swap only by the hierarchical model.greater than zero only if one of the following con ditions is true: ? oi = M and ai ?ai?1 = 1 ? oi = S and ai ?ai?1 = ?1 ? oi = D and |ai ?ai?1| 6= 1At decoding time, rather than using the log probability of Eq.</S>
+			<S sid="47" ssid="18">3 as single feature function, we follow the approach of Moses, which is to assign three distinct parameters (?m,?s,?d) for the three feature functions: ? fm = ?ni=1 log p(oi = M| . . .)</S>
+			<S sid="48" ssid="19">fs = ?ni=1 log p(oi = S| . . .)</S>
+			<S sid="49" ssid="20">fd = ?ni=1 log p(oi = D| . . .).</S>
+			<S sid="50" ssid="21">There are two key differences between this work and previous orientation models (Tillman, 2004; Koehn et al, 2007): (1) the estimation of factors in Eq.</S>
+			<S sid="51" ssid="22">3 from data; (2) the segmentation of e and f into phrases, which is static in the case of (Tillman, 2004; Koehn et al, 2007), while it is dynamically updatedwith hierarchical phrases in our case.</S>
+			<S sid="52" ssid="23">These differ ences are described in the two next sections.</S>
+	</SECTION>
+	<SECTION title="Training. " number="3">
+			<S sid="53" ssid="1">We present here three approaches for computingp(oi|ei, f ai ,ai?1,ai) on word-aligned data using rel ative frequency estimates.</S>
+			<S sid="54" ssid="2">We assume here that phrase ei spans the word range s, . . .</S>
+			<S sid="55" ssid="3">, t in the target sentence e and that the phrase f ai spans the range ORIENTATION MODEL oi = M oi = S oi = D word-based (Moses) 0.1750 0.0159 0.8092 phrase-based 0.3192 0.0704 0.6104 hierarchical 0.4878 0.1004 0.4116Table 1: Class distributions of the three orientation mod els, estimated from 12M words of Chinese-English data using the grow-diag alignment symmetrization heuristic implemented in Moses, which is similar to the ?refined?</S>
+			<S sid="56" ssid="4">heuristic of (Och and Ney, 2004).</S>
+			<S sid="57" ssid="5">u, . . .</S>
+			<S sid="58" ssid="6">,v in the source sentence f. All phrase pairs inthis paper are extracted with the phrase-extract algo rithm (Och and Ney, 2004), with maximum length set to 7.Word-based orientation model: This model an alyzes word alignments at positions (s?1,u?1) and (s?1,v+1) in the alignment grid shown in Fig.</S>
+			<S sid="59" ssid="7">2(a).</S>
+			<S sid="60" ssid="8">Specifically, orientation is set to oi = M if (s? 1,u? 1) contains a word alignment and (s?1,v+1) contains no word alignment.</S>
+			<S sid="61" ssid="9">It is set to oi = S if (s?1,u?1) contains no word alignment and (s?1,v+1) contains a word alignment.</S>
+			<S sid="62" ssid="10">In all other cases, it is set to oi = D. This procedure is exactly the same as the one implemented in Moses.2 Phrase-based orientation model: The modelpresented in (Tillman, 2004) is similar to the word based orientation model presented above, except that it analyzes adjacent phrases rather than specificword alignments to determine orientations.</S>
+			<S sid="63" ssid="11">Specif ically, orientation is set to oi = M if an adjacent phrase pair lies at (s?1,u?1) in the alignmentgrid.</S>
+			<S sid="64" ssid="12">It is set to S if an adjacent phrase pair cov ers (s?1,v+1) (as shown in Fig.</S>
+			<S sid="65" ssid="13">2(b)), and is set to D otherwise.Hierarchical orientation model: This model analyzes alignments beyond adjacent phrases.</S>
+			<S sid="66" ssid="14">Specifically, orientation is set to oi = M if the phrase extract algorithm is able to extract a phrase pair at (s?1,u?1) given no constraint on maximum phrase length.</S>
+			<S sid="67" ssid="15">Orientation is S if the same is true at (s?1,v+1), and orientation is D otherwise.Table 1 displays overall class distributions according to the three models.</S>
+			<S sid="68" ssid="16">It appears clearly that occurrences of M and S are too sparsely seen in the word based model, which assigns more than 80% of its 2http://www.statmt.org/moses/?n=Moses.AdvancedFeatures 850 word phrase hier.</S>
+			<S sid="69" ssid="17">Monotone with previous p(oi = M|ei, f ai ,ai?1,ai) 1 ,4 and is 0.223 0.672 0.942 2 , and also 0.201 0.560 0.948 Swap with previous p(oi = S|ei, f ai ,ai?1,ai) 3 ?){ of china 0.303 0.617 0.651 4 ??</S>
+			<S sid="70" ssid="18">, he said 0.003 0.030 0.395 Monotone with next p(oi = M|ei, f ai ,ai+1,ai) 5 ???</S>
+			<S sid="71" ssid="19">, he pointed out that 0.601 0.770 0.991 6 l , however , 0.517 0.728 0.968 Swap with next p(oi = S|ei, f ai ,ai+1,ai) 7 {0 the development of 0.145 0.831 0.900 8 {? at the invitation of 0.272 0.834 0.925 Table 2: Monotone and swap probabilities for specific phrases according to the three models (word, phrase, and hierarchical).</S>
+			<S sid="72" ssid="20">To ensure probabilities are representative, we only selected phrase pairs that occur at least 100 times in the training data.</S>
+			<S sid="73" ssid="21">probability mass to D. Conversely, the hierarchical model counts considerably less discontinuous cases, and is the only model that accounts for the fact that real data is predominantly monotone.Since D is a rather uninformative default cat egory that gives no clue how a particular phraseshould be displaced, we will also provide MT evalu ation scores (in Section 6) for a set of classes that distinguishes between left and right discontinuity{M,S,Dl,Dr}, a choice that is admittedly more lin guistically motivated.Table 2 displays orientation probabilities for con crete examples.</S>
+			<S sid="74" ssid="22">Each example was put under one of the four categories that linguistically seems thebest match, and we provide probabilities for that cat egory according to each model.</S>
+			<S sid="75" ssid="23">Note that, whilewe have so far only discussed left-to-right reorder ing models, it is also possible to build right-to-leftmodels by substituting ai?1 with ai+1 in Eq.</S>
+			<S sid="76" ssid="24">3.</S>
+			<S sid="77" ssid="25">Ex amples for right-to-left models appear in the second half of the table.</S>
+			<S sid="78" ssid="26">The table strongly suggests that the hierarchical model more accurately determinesthe orientation of phrases with respect to large contextual blocks.</S>
+			<S sid="79" ssid="27">In Examples 1 and 2, the hierarchi cal model captures the fact that coordinated clauses almost always remain in the same order, and that words should generally be forbidden to move from one side of ?and?</S>
+			<S sid="80" ssid="28">to the other side, a constraint thatis difficult to enforce with the other two reorder ing models.</S>
+			<S sid="81" ssid="29">In Example 4, the first two models completely ignore that ?he said?</S>
+			<S sid="82" ssid="30">sometimes rotates around its neighbor clause.</S>
+	</SECTION>
+	<SECTION title="Decoding. " number="4">
+			<S sid="83" ssid="1">Computing reordering scores during decoding with word-based3 and phrase-based models (Tillman, 2004) is trivial, since they only make use of localinformation to determine the orientation of a new in coming block bi.</S>
+			<S sid="84" ssid="2">For a left-to-right ordering model, bi is scored based on its orientation with respect to bi?1.</S>
+			<S sid="85" ssid="3">For instance, if bi has a swap orientation withrespect to the previous phrase in the current translation hypothesis, feature p(oi = S| . . .)</S>
+			<S sid="86" ssid="4">becomes ac tive.</S>
+			<S sid="87" ssid="5">Computing lexicalized reordering scores with the hierarchical model is more complex, since the model must identify contiguous blocks?monotone or swapping?that can be merged into hierarchical blocks.</S>
+			<S sid="88" ssid="6">The employed method is an instance of thewell-known shift-reduce parsing algorithm, and re lies on a stack (S) of foreign substrings that have already been translated.</S>
+			<S sid="89" ssid="7">Each time the decoder adds a new block to the current translation hypothesis, it shifts the source-language indices of the block ontoS, then repeatedly tries reducing the top two ele ments of S if they are contiguous.4 This parsingalgorithm was first applied in computational geome try to identify convex hulls (Graham, 1972), and its running time was shown to be linear in the length of the sequence (a proof is presented in (Huang et al., 2008), which applies the same algorithm to the binarization of SCFG rules).</S>
+			<S sid="90" ssid="8">Figure 3 provides an example of the execution of this algorithm for the translation output shownin Figure 4, which was produced by a decoder in corporating our hierarchical reordering model.</S>
+			<S sid="91" ssid="9">The decoder successively pushes source-language spans [1], [2], [3], which are successively merged into [1-3], and all correspond to monotone orientations.3We would like to point out an inconsistency in Moses be tween training and testing.</S>
+			<S sid="92" ssid="10">Despite the fact that Moses estimates a word-based orientation model during training (i.e., it analyzes the orientation of a given phrase with respect to adjacent wordalignments), this model is then treated as a phrase-based orien tation model during testing (i.e., as a model that orients phrases with respect to other phrases).</S>
+			<S sid="93" ssid="11">4It is not needed to store target-language indices onto thestack, since the decoder proceeds left to right, and thus suc cessive blocks are always contiguous with respect to the target language.</S>
+			<S sid="94" ssid="12">851 Target phrase Source Op.</S>
+			<S sid="95" ssid="13">oi Stack the russian side [1] S M hopes [2] R M [1] to [3] R M [1-2] hold [11] S D [1-3] consultations [12] R M [11], [1-3] with iran [9-10] R S [11-12], [1-3] on this [6-7] S D [9-12], [1-3] issue [8] R,R M [6-7], [9-12], [1-3] in the near future [4-5] R,R S [6-12], [1-3] . [13] R,A M [1-12]Figure 3: The application of the shift-reduce parsing algorithm for identifying hierarchical blocks.</S>
+			<S sid="96" ssid="14">This execu tion corresponds to the decoding example of Figure 4.Operations (Op.)</S>
+			<S sid="97" ssid="15">include shift (S), reduce (R), and accept (A).</S>
+			<S sid="98" ssid="16">The source and stack columns contain source language spans, which is the only information needed to determine whether two given blocks are contiguous.</S>
+			<S sid="99" ssid="17">oi isthe label predicted by the hierarchical model by compar ing the current block to the hierarchical phrase that is at the top of the stack.</S>
+			<S sid="100" ssid="18">/0 12 34 56 the russi an side hope s to hold cons ultati ons with iran on this issue in the near future ..................</S>
+			<S sid="101" ssid="19">................. h 1 h 2 h 3 Figure 4: Output of our phrase-based decoder using the hierarchical model on a sentence of MT06.</S>
+			<S sid="102" ssid="20">Hierarchical phrases h1 and h2 indicate that with Iran and in the near future have a swap orientation.</S>
+			<S sid="103" ssid="21">h3 indicates that ?to?</S>
+			<S sid="104" ssid="22">and ?.?</S>
+			<S sid="105" ssid="23">are monotone.</S>
+			<S sid="106" ssid="24">In this particular example, distortion limit was set to 10.</S>
+			<S sid="107" ssid="25">It then encounters a discontinuity that prevents the next block [11] from being merged with [1-3].</S>
+			<S sid="108" ssid="26">As the decoder reaches the last words of the sentence (in the near future), [4-5] is successively merged with [6-12], then [1-3], yielding a stack that contains only [1-12].</S>
+			<S sid="109" ssid="27">A nice property of this parsing algorithm is that it does not worsen the asymptotic running time of beam-search decoders such as Moses (Koehn, 2004a).</S>
+			<S sid="110" ssid="28">Such decoders run in time O(n2), where n is the length of the input sentence.</S>
+			<S sid="111" ssid="29">Indeed, each time a partial translation hypothesis is expanded intoa longer one, the decoder must perform an O(n) op eration in order to copy the coverage set (indicating which foreign words have already been translated) into the new hypothesis.</S>
+			<S sid="112" ssid="30">Since this copy operationmust be executed O(n) times, the overall time complexity is quadratic.</S>
+			<S sid="113" ssid="31">The incorporation of the shift reduce parser into such a decoder does not worsenoverall time complexity: whenever the decoder expands a given partial translation into a longer hy pothesis, it simply copies its stack into the newlycreated hypothesis (similarly to copying the cover age vector, this is an O(n) operation).</S>
+			<S sid="114" ssid="32">Hence, the incorporation of the hierarchical models described in the paper into a phrase-based decoder preserves the O(n2) running time.</S>
+			<S sid="115" ssid="33">In practice, we observe based on a set of experiments for Chinese-English and Arabic-English translation that our phrase-based decoder is on average only 1.35 times slower when it is running using hierarchical reordering features and the shift-reduce parser.We finally note that the decoding algorithm presented in this section can only be applied left-to right if the decoder itself is operating left-to-right.In order to predict orientations relative to the rightto-left hierarchical reordering model, we must resort to approximations at decoding time.</S>
+			<S sid="116" ssid="34">We experi mented with different approximations, and the one that worked best (in the experiments discussed in Section 6) is described as follows.</S>
+			<S sid="117" ssid="35">First, we note that an analysis of the alignment grid often reveals that certain orientations are impossible.</S>
+			<S sid="118" ssid="36">For instance, the block issue in Figure 4 can only have discontinuousorientation with respect to what comes next in En glish, since words surrounding the Chinese phrasehave already been translated.</S>
+			<S sid="119" ssid="37">When several hier archical orientations are possible according to thealignment grid, we choose according to the follow ing order of preference: (1) monotone, (2) swap, (3) discontinuous.</S>
+			<S sid="120" ssid="38">For instance, in the case of with iranin Figure 4, only swap and discontinuous orientations are possible (monotone orientation is impossi ble because of the block hold consultations), hence we give preference to swap.</S>
+			<S sid="121" ssid="39">This prediction turns out to be the correct one according to the decoding 852 steps that complete the alignment grid.</S>
+	</SECTION>
+	<SECTION title="Discussion. " number="5">
+			<S sid="122" ssid="1">We now analyze the system output of Figure 4 to fur ther motivate the hierarchical model, this time from the perspective of the decoder.</S>
+			<S sid="123" ssid="2">We first observe that the prepositional phrase in the future should rotatearound a relatively large noun phrase headed by consultations.</S>
+			<S sid="124" ssid="3">Unfortunately, localized reordering models such as (Tillman, 2004) have no means of identifying that such a displacement is a swap (S).</S>
+			<S sid="125" ssid="4">Accord ing to these models, the orientation of in the futurewith respect to what comes previously is discontinuous (D), which is an uninformative fall-back category.</S>
+			<S sid="126" ssid="5">By identifying h2 (hold ... issue) as a hierarchical block, the hierarchical model can properly deter mine that the block in the near future should have a swap orientation.5 Similar observations can be made regarding blocks h1 and h3, which leads our model to predict either monotone orientation (between h3and ?to?</S>
+			<S sid="127" ssid="6">and between h3 and ?.?)</S>
+			<S sid="128" ssid="7">or swap orienta tion (between h1 and with Iran) while local models would predict discontinuous in all cases.</S>
+			<S sid="129" ssid="8">Another benefit of the hierarchical model is thatits representation of phrases remains the same dur ing both training and decoding, which is not the casefor word-based and phrase-based reordering mod els.</S>
+			<S sid="130" ssid="9">The deficiency of these local models lies in thefact that blocks handled by phrase-based SMT sys tems tend to be long at training time and short attest time, which has adverse consequences on nonhierarchical reordering models.</S>
+			<S sid="131" ssid="10">For instance, in Fig ure 4, the phrase-based reordering model categorizes the block in the near future as discontinuous, though if the sentence pair had been a training example,this block would count as a swap because of the ex tracted phrase on this issue.</S>
+	</SECTION>
+	<SECTION title="Results. " number="6">
+			<S sid="132" ssid="1">In our experiments, we use a re-implementationof the Moses decoder (Koehn et al, 2007).</S>
+			<S sid="133" ssid="2">Except for lexical reordering models, all other fea tures are standard features implemented almost5Note that the hierarchical phrase hold ... issue is not a well formed syntactic phrase ? i.e., it neither matches the bracketing of the verb phrase hold ... future nor matches the noun phrase consultations ... issue ? yet it enables sensible reordering.</S>
+			<S sid="134" ssid="3">exactly as in Moses: four translation features(phrase-based translation probabilities and lexically weighted probabilities), word penalty, phrase penalty, linear distortion, and language model score.We experiment with two language pairs: Chinese to-English (C-E) and Arabic-to-English (A-E).</S>
+			<S sid="135" ssid="4">For C-E, we trained translation models using a subset of the Chinese-English parallel data released by LDC (mostly news, in particular FBIS and Xinhua News).</S>
+			<S sid="136" ssid="5">This subset comprises 12.2M English words, and 11M Chinese words.</S>
+			<S sid="137" ssid="6">Chinese words are segmented with a conditional random field (CRF) classifier that conforms to the Chinese Treebank (CTB) standard.</S>
+			<S sid="138" ssid="7">The training set for our A-E systems also includes mostly news parallel data released by LDC, and contains 19.5M English words, and 18.7M Arabic tokens that have been segmented using the Arabic Treebank (ATB) (Maamouri et al, 2004) standard.6 For our language model, we trained a 5-gram model using the Xinhua and AFP sections of the Gigaword corpus (LDC2007T40), in addition to the target side of the parallel data.</S>
+			<S sid="139" ssid="8">For both C-E and A-E, we manually removed documents of Gigaword that were released during periods that overlap with those of our development and test sets.</S>
+			<S sid="140" ssid="9">The language model was smoothed with the modified Kneser-Ney algorithm, and we kept only trigrams, 4-grams, and 5-grams that respectively occurred two, three, and three times in the training data.</S>
+			<S sid="141" ssid="10">Parameters were tuned with minimum error-rate training (Och, 2003) on the NIST evaluation set of 2006 (MT06) for both C-E and A-E.</S>
+			<S sid="142" ssid="11">Since MERTis prone to search errors, especially with large num bers of parameters, we ran each tuning experimentfour times with different initial conditions.</S>
+			<S sid="143" ssid="12">This pre caution turned out to be particularly important in the case of the combined lexicalized reordering models (the combination of phrase-based and hierarchical discussed later), since MERT must optimize up to 26 parameters at once in these cases.7 For testing, 6Catalog numbers for C-E: LDC2002E18, LDC2003E07, LDC2003E14, LDC2005E83, LDC2005T06, LDC2006E26, and LDC2006E8.</S>
+			<S sid="144" ssid="13">For A-E: LDC2007E103, LDC2005E83, LDC2006E24, LDC2006E34, LDC2006E85, LDC2006E92, LDC2007E06, LDC2007E101, LDC2007E46, LDC2007E86, and LDC2008E40.7We combine lexicalized reordering models by simply treat ing them as distinct features, which incidentally increases the number of model parameters that must be tuned with MERT.</S>
+			<S sid="145" ssid="14">853 30.5 31 31.5 32 32.5 33 33.5 34 0 2 4 6 8 10 12 14 BL EU [%], Ch ines e-E ngli sh distortion limit hierarchicalphrase-based word-basedbaseline 43 43.5 44 44.5 45 45.5 0 2 4 6 8 10 BL EU [%], Arabic Eng lish distortion limit hierarchicalphrase-based word-basedbaseline Figure 5: Performance on the Chinese-English andArabic-English development sets (MT06) with increasing distortion limits for all lexicalized reordering mod els discussed in the paper.</S>
+			<S sid="146" ssid="15">Our novel hierarchical model systematically outperforms all other models for distortion limit equal to or greater than 4.</S>
+			<S sid="147" ssid="16">The baseline is Moses with no lexicalized reordering model.</S>
+			<S sid="148" ssid="17">we used the NIST evaluation sets of 2005 and 2008 (MT05 and MT08) for Chinese-English, and the test set of 2005 (MT05) for Arabic-English.</S>
+			<S sid="149" ssid="18">Statistical significance is computed using the approximate randomization test (Noreen, 1989), whose application to MT evaluation (Riezler and Maxwell, 2005) was shown to be less sensitive totype-I errors (i.e., incorrectly concluding that im provement is significant) than the perhaps more widely used bootstrap resampling method (Koehn, 2004b).</S>
+			<S sid="150" ssid="19">Tuning set performance is shown in Figure 5.</S>
+			<S sid="151" ssid="20">Since this paper studies various ordering models,it is interesting to first investigate how the distor LEXICALIZED REORDERING MT06 MT05 MT08 none 31.85 29.75 25.22 word-based 32.96 31.45 25.86 phrase-based 33.24 31.23 26.01 hierarchical 33.80** 32.20** 26.38 phrase-based + hierarchical 33.86** 32.85** 26.53* Table 3: BLEU[%] scores (uncased) for Chinese-Englishand the orientation categories {M,S,D}.</S>
+			<S sid="152" ssid="21">Maximum dis tortion is set to 6 words, which is the default in Moses.</S>
+			<S sid="153" ssid="22">The stars at the bottom of the tables indicate when a given hierarchical model is significantly better than all localmodels for a given development or test set (*: signifi cance at the .05 level; **: significance at the .01 level).</S>
+			<S sid="154" ssid="23">LEXICALIZED REORDERING MT06 MT05 MT08 phrase-based 33.79 32.32 26.32 hierarchical 34.01 32.35 26.58 phrase-based + hierarchical 34.36** 32.33 27.03** Table 4: BLEU[%] scores (uncased) for Chinese-English and the orientation categories {M,S,Dl ,Dr}.</S>
+			<S sid="155" ssid="24">Since the distinction between these four categories is not available in Moses, hence we have no baseline results for this case.</S>
+			<S sid="156" ssid="25">Maximum distortion is set to 6 words.</S>
+			<S sid="157" ssid="26">tion limit affects performance.8 As has been shownin previous work in Chinese-English and Arabic English translation, limiting phrase displacements to six source-language words is a reasonable choice.For both C-E and A-E, the hierarchical model is sig nificantly better (p ? .05) than either other modelsfor distortion limits equal to or greater than 6 (ex cept for distortion limit 12 in the case of C-E).</S>
+			<S sid="158" ssid="27">Since a distortion limit of 6 works reasonably well for both language pairs and is the default in Moses, we used this distortion limit value for all test-set experiments presented in this paper.</S>
+			<S sid="159" ssid="28">Our main results for Chinese-English are shownin Table 3.</S>
+			<S sid="160" ssid="29">It appears that hierarchical models provide significant gains over all non-hierarchical models.</S>
+			<S sid="161" ssid="30">Improvements on MT06 and MT05 are very sig nificant (p ? .01).</S>
+			<S sid="162" ssid="31">In the case of MT08, significant improvement is reached through the combination ofboth phrase-based and hierarchical models.</S>
+			<S sid="163" ssid="32">We of ten observe substantial gains when we combine such models, presumably because we get the benefit of identifying both local and long-distance swaps.</S>
+			<S sid="164" ssid="33">Since most orientations in the phrase-based model are discontinuous, it is reasonable to ask whether8Note that we ran MERT separately for each distinct distor tion limit.</S>
+			<S sid="165" ssid="34">854 LEXICALIZED REORDERING MT06 MT05 none 44.03 54.87 word-based 44.64 54.96 phrase-based 45.01 55.09 hierarchical 45.51* 55.50* phrase-based + hierarchical 45.64** 56.01** Table 5: BLEU[%] scores (uncased) for Arabic-English and the reordering categories {M,S,D}.</S>
+			<S sid="166" ssid="35">LEXICALIZED REORDERING MT06 MT05 phrase-based 44.74 55.52 hierarchical 45.53** 56.02** phrase-based + hierarchical 45.63** 56.07** Table 6: BLEU[%] scores (uncased) for Arabic-English and the reordering categories {M,S,Dl ,Dr}.</S>
+			<S sid="167" ssid="36">the relatively poor performance of the phrase-basedmodel is the consequence of an inadequate set of ori entation labels.</S>
+			<S sid="168" ssid="37">To try to answer this question, weuse the set of orientation labels {M,S,Dl,Dr} de scribed in Section 3.</S>
+			<S sid="169" ssid="38">Results for this different set oforientations are shown in Table 4.</S>
+			<S sid="170" ssid="39">While the phrasebased model appears to benefit more from the distinction between left- and right-discontinuous, sys tems that incorporate hierarchical models remain the most competitive overall: their best performance on MT06, MT05, and MT08 are respectively 34.36, 32.85, and 27.03.</S>
+			<S sid="171" ssid="40">The best non-hierarchical models achieve only 33.79, 32.32, and 26.32, respectively.All these differences (i.e., .57, .53, and .71) are sta tistically significant at the .05 level.Our results for Arabic-English are shown in Ta bles 5 and 6.</S>
+			<S sid="172" ssid="41">Similarly to C-E, we provide results for two orientation sets: {M,S,D} and {M,S,Dl,Dr}.</S>
+			<S sid="173" ssid="42">We note that the four-class orientation set is overall less effective for A-E than for C-E.</S>
+			<S sid="174" ssid="43">This is probably due to the fact that there is less probability mass in A-E assigned to the D category, and thus it is less helpful to split the discontinuous category into two.</S>
+			<S sid="175" ssid="44">For both orientation sets, we observe in A-E that the hierarchical model significantly outperforms thelocal ordering models.</S>
+			<S sid="176" ssid="45">Gains provided by the hierarchical model are no less significant than for Chinese to-English.</S>
+			<S sid="177" ssid="46">This positive finding is perhaps a bitsurprising, since Arabic-to-English translation gen erally does not require many word order changes compared to Chinese-to-English translation, and thistranslation task so far has seldom benefited from hierarchical approaches to MT. In our case, one possi ble explanation is that Arabic-English translation is benefiting from the fact that orientation predictionsof the hierarchical model are consistent across train ing and testing, which is not the case for the otherordering models discussed in this paper (see Sec tion 4).</S>
+			<S sid="178" ssid="47">Overall, hierarchical models are the most effective on the two sets: their best performances on MT06 and MT05 are respectively 45.64 and 56.07.</S>
+			<S sid="179" ssid="48">The best non-hierarchical models obtain only 45.01 and 55.52 respectively for the same sets.</S>
+			<S sid="180" ssid="49">All thesedifferences (i.e., .63 and .55) are statistically signifi cant at the .05 level.</S>
+	</SECTION>
+	<SECTION title="Conclusions and Future Work. " number="7">
+			<S sid="181" ssid="1">In this paper, we presented a lexicalized orientation model that enables phrase movements that are more complex than swaps between adjacent phrases.</S>
+			<S sid="182" ssid="2">This model relies on a hierarchical structure that is builtas a by-product of left-to-right phrase-based decod ing without increase of asymptotic running time.</S>
+			<S sid="183" ssid="3">Weshow that this model provides statistically signifi cant improvements for five NIST evaluation sets and for two language pairs.</S>
+			<S sid="184" ssid="4">In future work, we plan to extend the parameterization of our models to not only predict phrase orientation, but also the length of each displacement as in (Al-Onaizan and Papineni, 2006).</S>
+			<S sid="185" ssid="5">We believe such an extension would improve translation quality in the case of larger distortionlimits.</S>
+			<S sid="186" ssid="6">We also plan to experiment with discriminative approaches to estimating reordering probabil ities (Zens and Ney, 2006; Xiong et al, 2006), whichcould also be applied to our work.</S>
+			<S sid="187" ssid="7">We think the abil ity to condition reorderings on any arbitrary featurefunctions is also very effective in the case of our hi erarchical model, since information encoded in thetrees would seem beneficial to the orientation pre diction task.</S>
+	</SECTION>
+	<SECTION title="Acknowledgements. " number="8">
+			<S sid="188" ssid="1">The authors wish to thank the anonymous reviewers for their comments on an earlier draft of this paper.</S>
+			<S sid="189" ssid="2">This paper is based on work funded by the Defense Advanced Research Projects Agency through IBM.</S>
+			<S sid="190" ssid="3">The content does not necessarily reflect the views of the U.S. Government, and no official endorsement should be inferred.</S>
+			<S sid="191" ssid="4">855</S>
+	</SECTION>
+</PAPER>

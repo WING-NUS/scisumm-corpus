@@ -1,0 +1,216 @@
+<PAPER>
+  <S sid="0">Soft Syntactic Constraints For Word Alignment Through Discriminative Training</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Word alignment methods can gain valuable guidance by ensuring that their alignments maintain cohesion with respect to the phrases specified by a monolingual dependency tree.</S>
+    <S sid="2" ssid="2">However, this hard constraint can also rule out correct alignments, and its utility decreases as alignment models become more complex.</S>
+    <S sid="3" ssid="3">We use a publicly available structured output SVM to create a max-margin syntactic aligner with a soft cohesion constraint.</S>
+    <S sid="4" ssid="4">The resulting aligner is the first, to our knowledge, to use a discriminative learning method to train an ITG bitext parser.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="5" ssid="1">Given a parallel sentence pair, or bitext, bilingual word alignment finds word-to-word connections across languages.</S>
+    <S sid="6" ssid="2">Originally introduced as a byproduct of training statistical translation models in (Brown et al., 1993), word alignment has become the first step in training most statistical translation systems, and alignments are useful to a host of other tasks.</S>
+    <S sid="7" ssid="3">The dominant IBM alignment models (Och and Ney, 2003) use minimal linguistic intuitions: sentences are treated as flat strings.</S>
+    <S sid="8" ssid="4">These carefully designed generative models are difficult to extend, and have resisted the incorporation of intuitively useful features, such as morphology.</S>
+    <S sid="9" ssid="5">There have been many attempts to incorporate syntax into alignment; we will not present a complete list here.</S>
+    <S sid="10" ssid="6">Some methods parse two flat strings at once using a bitext grammar (Wu, 1997).</S>
+    <S sid="11" ssid="7">Others parse one of the two strings before alignment begins, and align the resulting tree to the remaining string (Yamada and Knight, 2001).</S>
+    <S sid="12" ssid="8">The statistical models associated with syntactic aligners tend to be very different from their IBM counterparts.</S>
+    <S sid="13" ssid="9">They model operations that are meaningful at a syntax level, like re-ordering children, but ignore features that have proven useful in IBM models, such as the preference to align words with similar positions, and the HMM preference for links to appear near one another (Vogel et al., 1996).</S>
+    <S sid="14" ssid="10">Recently, discriminative learning technology for structured output spaces has enabled several discriminative word alignment solutions (Liu et al., 2005; Moore, 2005; Taskar et al., 2005).</S>
+    <S sid="15" ssid="11">Discriminative learning allows easy incorporation of any feature one might have access to during the alignment search.</S>
+    <S sid="16" ssid="12">Because the features are handled so easily, discriminative methods use features that are not tied directly to the search: the search and the model become decoupled.</S>
+    <S sid="17" ssid="13">In this work, we view synchronous parsing only as a vehicle to expose syntactic features to a discriminative model.</S>
+    <S sid="18" ssid="14">This allows us to include the constraints that would usually be imposed by a tree-to-string alignment method as a feature in our model, creating a powerful soft constraint.</S>
+    <S sid="19" ssid="15">We add our syntactic features to an already strong flat-string discriminative solution, and we show that they provide new information resulting in improved alignments.</S>
+  </SECTION>
+  <SECTION title="2 Constrained Alignment" number="2">
+    <S sid="20" ssid="1">Let an alignment be the complete structure that connects two parallel sentences, and a link be one of the word-to-word connections that make up an alignment.</S>
+    <S sid="21" ssid="2">All word alignment methods benefit from some set of constraints.</S>
+    <S sid="22" ssid="3">These limit the alignment search space and encourage competition between potential links.</S>
+    <S sid="23" ssid="4">The IBM models (Brown et al., 1993) benefit from a one-tomany constraint, where each target word has exactly one generator in the source.</S>
+    <S sid="24" ssid="5">Methods like competitive linking (Melamed, 2000) and maximum matching (Taskar et al., 2005) use a one-toone constraint, where words in either sentence can participate in at most one link.</S>
+    <S sid="25" ssid="6">Throughout this paper we assume a one-to-one constraint in addition to any syntax constraints.</S>
+    <S sid="26" ssid="7">Suppose we are given a parse tree for one of the two sentences in our sentence pair.</S>
+    <S sid="27" ssid="8">We will refer to the parsed language as English, and the unparsed language as Foreign.</S>
+    <S sid="28" ssid="9">Given this information, a reasonable expectation is that English phrases will move together when projected onto Foreign.</S>
+    <S sid="29" ssid="10">When this occurs, the alignment is said to maintain phrasal cohesion.</S>
+    <S sid="30" ssid="11">Fox (2002) measured phrasal cohesion in gold standard alignments by counting crossings.</S>
+    <S sid="31" ssid="12">Crossings occur when the projections of two disjoint phrases overlap.</S>
+    <S sid="32" ssid="13">For example, Figure 1 shows a head-modifier crossing: the projection of the the tax subtree, imp&#710;ot ... le, is interrupted by the projection of its head, cause.</S>
+    <S sid="33" ssid="14">Alignments with no crossings maintain phrasal cohesion.</S>
+    <S sid="34" ssid="15">Fox&#8217;s experiments show that cohesion is generally maintained for French-English, and that dependency trees produce the highest degree of cohesion among the tested structures.</S>
+    <S sid="35" ssid="16">Cherry and Lin (2003) use the phrasal cohesion of a dependency tree as a constraint on a beam search aligner.</S>
+    <S sid="36" ssid="17">This constraint produces a significant reduction in alignment error rate.</S>
+    <S sid="37" ssid="18">However, as Fox (2002) showed, even in a language pair as close as French-English, there are situations where phrasal cohesion should not be maintained.</S>
+    <S sid="38" ssid="19">These include incorrect parses, systematic violations such as not &#8212;* ne ... pas, paraphrases, and linguistic exceptions.</S>
+    <S sid="39" ssid="20">We aim to create an alignment system that obeys cohesion constraints most of the time, but can violate them when necessary.</S>
+    <S sid="40" ssid="21">Unfortunately, Cherry and Lin&#8217;s beam search solution does not lend itself to a soft cohesion constraint.</S>
+    <S sid="41" ssid="22">The imperfect beam search may not be able to find the optimal alignment under a soft constraint.</S>
+    <S sid="42" ssid="23">Furthermore, it is not clear what penalty to assign to crossings, or how to learn such a penalty from an iterative training process.</S>
+    <S sid="43" ssid="24">The remainder of this paper will develop a complete alignment search that is aware of cohesion violations, and use discriminative learning technology to assign a meaningful penalty to those violations.</S>
+  </SECTION>
+  <SECTION title="3 Syntax-aware Alignment Search" number="3">
+    <S sid="44" ssid="1">We require an alignment search that can find the globally best alignment under its current objective function, and can account for phrasal cohesion in this objective.</S>
+    <S sid="45" ssid="2">IBM Models 1 and 2, HMM (Vogel et al., 1996), and weighted maximum matching alignment all conduct complete searches, but they would not be amenable to monitoring the syntactic interactions of links.</S>
+    <S sid="46" ssid="3">The tree-to-string models of (Yamada and Knight, 2001) naturally consider syntax, but special modeling considerations are needed to allow any deviations from the provided tree (Gildea, 2003).</S>
+    <S sid="47" ssid="4">The Inversion Transduction Grammar or ITG formalism, described in (Wu, 1997), is well suited for our purposes.</S>
+    <S sid="48" ssid="5">ITGs perform string-to-string alignment, but do so through a parsing algorithm that will allow us to inform the objective function of our dependency tree.</S>
+    <S sid="49" ssid="6">An ITG aligns bitext through synchronous parsing.</S>
+    <S sid="50" ssid="7">Both sentences are decomposed into constituent phrases simultaneously, producing a word alignment as a byproduct.</S>
+    <S sid="51" ssid="8">Viewed generatively, an ITG writes to two streams at once.</S>
+    <S sid="52" ssid="9">Terminal productions produce a token in each stream, or a token in one stream with the null symbol 0 in the other.</S>
+    <S sid="53" ssid="10">We will use standard ITG notation: A &#8212;* e/f indicates that the token e is produced on the English stream, while f is produced on the Foreign stream.</S>
+    <S sid="54" ssid="11">To allow for some degree of movement during translation, non-terminal productions are allowed to be either straight or inverted.</S>
+    <S sid="55" ssid="12">Straight productions, with their non-terminals inside square brackets [...], produce their symbols in the same order on both streams.</S>
+    <S sid="56" ssid="13">Inverted productions, indicated by angled brackets (...), have their nonterminals produced in the given order on the English stream, but this order is reversed in the Foreign stream. the tax causes unrest l' impTMt cause le malaise An ITG chart parser provides a polynomialtime algorithm to conduct a complete enumeration of all alignments that are possible according to its grammar.</S>
+    <S sid="57" ssid="14">We will use a binary bracketing ITG, the simplest interesting grammar in this formalism: A &#8212; [AA]  |(AA)  |e/f This grammar enforces its own weak cohesion constraint: for every possible alignment, a corresponding binary constituency tree must exist for which the alignment maintains phrasal cohesion.</S>
+    <S sid="58" ssid="15">Figure 2 shows a word alignment and the corresponding tree found by an ITG parser.</S>
+    <S sid="59" ssid="16">Wu (1997) provides anecdotal evidence that only incorrect alignments are eliminated by ITG constraints.</S>
+    <S sid="60" ssid="17">In our French-English data set, an ITG rules out only 0.3% of necessary links beyond those already eliminated by the one-to-one constraint (Cherry and Lin, 2006).</S>
+    <S sid="61" ssid="18">An ITG will search all alignments that conform to a possible binary constituency tree.</S>
+    <S sid="62" ssid="19">We wish to confine that search to a specific n-array dependency tree.</S>
+    <S sid="63" ssid="20">Fortunately, Wu (1997) provides a method to have an ITG respect a known partial structure.</S>
+    <S sid="64" ssid="21">One can seed the ITG parse chart so that spans that do not agree with the provided structure are assigned a value of &#8212;oc before parsing begins.</S>
+    <S sid="65" ssid="22">The result is that no constituent is ever constructed with any of these invalid spans.</S>
+    <S sid="66" ssid="23">In the case of phrasal cohesion, the invalid spans correspond to spans of the English sentence that interrupt the phrases established by the provided dependency tree.</S>
+    <S sid="67" ssid="24">To put this notion formally, we first define some terms: given a subtree T[Z,k], where i is the left index of the leftmost leaf in T[Z,k] and k is the right index of its rightmost leaf, we say any index j E (i, k) is internal to T[Z,k].</S>
+    <S sid="68" ssid="25">Similarly, any index x E/ [i, k] is external to T[Z,k].</S>
+    <S sid="69" ssid="26">An invalid span is any span for which our provided tree has a subtree T[Z,k] such that one endpoint of the span is internal to T[Z k] while the other is external to it.</S>
+    <S sid="70" ssid="27">Figure 3 illustrates this definition, while Figure 4 shows the invalid spans induced by a simple dependency tree.</S>
+    <S sid="71" ssid="28">With these invalid spans in place, the ITG can no longer merge part of a dependency subtree with anything other than another part of the same subtree.</S>
+    <S sid="72" ssid="29">Since all ITG movement can be explained by inversions, this constrained ITG cannot interrupt one dependency phrase with part of another.</S>
+    <S sid="73" ssid="30">Therefore, the phrasal cohesion of the input dependency tree is maintained.</S>
+    <S sid="74" ssid="31">Note that this will not search the exact same alignment space as a cohesion-constrained beam search; instead it uses the union of the cohesion constraint and the weaker ITG constraints (Cherry and Lin, 2006).</S>
+    <S sid="75" ssid="32">Transforming this form of the cohesion constraint into a soft constraint is straight-forward.</S>
+    <S sid="76" ssid="33">Instead of overriding the parser so it cannot use invalid English spans, we will note the invalid spans and assign the parser a penalty should it use them.</S>
+    <S sid="77" ssid="34">The value of this penalty will be determined through discriminative training, as described in Section 4.</S>
+    <S sid="78" ssid="35">Since the penalty is available within the dynamic programming algorithm, the parser will be able to incorporate it to find a globally optimal alignment.</S>
+  </SECTION>
+  <SECTION title="4 Discriminative Training" number="4">
+    <S sid="79" ssid="1">To discriminatively train our alignment systems, we adopt the Support Vector Machine (SVM) for Structured Output (Tsochantaridis et al., 2004).</S>
+    <S sid="80" ssid="2">We have selected this system for its high degree of modularity, and because it has an API freely available1.</S>
+    <S sid="81" ssid="3">We will summarize the learning mechanism briefly in this section, but readers should refer to (Tsochantaridis et al., 2004) for more details.</S>
+    <S sid="82" ssid="4">SVM learning is most easily expressed as a constrained numerical optimization problem.</S>
+    <S sid="83" ssid="5">All constraints mentioned in this section are constraints on this optimizer, and have nothing to do with the cohesion constraint from Section 2.</S>
+    <S sid="84" ssid="6">Traditional SVMs attempt to find a linear separator that creates the largest possible margin between two classes of vectors.</S>
+    <S sid="85" ssid="7">Structured output SVMs attempt to separate the correct structure from all incorrect structures by the largest possible margin, for all training instances.</S>
+    <S sid="86" ssid="8">This may sound like a much more difficult problem, but with a few assumptions in place, the task begins to look very similar to a traditional SVM.</S>
+    <S sid="87" ssid="9">As in most discriminative training methods, we begin by assuming that a candidate structure y, built for an input instance x, can be adequately described using a feature vector IF(x, y).</S>
+    <S sid="88" ssid="10">We also assume that our 1F(x, y) decomposes in such a way that the features can guide a search to recover the structure y from x.</S>
+    <S sid="89" ssid="11">That is: is computable, where Y is the set of all possible structures, and w is a vector that assigns weights to each component of IF(x, y). w is the parameter vector we will learn using our SVM.</S>
+    <S sid="90" ssid="12">Now the learning task begins to look straightforward: we are working with vectors, and the task of building a structure y has been recast as an argmax operator.</S>
+    <S sid="91" ssid="13">Our learning goal is to find a w so that the correct structure is found: Vi, Vy E Y \ yi : (w, 'Pi(yi)) &gt; (w, 'Pi(y)) (2) where xi is the ith training example, yi is its correct structure, and 1&amp;i(y) is short-hand for IF(xi, y).</S>
+    <S sid="92" ssid="14">As several w will fulfill (2) in a linearly separable training set, the unique max-margin objective is defined to be the w that maximizes the minimum distance between yi and the incorrect structures in Y.</S>
+    <S sid="93" ssid="15">This learning framework also incorporates a notion of structured loss.</S>
+    <S sid="94" ssid="16">In a standard vector classification problem, there is 0-1 loss: a vector is either classified correctly or it is not.</S>
+    <S sid="95" ssid="17">In the structured case, some incorrect structures can be better than others.</S>
+    <S sid="96" ssid="18">For example, having the argmax select an alignment missing only one link is better than selecting one with no correct links and a dozen wrong ones.</S>
+    <S sid="97" ssid="19">A loss function A(yi, y) quantifies just how incorrect a particular structure y is.</S>
+    <S sid="98" ssid="20">Though Tsochantaridis et al. (2004) provide several ways to incorporate loss into the SVM objective, we will use margin re-scaling, as it corresponds to loss usage in another max-margin alignment approach (Taskar et al., 2005).</S>
+    <S sid="99" ssid="21">In margin re-scaling, high loss structures must be separated from the correct structure by a larger margin than low loss structures.</S>
+    <S sid="100" ssid="22">To allow some misclassifications during training, a soft-margin requirement replaces our maxmargin objective.</S>
+    <S sid="101" ssid="23">A slack variable &#65533;i is introduced for each training example xi, to allow the learner to violate the margin at a penalty.</S>
+    <S sid="102" ssid="24">The magnitude of this penalty to determined by a hand-tuned parameter C. After a few transformations (Tsochantaridis et al., 2004), the soft-margin learning objective can be formulated as a quadratic program: Note how the slack variables &#65533;i allow some incorrect structures to be built.</S>
+    <S sid="103" ssid="25">Also note that the loss A(yi, y) determines the size of the margin between structures.</S>
+    <S sid="104" ssid="26">Unfortunately, (4) provides one constraint for every possible structure for every training example.</S>
+    <S sid="105" ssid="27">Enumerating these constraints explicitly is infeasible, but in reality, only a subset of these constraints are necessary to achieve the same objective.</S>
+    <S sid="106" ssid="28">Re-organizing (4) produces: where costi is defined as: Provided that the max cost structure can be found in polynomial time, we have all the components needed for a constraint generation approach to this optimization problem.</S>
+    <S sid="107" ssid="29">Constraint generation places an outer loop around an optimizer that minimizes (3) repeatedly for a growing set of constraints.</S>
+    <S sid="108" ssid="30">It begins by minimizing (3) with an empty constraint set in place of (4).</S>
+    <S sid="109" ssid="31">This provides values for w~ and ~&#958;.</S>
+    <S sid="110" ssid="32">The max cost structure is found for i = 1 with the current ~w.</S>
+    <S sid="111" ssid="33">If the resulting costi(y; ~w) is greater than the current value of &#958;i, then this represents a violated constraint2 in our complete objective, and a new constraint of the form &#958;i &#8805; costi(y; ~w) is added to the constraint set.</S>
+    <S sid="112" ssid="34">The algorithm then iterates: the optimizer minimizes (3) again with the new constraint set, and solves the max cost problem for i = i + 1 with the new ~w, growing the constraint set if necessary.</S>
+    <S sid="113" ssid="35">Note that the constraints on &#958; change with ~w, as cost is a function of ~w.</S>
+    <S sid="114" ssid="36">Once the end of the training set is reached, the learner loops back to the beginning.</S>
+    <S sid="115" ssid="37">Learning ends when the entire training set can be processed without needing to add any constraints.</S>
+    <S sid="116" ssid="38">It can be shown that this will occur within a polynomial number of iterations (Tsochantaridis et al., 2004).</S>
+    <S sid="117" ssid="39">With this framework in place, one need only fill in the details to create an SVM for a new structured output space: Using the Structured SVM API, we have created two SVM word aligners: a baseline that uses weighted maximum matching for its argmax operator, and a dependency-augmented ITG that will satisfy our requirements for an aligner with a soft cohesion constraint.</S>
+    <S sid="118" ssid="40">Our x becomes a bilingual sentence-pair, while our y becomes an alignment, represented by a set of links.</S>
+    <S sid="119" ssid="41">Given a bipartite graph with edge values, the weighted maximum matching algorithm (West, 2001) will find the matching with maximum summed edge values.</S>
+    <S sid="120" ssid="42">To create a matching alignment solution, we reproduce the approach of (Taskar et al., 2005) within the framework described in Section 4.1: where co is an omission penalty and c, is a commission penalty.</S>
+    <S sid="121" ssid="43">&#8704;l &#8712;/ y : v(l) &#8592; h~w, &#968;(l)i + c, &#8704;l &#8712; y : v(l) &#8592; h~w, &#968;(l)i &#8722; co Note that our max cost search could not have been implemented as loss-augmented matching had we selected one of the other loss objectives presented in (Tsochantaridis et al., 2004) in place of margin rescaling.</S>
+    <S sid="122" ssid="44">We use the same feature representation &#968;(l) as (Taskar et al., 2005), with some small exceptions.</S>
+    <S sid="123" ssid="45">Let l = (Ej, Fk) be a potential link between the jth word of English sentence E and the kth word of Foreign sentence F. To measure correlation between Ej and Fk we use conditional link probability (Cherry and Lin, 2003) in place of the Dice coefficient: where the link counts are determined by wordaligning 50K sentence pairs with another matching SVM that uses the &#966;2 measure (Gale and Church, 1991) in place of Dice.</S>
+    <S sid="124" ssid="46">The 02 measure requires only co-occurrence counts. d is an absolute discount parameter as in (Moore, 2005).</S>
+    <S sid="125" ssid="47">Also, we omit the IBM Model 4 Prediction features, as we wish to know how well we can do without resorting to traditional word alignment techniques.</S>
+    <S sid="126" ssid="48">Otherwise, the features remain the same, including distance features that measure abs ( E &#8722; k ); orthographic features; word frequencies; common-word features; a bias term set always to 1; and an HMM approximation cor(Ej+1, Fk+1).</S>
+    <S sid="127" ssid="49">Because of the modularity of the structured output SVM, our SVM ITG re-uses a large amount infrastructure from the matching solution.</S>
+    <S sid="128" ssid="50">We essentially plug an ITG parser in the place of the matching algorithm, and add features to take advantage of information made available by the parser. x remains a sentence pair, and y becomes an ITG parse tree that decomposes x and specifies an alignment.</S>
+    <S sid="129" ssid="51">Our required components are as follows: The OT vector has two new features in addition to those present in the matching system&#8217;s O.</S>
+    <S sid="130" ssid="52">These features can be active only for non-terminal productions, which have the form A &#8212;* [AA]  |(AA).</S>
+    <S sid="131" ssid="53">One feature indicates an inverted production A &#8212;* (AA), while the other indicates the use of an invalid span according to a provided English dependency tree, as described in Section 3.2.</S>
+    <S sid="132" ssid="54">These are the only features that can be active for nonterminal productions.</S>
+    <S sid="133" ssid="55">A terminal production rl that corresponds to a link l is given that link&#8217;s features from the matching system: OT (rl) = O(l).</S>
+    <S sid="134" ssid="56">Terminal productions ro corresponding to unaligned tokens are given blank feature vectors: OT(ro) = 0.</S>
+    <S sid="135" ssid="57">The SVM requires complete IF vectors for the correct training structures.</S>
+    <S sid="136" ssid="58">Unfortunately, our training set contains gold standard alignments, not ITG parse trees.</S>
+    <S sid="137" ssid="59">The gold standard is divided into sure and possible link sets 5 and P (Och and Ney, 2003).</S>
+    <S sid="138" ssid="60">Links in 5 must be included in a correct alignment, while P links are optional.</S>
+    <S sid="139" ssid="61">We create ITG trees from the gold standard using the following sorted priorities during tree construction: This creates trees that represent high scoring alignments, using a minimal number of invalid spans.</S>
+    <S sid="140" ssid="62">Only the span and inversion counts of these trees will be used in training, so we need not achieve a perfect tree structure.</S>
+    <S sid="141" ssid="63">We still evaluate all methods with the original alignment gold standard.</S>
+  </SECTION>
+  <SECTION title="5 Experiments and Results" number="5">
+    <S sid="142" ssid="1">We conduct two experiments.</S>
+    <S sid="143" ssid="2">The first tests the dependency-augmented ITG described in Section 3.2 as an aligner with hard cohesion constraints.</S>
+    <S sid="144" ssid="3">The second tests our discriminative ITG with soft cohesion constraints against two strong baselines.</S>
+    <S sid="145" ssid="4">We conduct our experiments using French-English Hansard data.</S>
+    <S sid="146" ssid="5">Our 02 scores, link probabilities and word frequency counts are determined using a sentence-aligned bitext consisting of 50K sentence pairs.</S>
+    <S sid="147" ssid="6">Our training set for the discriminative aligners is the first 100 sentence pairs from the FrenchEnglish gold standard provided for the 2003 WPT workshop (Mihalcea and Pedersen, 2003).</S>
+    <S sid="148" ssid="7">For evaluation we compare to the remaining 347 gold standard pairs using the alignment evaluation metrics: precision, recall and alignment error rate or AER (Och and Ney, 2003).</S>
+    <S sid="149" ssid="8">SVM learning parameters are tuned using the 37-pair development set provided with this data.</S>
+    <S sid="150" ssid="9">English dependency trees are provided by Minipar (Lin, 1994).</S>
+    <S sid="151" ssid="10">The goal of this experiment is to empirically confirm that the English spans marked invalid by Section 3.2&#8217;s dependency-augmented ITG provide useful guidance to an aligner.</S>
+    <S sid="152" ssid="11">To do so, we compare an ITG with hard cohesion constraints, an unconstrained ITG, and a weighted maximum matching aligner.</S>
+    <S sid="153" ssid="12">All aligners use the same simple objective function.</S>
+    <S sid="154" ssid="13">They maximize summed link values v(l), where v(l) is defined as follows for an l = (Ej, Fk): All three aligners link based on 02 correlation scores, breaking ties in favor of closer pairs.</S>
+    <S sid="155" ssid="14">This allows us to evaluate the hard constraints outside the context of supervised learning.</S>
+    <S sid="156" ssid="15">Table 1 shows the results of this experiment.</S>
+    <S sid="157" ssid="16">We can see that switching the search method from weighted maximum matching to a cohesionconstrained ITG (D-ITG) has produced a 34% relative reduction in alignment error rate.</S>
+    <S sid="158" ssid="17">The bulk of this improvement results from a substantial increase in precision, though recall has also gone up.</S>
+    <S sid="159" ssid="18">This indicates that these cohesion constraints are a strong alignment feature.</S>
+    <S sid="160" ssid="19">The ITG row shows that the weaker ITG constraints are also valuable, but the cohesion constraint still improves on them.</S>
+    <S sid="161" ssid="20">We now test the performance of our SVM ITG with soft cohesion constraint, or SD-ITG, which is described in Section 4.2.2.</S>
+    <S sid="162" ssid="21">We will test against two strong baselines.</S>
+    <S sid="163" ssid="22">The first baseline, matching is the matching SVM described in Section 4.2.1, which is a re-implementation of the state-of-theart work in (Taskar et al., 2005)3.</S>
+    <S sid="164" ssid="23">The second baseline, D-ITG is an ITG aligner with hard cohesion constraints, but which uses the weights trained by the matching SVM to assign link values.</S>
+    <S sid="165" ssid="24">This is the most straight-forward way to combine discriminative training with the hard syntactic constraints.</S>
+    <S sid="166" ssid="25">The results are shown in Table 2.</S>
+    <S sid="167" ssid="26">The first thing to note is that our Matching baseline is achieving scores in line with (Taskar et al., 2005), which reports an AER of 0.107 using similar features and the same training and test sets.</S>
+    <S sid="168" ssid="27">The effect of the hard cohesion constraint has been greatly diminished after discriminative training.</S>
+    <S sid="169" ssid="28">Matching and D-ITG correspond to the the entries of the same name in Table 1, only with a much stronger, learned value function v(l).</S>
+    <S sid="170" ssid="29">However, in place of a 34% relative error reduction, the hard constraints in the D-ITG produce only a 9% reduction from 0.110 to 0.100.</S>
+    <S sid="171" ssid="30">Also note that this time the hard constraints result in a reduction in recall.</S>
+    <S sid="172" ssid="31">This indicates that the hard cohesion constraint is providing little guidance not provided by other features, and that it is actually eliminating more sure links than it is helping to find.</S>
+    <S sid="173" ssid="32">The soft-constrained SD-ITG, which has access to the D-ITG&#8217;s invalid spans as a feature during SVM training, is fairing substantially better.</S>
+    <S sid="174" ssid="33">Its AER of 0.086 represents a 22% relative error reduction compared to the matching system.</S>
+    <S sid="175" ssid="34">The improved error rate is caused by gains in both precision and recall.</S>
+    <S sid="176" ssid="35">This indicates that the invalid span feature is doing more than just ruling out links; perhaps it is de-emphasizing another, less accurate feature&#8217;s role.</S>
+    <S sid="177" ssid="36">The SD-ITG overrides the cohesion constraint in only 41 of the 347 test sentences, so we can see that it is indeed a soft constraint: it is obeyed nearly all the time, but it can be broken when necessary.</S>
+    <S sid="178" ssid="37">The SD-ITG achieves by far the strongest ITG alignment result reported on this French-English set; surpassing the 0.16 AER reported in (Zhang and Gildea, 2004).</S>
+    <S sid="179" ssid="38">Training times for this system are quite low; unsupervised statistics can be collected quickly over a large set, while only the 100-sentence training set needs to be iteratively aligned.</S>
+    <S sid="180" ssid="39">Our matching SVM trains in minutes on a single-processor machine, while the SD-ITG trains in roughly one hour.</S>
+    <S sid="181" ssid="40">The ITG is the bottleneck, so training time could be improved by optimizing the parser.</S>
+  </SECTION>
+  <SECTION title="6 Related Work" number="6">
+    <S sid="182" ssid="1">Several other aligners have used discriminative training.</S>
+    <S sid="183" ssid="2">Our work borrows heavily from (Taskar et al., 2005), which uses a max-margin approach with a weighted maximum matching aligner.</S>
+    <S sid="184" ssid="3">(Moore, 2005) uses an averaged perceptron for training with a customized beam search.</S>
+    <S sid="185" ssid="4">(Liu et al., 2005) uses a log-linear model with a greedy search.</S>
+    <S sid="186" ssid="5">To our knowledge, ours is the first alignment approach to use this highly modular structured SVM, and the first discriminative method to use an ITG for the base aligner.</S>
+    <S sid="187" ssid="6">(Gildea, 2003) presents another aligner with a soft syntactic constraint.</S>
+    <S sid="188" ssid="7">This work adds a cloning operation to the tree-to-string generative model in (Yamada and Knight, 2001).</S>
+    <S sid="189" ssid="8">This allows subtrees to move during translation.</S>
+    <S sid="190" ssid="9">As the model is generative, it is much more difficult to incorporate a wide variety of features as we do here.</S>
+    <S sid="191" ssid="10">In (Zhang and Gildea, 2004), this model was tested on the same annotated French-English sentence pairs that we divided into training and test sets for our experiments; it achieved an AER of 0.15.</S>
+  </SECTION>
+  <SECTION title="7 Conclusion" number="7">
+    <S sid="192" ssid="1">We have presented a discriminative, syntactic word alignment method.</S>
+    <S sid="193" ssid="2">Discriminative training is conducted using a highly modular SVM for structured output, which allows code reuse between the syntactic aligner and a maximum matching baseline.</S>
+    <S sid="194" ssid="3">An ITG parser is used for the alignment search, exposing two syntactic features: the use of inverted productions, and the use of spans that would not be available in a tree-to-string system.</S>
+    <S sid="195" ssid="4">This second feature creates a soft phrasal cohesion constraint.</S>
+    <S sid="196" ssid="5">Discriminative training allows us to maintain all of the features that are useful to the maximum matching baseline in addition to the new syntactic features.</S>
+    <S sid="197" ssid="6">We have shown that these features produce a 22% relative reduction in error rate with respect to a strong flat-string model.</S>
+  </SECTION>
+</PAPER>

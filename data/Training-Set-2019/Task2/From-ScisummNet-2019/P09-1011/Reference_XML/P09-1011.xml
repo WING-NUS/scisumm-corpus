@@ -1,0 +1,198 @@
+<PAPER>
+  <S sid="0">Learning Semantic Correspondences with Less Supervision</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">A central problem in grounded language acquisition is learning the correspondences between a rich world state and a stream of text which references that world state.</S>
+    <S sid="2" ssid="2">To deal with the high degree of ambiguity present in this setting, we present a generative model that simultaneously segments the text into utterances and maps each utterance to a meaning representation grounded in the world state.</S>
+    <S sid="3" ssid="3">We show that our model generalizes across three domains of increasing difficulty&#8212;Robocup sportscasting, weather forecasts (a new domain), and NFL recaps.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="4" ssid="1">Recent work in learning semantics has focused on mapping sentences to meaning representations (e.g., some logical form) given aligned sentence/meaning pairs as training data (Ge and Mooney, 2005; Zettlemoyer and Collins, 2005; Zettlemoyer and Collins, 2007; Lu et al., 2008).</S>
+    <S sid="5" ssid="2">However, this degree of supervision is unrealistic for modeling human language acquisition and can be costly to obtain for building large-scale, broadcoverage language understanding systems.</S>
+    <S sid="6" ssid="3">A more flexible direction is grounded language acquisition: learning the meaning of sentences in the context of an observed world state.</S>
+    <S sid="7" ssid="4">The grounded approach has gained interest in various disciplines (Siskind, 1996; Yu and Ballard, 2004; Feldman and Narayanan, 2004; Gorniak and Roy, 2007).</S>
+    <S sid="8" ssid="5">Some recent work in the NLP community has also moved in this direction by relaxing the amount of supervision to the setting where each sentence is paired with a small set of candidate meanings (Kate and Mooney, 2007; Chen and Mooney, 2008).</S>
+    <S sid="9" ssid="6">The goal of this paper is to reduce the amount of supervision even further.</S>
+    <S sid="10" ssid="7">We assume that we are given a world state represented by a set of records along with a text, an unsegmented sequence of words.</S>
+    <S sid="11" ssid="8">For example, in the weather forecast domain (Section 2.2), the text is the weather report, and the records provide a structured representation of the temperature, sky conditions, etc.</S>
+    <S sid="12" ssid="9">In this less restricted data setting, we must resolve multiple ambiguities: (1) the segmentation of the text into utterances; (2) the identification of relevant facts, i.e., the choice of records and aspects of those records; and (3) the alignment of utterances to facts (facts are the meaning representations of the utterances).</S>
+    <S sid="13" ssid="10">Furthermore, in some of our examples, much of the world state is not referenced at all in the text, and, conversely, the text references things which are not represented in our world state.</S>
+    <S sid="14" ssid="11">This increased amount of ambiguity and noise presents serious challenges for learning.</S>
+    <S sid="15" ssid="12">To cope with these challenges, we propose a probabilistic generative model that treats text segmentation, fact identification, and alignment in a single unified framework.</S>
+    <S sid="16" ssid="13">The parameters of this hierarchical hidden semi-Markov model can be estimated efficiently using EM.</S>
+    <S sid="17" ssid="14">We tested our model on the task of aligning text to records in three different domains.</S>
+    <S sid="18" ssid="15">The first domain is Robocup sportscasting (Chen and Mooney, 2008).</S>
+    <S sid="19" ssid="16">Their best approach (KRISPER) obtains 67% F1; our method achieves 76.5%.</S>
+    <S sid="20" ssid="17">This domain is simplified in that the segmentation is known.</S>
+    <S sid="21" ssid="18">The second domain is weather forecasts, for which we created a new dataset.</S>
+    <S sid="22" ssid="19">Here, the full complexity of joint segmentation and alignment arises.</S>
+    <S sid="23" ssid="20">Nonetheless, we were able to obtain reasonable results on this task.</S>
+    <S sid="24" ssid="21">The third domain we considered is NFL recaps (Barzilay and Lapata, 2005; Snyder and Barzilay, 2007).</S>
+    <S sid="25" ssid="22">The language used in this domain is richer by orders of magnitude, and much of it does not reference the world state.</S>
+    <S sid="26" ssid="23">Nonetheless, taking the first unsupervised approach to this problem, we were able to make substantial progress: We achieve an F1 of 53.2%, which closes over half of the gap between a heuristic baseline (26%) and supervised systems (68%&#8211;80%).</S>
+  </SECTION>
+  <SECTION title="2 Domains and Datasets" number="2">
+    <S sid="27" ssid="1">Our goal is to learn the correspondence between a text w and the world state s it describes.</S>
+    <S sid="28" ssid="2">We use the term scenario to refer to such a (w, s) pair.</S>
+    <S sid="29" ssid="3">The text is simply a sequence of words w = (wi, ... , w|w|).</S>
+    <S sid="30" ssid="4">We represent the world state s as a set of records, where each record r E s is described by a record type r.t E T and a tuple of field values r.v = (r.vi, ... , r.vm).1 For example, temperature is a record type in the weather domain, and it has four fields: time, min, mean, and max.</S>
+    <S sid="31" ssid="5">The record type r.t E T specifies the field type r.tf E {INT, STR, CAT} of each field value r.vf, f = 1, ... , m. There are three possible field types&#8212;integer (INT), string (STR), and categorical (CAT)&#8212;which are assumed to be known and fixed.</S>
+    <S sid="32" ssid="6">Integer fields represent numeric properties of the world such as temperature, string fields represent surface-level identifiers such as names of people, and categorical fields represent discrete concepts such as score types in football (touchdown, field goal, and safety).</S>
+    <S sid="33" ssid="7">The field type determines the way we expect the field value to be rendered in words: integer fields can be numerically perturbed, string fields can be spliced, and categorical fields are represented by open-ended word distributions, which are to be learned.</S>
+    <S sid="34" ssid="8">See Section 3.3 for details.</S>
+    <S sid="35" ssid="9">In this domain, a Robocup simulator generates the state of a soccer game, which is represented by a set of event records.</S>
+    <S sid="36" ssid="10">For example, the record pass(arg1=pink1,arg2=pink5) denotes a passing event; this type of record has two fields: arg1 (the actor) and arg2 (the recipient).</S>
+    <S sid="37" ssid="11">As the game is progressing, humans interject commentaries about notable events in the game, e.g., pink] passes back to pink5 near the middle of the field.</S>
+    <S sid="38" ssid="12">All of the fields in this domain are categorical, which means there is no a priori association between the field value pink1 and the word pink].</S>
+    <S sid="39" ssid="13">This degree of flexibility is desirable because pink] is sometimes referred to as pink goalie, a mapping which does not arise from string operations but must instead be learned.</S>
+    <S sid="40" ssid="14">We used the dataset created by Chen and Mooney (2008), which contains 1919 scenarios from the 2001&#8211;2004 Robocup finals.</S>
+    <S sid="41" ssid="15">Each scenario consists of a single sentence representing a fragment of a commentary on the game, paired with a set of candidate records.</S>
+    <S sid="42" ssid="16">In the annotation, each sentence corresponds to at most one record (possibly one not in the candidate set, in which case we automatically get that sentence wrong).</S>
+    <S sid="43" ssid="17">See Figure 1(a) for an example and Table 1 for summary statistics on the dataset.</S>
+    <S sid="44" ssid="18">In this domain, the world state contains detailed information about a local weather forecast and the text is a short forecast report (see Figure 1(b) for an example).</S>
+    <S sid="45" ssid="19">To create the dataset, we collected local weather forecasts for 3,753 cities in the US (those with population at least 10,000) over three days (February 7&#8211;9, 2009) from www.weather.gov.</S>
+    <S sid="46" ssid="20">For each city and date, we created two scenarios, one for the day forecast and one for the night forecast.</S>
+    <S sid="47" ssid="21">The forecasts consist of hour-by-hour measurements of temperature, wind speed, sky cover, chance of rain, etc., which represent the underlying world state.</S>
+    <S sid="48" ssid="22">This world state is summarized by records which aggregate measurements over selected time intervals.</S>
+    <S sid="49" ssid="23">For example, one of the records states the minimum, average, and maximum temperature from 5pm to 6am.</S>
+    <S sid="50" ssid="24">This aggregation process produced 22,146 scenarios, each containing |s |= 36 multi-field records.</S>
+    <S sid="51" ssid="25">There are 12 record types, each consisting of only integer and categorical fields.</S>
+    <S sid="52" ssid="26">To annotate the data, we split the text by punctuation into lines and labeled each line with the records to which the line refers.</S>
+    <S sid="53" ssid="27">These lines are used only for evaluation and are not part of the model (see Section 5.1 for further discussion).</S>
+    <S sid="54" ssid="28">The weather domain is more complex than the Robocup domain in several ways: The text w is longer, there are more candidate records, and most notably, w references multiple records (5.8 on average), so the segmentation of w is unknown.</S>
+    <S sid="55" ssid="29">See Table 1 for a comparison of the two datasets.</S>
+    <S sid="56" ssid="30">In this domain, each scenario represents a single NFL football game (see Figure 1(c) for an example).</S>
+    <S sid="57" ssid="31">The world state (the things that happened during the game) is represented by database tables, e.g., scoring summary, team comparison, drive chart, play-by-play, etc.</S>
+    <S sid="58" ssid="32">Each record is a database entry, for instance, the receiving statistics for a certain player.</S>
+    <S sid="59" ssid="33">The text is the recap of the game&#8212; an article summarizing the game highlights.</S>
+    <S sid="60" ssid="34">The dataset we used was collected by Barzilay and Lapata (2005).</S>
+    <S sid="61" ssid="35">The data includes 466 games during the 2003&#8211;2004 NFL season.</S>
+    <S sid="62" ssid="36">78 of these games were annotated by Snyder and Barzilay (2007), who aligned each sentence to a set of records.</S>
+    <S sid="63" ssid="37">This domain is by far the most complicated of the three.</S>
+    <S sid="64" ssid="38">Many records corresponding to inconsequential game statistics are not mentioned.</S>
+    <S sid="65" ssid="39">Conversely, the text contains many general remarks (e.g., it was just that type of game) which are not present in any of the records.</S>
+    <S sid="66" ssid="40">Furthermore, the complexity of the language used in the recap is far greater than what we can represent using our simple model.</S>
+    <S sid="67" ssid="41">Fortunately, most of the fields are integer fields or string fields (generally names or brief descriptions), which provide important anchor points for learning the correspondences.</S>
+    <S sid="68" ssid="42">Nonetheless, the same names and numbers occur in multiple records, so there is still uncertainty about which record is referenced by a given sentence.</S>
+  </SECTION>
+  <SECTION title="3 Generative Model" number="3">
+    <S sid="69" ssid="1">To learn the correspondence between a text w and a world state s, we propose a generative model p(w I s) with latent variables specifying this correspondence.</S>
+    <S sid="70" ssid="2">Our model combines segmentation with alignment.</S>
+    <S sid="71" ssid="3">The segmentation aspect of our model is similar to that of Grenager et al. (2005) and Eisenstein and Barzilay (2008), but in those two models, the segments are clustered into topics rather than grounded to a world state.</S>
+    <S sid="72" ssid="4">The alignment aspect of our model is similar to the HMM model for word alignment (Ney and Vogel, 1996).</S>
+    <S sid="73" ssid="5">DeNero et al. (2008) perform joint segmentation and word alignment for machine translation, but the nature of that task is different from ours.</S>
+    <S sid="74" ssid="6">The model is defined by a generative process, which proceeds in three stages (Figure 2 shows the corresponding graphical model): 1.</S>
+    <S sid="75" ssid="7">Record choice: choose a sequence of records r = (r1, ... , r|r|) to describe, where each ri E s. 2.</S>
+    <S sid="76" ssid="8">Field choice: for each chosen record ri, select a sequence of fields fi = (fi1, .</S>
+    <S sid="77" ssid="9">.</S>
+    <S sid="78" ssid="10">.</S>
+    <S sid="79" ssid="11">, fi|fi|), where each fij E 11, ... , m}.</S>
+    <S sid="80" ssid="12">3.</S>
+    <S sid="81" ssid="13">Word choice: for each chosen field fij, choose a number cij &gt; 0 and generate a sequence of cij words.</S>
+    <S sid="82" ssid="14">The observed text w is the terminal yield formed by concatenating the sequences of words of all fields generated; note that the segmentation of w provided by c = 1cij} is latent.</S>
+    <S sid="83" ssid="15">Think of the words spanned by a record as constituting an utterance with a meaning representation given by the record and subset of fields chosen.</S>
+    <S sid="84" ssid="16">Formally, our probabilistic model places a distribution over (r, f, c, w) and factorizes according to the three stages as follows: p(r, f, c, w  |s) = p(r  |s)p(f  |r)p(c, w  |r, f, s) The following three sections describe each of these stages in more detail.</S>
+    <S sid="85" ssid="17">The record choice model specifies a distribution over an ordered sequence of records r = (r1, ... , r|r|), where each record ri E s. This model is intended to capture two types of regularities in the discourse structure of language.</S>
+    <S sid="86" ssid="18">The first is salience, that is, some record types are simply more prominent than others.</S>
+    <S sid="87" ssid="19">For example, in the NFL domain, 70% of scoring records are mentioned whereas only 1% of punting records are mentioned.</S>
+    <S sid="88" ssid="20">The second is the idea of local coherence, that is, the order in which one mentions records tend to follow certain patterns.</S>
+    <S sid="89" ssid="21">For example, in the weather domain, the sky conditions are generally mentioned first, followed by temperature, and then wind speed.</S>
+    <S sid="90" ssid="22">To capture these two phenomena, we define a Markov model on the record types (and given the record type, a record is chosen uniformly from the set of records with that type): where s(t) def = 1r E s : r.t = t} and r0.t is a dedicated START record type.2 We also model the transition of the final record type to a designated STOP record type in order to capture regularities about the types of records which are described last.</S>
+    <S sid="91" ssid="23">More sophisticated models of coherence could also be employed here (Barzilay and Lapata, 2008).</S>
+    <S sid="92" ssid="24">We assume that s includes a special null record whose type is NULL, responsible for generating parts of our text which do not refer to any real records.</S>
+    <S sid="93" ssid="25">Each record type t E T has a separate field choice model, which specifies a distribution over a sequence of fields.</S>
+    <S sid="94" ssid="26">We want to capture salience and coherence at the field level like we did at the record level.</S>
+    <S sid="95" ssid="27">For instance, in the weather domain, the minimum and maximum fields of a temperature record are mentioned whereas the average is not.</S>
+    <S sid="96" ssid="28">In the Robocup domain, the actor typically precedes the recipient in passing event records.</S>
+    <S sid="97" ssid="29">Formally, we have a Markov model over the fields:3 Each record type has a dedicated null field with its own multinomial distribution over words, intended to model words which refer to that record type in general (e.g., the word passes for passing records).</S>
+    <S sid="98" ssid="30">We also model transitions into the first field and transitions out of the final field with special START and STOP fields.</S>
+    <S sid="99" ssid="31">This Markov structure allows us to capture a few elements of rudimentary syntax.</S>
+    <S sid="100" ssid="32">We arrive at the final component of our model, which governs how the information about a particular field of a record is rendered into words.</S>
+    <S sid="101" ssid="33">For each field fij, we generate the number of words cij from a uniform distribution over 11, 2,... , Cmax}, where Cmax is set larger than the length of the longest text we expect to see.</S>
+    <S sid="102" ssid="34">Conditioned on the fields f, the words w are generated independently:4 where r(k) and f(k) are the record and field responsible for generating word wk, as determined by the segmentation c. The word choice model pw(w I t, v) specifies a distribution over words given the field type t and field value v. This distribution is a mixture of a global backoff distribution over words and a field-specific distribution which depends on the field type t. Although we designed our word choice model to be relatively general, it is undoubtedly influenced by the three domains.</S>
+    <S sid="103" ssid="35">However, we can readily extend or replace it with an alternative if desired; this modularity is one principal benefit of probabilistic modeling.</S>
+    <S sid="104" ssid="36">Integer Fields (t = INT) For integer fields, we want to capture the intuition that a numeric quantity v is rendered in the text as a word which is possibly some other numerical value w due to stylistic factors.</S>
+    <S sid="105" ssid="37">Sometimes the exact value v is used (e.g., in reporting football statistics).</S>
+    <S sid="106" ssid="38">Other times, it might be customary to round v (e.g., wind speeds are typically rounded to a multiple of 5).</S>
+    <S sid="107" ssid="39">In other cases, there might just be some unexplained error, where w deviates from v by some noise c+ = w &#8722; v &gt; 0 or c&#8722; = v &#8722; w &gt; 0.</S>
+    <S sid="108" ssid="40">We model c+ and c&#8722; as geometric distributions.5 In summary, we allow six possible ways of generating the word w given v: v rv15 LvI5 round5(v) v &#8722; c&#8722; v + c+ Separate probabilities for choosing among these possibilities are learned for each field type (see Figure 3 for an example).</S>
+    <S sid="109" ssid="41">String Fields (t = STR) Strings fields are intended to represent values which we expect to be realized in the text via a simple surface-level transformation.</S>
+    <S sid="110" ssid="42">For example, a name field with value v = Moe Williams is sometimes referenced in the text by just Williams.</S>
+    <S sid="111" ssid="43">We used a simple generic model of rendering string fields: Let w be a word chosen uniformly from those in v. Categorical Fields (t = CAT) Unlike string fields, categorical fields are not tied down to any lexical representation; in fact, the identities of the categorical field values are irrelevant.</S>
+    <S sid="112" ssid="44">For each categorical field f and possible value v, we have a , clear mostly sunny partly, cloudy increasing mostly cloudy, partly of inch an possible new a rainfall herence structure at both the record and field levels.</S>
+    <S sid="113" ssid="45">To quantify the benefits of incorporating these two aspects, we compare our full model with two simpler variants. skyCover.mode in the weather domain.</S>
+    <S sid="114" ssid="46">It is interesting to note that skyCover=75-100 is so highly correlated with rain that the model learns to connect an overcast sky in the world to the indication of rain in the text. separate multinomial distribution over words from which w is drawn.</S>
+    <S sid="115" ssid="47">An example of a categorical field is skyCover.mode in the weather domain, which has four values: 0-25, 25-50, 50-75, and 75-100.</S>
+    <S sid="116" ssid="48">Table 2 shows the top words for each of these field values learned by our model.</S>
+  </SECTION>
+  <SECTION title="4 Learning and Inference" number="4">
+    <S sid="117" ssid="1">Our learning and inference methodology is a fairly conventional application of Expectation Maximization (EM) and dynamic programming.</S>
+    <S sid="118" ssid="2">The input is a set of scenarios D, each of which is a text w paired with a world state s. We maximize the marginal likelihood of our data, summing out the latent variables (r, f, c): where 0 are the parameters of the model (all the multinomial probabilities).</S>
+    <S sid="119" ssid="3">We use the EM algorithm to maximize (3), which alternates between the E-step and the M-step.</S>
+    <S sid="120" ssid="4">In the E-step, we compute expected counts according to the posterior p(r, f, c  |w, s; 0).</S>
+    <S sid="121" ssid="5">In the M-step, we optimize the parameters 0 by normalizing the expected counts computed in the E-step.</S>
+    <S sid="122" ssid="6">In our experiments, we initialized EM with a uniform distribution for each multinomial and applied add-0.1 smoothing to each multinomial in the M-step.</S>
+    <S sid="123" ssid="7">As with most complex discrete models, the bulk of the work is in computing expected counts under p(r, f, c  |w, s; 0).</S>
+    <S sid="124" ssid="8">Formally, our model is a hierarchical hidden semi-Markov model conditioned on s. Inference in the E-step can be done using a dynamic program similar to the inside-outside algorithm.</S>
+  </SECTION>
+  <SECTION title="5 Experiments" number="5">
+    <S sid="125" ssid="1">Two important aspects of our model are the segmentation of the text and the modeling of the coIn the annotated data, each text w has been divided into a set of lines.</S>
+    <S sid="126" ssid="2">These lines correspond to clauses in the weather domain and sentences in the Robocup and NFL domains.</S>
+    <S sid="127" ssid="3">Each line is annotated with a (possibly empty) set of records.</S>
+    <S sid="128" ssid="4">Let A be the gold set of these line-record alignment pairs.</S>
+    <S sid="129" ssid="5">To evaluate a learned model, we compute the Viterbi segmentation and alignment (argmaxr,f,c p(r, f, c  |w, s)).</S>
+    <S sid="130" ssid="6">We produce a predicted set of line-record pairs A' by aligning a line to a record ri if the span of (the utterance corresponding to) ri overlaps the line.</S>
+    <S sid="131" ssid="7">The reason we evaluate indirectly using lines rather than using utterances is that it is difficult to annotate the segmentation of text into utterances in a simple and consistent manner.</S>
+    <S sid="132" ssid="8">We compute standard precision, recall, and F1 of A' with respect to A.</S>
+    <S sid="133" ssid="9">Unless otherwise specified, performance is reported on all scenarios, which were also used for training.</S>
+    <S sid="134" ssid="10">However, we did not tune any hyperparameters, but rather used generic values which worked well enough across all three domains.</S>
+    <S sid="135" ssid="11">We ran 10 iterations of EM on Models 1&#8211;3.</S>
+    <S sid="136" ssid="12">Table 3 shows that performance improves with increased model sophistication.</S>
+    <S sid="137" ssid="13">We also compare our model to the results of Chen and Mooney (2008) in Table 4.</S>
+    <S sid="138" ssid="14">Figure 4 provides a closer look at the predictions made by each of our three models for a particular example.</S>
+    <S sid="139" ssid="15">Model 1 easily mistakes pink10 for the recipient of a pass record because decisions are made independently for each word.</S>
+    <S sid="140" ssid="16">Model 2 chooses the correct record, but having no model of the field structure inside a record, it proposes an incorrect field segmentation (although our evaluation is insensitive to this).</S>
+    <S sid="141" ssid="17">Equipped with the ability to prefer a coherent field sequence, Model 3 fixes these errors.</S>
+    <S sid="142" ssid="18">Many of the remaining errors are due to the garbage collection phenomenon familiar from word alignment models (Moore, 2004; Liang et al., 2006).</S>
+    <S sid="143" ssid="19">For example, the ballstopped record occurs frequently but is never mentioned in the text.</S>
+    <S sid="144" ssid="20">At the same time, there is a correlation between ballstopped and utterances such as pink2 holds onto the ball, which are not aligned to any record in the annotation.</S>
+    <S sid="145" ssid="21">As a result, our model incorrectly chooses to align the two.</S>
+    <S sid="146" ssid="22">For the weather domain, staged training was necessary to get good results.</S>
+    <S sid="147" ssid="23">For Model 1, we ran 15 iterations of EM.</S>
+    <S sid="148" ssid="24">For Model 2, we ran 5 iterations of EM on Model 1, followed by 10 iterations on Model 2.</S>
+    <S sid="149" ssid="25">For Model 3, we ran 5 iterations of Model 1, 5 iterations of a simplified variant of Model 3 where records were chosen independently, and finally, 5 iterations of Model 3.</S>
+    <S sid="150" ssid="26">When going from one model to another, we used the final posterior distributions of the former to initialize the parameters of the latter.6 We also prohibited utterances in Models 2 and 3 from crossing punctuation during inference.</S>
+    <S sid="151" ssid="27">Table 5 shows that performance improves substantially in the more sophisticated models, the gains being greater than in the Robocup domain.</S>
+    <S sid="152" ssid="28">Figure 5 shows the predictions of the three models on an example.</S>
+    <S sid="153" ssid="29">Model 1 is only able to form isolated (but not completely inaccurate) associations.</S>
+    <S sid="154" ssid="30">By modeling segmentation, Model 2 accounts for the intermediate words, but errors are still made due to the lack of Markov structure.</S>
+    <S sid="155" ssid="31">Model 3 remedies this.</S>
+    <S sid="156" ssid="32">However, unexpected structures are sometimes learned.</S>
+    <S sid="157" ssid="33">For example, the temperature.time=6-21 field indicates daytime, which happens to be perfectly correlated with the word high, although high intuitively should be associated with the temperature.max field.</S>
+    <S sid="158" ssid="34">In these cases of high correlation (Table 2 provides another example), it is very difficult to recover the proper alignment without additional supervision.</S>
+    <S sid="159" ssid="35">In order to scale up our models to the NFL domain, we first pruned for each sentence the records which have either no numerical values (e.g., 23, 23-10, 2/4) nor name-like words (e.g., those that appear only capitalized in the text) in common.</S>
+    <S sid="160" ssid="36">This eliminated all but 1.5% of the record candidates per sentence, while maintaining an oracle alignment F1 score of 88.7.</S>
+    <S sid="161" ssid="37">Guessing a single random record for each sentence yields an F1 of 12.0.</S>
+    <S sid="162" ssid="38">A reasonable heuristic which uses weighted number- and string-matching achieves 26.7.</S>
+    <S sid="163" ssid="39">Due to the much greater complexity of this domain, Model 2 was easily misled as it tried without success to find a coherent segmentation of the fields.</S>
+    <S sid="164" ssid="40">We therefore created a variant, Model 2&#8217;, where we constrained each field to generate exactly one word.</S>
+    <S sid="165" ssid="41">To train Model 2&#8217;, we ran 5 iterations of EM where each sentence is assumed to have exactly one record, followed by 5 iterations where the constraint was relaxed to also allow record boundaries at punctuation and the word and.</S>
+    <S sid="166" ssid="42">We did not experiment with Model 3 since the discourse structure on records in this domain is not at all governed by a simple Markov model on record types&#8212;indeed, most regions do not refer to any records at all.</S>
+    <S sid="167" ssid="43">We also fixed the backoff probability to 0.1 instead of learning it and enforced zero numerical deviation on integer field values.</S>
+    <S sid="168" ssid="44">Model 2&#8217; achieved an F1 of 39.9, an improvement over Model 1, which attained 32.8.</S>
+    <S sid="169" ssid="45">Inspection of the errors revealed the following problem: The alignment task requires us to sometimes align a sentence to multiple redundant records (e.g., play and score) referenced by the same part of the text.</S>
+    <S sid="170" ssid="46">However, our model generates each part of text from only one record, and thus it can only allow an alignment to one record.7 To cope with this incompatibility between the data and our notion of semantics, we used the following solution: We divided the records into three groups by type: play, score, and other.</S>
+    <S sid="171" ssid="47">Each group has a copy of the model, but we enforce that they share the same segmentation.</S>
+    <S sid="172" ssid="48">We also introduce a potential that couples the presence or absence of records across groups on the same segment to capture regular cooccurrences between redundant records.</S>
+    <S sid="173" ssid="49">Table 6 shows our results.</S>
+    <S sid="174" ssid="50">With groups, we achieve an F1 of 53.2.</S>
+    <S sid="175" ssid="51">Though we still trail supervised techniques, which attain numbers in the 68&#8211;80 range, we have made substantial progress over our baseline using an unsupervised method.</S>
+    <S sid="176" ssid="52">Furthermore, our model provides a more detailed analysis of the correspondence between the world state and text, rather than just producing a single alignment decision.</S>
+    <S sid="177" ssid="53">Most of the remaining errors made by our model are due to a lack of calibration.</S>
+    <S sid="178" ssid="54">Sometimes, our false positives are close calls where a sentence indirectly references a record, and our model predicts the alignment whereas the annotation standard does not.</S>
+    <S sid="179" ssid="55">We believe that further progress is possible with a richer model.</S>
+  </SECTION>
+  <SECTION title="6 Conclusion" number="6">
+    <S sid="180" ssid="1">We have presented a generative model of correspondences between a world state and an unsegmented stream of text.</S>
+    <S sid="181" ssid="2">By having a joint model of salience, coherence, and segmentation, as well as a detailed rendering of the values in the world state into words in the text, we are able to cope with the increased ambiguity that arises in this new data setting, successfully pushing the limits of unsupervision.</S>
+  </SECTION>
+</PAPER>

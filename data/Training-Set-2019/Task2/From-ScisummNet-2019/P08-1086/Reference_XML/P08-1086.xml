@@ -1,0 +1,161 @@
+<PAPER>
+  <S sid="0">Distributed Word Clustering for Large Scale Class-Based Language Modeling in Machine Translation</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">In statistical language modeling, one technique to reduce the problematic effects of data sparsity is to partition the vocabulary into equivalence classes.</S>
+    <S sid="2" ssid="2">In this paper we investigate the effects of applying such a technique to highermodels trained on large corpora.</S>
+    <S sid="3" ssid="3">We introduce a modification of the exchange clustering algorithm with improved efficiency for certain partially class-based models and a distributed version of this algorithm to efficiently obtain automatic word classifications large vocabularies million words) ussuch large training corpora billion tokens).</S>
+    <S sid="4" ssid="4">The resulting clusterings are then used in training partially class-based language models.</S>
+    <S sid="5" ssid="5">We show that combining them with wordmodels in the log-linear model of a state-of-the-art statistical machine translation system leads to improvements in translation quality as indicated by the BLEU score.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="6" ssid="1">A statistical language model assigns a probability P(w) to any given string of words wm1 = w1, ..., wm.</S>
+    <S sid="7" ssid="2">In the case of n-gram language models this is done by factoring the probability: do not differ in the last n &#8722; 1 words, one problem ngram language models suffer from is that the training data is too sparse to reliably estimate all conditional probabilities P(wi|wi&#8722;1 Class-based n-gram models are intended to help overcome this data sparsity problem by grouping words into equivalence classes rather than treating them as distinct words and thus reducing the number of parameters of the model (Brown et al., 1990).</S>
+    <S sid="8" ssid="3">They have often been shown to improve the performance of speech recognition systems when combined with word-based language models (Martin et al., 1998; Whittaker and Woodland, 2001).</S>
+    <S sid="9" ssid="4">However, in the area of statistical machine translation, especially in the context of large training corpora, fewer experiments with class-based n-gram models have been performed with mixed success (Raab, 2006).</S>
+    <S sid="10" ssid="5">Class-based n-gram models have also been shown to benefit from their reduced number of parameters when scaling to higher-order n-grams (Goodman and Gao, 2000), and even despite the increasing size and decreasing sparsity of language model training corpora (Brants et al., 2007), class-based n-gram models might lead to improvements when increasing the n-gram order.</S>
+    <S sid="11" ssid="6">When training class-based n-gram models on large corpora and large vocabularies, one of the problems arising is the scalability of the typical clustering algorithms used for obtaining the word classification.</S>
+    <S sid="12" ssid="7">Most often, variants of the exchange algorithm (Kneser and Ney, 1993; Martinet al., 1998) or the agglomerative clustering algorithm presented in (Brown et al., 1990) are used, both of which have prohibitive runtimes when clustering large vocabularies on the basis of large training corpora with a sufficiently high number of classes.</S>
+    <S sid="13" ssid="8">In this paper we introduce a modification of the exchange algorithm with improved efficiency and then present a distributed version of the modified algorithm, which makes it feasible to obtain word classifications using billions of tokens of training data.</S>
+    <S sid="14" ssid="9">We then show that using partially class-based language models trained using the resulting classifications together with word-based language models in a state-of-the-art statistical machine translation system yields improvements despite the very large size of the word-based models used.</S>
+  </SECTION>
+  <SECTION title="2 Class-Based Language Modeling" number="2">
+    <S sid="15" ssid="1">By partitioning all N&#8222; words of the vocabulary into Nc sets, with c(w) mapping a word onto its equivalence class and c(wi) mapping a sequence of words onto the sequence of their respective equivalence classes, a typical class-based n-gram model approximates P(wi|wi&#8722;1 thus greatly reducing the number of parameters in the model, since usually Nc is much smaller than N&#8222;.</S>
+    <S sid="16" ssid="2">In the following, we will call this type of model a two-sided class-based model, as both the history of each n-gram, the sequence of words conditioned on, as well as the predicted word are replaced by their class.</S>
+    <S sid="17" ssid="3">Once a partition of the words in the vocabulary is obtained, two-sided class-based models can be built just like word-based n-gram models using existing infrastructure.</S>
+    <S sid="18" ssid="4">In addition, the size of the model is usually greatly reduced.</S>
+    <S sid="19" ssid="5">Two-sided class-based models received most attention in the literature.</S>
+    <S sid="20" ssid="6">However, several different types of mixed word and class models have been proposed for the purpose of improving the performance of the model (Goodman, 2000), reducing its size (Goodman and Gao, 2000) as well as lowering the complexity of related clustering algorithms (Whittaker and Woodland, 2001).</S>
+    <S sid="21" ssid="7">In (Emami and Jelinek, 2005) a clustering algorithm is introduced which outputs a separate clustering for each word position in a trigram model.</S>
+    <S sid="22" ssid="8">In the experimental evaluation, the authors observe the largest improvements using a specific clustering for the last word of each trigram but no clustering at all for the first two word positions.</S>
+    <S sid="23" ssid="9">Generalizing this leads to arbitrary order class-based n-gram models of the form: which we will call predictive class-based models in the following sections.</S>
+  </SECTION>
+  <SECTION title="3 Exchange Clustering" number="3">
+    <S sid="24" ssid="1">One of the frequently used algorithms for automatically obtaining partitions of the vocabulary is the exchange algorithm (Kneser and Ney, 1993; Martin et al., 1998).</S>
+    <S sid="25" ssid="2">Beginning with an initial clustering, the algorithm greedily maximizes the log likelihood of a two-sided class bigram or trigram model as described in Eq.</S>
+    <S sid="26" ssid="3">(1) on the training data.</S>
+    <S sid="27" ssid="4">Let V be the set of words in the vocabulary and C the set of classes.</S>
+    <S sid="28" ssid="5">This then leads to the following optimization criterion, where N(w) and N(c) denote the number of occurrences of a word w or a class c in the training data and N(c, d) denotes the number of occurrences of some word in class c followed by a word in class d in the training data: The algorithm iterates over all words in the vocabulary and tentatively moves each word to each cluster.</S>
+    <S sid="29" ssid="6">The change in the optimization criterion is computed for each of these tentative moves and the exchange leading to the highest increase in the optimization criterion (3) is performed.</S>
+    <S sid="30" ssid="7">This procedure is then repeated until the algorithm reaches a local optimum.</S>
+    <S sid="31" ssid="8">To be able to efficiently calculate the changes in the optimization criterion when exchanging a word, the counts in Eq.</S>
+    <S sid="32" ssid="9">(3) are computed once for the initial clustering, stored, and afterwards updated when a word is exchanged.</S>
+    <S sid="33" ssid="10">Often only a limited number of iterations are performed, as letting the algorithm terminate in a local optimum can be computationally impractical.</S>
+    <S sid="34" ssid="11">The implementation described in (Martin et al., 1998) uses a memory saving technique introducing a binary search into the complexity estimation.</S>
+    <S sid="35" ssid="12">For the sake of simplicity, we omit this detail in the following complexity analysis.</S>
+    <S sid="36" ssid="13">We also do not employ this optimization in our implementation.</S>
+    <S sid="37" ssid="14">The worst case complexity of the exchange algorithm is quadratic in the number of classes.</S>
+    <S sid="38" ssid="15">However, Input: The fixed number of clusters Nc Compute initial clustering while clustering changed in last iteration do forall w &#8712; V do forall c &#8712; C do move word w tentatively to cluster c compute updated optimization criterion move word w to cluster maximizing optimization criterion the number of occurrences of the word v followed by some word in class c. Then the following optimization criterion can be derived, with F(C) being the log likelihood function of the predictive class bigram model given a clustering C: the average case complexity can be reduced by updating only the counts which are actually affected by moving a word from one cluster to another.</S>
+    <S sid="39" ssid="16">This can be done by considering only those sets of clusters for which N(w, c) &gt; 0 or N(c, w) &gt; 0 for a word w about to be exchanged, both of which can be calculated efficiently when exchanging a word.</S>
+    <S sid="40" ssid="17">The algorithm scales linearly in the size of the vocabulary.</S>
+    <S sid="41" ssid="18">With Npre c and Nsuc cdenoting the average number of clusters preceding and succeeding another cluster, B denoting the number of distinct bigrams in the training corpus, and I denoting the number of iterations, the worst case complexity of the algorithm is in: When using large corpora with large numbers of bigrams the number of required updates can increase towards the quadratic upper bound as Npre c and Nsuc c approach Nc.</S>
+    <S sid="42" ssid="19">For a more detailed description and further analysis of the complexity, the reader is referred to (Martin et al., 1998).</S>
+  </SECTION>
+  <SECTION title="4 Predictive Exchange Clustering" number="4">
+    <S sid="43" ssid="1">Modifying the exchange algorithm in order to optimize the log likelihood of a predictive class bigram model, leads to substantial performance improvements, similar to those previously reported for another type of one-sided class model in (Whittaker and Woodland, 2001).</S>
+    <S sid="44" ssid="2">We use a predictive class bigram model as given in Eq.</S>
+    <S sid="45" ssid="3">(2), for which the maximum-likelihood probability estimates for the n-grams are given by their relative frequencies: where N(w) again denotes the number of occurrences of the word w in the training corpus and N(v, c) The very last summation of Eq.</S>
+    <S sid="46" ssid="4">(8) now effectively sums over all occurrences of all words and thus cancels out with the first summation of (8) which leads to: In the first summation of Eq.</S>
+    <S sid="47" ssid="5">(9), for a given word v only the set of classes which contain at least one word w for which N(v, w) &gt; 0 must be considered, denoted by suc(v).</S>
+    <S sid="48" ssid="6">The second summation is equivalent to When exchanging a word w between two classes c and c0, only two summands of the second summation of Eq.</S>
+    <S sid="49" ssid="7">(10) are affected.</S>
+    <S sid="50" ssid="8">The first summation can be updated by iterating over all bigrams ending in the exchanged word.</S>
+    <S sid="51" ssid="9">Throughout one iteration of the algorithm, in which for each word in the vocabulary each possible move to another class is evaluated, this amounts to the number of distinct bigrams in the training corpus B, times the number of clusters N,.</S>
+    <S sid="52" ssid="10">Thus the worst case complexity using the modified optimization criterion is in: Using this optimization criterion has two effects on the complexity of the algorithm.</S>
+    <S sid="53" ssid="11">The first difference is that in contrast to the exchange algorithm using a two sided class-based bigram model in its optimization criterion, only two clusters are affected by moving a word.</S>
+    <S sid="54" ssid="12">Thus the algorithm scales linearly in the number of classes.</S>
+    <S sid="55" ssid="13">The second difference is that B dominates the term B + N&#8222; for most corpora and scales far less than linearly with the vocabulary size, providing a significant performance advantage over the other optimization criterion, especially when large vocabularies are used (Whittaker and Woodland, 2001).</S>
+    <S sid="56" ssid="14">For efficiency reasons, an exchange of a word between two clusters is separated into a remove and a move procedure.</S>
+    <S sid="57" ssid="15">In each iteration the remove procedure only has to be called once for each word, while for a given word move is called once for every cluster to compute the consequences of the tentative exchanges.</S>
+    <S sid="58" ssid="16">An outline of the move procedure is given below.</S>
+    <S sid="59" ssid="17">The remove procedure is similar.</S>
+    <S sid="60" ssid="18">Procedure MoveWord</S>
+  </SECTION>
+  <SECTION title="5 Distributed Clustering" number="5">
+    <S sid="61" ssid="1">When training on large corpora, even the modified exchange algorithm would still require several days if not weeks of CPU time for a sufficient number of iterations.</S>
+    <S sid="62" ssid="2">To overcome this we introduce a novel distributed exchange algorithm, based on the modified exchange algorithm described in the previous section.</S>
+    <S sid="63" ssid="3">The vocabulary is randomly partitioned into sets of roughly equal size.</S>
+    <S sid="64" ssid="4">With each word w in one of these sets, all words v preceding w in the corpus are stored with the respective bigram count N(v, w).</S>
+    <S sid="65" ssid="5">The clusterings generated in each iteration as well as the initial clustering are stored as the set of words in each cluster, the total number of occurrences of each cluster in the training corpus, and the list of words preceeding each cluster.</S>
+    <S sid="66" ssid="6">For each word w in the predecessor list of a given cluster c, the number of times w occurs in the training corpus before any word in c, N(w, c), is also stored.</S>
+    <S sid="67" ssid="7">Together with the counts stored with the vocabulary partitions, this allows for efficient updating of the terms in Eq.</S>
+    <S sid="68" ssid="8">(10).</S>
+    <S sid="69" ssid="9">The initial clustering together with all the required counts is created in an initial iteration by assigning the n-th most frequent word to cluster n mod N,.</S>
+    <S sid="70" ssid="10">While (Martinet al., 1998) and (Emami and Jelinek, 2005) observe that the initial clustering does not seem to have a noticeable effect on the quality of the resulting clustering or the convergence rate, the intuition behind this method of initialization is that it is unlikely for the most frequent words to be clustered together due to their high numbers of occurrences.</S>
+    <S sid="71" ssid="11">In each subsequent iteration each one of a number of workers is assigned one of the partitions of the words in the vocabulary.</S>
+    <S sid="72" ssid="12">After loading the current clustering, it then randomly chooses a subset of these words of a fixed size.</S>
+    <S sid="73" ssid="13">For each of the selected words the worker then determines to which cluster the word is to be moved in order to maximize the increase in log likelihood, using the count updating procedures described in the previous section.</S>
+    <S sid="74" ssid="14">All changes a worker makes to the clustering are accumulated locally in delta data structures.</S>
+    <S sid="75" ssid="15">At the end of the iteration all deltas are merged and applied to the previous clustering, resulting in the complete clustering loaded in the next iteration.</S>
+    <S sid="76" ssid="16">This algorithm fits well into the MapReduce programming model (Dean and Ghemawat, 2004) that we used for our implementation.</S>
+    <S sid="77" ssid="17">While the greedy non-distributed exchange algorithm is guaranteed to converge as each exchange increases the log likelihood of the assumed bigram model, this is not necessarily true for the distributed exchange algorithm.</S>
+    <S sid="78" ssid="18">This stems from the fact that the change in log likelihood is calculated by each worker under the assumption that no other changes to the clustering are performed by other workers in this iteration.</S>
+    <S sid="79" ssid="19">However, if in each iteration only a rather small and randomly chosen subset of all words are considered for exchange, the intuition is that the remaining words still define the parameters of each cluster well enough for the algorithm to converge.</S>
+    <S sid="80" ssid="20">In (Emami and Jelinek, 2005) the authors observe that only considering a subset of the vocabulary of half the size of the complete vocabulary in each iteration does not affect the time required by the exchange algorithm to converge.</S>
+    <S sid="81" ssid="21">Yet each iteration is sped up by approximately a factor of two.</S>
+    <S sid="82" ssid="22">The quality of class-based models trained using the resulting clusterings did not differ noticeably from those trained using clusterings for which the full vocabulary was considered in each iteration.</S>
+    <S sid="83" ssid="23">Our experiments showed that this also seems to be the case for the distributed exchange algorithm.</S>
+    <S sid="84" ssid="24">While considering very large subsets of the vocabulary in each iteration can cause the algorithm to not converge at all, considering only a very small fraction of the words for exchange will increase the number of iterations required to converge.</S>
+    <S sid="85" ssid="25">In experiments we empirically determined that choosing a subset of roughly a third of the size of the full vocabulary is a good balance in this trade-off.</S>
+    <S sid="86" ssid="26">We did not observe the algorithm to not converge unless we used fractions above half of the vocabulary size.</S>
+    <S sid="87" ssid="27">We typically ran the clustering for 20 to 30 iterations after which the number of words exchanged in each iteration starts to stabilize at less than 5 percent of the vocabulary size.</S>
+    <S sid="88" ssid="28">Figure 1 shows the number of words exchanged in each of 34 iterations when clustering the approximately 300,000 word vocabulary of the Arabic side of the English-Arabic parallel training data into 512 and 2,048 clusters.</S>
+    <S sid="89" ssid="29">Despite a steady reduction in the number of words exchanged per iteration, we observed the convergence in regards to log-likelihood to be far from monotone.</S>
+    <S sid="90" ssid="30">In our experiments we were able to achieve significantly more monotone and faster convergence by employing the following heuristic.</S>
+    <S sid="91" ssid="31">As described in Section 5, we start out the first iteration with a random partition of the vocabulary into subsets each assigned to a specific worker.</S>
+    <S sid="92" ssid="32">However, instead of keeping this assignment constant throughout all iterations, after each iteration the vocabulary is partitioned anew so that all words from any given cluster are considered by the same worker in the next iteration.</S>
+    <S sid="93" ssid="33">The intuition behind this heuristic is that as the clustering becomes more coherent, the information each worker has about groups of similar words is becoming increasingly accurate.</S>
+    <S sid="94" ssid="34">In our experiments this heuristic lead to almost monotone convergence in log-likelihood.</S>
+    <S sid="95" ssid="35">It also reduced the number of iterations required to converge by up to a factor of three.</S>
+    <S sid="96" ssid="36">The runtime of the distributed exchange algorithm depends highly on the number of distinct bigrams in the training corpus.</S>
+    <S sid="97" ssid="37">When clustering the approximately 1.5 million word vocabulary of a 405 million token English corpus into 1,000 clusters, one iteration takes approximately 5 minutes using 50 workers based on standard hardware running the Linux operating system.</S>
+    <S sid="98" ssid="38">When clustering the 0.5 million most frequent words in the vocabulary of an English corpus with 31 billion tokens into 1,000 clusters, one iteration takes approximately 30 minutes on 200 workers.</S>
+    <S sid="99" ssid="39">When scaling up the vocabulary and corpus sizes, the current bottleneck of our implementation is loading the current clustering into memory.</S>
+    <S sid="100" ssid="40">While the memory requirements decrease with each iteration, during the first few iterations a worker typically still needs approximately 2 GB of memory to load the clustering generated in the previous iteration when training 1,000 clusters on the 31 billion token corpus.</S>
+  </SECTION>
+  <SECTION title="6 Experiments" number="6">
+    <S sid="101" ssid="1">We trained a number of predictive class-based language models on different Arabic and English corpora using clusterings trained on the complete data of the same corpus.</S>
+    <S sid="102" ssid="2">We use the distributed training and application infrastructure described in (Brants et al., 2007) with modifications to allow the training of predictive class-based models and their application in the decoder of the machine translation system.</S>
+    <S sid="103" ssid="3">For all models used in our experiments, both wordand class-based, the smoothing method used was Stupid Backoff (Brants et al., 2007).</S>
+    <S sid="104" ssid="4">Models with Stupid Backoff return scores rather than normalized probabilities, thus perplexities cannot be calculated for these models.</S>
+    <S sid="105" ssid="5">Instead we report BLEU scores (Papineni et al., 2002) of the machine translation system using different combinations of word- and classbased models for translation tasks from English to Arabic and Arabic to English.</S>
+    <S sid="106" ssid="6">For English we used three different training data sets: en target: The English side of Arabic-English and Chinese-English parallel data provided by LDC (405 million tokens). en ldcnews: Consists of several English news data sets provided by LDC (5 billion tokens). en webnews: Consists of data collected up to December 2005 from web pages containing primarily English news articles (31 billion tokens).</S>
+    <S sid="107" ssid="7">A fourth data set, en web, was used together with the other three data sets to train the large wordbased model used in the second machine translation experiment.</S>
+    <S sid="108" ssid="8">This set consists of general web data collected in January 2006 (2 trillion tokens).</S>
+    <S sid="109" ssid="9">For Arabic we used the following two different training data sets: ar gigaword: Consists of several Arabic news data sets provided by LDC (629 million tokens). ar webnews: Consists of data collected up to December 2005 from web pages containing primarily Arabic news articles (approximately 600 million tokens).</S>
+    <S sid="110" ssid="10">Given a sentence f in the source language, the machine translation problem is to automatically produce a translation e&#65533; in the target language.</S>
+    <S sid="111" ssid="11">In the subsequent experiments, we use a phrase-based statistical machine translation system based on the loglinear formulation of the problem described in (Och and Ney, 2002): where {hm(e, f)} is a set of M feature functions and {am} a set of weights.</S>
+    <S sid="112" ssid="12">We use each predictive classbased language model as well as a word-based model as separate feature functions in the log-linear combination in Eq.</S>
+    <S sid="113" ssid="13">(11).</S>
+    <S sid="114" ssid="14">The weights are trained using minimum error rate training (Och, 2003) with BLEU score as the objective function.</S>
+    <S sid="115" ssid="15">The dev and test data sets contain parts of the 2003, 2004 and 2005 Arabic NIST MT evaluation sets among other parallel data.</S>
+    <S sid="116" ssid="16">The blind test data used is the &#8220;NIST&#8221; part of the 2006 Arabic-English NIST MT evaluation set, and is not included in the training data.</S>
+    <S sid="117" ssid="17">For the first experiment we trained predictive class-based 5-gram models using clusterings with 64, 128, 256 and 512 clusters1 on the en target data.</S>
+    <S sid="118" ssid="18">We then added these models as additional features to the log linear model of the Arabic-English machine translation system.</S>
+    <S sid="119" ssid="19">The word-based language model used by the system in these experiments is a 5-gram model also trained on the en target data set.</S>
+    <S sid="120" ssid="20">Table 1 shows the BLEU scores reached by the translation system when combining the different class-based models with the word-based model in comparison to the BLEU scores by a system using only the word-based model on the Arabic-English translation task.</S>
+    <S sid="121" ssid="21">Adding the class-based models leads to small improvements in BLEU score, with the highest improvements for both dev and nist06 being statistically significant 2.</S>
+    <S sid="122" ssid="22">In the next experiment we used two predictive class-based models, a 5-gram model with 512 clusters trained on the en target data set and a 6-gram model also using 512 clusters trained on the en ldcnews data set.</S>
+    <S sid="123" ssid="23">We used these models in addition to a word-based 6-gram model created by combining models trained on all four English data sets.</S>
+    <S sid="124" ssid="24">Table 2 shows the BLEU scores of the machine translation system using only this word-based model, the scores after adding the class-based model trained on the en target data set and when using all three models.</S>
+    <S sid="125" ssid="25">For our experiment with the English Arabic translation task we trained two 5-gram predictive classbased models with 512 clusters on the Arabic ar gigaword and ar webnews data sets.</S>
+    <S sid="126" ssid="26">The wordbased Arabic 5-gram model we used was created by combining models trained on the Arabic side of the parallel training data (347 million tokens), the ar gigaword and ar webnews data sets, and additional Arabic web data.</S>
+    <S sid="127" ssid="27">As shown in Table 3, adding the predictive classbased model trained on the ar webnews data set leads to small improvements in dev and nist06 scores but causes the test score to decrease.</S>
+    <S sid="128" ssid="28">However, adding the class-based model trained on the ar gigaword data set to the other class-based and the word-based model results in further improvement of the dev score, but also in large improvements of the test and nist06 scores.</S>
+    <S sid="129" ssid="29">We performed experiments to eliminate the possibility of data overlap between the training data and the machine translation test data as cause for the large improvements.</S>
+    <S sid="130" ssid="30">In addition, our experiments showed that when there is overlap between the training and test data, the class-based models lead to lower scores as long as they are trained only on data also used for training the word-based model.</S>
+    <S sid="131" ssid="31">One explanation could be that the domain of the ar gigaword corpus is much closer to the domain of the test data than that of other training data sets used.</S>
+    <S sid="132" ssid="32">However, further investigation is required to explain the improvements.</S>
+    <S sid="133" ssid="33">The clusters produced by the distributed algorithm vary in their size and number of occurrences.</S>
+    <S sid="134" ssid="34">In a clustering of the en target data set with 1,024 clusters, the cluster sizes follow a typical longtailed distribution with the smallest cluster containing 13 words and the largest cluster containing 20,396 words.</S>
+    <S sid="135" ssid="35">Table 4 shows some examples of the generated clusters.</S>
+    <S sid="136" ssid="36">For each cluster we list all words occurring more than 1,000 times in the corpus.</S>
+  </SECTION>
+  <SECTION title="7 Conclusion" number="7">
+    <S sid="137" ssid="1">In this paper, we have introduced an efficient, distributed clustering algorithm for obtaining word classifications for predictive class-based language models with which we were able to use billions of tokens of training data to obtain classifications for millions of words in relatively short amounts of time.</S>
+    <S sid="138" ssid="2">The experiments presented show that predictive class-based models trained using the obtained word classifications can improve the quality of a state-ofthe-art machine translation system as indicated by the BLEU score in both translation tasks.</S>
+    <S sid="139" ssid="3">When using predictive class-based models in combination with a word-based language model trained on very large amounts of data, the improvements continue to be statistically significant on the test and nist06 sets.</S>
+    <S sid="140" ssid="4">We conclude that even despite the large amounts of data used to train the large word-based model in our second experiment, class-based language models are still an effective tool to ease the effects of data sparsity.</S>
+    <S sid="141" ssid="5">We furthermore expect to be able to increase the gains resulting from using class-based models by using more sophisticated techniques for combining them with word-based models such as linear interpolations of word- and class-based models with coefficients depending on the frequency of the history.</S>
+    <S sid="142" ssid="6">Another interesting direction of further research is to evaluate the use of the presented clustering technique for language model size reduction.</S>
+  </SECTION>
+</PAPER>

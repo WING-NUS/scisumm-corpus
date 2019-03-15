@@ -1,0 +1,143 @@
+<PAPER>
+  <S sid="0">Randomised Language Modelling for Statistical Machine Translation</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">A Bloom filter (BF) is a randomised data structure for set membership queries.</S>
+    <S sid="2" ssid="2">Its space requirements are significantly below lossless information-theoretic lower bounds but it produces false positives with some quantifiable probability.</S>
+    <S sid="3" ssid="3">Here we explore the use of BFs for language modelling in statistical machine translation. show how a BF containing can enable us to use much larger corpora and higher-order models complementing a con- LM within an SMT system.</S>
+    <S sid="4" ssid="4">We also consider (i) how to include approximate frequency information efficiently within a BF and (ii) how to reduce the error rate of these models by first checking for sub-sequences in candidate grams.</S>
+    <S sid="5" ssid="5">Our solutions in both cases retain the one-sided error guarantees of the BF while taking advantage of the Zipf-like distribution of word frequencies to reduce the space requirements.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="6" ssid="1">Language modelling (LM) is a crucial component in statistical machine translation (SMT).</S>
+    <S sid="7" ssid="2">Standard ngram language models assign probabilities to translation hypotheses in the target language, typically as smoothed trigram models, e.g.</S>
+    <S sid="8" ssid="3">(Chiang, 2005).</S>
+    <S sid="9" ssid="4">Although it is well-known that higher-order LMs and models trained on additional monolingual corpora can yield better translation performance, the challenges in deploying large LMs are not trivial.</S>
+    <S sid="10" ssid="5">Increasing the order of an n-gram model can result in an exponential increase in the number of parameters; for corpora such as the English Gigaword corpus, for instance, there are 300 million distinct trigrams and over 1.2 billion 5-grams.</S>
+    <S sid="11" ssid="6">Since a LM may be queried millions of times per sentence, it should ideally reside locally in memory to avoid time-consuming remote or disk-based look-ups.</S>
+    <S sid="12" ssid="7">Against this background, we consider a radically different approach to language modelling: instead of explicitly storing all distinct n-grams, we store a randomised representation.</S>
+    <S sid="13" ssid="8">In particular, we show that the Bloom filter (Bloom (1970); BF), a simple space-efficient randomised data structure for representing sets, may be used to represent statistics from larger corpora and for higher-order n-grams to complement a conventional smoothed trigram model within an SMT decoder.</S>
+    <S sid="14" ssid="9">1 The space requirements of a Bloom filter are quite spectacular, falling significantly below informationtheoretic error-free lower bounds while query times are constant.</S>
+    <S sid="15" ssid="10">This efficiency, however, comes at the price of false positives: the filter may erroneously report that an item not in the set is a member.</S>
+    <S sid="16" ssid="11">False negatives, on the other hand, will never occur: the error is said to be one-sided.</S>
+    <S sid="17" ssid="12">In this paper, we show that a Bloom filter can be used effectively for language modelling within an SMT decoder and present the log-frequency Bloom filter, an extension of the standard Boolean BF that takes advantage of the Zipf-like distribution of corpus statistics to allow frequency information to be associated with n-grams in the filter in a spaceefficient manner.</S>
+    <S sid="18" ssid="13">We then propose a mechanism, sub-sequence filtering, for reducing the error rates of these models by using the fact that an n-gram&#8217;s frequency is bound from above by the frequency of its least frequent sub-sequence.</S>
+    <S sid="19" ssid="14">We present machine translation experiments using these models to represent information regarding higher-order n-grams and additional larger monolingual corpora in combination with conventional smoothed trigram models.</S>
+    <S sid="20" ssid="15">We also run experiments with these models in isolation to highlight the impact of different order n-grams on the translation process.</S>
+    <S sid="21" ssid="16">Finally we provide some empirical analysis of the effectiveness of both the log frequency Bloom filter and sub-sequence filtering.</S>
+  </SECTION>
+  <SECTION title="2 The Bloom filter" number="2">
+    <S sid="22" ssid="1">In this section, we give a brief overview of the Bloom filter (BF); refer to Broder and Mitzenmacher (2005) for a more in detailed presentation.</S>
+    <S sid="23" ssid="2">A BF represents a set S = {x1, x2, ..., xn} with n elements drawn from a universe U of size N. The structure is attractive when N &#187; n. The only significant storage used by a BF consists of a bit array of size m. This is initially set to hold zeroes.</S>
+    <S sid="24" ssid="3">To train the filter we hash each item in the set k times using distinct hash functions h1, h2, ..., hk.</S>
+    <S sid="25" ssid="4">Each function is assumed to be independent from each other and to map items in the universe to the range 1 to m uniformly at random.</S>
+    <S sid="26" ssid="5">The k bits indexed by the hash values for each item are set to 1; the item is then discarded.</S>
+    <S sid="27" ssid="6">Once a bit has been set to 1 it remains set for the lifetime of the filter.</S>
+    <S sid="28" ssid="7">Distinct items may not be hashed to k distinct locations in the filter; we ignore collisons.</S>
+    <S sid="29" ssid="8">Bits in the filter can, therefore, be shared by distinct items allowing significant space savings but introducing a non-zero probability of false positives at test time.</S>
+    <S sid="30" ssid="9">There is no way of directly retrieving or ennumerating the items stored in a BF.</S>
+    <S sid="31" ssid="10">At test time we wish to discover whether a given item was a member of the original set.</S>
+    <S sid="32" ssid="11">The filter is queried by hashing the test item using the same k hash functions.</S>
+    <S sid="33" ssid="12">If all bits referenced by the k hash values are 1 then we assume that the item was a member; if any of them are 0 then we know it was not.</S>
+    <S sid="34" ssid="13">True members are always correctly identified, but a false positive will occur if all k corresponding bits were set by other items during training and the item was not a member of the training set.</S>
+    <S sid="35" ssid="14">This is known as a one-sided error.</S>
+    <S sid="36" ssid="15">The probability of a false postive, f, is clearly the probability that none of k randomly selected bits in the filter are still 0 after training.</S>
+    <S sid="37" ssid="16">Letting p be the proportion of bits that are still zero after these n elements have been inserted, this gives, As n items have been entered in the filter by hashing each k times, the probability that a bit is still zero is, which is the expected value of p. Hence the false positive rate can be approximated as, f = (1 &#8722; p)k : (1 &#8722; p&#65533;)k : (1 &#8722; e&#8722;kn m)k .</S>
+    <S sid="38" ssid="17">By taking the derivative we find that the number of functions k* that minimizes f is, m k* = ln 2 &#183; . n which leads to the intuitive result that exactly half the bits in the filter will be set to 1 when the optimal number of hash functions is chosen.</S>
+    <S sid="39" ssid="18">The fundmental difference between a Bloom filter&#8217;s space requirements and that of any lossless representation of a set is that the former does not depend on the size of the (exponential) universe N from which the set is drawn.</S>
+    <S sid="40" ssid="19">A lossless representation scheme (for example, a hash map, trie etc.) must depend on N since it assigns a distinct representation to each possible set drawn from the universe.</S>
+  </SECTION>
+  <SECTION title="3 Language modelling with Bloom filters" number="3">
+    <S sid="41" ssid="1">In our experiments we make use of both standard (i.e.</S>
+    <S sid="42" ssid="2">Boolean) BFs containing n-gram types drawn from a training corpus and a novel BF scheme, the log-frequency Bloom filter, that allows frequency information to be associated efficiently with items stored in the filter. return BF The efficiency of our scheme for storing n-gram statistics within a BF relies on the Zipf-like distribution of n-gram frequencies in natural language corpora: most events occur an extremely small number of times, while a small number are very frequent.</S>
+    <S sid="43" ssid="3">We quantise raw frequencies, c(x), using a logarithmic codebook as follows, The precision of this codebook decays exponentially with the raw counts and the scale is determined by the base of the logarithm b; we examine the effect of this parameter in experiments below.</S>
+    <S sid="44" ssid="4">Given the quantised count qc(x) for an n-gram x, the filter is trained by entering composite events consisting of the n-gram appended by an integer counter j that is incremented from 1 to qc(x) into the filter.</S>
+    <S sid="45" ssid="5">To retrieve the quantised count for an n-gram, it is first appended with a count of 1 and hashed under the k functions; if this tests positive, the count is incremented and the process repeated.</S>
+    <S sid="46" ssid="6">The procedure terminates as soon as any of the k hash functions hits a 0 and the previous count is reported.</S>
+    <S sid="47" ssid="7">The one-sided error of the BF and the training scheme ensure that the actual quantised count cannot be larger than this value.</S>
+    <S sid="48" ssid="8">As the counts are quantised logarithmically, the counter will be incremented only a small number of times.</S>
+    <S sid="49" ssid="9">The training and testing routines are given here as Algorithms 1 and 2 respectively.</S>
+    <S sid="50" ssid="10">Errors for the log-frequency BF scheme are onesided: frequencies will never be underestimated.</S>
+    <S sid="51" ssid="11">Algorithm 2 Test frequency BF Input: x, MAXQCOUNT, {h1, ...hk} and BF Output: Upper bound on qc(x) &#8712; Strain for j = 1 to MAXQCOUNT do for i = 1 to k do The probability of overestimating an item&#8217;s frequency decays exponentially with the size of the overestimation error d (i.e. as fd for d &gt; 0) since each erroneous increment corresponds to a single false positive and d such independent events must occur together.</S>
+    <S sid="52" ssid="12">The error analysis in Section 2 focused on the false positive rate of a BF; if we deploy a BF within an SMT decoder, however, the actual error rate will also depend on the a priori membership probability of items presented to it.</S>
+    <S sid="53" ssid="13">The error rate Err is, This implies that, unlike a conventional lossless data structure, the model&#8217;s accuracy depends on other components in system and how it is queried.</S>
+    <S sid="54" ssid="14">We take advantage of the monotonicity of the ngram event space to place upper bounds on the frequency of an n-gram prior to testing for it in the filter and potentially truncate the outer loop in Algorithm 2 when we know that the test could only return postive in error.</S>
+    <S sid="55" ssid="15">Specifically, if we have stored lower-order ngrams in the filter, we can infer that an n-gram cannot present, if any of its sub-sequences test negative.</S>
+    <S sid="56" ssid="16">Since our scheme for storing frequencies can never underestimate an item&#8217;s frequency, this relation will generalise to frequencies: an n-gram&#8217;s frequency cannot be greater than the frequency of its least frequent sub-sequence as reported by the filter, We use this to reduce the effective error rate of BFLMs that we use in the experiments below.</S>
+    <S sid="57" ssid="17">A standard BF can implement a Boolean &#8216;language model&#8217; test: have we seen some fragment of language before?</S>
+    <S sid="58" ssid="18">This does not use any frequency information.</S>
+    <S sid="59" ssid="19">The Boolean BF-LM is a standard BF containing all n-grams of a certain length in the training corpus, Strain.</S>
+    <S sid="60" ssid="20">It implements the following binary feature function in a log-linear decoder, Separate Boolean BF-LMs can be included for different order n and assigned distinct log-linear weights that are learned as part of a minimum error rate training procedure (see Section 4).</S>
+    <S sid="61" ssid="21">The log-frequency BF-LM implements a multinomial feature function in the decoder that returns the value associated with an n-gram by Algorithm 2.</S>
+    <S sid="62" ssid="22">Sub-sequence filtering can be performed by using the minimum value returned by lower-order models as an upper-bound on the higher-order models.</S>
+    <S sid="63" ssid="23">By boosting the score of hypotheses containing ngrams observed in the training corpus while remaining agnostic for unseen n-grams (with the exception of errors), these feature functions have more in common with maximum entropy models than conventionally smoothed n-gram models.</S>
+  </SECTION>
+  <SECTION title="4 Experiments" number="4">
+    <S sid="64" ssid="1">We conducted a range of experiments to explore the effectiveness and the error-space trade-off of Bloom filters for language modelling in SMT.</S>
+    <S sid="65" ssid="2">The spaceefficiency of these models also allows us to investigate the impact of using much larger corpora and higher-order n-grams on translation quality.</S>
+    <S sid="66" ssid="3">While our main experiments use the Bloom filter models in conjunction with a conventional smoothed trigram model, we also present experiments with these models in isolation to highlight the impact of different order n-grams on the translation process.</S>
+    <S sid="67" ssid="4">Finally, we present some empirical analysis of both the logfrequency Bloom filter and the sub-sequence filtering technique which may be of independent interest.</S>
+    <S sid="68" ssid="5">All of our experiments use publically available resources.</S>
+    <S sid="69" ssid="6">We use the French-English section of the Europarl (EP) corpus for parallel data and language modelling (Koehn, 2003) and the English Gigaword Corpus (LDC2003T05; GW) for additional language modelling.</S>
+    <S sid="70" ssid="7">Decoding is carried-out using the Moses decoder (Koehn and Hoang, 2007).</S>
+    <S sid="71" ssid="8">We hold out 500 test sentences and 250 development sentences from the parallel text for evaluation purposes.</S>
+    <S sid="72" ssid="9">The feature functions in our models are optimised using minimum error rate training and evaluation is performed using the BLEU score.</S>
+    <S sid="73" ssid="10">Our baseline LM and other comparison models are conventional n-gram models smoothed using modified Kneser-Ney and built using the SRILM Toolkit (Stolcke, 2002); as is standard practice these models drop entries for n-grams of size 3 and above when the corresponding discounted count is less than 1.</S>
+    <S sid="74" ssid="11">The baseline language model, EP-KN-3, is a trigram model trained on the English portion of the parallel corpus.</S>
+    <S sid="75" ssid="12">For additional comparisons we also trained a smoothed 4-gram model on this Europarl data (EPKN-4) and a trigram model on the Agence France Press section of the Gigaword Corpus (AFP-KN-3).</S>
+    <S sid="76" ssid="13">Table 1 shows the amount of memory these models take up on disk and compressed using the gzip utility in parentheses as well as the number of distinct n-grams of each order.</S>
+    <S sid="77" ssid="14">We give the gzip compressed size as an optimistic lower bound on the size of any lossless representation of each model.2 2Note, in particular, that gzip compressed files do not support direct random access as required by our application.</S>
+    <S sid="78" ssid="15">To create Bloom filter LMs we gathered n-gram counts from both the Europarl (EP) and the whole of the Gigaword Corpus (GW).</S>
+    <S sid="79" ssid="16">Table 2 shows the numbers of distinct n-grams in these corpora.</S>
+    <S sid="80" ssid="17">Note that we use no pruning for these models and that the numbers of distinct n-grams is of the same order as that of the recently released Google Ngrams dataset (LDC2006T13).</S>
+    <S sid="81" ssid="18">In our experiments we create a range of models referred to by the corpus used (EP or GW), the order of the n-gram(s) entered into the filter (1 to 10), whether the model is Boolean (Bool-BF) or provides frequency information (FreqBF), whether or not sub-sequence filtering was used (FTR) and whether it was used in conjunction with the baseline trigram (+EP-KN-3).</S>
+    <S sid="82" ssid="19">Our first set of experiments examines the relationship between memory allocated to the BF and BLEU score.</S>
+    <S sid="83" ssid="20">We present results using the Boolean BFLM in isolation and then both the Boolean and logfrequency BF-LMS to add 4-grams to our baseline 3-gram model.Our second set of experiments adds 3-grams and 5-grams from the Gigaword Corpus to our baseline.</S>
+    <S sid="84" ssid="21">Here we constrast the Boolean BFLM with the log-frequency BF-LM with different quantisation bases (2 = fine-grained and 5 = coarsegrained).</S>
+    <S sid="85" ssid="22">We then evaluate the sub-sequence filtering approach to reducing the actual error rate of these models by adding both 3 and 4-grams from the Gigaword Corpus to the baseline.</S>
+    <S sid="86" ssid="23">Since the BF-LMs easily allow us to deploy very high-order n-gram models, we use them to evaluate the impact of different order n-grams on the translation process presenting results using the Boolean and log-frequency BF-LM in isolation for n-grams of order 1 to 10.</S>
+    <S sid="87" ssid="24">We analyse our log-frequency BF scheme in terms of the additional memory it requires and the error rate compared to a non-redundant scheme.</S>
+    <S sid="88" ssid="25">The nonredundant scheme involves entering just the exact quantised count for each n-gram and then searching over the range of possible counts at test time starting with the count with maximum a priori probability (i.e.</S>
+    <S sid="89" ssid="26">1) and incrementing until a count is found or the whole codebook has been searched (here the size is 16).</S>
+    <S sid="90" ssid="27">We also analyse the sub-sequence filtering scheme directly by creating a BF with only 3-grams and a BF containing both 2-grams and 3-grams and comparing their actual error rates when presented with 3-grams that are all known to be negatives.</S>
+  </SECTION>
+  <SECTION title="5 Results" number="5">
+    <S sid="91" ssid="1">Table 3 shows the results of the baseline (EP-KN3) and other conventional n-gram models trained on larger corpora (AFP-KN-3) and using higher-order dependencies (EP-KN-4).</S>
+    <S sid="92" ssid="2">The larger models improve somewhat on the baseline performance.</S>
+    <S sid="93" ssid="3">Figure 1 shows the relationship between space allocated to the BF models and BLEU score (left) and false positive rate (right) respectively.</S>
+    <S sid="94" ssid="4">These experiments do not include the baseline model.</S>
+    <S sid="95" ssid="5">We can see a clear correlation between memory / false positive rate and translation performance.</S>
+    <S sid="96" ssid="6">Adding 4-grams in the form of a Boolean BF or a log-frequency BF (see Figure 2) improves on the 3gram baseline with little additional memory (around 4MBs) while performing on a par with or above the Europarl 4-gram model with around 10MBs; this suggests that a lossy representation of the unpruned set of 4-grams contains more useful information than a lossless representation of the pruned set.3 As the false positive rate exceeds 0.20 the performance is severly degraded.</S>
+    <S sid="97" ssid="7">Adding 3-grams drawn from the whole of the Gigaword corpus rather than simply the Agence France Press section results in slightly improved performance with signficantly less memory than the AFP-KN-3 model (see Figure 3).</S>
+    <S sid="98" ssid="8">Figure 4 shows the results of adding 5-grams drawn from the Gigaword corpus to the baseline.</S>
+    <S sid="99" ssid="9">It also contrasts the Boolean BF and the log-frequency BF suggesting in this case that the log-frequency BF can provide useful information when the quantisation base is relatively fine-grained (base 2).</S>
+    <S sid="100" ssid="10">The Boolean BF and the base 5 (coarse-grained quantisation) log-frequency BF perform approximately the same.</S>
+    <S sid="101" ssid="11">The base 2 quantisation performs worse for smaller amounts of memory, possibly due to the larger set of events it is required to store.</S>
+    <S sid="102" ssid="12">Figure 5 shows sub-sequence filtering resulting in a small increase in performance when false positive rates are high (i.e. less memory is allocated).</S>
+    <S sid="103" ssid="13">We believe this to be the result of an increased a priori membership probability for n-grams presented to the filter under the sub-sequence filtering scheme.</S>
+    <S sid="104" ssid="14">Figure 6 shows that for this task the most useful n-gram sizes are between 3 and 6.</S>
+    <S sid="105" ssid="15">Figure 8 compares the memory requirements of the log-frequencey BF (base 2) and the Boolean BF for various order n-gram sets from the Gigaword Corpus with the same underlying false positive rate (0.125).</S>
+    <S sid="106" ssid="16">The additional space required by our scheme for storing frequency information is less than a factor of 2 compared to the standard BF.</S>
+    <S sid="107" ssid="17">Figure 7 shows the number and size of frequency estimation errors made by our log-frequency BF scheme and a non-redundant scheme that stores only the exact quantised count.</S>
+    <S sid="108" ssid="18">We presented 500K negatives to the filter and recorded the frequency of overestimation errors of each size.</S>
+    <S sid="109" ssid="19">As shown in Section 3.1, the probability of overestimating an item&#8217;s frequency under the log-frequency BF scheme decays exponentially in the size of this overestimation error.</S>
+    <S sid="110" ssid="20">Although the non-redundant scheme requires fewer items be stored in the filter and, therefore, has a lower underlying false positive rate (0.076 versus 0.</S>
+    <S sid="111" ssid="21">159), in practice it incurs a much higher error rate (0.717) with many large errors.</S>
+    <S sid="112" ssid="22">Figure 9 shows the impact of sub-sequence filtering on the actual error rate.</S>
+    <S sid="113" ssid="23">Although, the false positive rate for the BF containing 2-grams, in addition, to 3-grams (filtered) is higher than the false positive rate of the unfiltered BF containing only 3-grams, the actual error rate of the former is lower for models with less memory.</S>
+    <S sid="114" ssid="24">By testing for 2-grams prior to querying for the 3-grams, we can avoid performing some queries that may otherwise have incurred errors using the fact that a 3-gram cannot be present if one of its constituent 2-grams is absent.</S>
+  </SECTION>
+  <SECTION title="6 Related Work" number="6">
+    <S sid="115" ssid="1">We are not the first people to consider building very large scale LMs: Kumar et al. used a four-gram LM for re-ranking (Kumar et al., 2005) and in unpublished work, Google used substantially larger ngrams in their SMT system.</S>
+    <S sid="116" ssid="2">Deploying such LMs requires either a cluster of machines (and the overheads of remote procedure calls), per-sentence filtering (which again, is slow) and/or the use of some other lossy compression (Goodman and Gao, 2000).</S>
+    <S sid="117" ssid="3">Our approach can complement all these techniques.</S>
+    <S sid="118" ssid="4">Bloom filters have been widely used in database applications for reducing communications overheads and were recently applied to encode word frequencies in information retrieval (Linari and Weikum, 2006) using a method that resembles the non-redundant scheme described above.</S>
+    <S sid="119" ssid="5">Extensions of the BF to associate frequencies with items in the set have been proposed e.g., (Cormode and Muthukrishn, 2005); while these schemes are more general than ours, they incur greater space overheads for the distributions that we consider here.</S>
+  </SECTION>
+  <SECTION title="7 Conclusions" number="7">
+    <S sid="120" ssid="1">We have shown that Bloom Filters can form the basis for space-efficient language modelling in SMT.</S>
+    <S sid="121" ssid="2">Extending the standard BF structure to encode corpus frequency information and developing a strategy for reducing the error rates of these models by sub-sequence filtering, our models enable higherorder n-grams and larger monolingual corpora to be used more easily for language modelling in SMT.</S>
+    <S sid="122" ssid="3">In a companion paper (Talbot and Osborne, 2007) we have proposed a framework for deriving conventional smoothed n-gram models from the logfrequency BF scheme allowing us to do away entirely with the standard n-gram model in an SMT system.</S>
+    <S sid="123" ssid="4">We hope the present work will help establish the Bloom filter as a practical alternative to conventional associative data structures used in computational linguistics.</S>
+    <S sid="124" ssid="5">The framework presented here shows that with some consideration for its workings, the randomised nature of the Bloom filter need not be a significant impediment to is use in applications.</S>
+  </SECTION>
+</PAPER>

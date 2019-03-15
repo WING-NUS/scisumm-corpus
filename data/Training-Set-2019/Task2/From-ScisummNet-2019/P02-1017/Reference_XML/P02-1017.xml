@@ -1,0 +1,197 @@
+<PAPER>
+  <S sid="0">A Generative Constituent-Context Model For Improved Grammar Induction</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present a generative distributional model for the unsupervised induction of natural language syntax which explicitly models constituent yields and contexts.</S>
+    <S sid="2" ssid="2">Parameter search with EM produces higher quality analyses than previously exhibited by unsupervised systems, giving the best published unparsing results on the Experiments on Penn treebank sentences of comparalength show an even higher 71% on nontrivial brackets.</S>
+    <S sid="3" ssid="3">We compare distributionally induced and actual part-of-speech tags as input data, and examine extensions to the basic model.</S>
+    <S sid="4" ssid="4">We discuss errors made by the system, compare the system to previous models, and discuss upper bounds, lower bounds, and stability for this task.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="5" ssid="1">The task of inducing hierarchical syntactic structure from observed yields alone has received a great deal of attention (Carroll and Charniak, 1992; Pereira and Schabes, 1992; Brill, 1993; Stolcke and Omohundro, 1994).</S>
+    <S sid="6" ssid="2">Researchers have explored this problem for a variety of reasons: to argue empirically against the poverty of the stimulus (Clark, 2001), to use induction systems as a first stage in constructing large treebanks (van Zaanen, 2000), or to build better language models (Baker, 1979; Chen, 1995).</S>
+    <S sid="7" ssid="3">In previous work, we presented a conditional model over trees which gave the best published results for unsupervised parsing of the ATIS corpus (Klein and Manning, 2001b).</S>
+    <S sid="8" ssid="4">However, it suffered from several drawbacks, primarily stemming from the conditional model used for induction.</S>
+    <S sid="9" ssid="5">Here, we improve on that model in several ways.</S>
+    <S sid="10" ssid="6">First, we construct a generative model which utilizes the same features.</S>
+    <S sid="11" ssid="7">Then, we extend the model to allow multiple constituent types and multiple prior distributions over trees.</S>
+    <S sid="12" ssid="8">The new model gives a 13% reduction in parsing error on WSJ sentence experiments, including a positive qualitative shift in error types.</S>
+    <S sid="13" ssid="9">Additionally, it produces much more stable results, does not require heavy smoothing, and exhibits a reliable correspondence between the maximized objective and parsing accuracy.</S>
+    <S sid="14" ssid="10">It is also much faster, not requiring a fitting phase for each iteration.</S>
+    <S sid="15" ssid="11">Klein and Manning (2001b) and Clark (2001) take treebank part-of-speech sequences as input.</S>
+    <S sid="16" ssid="12">We followed this for most experiments, but in section 4.3, we use distributionally induced tags as input.</S>
+    <S sid="17" ssid="13">Performance with induced tags is somewhat reduced, but still gives better performance than previous models.</S>
+  </SECTION>
+  <SECTION title="2 Previous Work" number="2">
+    <S sid="18" ssid="1">Early work on grammar induction emphasized heuristic structure search, where the primary induction is done by incrementally adding new productions to an initially empty grammar (Olivier, 1968; Wolff, 1988).</S>
+    <S sid="19" ssid="2">In the early 1990s, attempts were made to do grammar induction by parameter search, where the broad structure of the grammar is fixed in advance and only parameters are induced (Lari and Young, 1990; Carroll and Charniak, 1992).1 However, this appeared unpromising and most recent work has returned to using structure search.</S>
+    <S sid="20" ssid="3">Note that both approaches are local.</S>
+    <S sid="21" ssid="4">Structure search requires ways of deciding locally which merges will produce a coherent, globally good grammar.</S>
+    <S sid="22" ssid="5">To the extent that such approaches work, they work because good local heuristics have been engineered (Klein and Manning, 2001a; Clark, 2001).</S>
+    <S sid="23" ssid="6">Parameter search is also local; parameters which are locally optimal may be globally poor.</S>
+    <S sid="24" ssid="7">A concrete example is the experiments from (Carroll and Charniak, 1992).</S>
+    <S sid="25" ssid="8">They restricted the space of grammars to those isomorphic to a dependency grammar over the POS symbols in the Penn treebank, and then searched for parameters with the inside-outside algorithm (Baker, 1979) starting with 300 random production weight vectors.</S>
+    <S sid="26" ssid="9">Each seed converged to a different locally optimal grammar, none of them nearly as good as the treebank grammar, measured either by parsing performance or data-likelihood.</S>
+    <S sid="27" ssid="10">However, parameter search methods have a potential advantage.</S>
+    <S sid="28" ssid="11">By aggregating over only valid, complete parses of each sentence, they naturally incorporate the constraint that constituents cannot cross &#8211; the bracketing decisions made by the grammar must be coherent.</S>
+    <S sid="29" ssid="12">The Carroll and Charniak experiments had two primary causes for failure.</S>
+    <S sid="30" ssid="13">First, random initialization is not always good, or necessary.</S>
+    <S sid="31" ssid="14">The parameter space is riddled with local likelihood maxima, and starting with a very specific, but random, grammar should not be expected to work well.</S>
+    <S sid="32" ssid="15">We duplicated their experiments, but used a uniform parameter initialization where all productions were equally likely.</S>
+    <S sid="33" ssid="16">This allowed the interaction between the grammar and data to break the initial symmetry, and resulted in an induced grammar of higher quality than Carroll and Charniak reported.</S>
+    <S sid="34" ssid="17">This grammar, which we refer to as DEP-PCFG will be evaluated in more detail in section 4.</S>
+    <S sid="35" ssid="18">The second way in which their experiment was guaranteed to be somewhat unencouraging is that a delexicalized dependency grammar is a very poor model of language, even in a supervised setting.</S>
+    <S sid="36" ssid="19">By the F1 measure used in the experiments in section 4, an induced dependency PCFG scores 48.2, compared to a score of 82.1 for a supervised PCFG read from local trees of the treebank.</S>
+    <S sid="37" ssid="20">However, a supervised dependency PCFG scores only 53.5, not much better than the unsupervised version, and worse than a right-branching baseline (of 60.0).</S>
+    <S sid="38" ssid="21">As an example of the inherent shortcomings of the dependency grammar, it is structurally unable to distinguish whether the subject or object should be attached to the verb first.</S>
+    <S sid="39" ssid="22">Since both parses involve the same set of productions, both will have equal likelihood.</S>
+  </SECTION>
+  <SECTION title="3 A Generative Constituent-Context Model" number="3">
+    <S sid="40" ssid="1">To exploit the benefits of parameter search, we used a novel model which is designed specifically to enable a more felicitous search space.</S>
+    <S sid="41" ssid="2">The fundamental assumption is a much weakened version of classic linguistic constituency tests (Radford, 1988): constituents appear in constituent contexts.</S>
+    <S sid="42" ssid="3">A particular linguistic phenomenon that the system exploits is that long constituents often have short, common equivalents, or proforms, which appear in similar contexts and whose constituency is easily discovered (or guaranteed).</S>
+    <S sid="43" ssid="4">Our model is designed to transfer the constituency of a sequence directly to its containing context, which is intended to then pressure new sequences that occur in that context into being parsed as constituents in the next round.</S>
+    <S sid="44" ssid="5">The model is also designed to exploit the successes of distributional clustering, and can equally well be viewed as doing distributional clustering in the presence of no-overlap constraints.</S>
+    <S sid="45" ssid="6">Unlike a PCFG, our model describes all contiguous subsequences of a sentence (spans), including empty spans, whether they are constituents or nonconstituents (distituents).</S>
+    <S sid="46" ssid="7">A span encloses a sequence of terminals, or yield, &#945;, such as DT JJ NN.</S>
+    <S sid="47" ssid="8">A span occurs in a context x, such as o&#8211;VBZ, where x is the ordered pair of preceding and following terminals (o denotes a sentence boundary).</S>
+    <S sid="48" ssid="9">A bracketing of a sentence is a boolean matrix B, which indicates which spans are constituents and which are not.</S>
+    <S sid="49" ssid="10">Figure 1 shows a parse of a short sentence, the bracketing corresponding to that parse, and the labels, yields, and contexts of its constituent spans.</S>
+    <S sid="50" ssid="11">Figure 2 shows several bracketings of the sentence in figure 1.</S>
+    <S sid="51" ssid="12">A bracketing B of a sentence is non-crossing if, whenever two spans cross, at most one is a constituent in B.</S>
+    <S sid="52" ssid="13">A non-crossing bracketing is tree-equivalent if the size-one terminal spans and the full-sentence span are constituents, and all size-zero spans are distituents.</S>
+    <S sid="53" ssid="14">Figure 2(a) and (b) are tree-equivalent.</S>
+    <S sid="54" ssid="15">Tree-equivalent bracketings B correspond to (unlabeled) trees in the obvious way.</S>
+    <S sid="55" ssid="16">A bracketing is binary if it corresponds to a binary tree.</S>
+    <S sid="56" ssid="17">Figure 2(b) is binary.</S>
+    <S sid="57" ssid="18">We will induce trees by inducing tree-equivalent bracketings.</S>
+    <S sid="58" ssid="19">Our generative model over sentences S has two phases.</S>
+    <S sid="59" ssid="20">First, we choose a bracketing B according to some distribution P(B) and then generate the sentence given that bracketing: Given B, we fill in each span independently.</S>
+    <S sid="60" ssid="21">The context and yield of each span are independent of each other, and generated conditionally on the constituency Bij of that span.</S>
+    <S sid="61" ssid="22">The distribution P(&#945;ij |Bij) is a pair of multinomial distributions over the set of all possible yields: one for constituents (Bij = c) and one for distituents (Bij = d).</S>
+    <S sid="62" ssid="23">Similarly for P(xij |Bij) and contexts.</S>
+    <S sid="63" ssid="24">The marginal probability assigned to the sentence S is given by summing over all possible bracketings of S: P(S) = Y-B P(B)P(S|B).2 To induce structure, we run EM over this model, treating the sentences S as observed and the bracketings B as unobserved.</S>
+    <S sid="64" ssid="25">The parameters 2 of 2Viewed as a model generating sentences, this model is deficient, placing mass on yield and context choices which will not tile into a valid sentence, either because specifications for positions conflict or because yields of incorrect lengths are chosen.</S>
+    <S sid="65" ssid="26">However, we can renormalize by dividing by the mass placed on proper sentences and zeroing the probability of improper bracketings.</S>
+    <S sid="66" ssid="27">The rest of the paper, and results, would be unchanged except for notation to track the renormalization constant. the model are the constituency-conditional yield and context distributions P(&#945;|b) and P(x|b).</S>
+    <S sid="67" ssid="28">If P(B) is uniform over all (possibly crossing) bracketings, then this procedure will be equivalent to softclustering with two equal-prior classes.</S>
+    <S sid="68" ssid="29">There is reason to believe that such soft clusterings alone will not produce valuable distinctions, even with a significantly larger number of classes.</S>
+    <S sid="69" ssid="30">The distituents must necessarily outnumber the constituents, and so such distributional clustering will result in mostly distituent classes.</S>
+    <S sid="70" ssid="31">Clark (2001) finds exactly this effect, and must resort to a filtering heuristic to separate constituent and distituent clusters.</S>
+    <S sid="71" ssid="32">To underscore the difference between the bracketing and labeling tasks, consider figure 3.</S>
+    <S sid="72" ssid="33">In both plots, each point is a frequent tag sequence, assigned to the (normalized) vector of its context frequencies.</S>
+    <S sid="73" ssid="34">Each plot has been projected onto the first two principal components of its respective data set.</S>
+    <S sid="74" ssid="35">The left plot shows the most frequent sequences of three constituent types.</S>
+    <S sid="75" ssid="36">Even in just two dimensions, the clusters seem coherent, and it is easy to believe that they would be found by a clustering algorithm in the full space.</S>
+    <S sid="76" ssid="37">On the right, sequences have been labeled according to whether their occurrences are constituents more or less of the time than a cutoff (of 0.2).</S>
+    <S sid="77" ssid="38">The distinction between constituent and distituent seems much less easily discernible.</S>
+    <S sid="78" ssid="39">We can turn what at first seems to be distributional clustering into tree induction by confining P(B) to put mass only on tree-equivalent bracketings.</S>
+    <S sid="79" ssid="40">In particular, consider Pbin(B) which is uniform over binary bracketings and zero elsewhere.</S>
+    <S sid="80" ssid="41">If we take this bracketing distribution, then when we sum over data completions, we will only involve bracketings which correspond to valid binary trees.</S>
+    <S sid="81" ssid="42">This restriction is the basis for our algorithm.</S>
+    <S sid="82" ssid="43">We now essentially have our induction algorithm.</S>
+    <S sid="83" ssid="44">We take P(B) to be Pbin(B), so that all binary trees are equally likely.</S>
+    <S sid="84" ssid="45">We then apply the EM algorithm: E-Step: Find the conditional completion likelihoods P(BIS, O) according to the current O. M-Step: Fix P(B|S, O) and find the O' which maximizes EB P(BIS, O) logP(S, BIO').</S>
+    <S sid="85" ssid="46">The completions (bracketings) cannot be efficiently enumerated, and so a cubic dynamic program similar to the inside-outside algorithm is used to calculate the expected counts of each yield and context, both as constituents and distituents.</S>
+    <S sid="86" ssid="47">Relative frequency estimates (which are the ML estimates for this model) are used to set O'.</S>
+    <S sid="87" ssid="48">To begin the process, we did not begin at the Estep with an initial guess at O.</S>
+    <S sid="88" ssid="49">Rather, we began at the M-step, using an initial distribution over completions.</S>
+    <S sid="89" ssid="50">The initial distribution was not the uniform distribution over binary trees Pbin(B).</S>
+    <S sid="90" ssid="51">That was undesirable as an initial point because, combinatorily, almost all trees are relatively balanced.</S>
+    <S sid="91" ssid="52">On the other hand, in language, we want to allow unbalanced structures to have a reasonable chance to be discovered.</S>
+    <S sid="92" ssid="53">Therefore, consider the following uniformsplitting process of generating binary trees over k terminals: choose a split point at random, then recursively build trees by this process on each side of the split.</S>
+    <S sid="93" ssid="54">This process gives a distribution Psplit which puts relatively more weight on unbalanced trees, but only in a very general, non language-specific way.</S>
+    <S sid="94" ssid="55">This distribution was not used in the model itself, however.</S>
+    <S sid="95" ssid="56">It seemed to bias too strongly against balanced structures, and led to entirely linear-branching structures.</S>
+    <S sid="96" ssid="57">The smoothing used was straightforward.</S>
+    <S sid="97" ssid="58">For each yield &#945; or context x, we added 10 counts of that item as a constituent and 50 as a distituent.</S>
+    <S sid="98" ssid="59">This reflected the relative skew of random spans being more likely to be distituents.</S>
+    <S sid="99" ssid="60">This contrasts with our previous work, which was sensitive to smoothing method, and required a massive amount of it.</S>
+  </SECTION>
+  <SECTION title="4 Experiments" number="4">
+    <S sid="100" ssid="1">We performed most experiments on the 7422 sentences in the Penn treebank Wall Street Journal section which contained no more than 10 words after the removal of punctuation and null elements (WSJ-10).</S>
+    <S sid="101" ssid="2">Evaluation was done by measuring unlabeled precision, recall, and their harmonic mean F1 against the treebank parses.</S>
+    <S sid="102" ssid="3">Constituents which could not be gotten wrong (single words and entire sentences) were discarded.3 The basic experiments, as described above, do not label constituents.</S>
+    <S sid="103" ssid="4">An advantage to having only a single constituent class is that it encourages constituents of one type to be found even when they occur in a context which canonically holds another type.</S>
+    <S sid="104" ssid="5">For example, NPs and PPs both occur between a verb and the end of the sentence, and they can transfer constituency to each other through that context.</S>
+    <S sid="105" ssid="6">Figure 4 shows the F1 score for various methods of parsing.</S>
+    <S sid="106" ssid="7">RANDOM chooses a tree uniformly at random from the set of binary trees.4 This is the unsupervised baseline.</S>
+    <S sid="107" ssid="8">DEP-PCFG is the result of duplicating the experiments of Carroll and Charniak (1992), using EM to train a dependencystructured PCFG.</S>
+    <S sid="108" ssid="9">LBRANCH and RBRANCH choose the left- and right-branching structures, respectively.</S>
+    <S sid="109" ssid="10">RBRANCH is a frequently used baseline for supervised parsing, but it should be stressed that it encodes a significant fact about English structure, and an induction system need not beat it to claim a degree of success.</S>
+    <S sid="110" ssid="11">CCM is our system, as described above.</S>
+    <S sid="111" ssid="12">SUP-PCFG is a supervised PCFG parser trained on a 90-10 split of this data, using the treebank grammar, with the Viterbi parse rightbinarized.5 UBOUND is the upper bound of how well a binary system can do against the treebank sentences, which are generally flatter than binary, limiting the maximum precision.</S>
+    <S sid="112" ssid="13">CCM is doing quite well at 71.1%, substantially better than right-branching structure.</S>
+    <S sid="113" ssid="14">One common issue with grammar induction systems is a tendency to chunk in a bottom-up fashion.</S>
+    <S sid="114" ssid="15">Especially since the CCM does not model recursive structure explicitly, one might be concerned that the high overall accuracy is due to a high accuracy on short-span constituents.</S>
+    <S sid="115" ssid="16">Figure 5 shows that this is not true.</S>
+    <S sid="116" ssid="17">Recall drops slightly for mid-size constituents, but longer constituents are as reliably proposed as short ones.</S>
+    <S sid="117" ssid="18">Another effect illustrated in this graph is that, for span 2, constituents have low precision for their recall.</S>
+    <S sid="118" ssid="19">This contrast is primarily due to the single largest difference between the system&#8217;s induced structures and those in the treebank: the treebank does not parse into NPs such as DT JJ NN, while our system does, and generally does so correctly, identifying N units like JJ NN.</S>
+    <S sid="119" ssid="20">This overproposal drops span-2 precision.</S>
+    <S sid="120" ssid="21">In contrast, figure 5 also shows the F1 for DEP-PCFG, which does exhibit a drop in F1 over larger spans.</S>
+    <S sid="121" ssid="22">The top row of figure 8 shows the recall of nontrivial brackets, split according the brackets&#8217; labels in the treebank.</S>
+    <S sid="122" ssid="23">Unsurprisingly, NP recall is highest, but other categories are also high.</S>
+    <S sid="123" ssid="24">Because we ignore trivial constituents, the comparatively low S represents only embedded sentences, which are somewhat harder even for supervised systems.</S>
+    <S sid="124" ssid="25">To facilitate comparison to other recent work, figure 6 shows the accuracy of our system when trained on the same WSJ data, but tested on the ATIS corpus, and evaluated according to the EVALB program.6 The F1 numbers are lower for this corpus and evaluation method.7 Still, CCM beats not only RBRANCH (by 8.3%), but also the previous conditional COND-CCM and the next closest unsupervised system (which does not beat RBRANCH in F1).</S>
+    <S sid="125" ssid="26">Parsing figures can only be a component of evaluating an unsupervised induction system.</S>
+    <S sid="126" ssid="27">Low scores may indicate systematic alternate analyses rather than true confusion, and the Penn treebank is a sometimes arbitrary or even inconsistent gold standard.</S>
+    <S sid="127" ssid="28">To give a better sense of the kinds of errors the system is or is not making, we can look at which sequences are most often over-proposed, or most often under-proposed, compared to the treebank parses. forms MD VB verb groups systematically, and it attaches the possessive particle to the right, like a determiner, rather than to the left.8 It provides binarybranching analyses within NPs, normally resulting in correct extra N constituents, like JJ NN, which are not bracketed in the treebank.</S>
+    <S sid="128" ssid="29">More seriously, it tends to attach post-verbal prepositions to the verb and gets confused by long sequences of nouns.</S>
+    <S sid="129" ssid="30">A significant improvement over earlier systems is the absence of subject-verb groups, which disappeared when we switched to Psplit(B) for initial completions; the more balanced subject-verb analysis had a substantial combinatorial advantage with Pbin(B).</S>
+    <S sid="130" ssid="31">We also ran the system with multiple constituent classes, using a slightly more complex generative model in which the bracketing generates a labeling which then generates the constituents and contexts.</S>
+    <S sid="131" ssid="32">The set of labels for constituent spans and distituent spans are forced to be disjoint.</S>
+    <S sid="132" ssid="33">Intuitively, it seems that more classes should help, by allowing the system to distinguish different types of constituents and constituent contexts.</S>
+    <S sid="133" ssid="34">However, it seemed to slightly hurt parsing accuracy overall.</S>
+    <S sid="134" ssid="35">Figure 8 compares the performance for 2 versus 12 classes; in both cases, only one of the classes was allocated for distituents.</S>
+    <S sid="135" ssid="36">Overall F1 dropped very slightly with 12 classes, but the category recall numbers indicate that the errors shifted around substantially.</S>
+    <S sid="136" ssid="37">PP accuracy is lower, which is not surprising considering that PPs tend to appear rather optionally and in contexts in which other, easier categories also frequently appear.</S>
+    <S sid="137" ssid="38">On the other hand, embedded sentence recall is substantially higher, possibly because of more effective use of the top-level sentences which occur in the signature context o&#8211;o.</S>
+    <S sid="138" ssid="39">The classes found, as might be expected, range from clearly identifiable to nonsense.</S>
+    <S sid="139" ssid="40">Note that simply directly clustering all sequences into 12 categories produced almost entirely the latter, with clusters representing various distituent types.</S>
+    <S sid="140" ssid="41">Figure 9 shows several of the 12 classes.</S>
+    <S sid="141" ssid="42">Class 0 is the model&#8217;s distituent class.</S>
+    <S sid="142" ssid="43">Its most frequent members are a mix of obvious distituents (IN DT, DT JJ, IN DT, NN VBZ) and seemingly good sequences like NNP NNP.</S>
+    <S sid="143" ssid="44">However, there are many sequences of 3 or more NNP tags in a row, and not all adjacent pairs can possibly be constituents at the same time.</S>
+    <S sid="144" ssid="45">Class 1 is mainly common NP sequences, class 2 is proper NPs, class 3 is NPs which involve numbers, and class 6 is N sequences, which tend to be linguistically right but unmarked in the treebank.</S>
+    <S sid="145" ssid="46">Class 4 is a mix of seemingly good NPs, often from positions like VBZ&#8211;NN where they were not constituents, and other sequences that share such contexts with otherwise good NP sequences.</S>
+    <S sid="146" ssid="47">This is a danger of not jointly modeling yield and context, and of not modeling any kind of recursive structure.</S>
+    <S sid="147" ssid="48">Class 5 is mainly composed of verb phrases and verb groups.</S>
+    <S sid="148" ssid="49">No class corresponded neatly to PPs: perhaps because they have no signature contexts.</S>
+    <S sid="149" ssid="50">The 2-class model is effective at identifying them only because they share contexts with a range of other constituent types (such as NPs and VPs).</S>
+    <S sid="150" ssid="51">A reasonable criticism of the experiments presented so far, and some other earlier work, is that we assume treebank part-of-speech tags as input.</S>
+    <S sid="151" ssid="52">This criticism could be two-fold.</S>
+    <S sid="152" ssid="53">First, state-of-the-art supervised PCFGs do not perform nearly so well with their input delexicalized.</S>
+    <S sid="153" ssid="54">We may be reducing data sparsity and making it easier to see a broad picture of the grammar, but we are also limiting how well we can possibly do.</S>
+    <S sid="154" ssid="55">It is certainly worth exploring methods which supplement or replace tagged input with lexical input.</S>
+    <S sid="155" ssid="56">However, we address here the more serious criticism: that our results stem from clues latent in the treebank tagging information which are conceptually posterior to knowledge of structure.</S>
+    <S sid="156" ssid="57">For instance, some treebank tag distinctions, such as particle (RP) vs. preposition (IN) or predeterminer (PDT) vs. determiner (DT) or adjective (JJ), could be said to import into the tagset distinctions that can only be made syntactically.</S>
+    <S sid="157" ssid="58">To show results from a complete grammar induction system, we also did experiments starting with a clustering of the words in the treebank.</S>
+    <S sid="158" ssid="59">We used basically the baseline method of word type clustering in (Sch&#168;utze, 1995) (which is close to the methods of (Finch, 1993)).</S>
+    <S sid="159" ssid="60">For (all-lowercased) word types in the Penn treebank, a 1000 element vector was made by counting how often each co-occurred with each of the 500 most common words immediately to the left or right in Treebank text and additional 1994&#8211;96 WSJ newswire.</S>
+    <S sid="160" ssid="61">These vectors were length-normalized, and then rank-reduced by an SVD, keeping the 50 largest singular vectors.</S>
+    <S sid="161" ssid="62">The resulting vectors were clustered into 200 word classes by a weighted k-means algorithm, and then grammar induction operated over these classes.</S>
+    <S sid="162" ssid="63">We do not believe that the quality of our tags matches that of the better methods of Sch&#168;utze (1995), much less the recent results of Clark (2000).</S>
+    <S sid="163" ssid="64">Nevertheless, using these tags as input still gave induced structure substantially above right-branching.</S>
+    <S sid="164" ssid="65">Figure 8 shows the performance with induced tags compared to correct tags.</S>
+    <S sid="165" ssid="66">Overall F1 has dropped, but, interestingly, VP and S recall are higher.</S>
+    <S sid="166" ssid="67">This seems to be due to a marked difference between the induced tags and the treebank tags: nouns are scattered among a disproportionally large number of induced tags, increasing the number of common NP sequences, but decreasing the frequency of each.</S>
+    <S sid="167" ssid="68">Another issue with previous systems is their sensitivity to initial choices.</S>
+    <S sid="168" ssid="69">The conditional model of Klein and Manning (2001b) had the drawback that the variance of final F1, and qualitative grammars found, was fairly high, depending on small differences in first-round random parses.</S>
+    <S sid="169" ssid="70">The model presented here does not suffer from this: while it is clearly sensitive to the quality of the input tagging, it is robust with respect to smoothing parameters and data splits.</S>
+    <S sid="170" ssid="71">Varying the smoothing counts a factor of ten in either direction did not change the overall F1 by more than 1%.</S>
+    <S sid="171" ssid="72">Training on random subsets of the training data brought lower performance, but constantly lower over equal-size splits.</S>
+    <S sid="172" ssid="73">Moreover, there are no first-round random decisions to be sensitive to; the soft EM procedure is deterministic.</S>
+    <S sid="173" ssid="74">Figure 10 shows the overall F1 score and the data likelihood according to our model during convergence.9 Surprisingly, both are non-decreasing as the system iterates, indicating that data likelihood in this model corresponds well with parse accuracy.10 Figure 11 shows recall for various categories by iteration.</S>
+    <S sid="174" ssid="75">NP recall exhibits the more typical pattern of a sharp rise followed by a slow fall, but the other categories, after some initial drops, all increase until convergence.</S>
+    <S sid="175" ssid="76">These graphs stop at 40 iterations.</S>
+    <S sid="176" ssid="77">The system actually converged in both likelihood and F1 by iteration 38, to within a tolerance of 10&#8722;10.</S>
+    <S sid="177" ssid="78">The time to convergence varied according to smoothing amount, number of classes, and tags used, but the system almost always converged within 80 iterations, usually within 40.</S>
+  </SECTION>
+  <SECTION title="5 Conclusions" number="5">
+    <S sid="178" ssid="1">We have presented a simple generative model for the unsupervised distributional induction of hierarchical linguistic structure.</S>
+    <S sid="179" ssid="2">The system achieves the best published unsupervised parsing scores on the WSJ-10 and ATIS data sets.</S>
+    <S sid="180" ssid="3">The induction algorithm combines the benefits of EM-based parameter search and distributional clustering methods.</S>
+    <S sid="181" ssid="4">We have shown that this method acquires a substantial amount of correct structure, to the point that the most frequent discrepancies between the induced trees and the treebank gold standard are systematic alternate analyses, many of which are linguistically plausible.</S>
+    <S sid="182" ssid="5">We have shown that the system is not reliant on supervised POS tag input, and demonstrated increased accuracy, speed, simplicity, and stability compared to previous systems.</S>
+  </SECTION>
+</PAPER>

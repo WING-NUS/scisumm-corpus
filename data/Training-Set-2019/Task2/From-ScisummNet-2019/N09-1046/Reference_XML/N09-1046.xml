@@ -1,0 +1,152 @@
+<PAPER>
+  <S sid="0">Using a maximum entropy model to build segmentation lattices for MT</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Recent work has shown that translating segmentation lattices (lattices that encode alternative ways of breaking the input to an MT system into words), rather than text in any particular segmentation, improves translation quality of languages whose orthography does not mark morpheme boundaries.</S>
+    <S sid="2" ssid="2">However, much of this work has relied on multiple segmenters that perform differently on the same input to generate sufficiently diverse source segmentation lattices.</S>
+    <S sid="3" ssid="3">In this work, we describe a maximum entropy model of compound word splitting that relies on a few general features that can be used to generate segmentation lattices for most languages with productive compounding.</S>
+    <S sid="4" ssid="4">Using a model optimized for German translation, we present results showing significant improvements in translation quality in German-English, Hungarian-English, and Turkish-English translation over state-ofthe-art baselines.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="5" ssid="1">Compound words pose significant challenges to the lexicalized models that are currently common in statistical machine translation.</S>
+    <S sid="6" ssid="2">This problem has been widely acknowledged, and the conventional solution, which has been shown to work well for many language pairs, is to segment compounds into their constituent morphemes using either morphological analyzers or empirical methods and then to translate from or to this segmented variant (Koehn et al., 2008; Dyer et al., 2008; Yang and Kirchhoff, 2006).</S>
+    <S sid="7" ssid="3">But into what units should a compound word be segmented?</S>
+    <S sid="8" ssid="4">Taken as a stand-alone task, the goal of a compound splitter is to produce a segmentation for some input that matches the linguistic intuitions of a native speaker of the language.</S>
+    <S sid="9" ssid="5">However, there are often advantages to using elements larger than single morphemes as the minimal lexical unit for MT, since they may correspond more closely to the units of translation.</S>
+    <S sid="10" ssid="6">Unfortunately, determining the optimal segmentation is challenging, typically requiring extensive experimentation (Koehn and Knight, 2003; Habash and Sadat, 2006; Chang et al., 2008).</S>
+    <S sid="11" ssid="7">Recent work has shown that by combining a variety of segmentations of the input into a segmentation lattice and effectively marginalizing over many different segmentations, translations superior to those resulting from any single single segmentation of the input can be obtained (Xu et al., 2005; Dyer et al., 2008; DeNeefe et al., 2008).</S>
+    <S sid="12" ssid="8">Unfortunately, this approach is difficult to utilize because it requires multiple segmenters that behave differently on the same input.</S>
+    <S sid="13" ssid="9">In this paper, we describe a maximum entropy word segmentation model that is trained to assign high probability to possibly several segmentations of an input word.</S>
+    <S sid="14" ssid="10">This model enables generation of diverse, accurate segmentation lattices from a single model that are appropriate for use in decoders that accept word lattices as input, such as Moses (Koehn et al., 2007).</S>
+    <S sid="15" ssid="11">Since our model relies a small number of dense features, its parameters can be tuned using very small amounts of manually created reference lattices.</S>
+    <S sid="16" ssid="12">Furthermore, since these parameters were chosen to have valid interpretation across a variety of languages, we find that the weights estimated for one apply quite well to another.</S>
+    <S sid="17" ssid="13">We show that these lattices significantly improve translation quality when translating into English from three languages exhibiting productive compounding: German, Turkish, and Hungarian.</S>
+    <S sid="18" ssid="14">The paper is structured as follows.</S>
+    <S sid="19" ssid="15">In the next section, we describe translation from segmentation lattices and give a motivating example, Section 3 describes our segmentation model and its tuning and how it is used to generate segmentation lattices, Section 5 presents experimental results, Section 6 reviews relevant related work, and in Section 7 we conclude and discuss future work.</S>
+  </SECTION>
+  <SECTION title="2 Segmentation lattice translation" number="2">
+    <S sid="20" ssid="1">In this section we give a brief overview of lattice translation and then describe the characteristics of segmentation lattices that are appropriate for translation.</S>
+    <S sid="21" ssid="2">Word lattices have been used to represent ambiguous input to machine translation systems for a variety of tasks, including translating automatic speech recognition transcriptions and translating from morphologically complex languages (Bertoldi et al., 2007; Dyer et al., 2008).</S>
+    <S sid="22" ssid="3">The intuition behind using lattices in both approaches is to avoid the error propagation effects that are found when a one-best guess is used.</S>
+    <S sid="23" ssid="4">By carrying a certain amount of uncertainty forward in the processing pipeline, information contained in the translation models can be leveraged to help resolve the upstream ambiguity.</S>
+    <S sid="24" ssid="5">In our case, we want to propagate uncertainty about the proper segmentation of a compound forward to the decoder, which can use its full translation model to select proper segmentation for translation.</S>
+    <S sid="25" ssid="6">Mathematically, this can be understood as follows: whereas the goal in conventional machine translation is to find the sentence &#710;eI1 that maximizes Pr(eI1|fJ1 ), the lattice adds a latent variable, the path f&#175; from a designated start start to a designated goal state in the lattice G: If the transduction formalism used is a synchronous probabilistic context free grammar or weighted finite Figure 1 shows two lattices that encode the most linguistically plausible ways of segmenting two prototypical German compounds with compositional meanings.</S>
+    <S sid="26" ssid="7">However, while these words are structurally quite similar, translating them into English would seem to require different amounts of segmentation.</S>
+    <S sid="27" ssid="8">For example, the dictionary fragment shown in Table 1 illustrates that tonbandaufnahme can be rendered into English by following 3 different paths in the lattice, ton/audio band/tape aufnahme/recording, tonband/tape aufnahme/recording, and tonbandaufnahme/tape recording.</S>
+    <S sid="28" ssid="9">In contrast, wiederaufnahme can only be translated correctly using the unsegmented form, even though in German the meaning of the full form is a composition of the meaning of the individual morphemes.1 It should be noted that phrase-based models can translate multiple words as a unit, and therefore capture non-compositional meaning.</S>
+    <S sid="29" ssid="10">Thus, by default if the training data is processed such that, for example, aufnahme, in its sense of recording, is segmented into two words, then more paths in the lattices become plausible translations.</S>
+    <S sid="30" ssid="11">However, using a strategy of &#8220;over segmentation&#8221; and relying on phrase models to learn the non-compositional translations has been shown to degrade translation quality significantly on several tasks (Xu et al., 2004; Habash and Sadat, 2006).</S>
+    <S sid="31" ssid="12">We thus desire lattices containing as little oversegmentation as possible.</S>
+    <S sid="32" ssid="13">We have now have a concept of a &#8220;gold standard&#8221; segmentation lattice for translation: it should contain all linguistically motivated segmentations that also correspond to plausible word-for-word translations into English.</S>
+    <S sid="33" ssid="14">Figure 2 shows an example of the reference lattice for the two words we just discussed.</S>
+    <S sid="34" ssid="15">For the experiments in this paper, we generated a development and test set by randomly choosing 19 German newspaper articles, identifying all words greater than 6 characters is length, and segmenting each word so that the resulting units could be translated compositionally into English.</S>
+    <S sid="35" ssid="16">This resulted in 489 training sentences corresponding to 564 paths for the dev set (which was drawn from 15 articles), and 279 words (302 paths) for the test set (drawn from the remaining 4 articles).</S>
+  </SECTION>
+  <SECTION title="3 A maximum entropy segmentation model" number="3">
+    <S sid="36" ssid="1">We now turn to the problem of modeling word segmentation in a way that facilitates lattice construction.</S>
+    <S sid="37" ssid="2">As a starting point, we consider the work of Koehn and Knight (2003) who observe that in most languages that exhibit compounding, the morphemes used to construct compounds frequently also appear as individual tokens.</S>
+    <S sid="38" ssid="3">Based on this observation, they propose a model of word segmentation that splits compound words into pieces found in the dictionary based on a variety heuristic scoring criteria.</S>
+    <S sid="39" ssid="4">While these models have been reasonably successful (Koehn et al., 2008), they are problematic for two reasons.</S>
+    <S sid="40" ssid="5">First, there is no principled way to incorporate additional features (such as phonotactics) which might be useful to determining whether a word break should occur.</S>
+    <S sid="41" ssid="6">Second, the heuristic scoring offers little insight into which segmentations should be included in a lattice.</S>
+    <S sid="42" ssid="7">We would like our model to consider a wide variety of segmentations of any word (including perhaps hypothesized morphemes that are not in the dictionary), to make use of a rich set of features, and to have a probabilistic interpretation of each hypothesized split (to incorporate into the downstream decoder).</S>
+    <S sid="43" ssid="8">We decided to use the class of maximum entropy models, which are probabilistically sound, can make use of possibly many overlapping features, and can be trained efficiently (Berger et al., 1996).</S>
+    <S sid="44" ssid="9">We thus define a model of the conditional probability distribution Pr(sN1 Iw), where w is a surface form and sN1 is the segmented form consisting of N segments as: Nexp Ei &#955;ihi(s1 , w) (4 ) To simplify inference and to make the lattice representation more natural, we only make use of local feature functions that depend on properties of each segment: The segmentation model just introduced is equivalent to a lattice where each vertex corresponds to a particular coverage (in terms of letters consumed from left to right) of the input word.</S>
+    <S sid="45" ssid="10">Since we only make use of local features, the number of vertices in a lattice for word w is |w |&#8722; m, where m is the minimum segment length permitted.</S>
+    <S sid="46" ssid="11">In all experiments reported in this paper, we use m = 3.</S>
+    <S sid="47" ssid="12">Each edge is labeled with a morpheme s (corresponding to the morpheme associated with characters delimited by the start and end nodes of the edge) as well as a weight, Pi Aihi(s, w).</S>
+    <S sid="48" ssid="13">The cost of any path from the start to the goal vertex will be equal to the numerator in equation (4).</S>
+    <S sid="49" ssid="14">The value of the denominator can be computed using the forward algorithm.</S>
+    <S sid="50" ssid="15">In most of our experiments, s will be identical to the substring of w that the edge is designated to cover.</S>
+    <S sid="51" ssid="16">However, this is not a requirement.</S>
+    <S sid="52" ssid="17">For example, German compounds frequently have so-called Fugenelemente, one or two characters that &#8220;glue together&#8221; the primary morphemes in a compound.</S>
+    <S sid="53" ssid="18">Since we permit these characters to be deleted, then an edge where they are deleted will have fewer characters than the coverage indicated by the edge&#8217;s starting and ending vertices.</S>
+    <S sid="54" ssid="19">Except for the minimum segment length restriction, our model defines probabilities for all segmentations of an input word, making the resulting segmentation lattices are quite large.</S>
+    <S sid="55" ssid="20">Since large lattices are costly to deal with during translation (and may lead to worse translations because poor segmentations are passed to the decoder), we prune them using forward-backward pruning so as to contain just the highest probability paths (Sixtus and Ortmanns, 1999).</S>
+    <S sid="56" ssid="21">This works by computing the score of the best path passing through every edge in the lattice using the forward-backward algorithm.</S>
+    <S sid="57" ssid="22">By finding the best score overall, we can then prune edges using a threshold criterion; i.e., edges whose score is some factor &#945; away from the global best edge score.</S>
+    <S sid="58" ssid="23">Our model defines a conditional probability distribution over virtually all segmentations of a word w. To train our model, we wish to maximize the likelihood of the segmentations contained in the reference lattices by moving probability mass away from the segmentations that are not in the reference lattice.</S>
+    <S sid="59" ssid="24">Thus, we wish to minimize the following objective (which can be computed using the forward algorithm over the unpruned hypothesis lattices): To compute these values, the first expectation is computed using forward-backward inference over the full lattice.</S>
+    <S sid="60" ssid="25">To compute the second expectation, the full lattice is intersected with the reference lattice Ri, and then forward-backward inference is redone.2 We use the standard quasi-Newtonian method L-BFGS to optimize the model (Liu et al., 1989).</S>
+    <S sid="61" ssid="26">Training generally converged in only a few hundred iterations.</S>
+    <S sid="62" ssid="27">In some cases, such as when performing word alignment for translation model construction, lattices cannot be used easily.</S>
+    <S sid="63" ssid="28">In these cases, a 1best segmentation (which can be determined from the lattice using the Viterbi algorithm) may be desired.</S>
+    <S sid="64" ssid="29">To train the parameters of the model for this condition (which is arguably slightly different from the lattice generation case we just considered), we used the minimum error training (MERT) algorithm on the segmentation lattices to find the parameters that minimized the error on our dev set (Macherey et al., 2008).</S>
+    <S sid="65" ssid="30">The error function we used was WER (the minimum number of insertions, substitutions, and deletions along any path in the reference lattice, normalized by the length of this path).</S>
+    <S sid="66" ssid="31">The WER on the held-out test set for a system tuned using MERT is 9.9%, compared to 11.1% for maximum likelihood training.</S>
+    <S sid="67" ssid="32">We remark that since we did not have the resources to generate training data in all the languages we wished to generate segmentation lattices for, we have confined ourselves to features that we expect to be reasonably informative for a broad class of languages.</S>
+    <S sid="68" ssid="33">A secondary advantage of this is that we used denser features than are often used in maximum entropy modeling, meaning that we could train our model with relatively less training data than might otherwise be required.</S>
+    <S sid="69" ssid="34">The features we used in our compound segmentation model for the experiments reported below are shown in Table 2.</S>
+    <S sid="70" ssid="35">Building on the prior work that relied heavily on the frequency of the hypothesized constituent morphemes in a monolingual corpus, we included features that depend on this value, f(si).</S>
+    <S sid="71" ssid="36">|si |refers to the number of letters in the ith hypothesized segment.</S>
+    <S sid="72" ssid="37">Binary predicates evaluate to 1 when true and 0 otherwise. f(si) is the frequency of the token si as an independent word in a monolingual corpus. p(#|si1 &#183; &#183; &#183; si4) is the probability of a word start preceding the letters si1 &#183; &#183; &#183; si4.</S>
+    <S sid="73" ssid="38">We found it beneficial to include a feature that was the probability of a certain string of characters beginning a word, for which we used a reverse 5-gram character model and predicted the word boundary given the first five letters of the hypothesized word split.3 Since we did have expertise in German morphology, we did build a special German model.</S>
+    <S sid="74" ssid="39">For this, we permitted the strings s, n, and es to be deleted between words.</S>
+    <S sid="75" ssid="40">Each deletion fired a count feature (listed as fugen in the table).</S>
+    <S sid="76" ssid="41">Analysis of errors indicated that the segmenter would periodically propose an incorrect segmentation where a single word could be divided into a word and a nonword consisting of common in3In general, this helped avoid situations where a word may be segemented into a frequent word and then a non-word string of characters since the non-word typically violated the phonotactics of the language in some way.</S>
+    <S sid="77" ssid="42">Feature flectional suffixes.</S>
+    <S sid="78" ssid="43">To address this, an additional feature was added that fired when a proposed segment was one of a set N of 30 nonwords that we saw quite frequently.</S>
+    <S sid="79" ssid="44">The weights shown in Table 2 are those learned by maximum likelihood training on models both with and without the special German features, which are indicated with &#8224;.</S>
+  </SECTION>
+  <SECTION title="4 Model evalatuion" number="4">
+    <S sid="80" ssid="1">To give some sense of the performance of the model in terms of its ability to generate lattices independently of a translation task, we present precision and recall of segmentations for pruning parameters (cf.</S>
+    <S sid="81" ssid="2">Section 3.2) ranging from &#945; = 0 to &#945; = 5.</S>
+    <S sid="82" ssid="3">Precision measures the number of paths in the hypothesized lattice that correspond to paths in the reference lattice; recall measures the number of paths in the reference lattices that are found in the hypothesis lattice.</S>
+    <S sid="83" ssid="4">Figure 3 shows the effect of manipulating the density parameter on the precision and recall of the German lattices.</S>
+    <S sid="84" ssid="5">Note that very high recall is possible; however, the German-only features have a significant impact, especially on recall, because the reference lattices include paths where Fugenelemente have been deleted.</S>
+  </SECTION>
+  <SECTION title="5 Translation experiments" number="5">
+    <S sid="85" ssid="1">We now review experiments using segmentation lattices produced by the segmentation model we just introduced in German-English, Hungarian-English, and Turkish-English translation tasks and then show results elucidating the effect of the lattice density parameter.</S>
+    <S sid="86" ssid="2">We begin with a description of our MT system.</S>
+    <S sid="87" ssid="3">For all experiments, we used a 5-gram English language model trained on the AFP and Xinua portions of the Gigaword v3 corpus (Graff et al., 2007) with modified Kneser-Ney smoothing (Kneser and Ney, 1995).</S>
+    <S sid="88" ssid="4">The training, development, and test data for German-English and Hungarian-English systems used were distributed as part of the 2009 EACL Workshop on Machine Translation,4 and the Turkish-English data corresponds to the training and test sets used in the work of Oflazer and Durgar ElKahlout (2007).</S>
+    <S sid="89" ssid="5">Corpus statistics for all language pairs are summarized in Table 3.</S>
+    <S sid="90" ssid="6">We note that in all language pairs, the 1BEST segmentation variant of the training data results in a significant reduction in types.</S>
+    <S sid="91" ssid="7">Word alignment was carried out by running Giza++ implementation of IBM Model 4 initialized with 5 iterations of Model 1, 5 of the HMM aligner, and 3 iterations of Model 4 (Och and Ney, 2003) in both directions and then symmetrizing using the grow-diag-final-and heuristic (Koehn et al., 2003).</S>
+    <S sid="92" ssid="8">For each language pair, the corpus was aligned twice, once in its non-segmented variant and once using the single-best segmentation variant.</S>
+    <S sid="93" ssid="9">For translation, we used a bottom-up parsing decoder that uses cube pruning to intersect the language model with the target side of the synchronous grammar.</S>
+    <S sid="94" ssid="10">The grammar rules were extracted from the word aligned parallel corpus and scored as described in Chiang (2007).</S>
+    <S sid="95" ssid="11">The features used by the decoder were the English language model log probability, log f(&#175;e |&#175;f), the &#8216;lexical translation&#8217; log probabilities in both directions (Koehn et al., 2003), and a word count feature.</S>
+    <S sid="96" ssid="12">For the lattice systems, we also included the unnormalized log p(&#175;f|!9), as it is defined in Section 3, as well as an input word count feature.</S>
+    <S sid="97" ssid="13">The feature weights were tuned on a heldout development set so as to maximize an equally weighted linear combination of BLEU and 1-TER (Papineni et al., 2002; Snover et al., 2006) using the minimum error training algorithm on a packed forest representation of the decoder&#8217;s hypothesis space (Macherey et al., 2008).</S>
+    <S sid="98" ssid="14">The weights were independently optimized for each language pair and each experimental condition.</S>
+    <S sid="99" ssid="15">In this section, we report the results of an experiment to see if the compound lattices constructed using our maximum entropy model yield better translations than either an unsegmented baseline or a baseline consisting of a single-best segmentation.</S>
+    <S sid="100" ssid="16">For each language pair, we define three conditions: BASELINE, 1BEST, and LATTICE.</S>
+    <S sid="101" ssid="17">In the BASELINE condition, a lowercased and tokenized (but not segmented) version of the test data is translated using the grammar derived from a nonsegmented training data.</S>
+    <S sid="102" ssid="18">In the 1BEST condition, the single best segmentation &#710;sN1 that maximizes Pr(sN1 Iw) is chosen for each word using the MERTtrained model (the German model for German, and the language-neutral model for Hungarian and Turkish).</S>
+    <S sid="103" ssid="19">This variant is translated using a grammar induced from a parallel corpus that has also been segmented according to the same decision rule.</S>
+    <S sid="104" ssid="20">In the LATTICE condition, we constructed segmentation lattices using the technique described in Section 3.1.</S>
+    <S sid="105" ssid="21">For all languages pairs, we used d = 2 as the pruning density parameter (which corresponds to the highest F-score on the held out test set).</S>
+    <S sid="106" ssid="22">Additionally, if the unsegmented form of the word was removed from the lattice during pruning, it was restored to the lattice with zero weight.</S>
+    <S sid="107" ssid="23">Table 4 summarizes the results of the translation experiments comparing the three input variants.</S>
+    <S sid="108" ssid="24">For all language pairs, we see significant improvements in both BLEU and TER when segmentation lattices are used.5 Additionally, we also confirmed previous findings that showed that when a large amount of training data is available, moving to a one-best segmentation does not yield substantial improvements (Yang and Kirchhoff, 2006).</S>
+    <S sid="109" ssid="25">Perhaps most surprisingly, the improvements observed when using lattices with the Hungarian and Turkish systems were larger than the corresponding improvement in the German system, but German was the only language for which we had segmentation training data.</S>
+    <S sid="110" ssid="26">The smaller effect in German is probably due to there being more in-domain training data in the German system than in the (otherwise comparably sized) Hungarian system.</S>
+    <S sid="111" ssid="27">Targeted analysis of the translation output shows that while both the 1BEST and LATTICE systems generally produce adequate translations of compound words that are out of vocabulary in the BASELINE system, the LATTICE system performs better since it recovers from infelicitous splits that the one-best segmenter makes.</S>
+    <S sid="112" ssid="28">For example, one class of error we frequently observe is that the one-best segmenter splits an OOV proper name into two pieces when a portion of the name corresponds to a known word in the source language (e.g. tom tancredo&#8594;tom tan credo which is then translated as tom tan belief).6 Figure 4 shows the effect of manipulating the density parameter (cf.</S>
+    <S sid="113" ssid="29">Section 3.2) on the performance and decoding time of the Turkish-English translation system.</S>
+    <S sid="114" ssid="30">It further confirms the hypothesis that increased diversity of segmentations encoded in a segmentation lattice can improve translation performance; however, it also shows that once the density becomes too great, and too many implausible segmentations are included in the lattice, translation quality will be harmed.</S>
+  </SECTION>
+  <SECTION title="6 Related work" number="6">
+    <S sid="115" ssid="1">Aside from improving the vocabulary coverage of machine translation systems (Koehn et al., 2008; Yang and Kirchhoff, 2006; Habash and Sadat, 2006), compound word segmentation (also referred to as decompounding) has been shown to be helpful in a variety of NLP tasks including mono- and crosslingual IR (Airio, 2006) and speech recognition (Hessen and Jong, 2003).</S>
+    <S sid="116" ssid="2">A number of researchers have demonstrated the value of using lattices to encode segmentation alternatives as input to a machine translation system (Dyer et al., 2008; DeNeefe et al., 2008; Xu et al., 2004), but this is the first work to do so using a single segmentation model.</S>
+    <S sid="117" ssid="3">Another strand of inquiry that is closely related is the work on adjusting the source language segmentation to match the granularity of the target language as a way of improving translation.</S>
+    <S sid="118" ssid="4">The approaches suggested thus far have been mostly of a heuristic nature tailored to Chinese-English translation (Bai et al., 2008; Ma et al., 2007).</S>
+  </SECTION>
+  <SECTION title="7 Conclusions and future work" number="7">
+    <S sid="119" ssid="1">In this paper, we have presented a maximum entropy model for compound word segmentation and used it to generate segmentation lattices for input into a statistical machine translation system.</S>
+    <S sid="120" ssid="2">These segmentation lattices improve translation quality (over an already strong baseline) in three typologically distinct languages (German, Hungarian, Turkish) when translating into English.</S>
+    <S sid="121" ssid="3">Previous approaches to generating segmentation lattices have been quite laborious, relying either on the existence of multiple segmenters (Dyer et al., 2008; Xu et al., 2005) or hand-crafted rules (DeNeefe et al., 2008).</S>
+    <S sid="122" ssid="4">Although the segmentation model we propose is discriminative, we have shown that it can be trained using a minimal amount of annotated training data.</S>
+    <S sid="123" ssid="5">Furthermore, when even this minimal data cannot be acquired for a particular language (as was the situation we faced with Hungarian and Turkish), we have demonstrated that the parameters obtained in one language work surprisingly well for others.</S>
+    <S sid="124" ssid="6">Thus, with virtually no cost, this model can be used with a variety of diverse languages.</S>
+    <S sid="125" ssid="7">While these results are already quite satisfying, there are a number of compelling extensions to this work that we intend to explore in the future.</S>
+    <S sid="126" ssid="8">First, unsupervised segmentation approaches offer a very compelling alternative to the manually crafted segmentation lattices that we created.</S>
+    <S sid="127" ssid="9">Recent work suggests that unsupervised segmentation of inflectional affixal morphology works quite well (Poon et al., 2009), and extending this work to compounding morphology should be feasible, obviating the need for expensive hand-crafted reference lattices.</S>
+    <S sid="128" ssid="10">Second, incorporating target language information into a segmentation model holds considerable promise for inducing more effective translation models that perform especially well for segmentation lattice inputs.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="8">
+    <S sid="129" ssid="1">Special thanks to Kemal Oflazar and Reyyan Yeniterzi of Sabanc&#305; University for providing the Turkish-English corpus and to Philip Resnik, Adam Lopez, Trevor Cohn, and especially Phil Blunsom for their helpful suggestions.</S>
+    <S sid="130" ssid="2">This research was supported by the Army Research Laboratory.</S>
+    <S sid="131" ssid="3">Any opinions, findings, conclusions or recommendations expressed in this paper are those of the authors and do not necessarily reflect the view of the sponsors.</S>
+  </SECTION>
+</PAPER>

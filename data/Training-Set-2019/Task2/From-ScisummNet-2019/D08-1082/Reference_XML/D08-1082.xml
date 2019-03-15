@@ -1,0 +1,223 @@
+<PAPER>
+  <S sid="0">A Generative Model for Parsing Natural Language to Meaning Representations</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">In this paper, we present an algorithm for learning a generative model of natural language sentences together with their formal meaning representations with hierarchical structures.</S>
+    <S sid="2" ssid="2">The model is applied to the task of mapping sentences to hierarchical representations of their underlying meaning.</S>
+    <S sid="3" ssid="3">We introduce dynamic programming techniques for efficient training and decoding.</S>
+    <S sid="4" ssid="4">In experiments, we demonstrate that the model, when coupled with a discriminative reranking technique, achieves state-of-the-art performance when tested on two publicly available corpora.</S>
+    <S sid="5" ssid="5">The generative model degrades robustly when presented with instances that are different from those seen in training.</S>
+    <S sid="6" ssid="6">This allows a notable improvement in recall compared to previous models.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="7" ssid="1">To enable computers to understand natural human language is one of the classic goals of research in natural language processing.</S>
+    <S sid="8" ssid="2">Recently, researchers have developed techniques for learning to map sentences to hierarchical representations of their underlying meaning (Wong and Mooney, 2006; Kate and Mooney, 2006).</S>
+    <S sid="9" ssid="3">One common approach is to learn some form of probabilistic grammar which includes a list of lexical items that models the meanings of input words and also includes rules for combining lexical meanings to analyze complete sentences.</S>
+    <S sid="10" ssid="4">This approach performs well but is constrained by the use of a single, learned grammar that contains a fixed set of lexical entries and productions.</S>
+    <S sid="11" ssid="5">In practice, such a grammar may lack the rules required to correctly parse some of the new test examples.</S>
+    <S sid="12" ssid="6">In this paper, we develop an alternative approach that learns a model which does not make use of an explicit grammar but, instead, models the correspondence between sentences and their meanings with a generative process.</S>
+    <S sid="13" ssid="7">This model is defined over hybrid trees whose nodes include both natural language words and meaning representation tokens.</S>
+    <S sid="14" ssid="8">Inspired by the work of Collins (2003), the generative model builds trees by recursively creating nodes at each level according to a Markov process.</S>
+    <S sid="15" ssid="9">This implicit grammar representation leads to flexible learned models that generalize well.</S>
+    <S sid="16" ssid="10">In practice, we observe that it can correctly parse a wider range of test examples than previous approaches.</S>
+    <S sid="17" ssid="11">The generative model is learned from data that consists of sentences paired with their meaning representations.</S>
+    <S sid="18" ssid="12">However, there is no explicit labeling of the correspondence between words and meaning tokens that is necessary for building the hybrid trees.</S>
+    <S sid="19" ssid="13">This creates a challenging, hidden-variable learning problem that we address with the use of an insideoutside algorithm.</S>
+    <S sid="20" ssid="14">Specifically, we develop a dynamic programming parsing algorithm that leads to O(n3m) time complexity for inference, where n is the sentence length and m is the size of meaning structure.</S>
+    <S sid="21" ssid="15">This approach allows for efficient training and decoding.</S>
+    <S sid="22" ssid="16">In practice, we observe that the learned generative models are able to assign a high score to the correct meaning for input sentences, but that this correct meaning is not always the highest scoring option.</S>
+    <S sid="23" ssid="17">To address this problem, we use a simple reranking approach to select a parse from a k-best list of parses.</S>
+    <S sid="24" ssid="18">This pipelined approach achieves state-ofthe-art performance on two publicly available corpora.</S>
+    <S sid="25" ssid="19">In particular, the flexible generative model leads to notable improvements in recall, the total percentage of sentences that are correctly parsed.</S>
+  </SECTION>
+  <SECTION title="2 Related Work" number="2">
+    <S sid="26" ssid="1">In Section 9, we will compare performance with the three existing systems that were evaluated on the same data sets we consider.</S>
+    <S sid="27" ssid="2">SILT (Kate et al., 2005) learns deterministic rules to transform either sentences or their syntactic parse trees to meaning structures.</S>
+    <S sid="28" ssid="3">WASP (Wong and Mooney, 2006) is a system motivated by statistical machine translation techniques.</S>
+    <S sid="29" ssid="4">It acquires a set of synchronous lexical entries by running the IBM alignment model (Brown et al., 1993) and learns a log-linear model to weight parses.</S>
+    <S sid="30" ssid="5">KRISP (Kate and Mooney, 2006) is a discriminative approach where meaning representation structures are constructed from the natural language strings hierarchically.</S>
+    <S sid="31" ssid="6">It is built on top of SVMstruct with string kernels.</S>
+    <S sid="32" ssid="7">Additionally, there is substantial related research that is not directly comparable to our approach.</S>
+    <S sid="33" ssid="8">Some of this work requires different levels of supervision, including labeled syntactic parse trees (Ge and Mooney, 2005; Ge and Mooney, 2006).</S>
+    <S sid="34" ssid="9">Others do not perform lexical learning (Tang and Mooney, 2001).</S>
+    <S sid="35" ssid="10">Finally, recent work has explored learning to map sentences to lambda-calculus meaning representations (Wong and Mooney, 2007; Zettlemoyer and Collins, 2005; Zettlemoyer and Collins, 2007).</S>
+  </SECTION>
+  <SECTION title="3 Meaning Representation" number="3">
+    <S sid="36" ssid="1">We restrict our meaning representation (MR) formalism to a variable free version as presented in (Wong and Mooney, 2006; Kate et al., 2005).</S>
+    <S sid="37" ssid="2">A training instance consists of a natural language sentence (NL sentence) and its corresponding meaning representation structure (MR structure).</S>
+    <S sid="38" ssid="3">Consider the following instance taken from the GEOQUERY corpus (Kate et al., 2005): The NL sentence &#8220;How many states do not have rivers ?&#8221; consists of 8 words, including punctuation.</S>
+    <S sid="39" ssid="4">The MR is a hierarchical tree structure, as shown in Figure 1.</S>
+    <S sid="40" ssid="5">Following an inorder traversal of this MR tree, we can equivalently represent it with the following list of meaning representation productions (MR productions): Each such MR production consists of three components: a semantic category, a function symbol which can be omitted (considered empty), and a list of arguments.</S>
+    <S sid="41" ssid="6">An argument can be either a child semantic category or a constant.</S>
+    <S sid="42" ssid="7">Take production (1) for example: it has a semantic category &#8220;NUM&#8221;, a function symbol &#8220;count&#8221;, and a child semantic category &#8220;STATE&#8221; as its only argument.</S>
+    <S sid="43" ssid="8">Production (5) has &#8220;RIVER&#8221; as its semantic category, &#8220;river&#8221; as the function symbol, and &#8220;all&#8221; is a constant.</S>
+  </SECTION>
+  <SECTION title="4 The Generative Model" number="4">
+    <S sid="44" ssid="1">We describe in this section our proposed generative model, which simultaneously generates a NL sentence and an MR structure.</S>
+    <S sid="45" ssid="2">We denote a single NL word as w, a contiguous sequence of NL words as w, and a complete NL sentence as W. In the MR structure, we denote a semantic category as M. We denote a single MR production as ma, or Ma : p&#945;(Mb, Mc), where Ma is the semantic category for this production, p&#945; is the function symbol, and Mb, Mc are the child semantic categories.</S>
+    <S sid="46" ssid="3">We denote ma as an MR structure rooted by an MR production ma, and mQ an MR structure for a complete sentence rooted by an MR production ma.</S>
+    <S sid="47" ssid="4">The model generates a hybrid tree that represents a sentence W = w1 ... w2 ... paired with an MR structure mQ rooted by ma.</S>
+    <S sid="48" ssid="5">Figure 2 shows part of a hybrid tree that is generated as follows.</S>
+    <S sid="49" ssid="6">Given a semantic category Ma, we first pick an MR production ma that has the form Ma : p&#945;(Mb, Mc), which gives us the function symbol p&#945; as well as the child semantic categories Mb and Mc.</S>
+    <S sid="50" ssid="7">Next, we generate the hybrid sequence of child nodes w1 Mb w2 Mc, which consists of NL words and semantic categories.</S>
+    <S sid="51" ssid="8">After that, two child MR productions mb and mc are generated.</S>
+    <S sid="52" ssid="9">These two productions will in turn generate other hybrid sequences and productions, recursively.</S>
+    <S sid="53" ssid="10">This process produces a hybrid tree T, whose nodes are either NL words or MR productions.</S>
+    <S sid="54" ssid="11">Given this tree, we can recover a NL sentence w by recording the NL words visited in depth-first traversal order and can recover an MR structure m by following a tree-specific traversal order, defined by the hybrid-patterns we introduce below.</S>
+    <S sid="55" ssid="12">Figure 3 gives a partial hybrid tree for the training example from Section 3.</S>
+    <S sid="56" ssid="13">Note that the leaves of a hybrid tree are always NL tokens.</S>
+    <S sid="57" ssid="14">With several independence assumptions, the probability of generating (w, m, T) is defined as: where &#8220;arg&#8221; refers to the position of the child semantic category in the argument list.</S>
+    <S sid="58" ssid="15">Motivated by Collins&#8217; syntactic parsing models (Collins, 2003), we consider the generation process for a hybrid sequence from an MR production as a Markov process.</S>
+    <S sid="59" ssid="16">Given the assumption that each MR production has at most two semantic categories in its arguments (any production can be transformed into a sequence of productions of this form), Table 1 includes the list of all possible hybrid patterns.</S>
+    <S sid="60" ssid="17">In this table, m is an MR production, Y and Z are respectively the first and second child semantic category in m&#8217;s argument list.</S>
+    <S sid="61" ssid="18">The symbol w refers to a contiguous sequence of NL words, and anything inside [] can be optionally omitted.</S>
+    <S sid="62" ssid="19">The last row contains hybrid patterns that reflect reordering of one production&#8217;s child semantic categories during the generation process.</S>
+    <S sid="63" ssid="20">For example, consider the case that the MR production STATE : exclude (STATE1 STATE2) generates a hybrid sequence STATE1 do not STATE2, the hybrid pattern m &#8594; YwZ is associated with this generation step.</S>
+    <S sid="64" ssid="21">For the example hybrid tree in Figure 2, we can decompose the probability for generating the hybrid sequence as follows: Note that unigram, bigram, or trigram assumptions can be made here for generating NL words and semantic categories.</S>
+    <S sid="65" ssid="22">For example, under a bigram assumption, the second to last term can be written as P(Mc|ma, w1, Mb, w2) &#8801; P(Mc|ma, wk2), where wk2 is the last word in w2.</S>
+    <S sid="66" ssid="23">We call such additional information that we condition on, the context.</S>
+    <S sid="67" ssid="24">Note that our generative model is different from the synchronous context free grammars (SCFG) in a number of ways.</S>
+    <S sid="68" ssid="25">A standard SCFG produces a correspondence between a pair of trees while our model produces a single hybrid tree that represents the correspondence between a sentence and a tree.</S>
+    <S sid="69" ssid="26">Also, SCFGs use a finite set of context-free rewrite rules to define the model, where the rules are possibly weighted.</S>
+    <S sid="70" ssid="27">In contrast, we make use of the more flexible Markov models at each level of the generative process, which allows us to potentially produce a far wider range of possible trees.</S>
+  </SECTION>
+  <SECTION title="5 Parameter Estimation" number="5">
+    <S sid="71" ssid="1">There are three categories of parameters used in the model.</S>
+    <S sid="72" ssid="2">The first category of parameters models the generation of new MR productions from their parent MR productions: e.g., P(mb|mQ,arg = 1); the second models the generation of a hybrid sequence from an MR production: e.g., P(w1|mQ), P(Mb|mQ, w1); the last models the selection of a hybrid pattern given an MR production, e.g., P(m &#8594; w til|mQ).</S>
+    <S sid="73" ssid="3">We will estimate parameters from all categories, with the following constraints: These parameters model the MR structures, and can be referred to as MIt model parameters.</S>
+    <S sid="74" ssid="4">These parameters model the emission of NL words, the &#8220;END&#8221; symbol, and child semantic categories from an MR production.</S>
+    <S sid="75" ssid="5">We call them emission parameters.</S>
+    <S sid="76" ssid="6">3.</S>
+    <S sid="77" ssid="7">Er 0(r|mj) = 1 for all j, where r is a hybrid pattern listed in Table 1.</S>
+    <S sid="78" ssid="8">These parameters model the selection of hybrid patterns.</S>
+    <S sid="79" ssid="9">We name them pattern parameters.</S>
+    <S sid="80" ssid="10">With different context assumptions, we reach different variations of the model.</S>
+    <S sid="81" ssid="11">In particular, we consider three assumptions, as follows: where tk is a semantic category or a NL word, and mj is an MR production.</S>
+    <S sid="82" ssid="12">In other words, generation of the next NL word depends on its direct parent MR production only.</S>
+    <S sid="83" ssid="13">Such a Unigram Model may help in recall (the number of correct outputs over the total number of inputs), because it requires the least data to estimate.</S>
+    <S sid="84" ssid="14">Model II We make the following assumption: where tk&#8722;1 is the semantic category or NL word to the left of tk, i.e., the previous semantic category or NL word.</S>
+    <S sid="85" ssid="15">In other words, generation of the next NL word depends on its direct parent MR production as well as the previously generated NL word or semantic category only.</S>
+    <S sid="86" ssid="16">This model is also referred to as Bigram Model.</S>
+    <S sid="87" ssid="17">This model may help in precision (the number of correct outputs over the total number of outputs), because it conditions on a larger context.</S>
+    <S sid="88" ssid="18">Model III We make the following assumption: We can view this model, called the Mixgram Model, as an interpolation between Model I and II.</S>
+    <S sid="89" ssid="19">This model gives us a balanced score for both precision and recall.</S>
+    <S sid="90" ssid="20">The MR model parameters can be estimated independently from the other two.</S>
+    <S sid="91" ssid="21">These parameters can be viewed as the &#8220;language model&#8221; parameters for the MR structure, and can be estimated directly from the corpus by simply reading off the counts of occurrences of MR productions in MR structures over the training corpus.</S>
+    <S sid="92" ssid="22">To resolve data sparseness problem, a variant of the bigram Katz Back-Off Model (Katz, 1987) is employed here for smoothing.</S>
+    <S sid="93" ssid="23">Learning the remaining two categories ofparameters is more challenging.</S>
+    <S sid="94" ssid="24">In a conventional PCFG parsing task, during the training phase, the correct correspondence between NL words and syntactic structures is fully accessible.</S>
+    <S sid="95" ssid="25">In other words, there is a single deterministic derivation associated with each training instance.</S>
+    <S sid="96" ssid="26">Therefore model parameters can be directly estimated from the training corpus by counting.</S>
+    <S sid="97" ssid="27">However, in our task, the correct correspondence between NL words and MR structures is unknown.</S>
+    <S sid="98" ssid="28">Many possible derivations could reach the same NL-MR pair, where each such derivation forms a hybrid tree.</S>
+    <S sid="99" ssid="29">The hybrid tree is constructed using hidden variables and estimated from the training set.</S>
+    <S sid="100" ssid="30">An efficient inside-outside style algorithm can be used for model estimation, similar to that used in (Yamada and Knight, 2001), as discussed next.</S>
+    <S sid="101" ssid="31">In this section, we discuss how to estimate the emission and pattern parameters with the Expectation Maximization (EM) algorithm (Dempster et al., 1977), by using an inside-outside (Baker, 1979) dynamic programming approach.</S>
+    <S sid="102" ssid="32">Denote ni &#8801; hmi, wii as the i-th training instance, where mi and wi are the MR structure and the NL sentence of the i-th instance respectively.</S>
+    <S sid="103" ssid="33">We also denote nv &#8801; hmv, wvi as an aligned pair of MR substructure and contiguous NL substring, where the MR substructure rooted by MR production mv will correspond to (i.e., hierarchically generate) the NL substring wv.</S>
+    <S sid="104" ssid="34">The symbol h is used to denote a hybrid sequence, and the function Parent(h) gives the unique MR substructure-NL subsequence pair which can be decomposed as h. Parent(nv) returns the set of all possible hybrid sequences under which the pair nv can be generated.</S>
+    <S sid="105" ssid="35">Similarly, Children(h) gives the NL-MR pairs that appear directly below the hybrid sequence h in a hybrid tree, and Children(n) returns the set of all possible hybrid sequences that n can be decomposed as.</S>
+    <S sid="106" ssid="36">Figure 4 gives a packed tree structure representing the relations between the entities.</S>
+    <S sid="107" ssid="37">The formulas for computing inside and outside probabilities as well as the equations for updating parameters are given in Figure 5.</S>
+    <S sid="108" ssid="38">We use a CKYstyle parse chart for tracking the probabilities.</S>
+    <S sid="109" ssid="39">It is reasonable to believe that different MR productions that share identical function symbols are likely to generate NL words with similar distribution, regardless of semantic categories.</S>
+    <S sid="110" ssid="40">For example, The inside (&#946;) probabilities are defined as The outside (&#945;) probabilities are defined as The count ci(t, mv, &#923;k), where t is a NL word or a semantic category, for an instance pair ni &#8801; &#8226; Update the pattern parameter The count ci(r, mv), where r is a hybrid pattern, for an instance pair ni &#8801; hmi, wii: RIVER: largest (RIVER) and CITY: largest (CITY) are both likely to generate the word &#8220;biggest&#8221;.</S>
+    <S sid="111" ssid="41">In view of this, a smoothing technique is deployed.</S>
+    <S sid="112" ssid="42">We assume half of the time words can be generated from the production&#8217;s function symbol alone if it is not empty.</S>
+    <S sid="113" ssid="43">Mathematically, assuming ma with function symbol pa, for a NL word or semantic category t, we have: where &#952;e models the generation of t from an MR production or its function symbol, together with the context A.</S>
+  </SECTION>
+  <SECTION title="6 A Dynamic Programming Algorithm for Inside-Outside Computation" number="6">
+    <S sid="114" ssid="1">Though the inside-outside approach already employs packed representations for dynamic programming, a naive implementation of the inference algorithm will still require O(n6m) time for 1 EM iteration, where n and m are the length of the NL sentence and the size of the MR structure respectively.</S>
+    <S sid="115" ssid="2">This is not very practical as in one of the corpora we look at, n and m can be up to 45 and 20 respectively.</S>
+    <S sid="116" ssid="3">In this section, we develop an efficient dynamic programming algorithm that enables the inference to run in O(n3m) time.</S>
+    <S sid="117" ssid="4">The idea is as follows.</S>
+    <S sid="118" ssid="5">Instead of treating each possible hybrid sequence as a separate rule, we efficiently aggregate the already computed probability scores for hybrid sequences that share identical hybrid patterns.</S>
+    <S sid="119" ssid="6">Such aggregated scores can then be used for subsequent computations.</S>
+    <S sid="120" ssid="7">By doing this, we can effectively avoid a large amount of redundant computations.</S>
+    <S sid="121" ssid="8">The algorithm supports both unigram and bigram context assumptions.</S>
+    <S sid="122" ssid="9">For clarity and ease of presentation, we primarily make the unigram assumption throughout our discussion.</S>
+    <S sid="123" ssid="10">We use &#946; (mv, wv) to denote the inside probability for mv-wv pair, br[mv, wv, c] to denote the aggregated probabilities for the MR sub-structure mv to generate all possible hybrid sequences based on wv with pattern r that covers its c-th child only.</S>
+    <S sid="124" ssid="11">In addition, we use w(i,j) to denote a subsequence of w with start index i (inclusive) and end index j (exclusive).</S>
+    <S sid="125" ssid="12">We also use &#946;r~mv, wv&#8226; to denote the aggregated inside probability for the pair hmv, wvi, if the hybrid pattern is restricted to r only.</S>
+    <S sid="126" ssid="13">By definition we have: Relations between &#946;r and br can also be established.</S>
+    <S sid="127" ssid="14">For example, if mv has one child semantic category, we have: &#946;m&#8594;wY~mv, wv&#8226; = bm&#8594;wY[mv, wv, 1] (13) For the case when mv has two child semantic categories as arguments, we have, for example: Note that there also exist relations amongst b terms for more efficient computation, for example: Analogous but more complex formulas are used for computing the outside probabilities.</S>
+    <S sid="128" ssid="15">Updating of parameters can be incorporated into the computation of outside probabilities efficiently.</S>
+  </SECTION>
+  <SECTION title="7 Decoding" number="7">
+    <S sid="129" ssid="1">In the decoding phase, we want to find the optimal MR structure m&#8727; given a new NL sentence w: where T is a possible hybrid tree associated with the m-w pair.</S>
+    <S sid="130" ssid="2">However, it is expensive to compute the summation over all possible hybrid trees.</S>
+    <S sid="131" ssid="3">We therefore find the most likely hybrid tree instead: P(m, T|w)=arg max max We have implemented an exact top-k decoding algorithm for this task.</S>
+    <S sid="132" ssid="4">Dynamic programming techniques similar to those discussed in Section 6 can also be applied when retrieving the top candidates.</S>
+    <S sid="133" ssid="5">We also find the Viterbi hybrid tree given a NLMR pair, which can be done in an analogous way.</S>
+    <S sid="134" ssid="6">This tree will be useful for reranking.</S>
+    <S sid="135" ssid="7">8 Reranking and Filtering of Predictions Due to the various independence assumptions we have made, the model lacks the ability to express some long range dependencies.</S>
+    <S sid="136" ssid="8">We therefore postprocess the best candidate predictions with a discriminative reranking algorithm.</S>
+    <S sid="137" ssid="9">The averaged perceptron algorithm (Collins, 2002) has previously been applied to various NLP tasks (Collins, 2002; Collins, 2001) for discriminative reranking.</S>
+    <S sid="138" ssid="10">The detailed algorithm can be found in (Collins, 2002).</S>
+    <S sid="139" ssid="11">In this section, we extend the conventional averaged perceptron by introducing an explicit separating plane on the feature space.</S>
+    <S sid="140" ssid="12">Our reranking approach requires three components during training: a GEN function that defines for each NL sentence a set of candidate hybrid trees; a single correct reference hybrid tree for each training instance; and a feature function (D that defines a mapping from a hybrid tree to a feature vector.</S>
+    <S sid="141" ssid="13">The algorithm learns a weight vector w that associates a weight to each feature, such that a score w&#183;(D(T) can be assigned to each candidate hybrid tree T. Given a new instance, the hybrid tree with the highest score is then picked by the algorithm as the output.</S>
+    <S sid="142" ssid="14">In this task, the GEN function is defined as the output hybrid trees of the top-k (k is set to 50 in our experiments) decoding algorithm, given the learned model parameters.</S>
+    <S sid="143" ssid="15">The correct reference hybrid tree is determined by running the Viterbi algorithm on each training NL-MR pair.</S>
+    <S sid="144" ssid="16">The feature function is discussed in section 8.2.</S>
+    <S sid="145" ssid="17">While conventional perceptron algorithms usually optimize the accuracy measure, we extend it to allow optimization of the F-measure by introducing an explicit separating plane on the feature space that rejects certain predictions even when they score highest.</S>
+    <S sid="146" ssid="18">The idea is to find a threshold b after w is learned, such that a prediction with score below b gets rejected.</S>
+    <S sid="147" ssid="19">We pick the threshold that leads to the optimal F-measure when applied to the training set.</S>
+    <S sid="148" ssid="20">We list in Table 2 the set of features we used.</S>
+    <S sid="149" ssid="21">Examples are given based on the hybrid tree in Figure 3.</S>
+    <S sid="150" ssid="22">Some of the them are adapted from (Collins and Koo, 2005) for a natural language parsing task.</S>
+    <S sid="151" ssid="23">Features 1-5 are indicator functions (i.e., it takes value 1 if a certain combination as the ones listed in Table 2 is present, 0 otherwise), while feature 6 is real valued.</S>
+    <S sid="152" ssid="24">Features that do not appear more than once in the training set are discarded.</S>
+  </SECTION>
+  <SECTION title="9 Evaluation" number="8">
+    <S sid="153" ssid="1">Our evaluations were performed on two corpora, GEOQUERY and ROBOCUP.</S>
+    <S sid="154" ssid="2">The GEOQUERY corpus contains MR defined by a Prolog-based language used in querying a database on U.S. geography.</S>
+    <S sid="155" ssid="3">The ROBOCUP corpus contains MR defined by a coaching language used in a robot coaching competition.</S>
+    <S sid="156" ssid="4">There are in total 880 and 300 instances for the two corpora respectively.</S>
+    <S sid="157" ssid="5">Standard 10-fold cross validations were performed and the micro-averaged results are presented in this section.</S>
+    <S sid="158" ssid="6">To make our system directly comparable to previous systems, all our experiments were based on identical training and test data splits of both corpora as reported in the experiments of Wong and Mooney (2006).</S>
+    <S sid="159" ssid="7">Given a training set, we first run a variant of IBM alignment model 1 (Brown et al., 1993) for 100 iterations, and then initialize Model I with the learned parameter values.</S>
+    <S sid="160" ssid="8">This IBM model is a word-toword alignment model that does not model word order, so we do not have to linearize the hierarchical MR structure.</S>
+    <S sid="161" ssid="9">Given this initialization, we train Model I for 100 EM iterations and use the learned parameters to initialize Model II which is trained for another 100 EM iterations.</S>
+    <S sid="162" ssid="10">Model III is simply an interpolation of the above two models.</S>
+    <S sid="163" ssid="11">As for the reranking phase, we initialize the weight vector with the zero vector 0, and run the averaged perceptron algorithm for 10 iterations.</S>
+    <S sid="164" ssid="12">Following Wong (2007) and other previous work, we report performance in terms of Precision (percentage of answered NL sentences that are correct), Recall (percentage of correctly answered NL sentences, out of all NL sentences) and F-score (harmonic mean of Precision and Recall).</S>
+    <S sid="165" ssid="13">Again following Wong (2007), we define the correct output MR structure as follows.</S>
+    <S sid="166" ssid="14">For the GEOQUERY corpus, an MR structure is considered correct if and only if it retrieves identical results as the reference MR structure when both are issued as queries to the underlying Prolog database.</S>
+    <S sid="167" ssid="15">For the ROBOCUP corpus, an MR structure is considered correct if and only if it has the same string representation as the reference MR structure, up to reordering of children of MR productions whose function symbols are commutative, such as and, or, etc.</S>
+    <S sid="168" ssid="16">We evaluated the three models, with and without reranking.</S>
+    <S sid="169" ssid="17">The results are presented in Table 3.</S>
+    <S sid="170" ssid="18">Comparing Model I and Model II, we noticed that for both corpora, Model I in general achieves better recall while Model II achieves better precision.</S>
+    <S sid="171" ssid="19">This observation conforms to our earlier expectations.</S>
+    <S sid="172" ssid="20">Model III, as an interpolation of the above two models, achieves a much better F-measure on GEOQUERY corpus.</S>
+    <S sid="173" ssid="21">However, it is shown to be less effective on ROBOCUP corpus.</S>
+    <S sid="174" ssid="22">We noticed that compared to the GEOQUERY corpus, ROBOCUP corpus contains longer sentences, larger MR structures, and a significant amount of non-compositionality.</S>
+    <S sid="175" ssid="23">These factors combine to present a challenging problem for parsing with the generative model.</S>
+    <S sid="176" ssid="24">Interestingly, although Model III fails to produce better best predictions for this corpus, we found that its top-k list contains a relatively larger number of correct predictions than Model I or Model II.</S>
+    <S sid="177" ssid="25">This indicates the possibility of enhancing the performance with reranking.</S>
+    <S sid="178" ssid="26">The reranking approach is shown to be quite effective.</S>
+    <S sid="179" ssid="27">We observe a consistent improvement in both precision and F-measure after employing the reranking phase for each model.</S>
+    <S sid="180" ssid="28">Among all the previous models, SILT, WASP, and KRISP are directly comparable to our model.</S>
+    <S sid="181" ssid="29">They required the same amount of supervision as our system and were evaluated on the same corpora.</S>
+    <S sid="182" ssid="30">We compare our model with these models in Table 4, where the performance scores for the previous systems are taken from (Wong, 2007).</S>
+    <S sid="183" ssid="31">For GEOQUERY corpus, our model performs substantially better than all the three previous models, with a notable improvement in the recall score.</S>
+    <S sid="184" ssid="32">In fact, if we look at the recall scores alone, our best-performing model achieves a 6.7% and 9.8% absolute improvement over two other state-of-the-art models WASP and KRISP respectively.</S>
+    <S sid="185" ssid="33">This indicates that overall, our model is able to handle over 25% of the inputs that could not be handled by previous systems.</S>
+    <S sid="186" ssid="34">On the other hand, in terms of F-measure, we gain a 4.1% absolute improvement over KRISP, which leads to an error reduction rate of 22%.</S>
+    <S sid="187" ssid="35">On the ROBOCUP corpus, our model&#8217;s performance is also ranked the highest1.</S>
+    <S sid="188" ssid="36">As a generic model that requires minimal assumptions on the natural language, our model is natural language independent and is able to handle various other natural languages than English.</S>
+    <S sid="189" ssid="37">To validate this point, we evaluated our system on a subset of the GEOQUERY corpus consisting of 250 instances, with four different NL annotations.</S>
+    <S sid="190" ssid="38">As we can see from Table 5, our model is able to achieve performance comparable to WASP as reported by Wong (2007). ments on this paper.</S>
+    <S sid="191" ssid="39">The research is partially supported by ARF grant R-252-000-240-112.</S>
+    <S sid="192" ssid="40">Our model is generic, which requires no domaindependent knowledge and should be applicable to a wide range of different domains.</S>
+    <S sid="193" ssid="41">Like all research in this area, the ultimate goal is to scale to more complex, open-domain language understanding problems.</S>
+    <S sid="194" ssid="42">In future, we would like to create a larger corpus in another domain with multiple natural language annotations to further evaluate the scalability and portability of our approach.</S>
+  </SECTION>
+  <SECTION title="10 Conclusions" number="9">
+    <S sid="195" ssid="1">We presented a new generative model that simultaneously produces both NL sentences and their corresponding MR structures.</S>
+    <S sid="196" ssid="2">The model can be effectively applied to the task of transforming NL sentences to their MR structures.</S>
+    <S sid="197" ssid="3">We also developed a new dynamic programming algorithm for efficient training and decoding.</S>
+    <S sid="198" ssid="4">We demonstrated that this approach, augmented with a discriminative reranking technique, achieves state-of-the-art performance when tested on standard benchmark corpora.</S>
+    <S sid="199" ssid="5">In future, we would like to extend the current model to have a wider range of support of MR formalisms, such as the one with lambda-calculus support.</S>
+    <S sid="200" ssid="6">We are also interested in investigating ways to apply the generative model to the inverse task: generation of a NL sentence that explains a given MR structure.</S>
+  </SECTION>
+</PAPER>

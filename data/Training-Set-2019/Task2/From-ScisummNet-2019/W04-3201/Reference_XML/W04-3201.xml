@@ -1,0 +1,187 @@
+<PAPER>
+  <S sid="0">Max-Margin Parsing</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present a novel discriminative approach to parsing inspired by the large-margin criterion underlying support vector machines.</S>
+    <S sid="2" ssid="2">Our formulation uses a factorization analogous to the standard dynamic programs for parsing.</S>
+    <S sid="3" ssid="3">In particular, it allows one to efficiently learn a model which discriminates among the entire space of parse trees, as opposed to reranking the top few candidates.</S>
+    <S sid="4" ssid="4">Our models can condition on arbitrary features of input sentences, thus incorporating an important kind of lexical information without the added algorithmic complexity of modeling headedness.</S>
+    <S sid="5" ssid="5">We provide an efficient algorithm for learning such models and show experimental evidence of the model&#8217;s improved performance over a natural baseline model and a lexicalized probabilistic context-free grammar.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="6" ssid="1">Recent work has shown that discriminative techniques frequently achieve classification accuracy that is superior to generative techniques, over a wide range of tasks.</S>
+    <S sid="7" ssid="2">The empirical utility of models such as logistic regression and support vector machines (SVMs) in flat classification tasks like text categorization, word-sense disambiguation, and relevance routing has been repeatedly demonstrated.</S>
+    <S sid="8" ssid="3">For sequence tasks like part-of-speech tagging or named-entity extraction, recent top-performing systems have also generally been based on discriminative sequence models, like conditional Markov models (Toutanova et al., 2003) or conditional random fields (Lafferty et al., 2001).</S>
+    <S sid="9" ssid="4">A number of recent papers have considered discriminative approaches for natural language parsing (Johnson et al., 1999; Collins, 2000; Johnson, 2001; Geman and Johnson, 2002; Miyao and Tsujii, 2002; Clark and Curran, 2004; Kaplan et al., 2004; Collins, 2004).</S>
+    <S sid="10" ssid="5">Broadly speaking, these approaches fall into two categories, reranking and dynamic programming approaches.</S>
+    <S sid="11" ssid="6">In reranking methods (Johnson et al., 1999; Collins, 2000; Shen et al., 2003), an initial parser is used to generate a number of candidate parses.</S>
+    <S sid="12" ssid="7">A discriminative model is then used to choose between these candidates.</S>
+    <S sid="13" ssid="8">In dynamic programming methods, a large number of candidate parse trees are represented compactly in a parse tree forest or chart.</S>
+    <S sid="14" ssid="9">Given sufficiently &#8220;local&#8221; features, the decoding and parameter estimation problems can be solved using dynamic programming algorithms.</S>
+    <S sid="15" ssid="10">For example, (Johnson, 2001; Geman and Johnson, 2002; Miyao and Tsujii, 2002; Clark and Curran, 2004; Kaplan et al., 2004) describe approaches based on conditional log-linear (maximum entropy) models, where variants of the inside-outside algorithm can be used to efficiently calculate gradients of the log-likelihood function, despite the exponential number of trees represented by the parse forest.</S>
+    <S sid="16" ssid="11">In this paper, we describe a dynamic programming approach to discriminative parsing that is an alternative to maximum entropy estimation.</S>
+    <S sid="17" ssid="12">Our method extends the maxmargin approach of Taskar et al. (2003) to the case of context-free grammars.</S>
+    <S sid="18" ssid="13">The present method has several compelling advantages.</S>
+    <S sid="19" ssid="14">Unlike reranking methods, which consider only a pre-pruned selection of &#8220;good&#8221; parses, our method is an end-to-end discriminative model over the full space of parses.</S>
+    <S sid="20" ssid="15">This distinction can be very significant, as the set of n-best parses often does not contain the true parse.</S>
+    <S sid="21" ssid="16">For example, in the work of Collins (2000), 41% of the correct parses were not in the candidate pool of &#8212;30-best parses.</S>
+    <S sid="22" ssid="17">Unlike previous dynamic programming approaches, which were based on maximum entropy estimation, our method incorporates an articulated loss function which penalizes larger tree discrepancies more severely than smaller ones.1 Moreover, like perceptron-based learning, it requires only the calculation of Viterbi trees, rather than expectations over all trees (for example using the inside-outside algorithm).</S>
+    <S sid="23" ssid="18">In practice, it converges in many fewer iterations than CRF-like approaches.</S>
+    <S sid="24" ssid="19">For example, while our approach generally converged in 20-30 iterations, Clark and Curran (2004) report experiments involving 479 iterations of training for one model, and 1550 iterations for another.</S>
+    <S sid="25" ssid="20">The primary contribution of this paper is the extension of the max-margin approach of Taskar et al. (2003) to context free grammars.</S>
+    <S sid="26" ssid="21">We show that this framework allows high-accuracy parsing in cubic time by exploiting novel kinds of lexical information.</S>
+  </SECTION>
+  <SECTION title="2 Discriminative Parsing" number="2">
+    <S sid="27" ssid="1">In the discriminative parsing task, we want to learn a function f : X &#8212;* Y, where X is a set of sentences, and Y is a set of valid parse trees according to a fixed grammar G. G maps an input x E X to a set of candidate parses G(x) C Y.2 We assume a loss function L : X x Y x Y &#8212;* R+.</S>
+    <S sid="28" ssid="2">The function L(x, y, &#710;y) measures the penalty for proposing the parse y&#710; for x when y is the true parse.</S>
+    <S sid="29" ssid="3">This penalty may be defined, for example, as the number of labeled spans on which the two trees do not agree.</S>
+    <S sid="30" ssid="4">In general we assume that L(x, y, &#710;y) = 0 for y = &#710;y.</S>
+    <S sid="31" ssid="5">Given labeled training examples (xi, yi) for i = 1... n, we seek a function f with small expected loss on unseen sentences.</S>
+    <S sid="32" ssid="6">The functions we consider take the following linear discriminant form: where (&#183;, &#183;) denotes the vector inner product, w E Rd and &#934; is a feature-vector representation of a parse tree &#934; : X x Y &#8212;* Rd (see examples below).3 Note that this class of functions includes Viterbi PCFG parsers, where the feature-vector consists of the counts of the productions used in the parse, and the parameters w are the logprobabilities of those productions.</S>
+    <S sid="33" ssid="7">The traditional method of estimating the parameters of PCFGs assumes a generative grammar that defines P(x, y) and maximizes the joint log-likelihood Ei log P(xi, yi) (with some regularization).</S>
+    <S sid="34" ssid="8">A alternative probabilistic approach is to estimate the parameters discriminatively by maximizing conditional loglikelihood.</S>
+    <S sid="35" ssid="9">For example, the maximum entropy approach (Johnson, 2001) defines a conditional log-linear model: where Zw(x) = Ey&#8712;G(x) exp{(w, &#934;(x, y))}, and maximizes the conditional log-likelihood of the sample, Ei log P(yi  |xi), (with some regularization).</S>
+    <S sid="36" ssid="10">In this paper, we advocate a different estimation criterion, inspired by the max-margin principle of SVMs.</S>
+    <S sid="37" ssid="11">Max-margin estimation has been used for parse reranking (Collins, 2000).</S>
+    <S sid="38" ssid="12">Recently, it has also been extended to graphical models (Taskar et al., 2003; Altun et al., 2003) and shown to outperform the standard maxlikelihood methods.</S>
+    <S sid="39" ssid="13">The main idea is to forego the probabilistic interpretation, and directly ensure that for all i in the training data.</S>
+    <S sid="40" ssid="14">We define the margin of the parameters w on the example i and parse y as the difference in value between the true parse yi and y: where `bi,y = `b(xi, y), and `bi,yz = `b(xi, yi).</S>
+    <S sid="41" ssid="15">Intuitively, the size of the margin quantifies the confidence in rejecting the mistaken parse y using the function fw(x), modulo the scale of the parameters ||w||.</S>
+    <S sid="42" ssid="16">We would like this rejection confidence to be larger when the mistake y is more severe, i.e.</S>
+    <S sid="43" ssid="17">L(xi, yi, y) is large.</S>
+    <S sid="44" ssid="18">We can express this desideratum as an optimization problem: where Li,y = L(xi, yi, y).</S>
+    <S sid="45" ssid="19">This quadratic program aims to separate each y &#8712; G(xi) from the target parse yi by a margin that is proportional to the loss L(xi, yi, y).</S>
+    <S sid="46" ssid="20">After a standard transformation, in which maximizing the margin is reformulated as minimizing the scale of the weights (for a fixed margin of 1), we get the following program: The addition of non-negative slack variables Si allows one to increase the global margin by paying a local penalty on some outlying examples.</S>
+    <S sid="47" ssid="21">The constant C dictates the desired trade-off between margin size and outliers.</S>
+    <S sid="48" ssid="22">Note that this formulation has an exponential number of constraints, one for each possible parse y for each sentence i.</S>
+    <S sid="49" ssid="23">We address this issue in section 4.</S>
+    <S sid="50" ssid="24">In SVMs, the optimization problem is solved by working with the dual of a quadratic program analogous to Eq.</S>
+    <S sid="51" ssid="25">2.</S>
+    <S sid="52" ssid="26">For our problem, just as for SVMs, the dual has important computational advantages, including the &#8220;kernel trick,&#8221; which allows the efficient use of high-dimensional features spaces endowed with efficient dot products (Cristianini and Shawe-Taylor, 2000).</S>
+    <S sid="53" ssid="27">Moreover, the dual view plays a crucial role in circumventing the exponential size of the primal problem.</S>
+    <S sid="54" ssid="28">In Eq.</S>
+    <S sid="55" ssid="29">2, there is a constraint for each mistake y one might make on each example i, which rules out that mistake.</S>
+    <S sid="56" ssid="30">For each mistake-exclusion constraint, the dual contains a variable &#945;i,y.</S>
+    <S sid="57" ssid="31">Intuitively, the magnitude of &#945;i,y is proportional to the attention we must pay to that mistake in order not to make it.</S>
+    <S sid="58" ssid="32">The dual of Eq.</S>
+    <S sid="59" ssid="33">2 (after adding additional variables &#945;i,yz and renormalizing by C) is given by: where Ii,y = I(xi, yi, y) indicates whether y is the true parse yi.</S>
+    <S sid="60" ssid="34">Given the dual solution &#945;*, the solution to the primal problem w* is simply a weighted linear combination of the feature vectors of the correct parse and mistaken parses: This is the precise sense in which mistakes with large &#945; contribute more strongly to the model.</S>
+  </SECTION>
+  <SECTION title="3 Factored Models" number="3">
+    <S sid="61" ssid="1">There is a major problem with both the primal and the dual formulations above: since each potential mistake must be ruled out, the number of variables or constraints is proportional to |G(x)|, the number of possible parse trees.</S>
+    <S sid="62" ssid="2">Even in grammars without unary chains or empty elements, the number of parses is generally exponential in the length of the sentence, so we cannot expect to solve the above problem without any assumptions about the feature-vector representation `b and loss function L. For that matter, for arbitrary representations, to find the best parse given a weight vector, we would have no choice but to enumerate all trees and score them.</S>
+    <S sid="63" ssid="3">However, our grammars and representations are generally structured to enable efficient inference.</S>
+    <S sid="64" ssid="4">For example, we usually assign scores to local parts of the parse such as PCFG productions.</S>
+    <S sid="65" ssid="5">Such factored models have shared substructure properties which permit dynamic programming decompositions.</S>
+    <S sid="66" ssid="6">In this section, we describe how this kind of decomposition can be done over the dual &#945; distributions.</S>
+    <S sid="67" ssid="7">The idea of this decomposition has previously been used for sequences and other Markov random fields in Taskar et al. (2003), but the present extension to CFGs is novel.</S>
+    <S sid="68" ssid="8">For clarity of presentation, we restrict the grammar to be in Chomsky normal form (CNF), where all rules in the grammar are of the form hA &#8594; B Ci or hA &#8594; ai, where A, B and C are non-terminal symbols, and a is some terminal symbol.</S>
+    <S sid="69" ssid="9">For example figure 1(a) shows a tree in this form.</S>
+    <S sid="70" ssid="10">We will represent each parse as a set of two types of parts.</S>
+    <S sid="71" ssid="11">Parts of the first type are single constituent tuples (A, s, e, i), consisting of a non-terminal A, start-point s and end-point e, and sentence i, such as r in figure 1(b).</S>
+    <S sid="72" ssid="12">In this representation, indices s and e refer to positions between words, rather than to words themselves.</S>
+    <S sid="73" ssid="13">These parts correspond to the traditional notion of an edge in a tabular parser.</S>
+    <S sid="74" ssid="14">Parts of the second type consist of CF-ruletuples (A &#8212;* B C, s, m, e, i).</S>
+    <S sid="75" ssid="15">The tuple specifies a particular rule A &#8212;* B C, and its position, including split point m, within the sentence i, such as q in figure 1(b), and corresponds to the traditional notion of a traversal in a tabular parser.</S>
+    <S sid="76" ssid="16">Note that parts for a basic PCFG model are not just rewrites (which can occur multiple times), but rather anchored items.</S>
+    <S sid="77" ssid="17">Formally, we assume some countable set of parts, R. We also assume a function R which maps each object (x, y) E X x Y to a finite subset of R. Thus R(x, y) is the set of parts belonging to a particular parse.</S>
+    <S sid="78" ssid="18">Equivalently, the function R(x, y) maps a derivation y to the set of parts which it includes.</S>
+    <S sid="79" ssid="19">Because all rules are in binary-branching form, |R(x, y) |is constant across different derivations y for the same input sentence x.</S>
+    <S sid="80" ssid="20">We assume that the feature vector for a sentence and parse tree (x, y) decomposes into a sum of the feature vectors for its parts: In CFGs, the function O(x, r) can be any function mapping a rule production and its position in the sentence x, to some feature vector representation.</S>
+    <S sid="81" ssid="21">For example, O could include features which identify the rule used in the production, or features which track the rule identity together with features of the words at positions s, m, e, and neighboring positions in the sentence x.</S>
+    <S sid="82" ssid="22">In addition, we assume that the loss function L(x, y, &#710;y) also decomposes into a sum of local loss functions l(x, y, r) over parts, as follows: One approach would be to define l(x, y, r) to be 0 only if the non-terminal A spans words s ... e in the derivation y and 1 otherwise.</S>
+    <S sid="83" ssid="23">This would lead to L(x, y, &#710;y) tracking the number of &#8220;constituent errors&#8221; in &#710;y, where a constituent is a tuple such as (A, s, e, i).</S>
+    <S sid="84" ssid="24">Another, more strict definition would be to define l(x, y, r) to be 0 if r of the type (A &#8212;* B C, s, m, e, i) is in the derivation y and 1 otherwise.</S>
+    <S sid="85" ssid="25">This definition would lead to L(x, y, &#710;y) being the number of CFrule-tuples in y&#710; which are not seen in y.4 Finally, we define indicator variables I(x, y, r) which are 1 if r &#8712; R(x, y), 0 otherwise.</S>
+    <S sid="86" ssid="26">We also define sets R(xi) = &#8746;yEG(xi)R(xi, y) for the training examples i = 1... n. Thus, R(xi) is the set of parts that is seen in at least one of the objects {(xi, y) : y &#8712; G(xi)}.</S>
+  </SECTION>
+  <SECTION title="4 Factored Dual" number="4">
+    <S sid="87" ssid="1">The dual in Eq.</S>
+    <S sid="88" ssid="2">3 involves variables &#945;i,y for all i = 1... n, y &#8712; G(xi), and the objective is quadratic in these &#945; variables.</S>
+    <S sid="89" ssid="3">In addition, it turns out that the set of dual variables &#945;i = {&#945;i,y : y &#8712; G(xi)} for each example i is constrained to be non-negative and sum to 1.</S>
+    <S sid="90" ssid="4">It is interesting that, while the parameters w lose their probabilistic interpretation, the dual variables &#945;i for each sentence actually form a kind of probability distribution.</S>
+    <S sid="91" ssid="5">Furthermore, the objective can be expressed in terms of expectations with respect to these distributions: We now consider how to efficiently solve the max-margin optimization problem for a factored model.</S>
+    <S sid="92" ssid="6">As shown in Taskar et al. (2003), the dual in Eq.</S>
+    <S sid="93" ssid="7">3 can be reframed using &#8220;marginal&#8221; terms.</S>
+    <S sid="94" ssid="8">We will also find it useful to consider this alternative formulation of the dual.</S>
+    <S sid="95" ssid="9">Given dual variables &#945;, we define the marginals &#181;i,r(&#945;) for all i, r, as follows: Since the dual variables &#945;i form probability distributions over parse trees for each sentence i, the marginals &#181;i,r(&#945;i) represent the proportion of parses that would contain part r if they were drawn from a distribution &#945;i.</S>
+    <S sid="96" ssid="10">Note that the number of such marginal terms is the number of parts, which is polynomial in the length of the sentence.</S>
+    <S sid="97" ssid="11">Now consider the dual objective Q(&#945;) in Eq.</S>
+    <S sid="98" ssid="12">3.</S>
+    <S sid="99" ssid="13">It can be shown that the original objective Q(&#945;) can be expressed in terms of these 4The constituent loss function does not exactly correspond to the standard scoring metrics, such as F1 or crossing brackets, but shares the sensitivity to the number of differences between trees.</S>
+    <S sid="100" ssid="14">We have not thoroughly investigated the exact interplay between the various loss choices and the various parsing metrics.</S>
+    <S sid="101" ssid="15">We used the constituent loss in our experiments. marginals as Qm(&#181;(&#945;)), where &#181;(&#945;) is the vector with components &#181;i,r(&#945;i), and Qm(&#181;) is defined as: where li,r = l(xi, yi, r), &#966;i,r = &#966;(xi, r) and Ii,r = I(xi, yi, r).</S>
+    <S sid="102" ssid="16">This follows from substituting the factored definitions of the feature representation &#934; and loss function L together with definition of marginals.</S>
+    <S sid="103" ssid="17">Having expressed the objective in terms of a polynomial number of variables, we now turn to the constraints on these variables.</S>
+    <S sid="104" ssid="18">The feasible set for &#945; is Now let &#916;m be the space of marginal vectors which are feasible: Then our original optimization problem can be reframed as max&#181;EAm Qm(&#181;).</S>
+    <S sid="105" ssid="19">Fortunately, in case of PCFGs, the domain &#916;m can be described compactly with a polynomial number of linear constraints.</S>
+    <S sid="106" ssid="20">Essentially, we need to enforce the condition that the expected proportions of parses having particular parts should be consistent with each other.</S>
+    <S sid="107" ssid="21">Our marginals track constituent parts hA, s, e, ii and CF-rule-tuple parts hA &#8594; B C, s, m, e, ii The consistency constraints are precisely the insideoutside probability relations: where ni is the length of the sentence.</S>
+    <S sid="108" ssid="22">In addition, we must ensure non-negativity and normalization to 1: &#181;i,r &#8805; 0; X &#181;i,A,0,ni = 1.</S>
+    <S sid="109" ssid="23">A The number of variables in our factored dual for CFGs is cubic in the length of the sentence, while the number of constraints is quadratic.</S>
+    <S sid="110" ssid="24">This polynomial size formulation should be contrasted with the earlier formulation in Collins (2004), which has an exponential number of constraints.</S>
+  </SECTION>
+  <SECTION title="5 Factored SMO" number="5">
+    <S sid="111" ssid="1">We have reduced the problem to a polynomial size QP, which, in principle, can be solved using standard QP toolkits.</S>
+    <S sid="112" ssid="2">However, although the number of variables and constraints in the factored dual is polynomial in the size of the data, the number of coefficients in the quadratic term in the objective is very large: quadratic in the number of sentences and dependent on the sixth power of sentence length.</S>
+    <S sid="113" ssid="3">Hence, in our experiments we use an online coordinate descent method analogous to the sequential minimal optimization (SMO) used for SVMs (Platt, 1999) and adapted to structured max-margin estimation in Taskar et al. (2003).</S>
+    <S sid="114" ssid="4">We omit the details of the structured SMO procedure, but the important fact about this kind of training is that, similar to the basic perceptron approach, it only requires picking up sentences one at a time, checking what the best parse is according to the current primal and dual weights, and adjusting the weights.</S>
+  </SECTION>
+  <SECTION title="6 Results" number="6">
+    <S sid="115" ssid="1">We used the Penn English Treebank for all of our experiments.</S>
+    <S sid="116" ssid="2">We report results here for each model and setting trained and tested on only the sentences of length &lt; 15 words.</S>
+    <S sid="117" ssid="3">Aside from the length restriction, we used the standard splits: sections 2-21 for training (9753 sentences), 22 for development (603 sentences), and 23 for final testing (421 sentences).</S>
+    <S sid="118" ssid="4">As a baseline, we trained a CNF transformation of the unlexicalized model of Klein and Manning (2003) on this data.</S>
+    <S sid="119" ssid="5">The resulting grammar had 3975 non-terminal symbols and contained two kinds of productions: binary nonterminal rewrites and tag-word rewrites.5 The scores for the binary rewrites were estimated using unsmoothed relative frequency estimators.</S>
+    <S sid="120" ssid="6">The tagging rewrites were estimated with a smoothed model of P(w|t), also using the model from Klein and Manning (2003).</S>
+    <S sid="121" ssid="7">Figure 3 shows the performance of this model (GENERATIvE): 87.99 F1 on the test set.</S>
+    <S sid="122" ssid="8">For the BAsIC max-margin model, we used exactly the same set of allowed rewrites (and therefore the same set of candidate parses) as in the generative case, but estimated their weights according to the discriminative method of section 4.</S>
+    <S sid="123" ssid="9">Tag-word production weights were fixed to be the log of the generative P(w|t) model.</S>
+    <S sid="124" ssid="10">That is, the only change between GENERATIvE and BAsIC is the use of the discriminative maximum-margin criterion in place of the generative maximum likelihood one.</S>
+    <S sid="125" ssid="11">This change alone results in a small improvement (88.20 vs. 87.99 F1).</S>
+    <S sid="126" ssid="12">On top of the basic model, we first added lexical features of each span; this gave a LEXICAL model.</S>
+    <S sid="127" ssid="13">For a span (s, e) of a sentence x, the base lexical features were: These base features were conjoined with the span length for spans of length 3 and below, since short spans have highly distinct behaviors (see the examples below).</S>
+    <S sid="128" ssid="14">The features are lexical in the sense than they allow specific words 5Unary rewrites were compiled into a single compound symbol, so for example a subject-gapped sentence would have label like s+vp.</S>
+    <S sid="129" ssid="15">These symbols were expanded back into their source unary chain before parses were evaluated. and word pairs to influence the parse scores, but are distinct from traditional lexical features in several ways.</S>
+    <S sid="130" ssid="16">First, there is no notion of headword here, nor is there any modeling of word-toword attachment.</S>
+    <S sid="131" ssid="17">Rather, these features pick up on lexical trends in constituent boundaries, for example the trend that in the sentence The screen was a sea of red., the (length 2) span between the word was and the word of is unlikely to be a constituent.</S>
+    <S sid="132" ssid="18">These non-head lexical features capture a potentially very different source of constraint on tree structures than head-argument pairs, one having to do more with linear syntactic preferences than lexical selection.</S>
+    <S sid="133" ssid="19">Regardless of the relative merit of the two kinds of information, one clear advantage of the present approach is that inference in the resulting model remains cubic, since the dynamic program need not track items with distinguished headwords.</S>
+    <S sid="134" ssid="20">With the addition of these features, the accuracy jumped past the generative baseline, to 88.44.</S>
+    <S sid="135" ssid="21">As a concrete (and particularly clean) example of how these features can sway a decision, consider the sentence The Egyptian president said he would visit Libya today to resume the talks.</S>
+    <S sid="136" ssid="22">The generative model incorrectly considers Libya today to be a base NP.</S>
+    <S sid="137" ssid="23">However, this analysis is counter to the trend of today being a one-word constituent.</S>
+    <S sid="138" ssid="24">Two features relevant to this trend are: (CONSTITUENT n first-word = today n length = 1) and (CONSTITUENT n lastword = today n length = 1).</S>
+    <S sid="139" ssid="25">These features represent the preference of the word today for being the first and and last word in constituent spans of length 1.6 In the LEXICAL model, however, these features have quite large positive weights: 0.62 each.</S>
+    <S sid="140" ssid="26">As a result, this model makes this parse decision correctly.</S>
+    <S sid="141" ssid="27">Another kind of feature that can usefully be incorporated into the classification process is the output of other, auxiliary classifiers.</S>
+    <S sid="142" ssid="28">For this kind of feature, one must take care that its reliability on the training not be vastly greater than its reliability on the test set.</S>
+    <S sid="143" ssid="29">Otherwise, its weight will be artificially (and detrimentally) high.</S>
+    <S sid="144" ssid="30">To ensure that such features are as noisy on the training data as the test data, we split the training into two folds.</S>
+    <S sid="145" ssid="31">We then trained the auxiliary classifiers in jacknife fashion on each fold, and using their predictions as features on the other fold.</S>
+    <S sid="146" ssid="32">The auxiliary classifiers were then retrained on the entire training set, and their predictions used as features on the development and test sets.</S>
+    <S sid="147" ssid="33">We used two such auxiliary classifiers, giving a prediction feature for each span (these classifiers predicted only the presence or absence of a bracket over that span, not bracket labels).</S>
+    <S sid="148" ssid="34">The first feature was the prediction of the generative baseline; this feature added little information, but made the learning phase faster.</S>
+    <S sid="149" ssid="35">The second feature was the output of a flat classifier which was trained to predict whether single spans, in isolation, were constituents or not, based on a bundle of features including the list above, but also the following: the preceding, first, last, and following tag in the span, pairs of tags such as preceding-first, last-following, preceding-following, first-last, and the entire tag sequence.</S>
+    <S sid="150" ssid="36">Tag features on the test sets were taken from a pretagging of the sentence by the tagger described in Toutanova et al. (2003).</S>
+    <S sid="151" ssid="37">While the flat classifier alone was quite poor (P 78.77 / R 63.94 / F1 70.58), the resulting max-margin model (LEXICAL+AUX) scored 89.12 F1.</S>
+    <S sid="152" ssid="38">To situate these numbers with respect to other models, the parser in Collins (1999), which is generative, lexicalized, and intricately smoothed scores 88.69 over the same train/test configuration.</S>
+    <S sid="153" ssid="39">It is worth considering the cost of this kind of method.</S>
+    <S sid="154" ssid="40">At training time, discriminative methods are inherently expensive, since they all involve iteratively checking current model performance on the training set, which means parsing the training set (usually many times).</S>
+    <S sid="155" ssid="41">In our experiments, 10-20 iterations were generally required for convergence (except the BASIC model, which took about 100 iterations.)</S>
+    <S sid="156" ssid="42">There are several nice aspects of the approach described here.</S>
+    <S sid="157" ssid="43">First, it is driven by the repeated extraction, over the training examples, of incorrect parses which the model currently prefers over the true parses.</S>
+    <S sid="158" ssid="44">The procedure that provides these parses need not sum over all parses, nor even necessarily find the Viterbi parses, to function.</S>
+    <S sid="159" ssid="45">This allows a range of optimizations not possible for CRF-like approaches which must extract feature expectations from the entire set of parses.7 Nonetheless, generative approaches 7One tradeoff is that this approach is more inherently sequential and harder to parallelize. are vastly cheaper to train, since they must only collect counts from the training set.</S>
+    <S sid="160" ssid="46">On the other hand, the max-margin approach does have the potential to incorporate many new kinds of features over the input, and the current feature set allows limited lexicalization in cubic time, unlike other lexicalized models (including the Collins model which it outperforms in the present limited experiments).</S>
+  </SECTION>
+  <SECTION title="7 Conclusion" number="7">
+    <S sid="161" ssid="1">We have presented a maximum-margin approach to parsing, which allows a discriminative SVM-like objective to be applied to the parsing problem.</S>
+    <S sid="162" ssid="2">Our framework permits the use of a rich variety of input features, while still decomposing in a way that exploits the shared substructure of parse trees in the standard way.</S>
+    <S sid="163" ssid="3">On a test set of &#8804; 15 word sentences, the featurerich model outperforms both its own natural generative baseline and the Collins parser on Fl.</S>
+    <S sid="164" ssid="4">While like most discriminative models it is compute-intensive to train, it allows fast parsing, remaining cubic despite the incorporation of lexical features.</S>
+    <S sid="165" ssid="5">This trade-off between the complexity, accuracy and efficiency of a parsing model is an important area of future research.</S>
+  </SECTION>
+  <SECTION title="Acknowledgements" number="8">
+    <S sid="166" ssid="1">This work was supported in part by the Department of the Interior/DARPA under contract number NBCHD030010, a Microsoft Graduate Fellowship to the second author, and National Science Foundation grant 0347631 to the third author.</S>
+  </SECTION>
+</PAPER>

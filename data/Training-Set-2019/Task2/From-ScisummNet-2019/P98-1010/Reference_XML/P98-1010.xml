@@ -1,0 +1,184 @@
+<PAPER>
+  <S sid="0">A Memory-Based Approach to Learning Shallow Natural Language Patterns</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Recognizing shallow linguistic patterns, such as basic syntactic relationships between words, is a common task in applied natural language and text processing.</S>
+    <S sid="2" ssid="2">The common practice for approaching this task is by tedious manual definition of possible pattern structures, often in the form of regular expressions or finite automata.</S>
+    <S sid="3" ssid="3">This paper presents a novel memory-based learning method that recognizes shallow patterns in new text based on a bracketed training corpus.</S>
+    <S sid="4" ssid="4">The training data are stored as-is, in efficient suffix-tree data structures.</S>
+    <S sid="5" ssid="5">Generalization is performed on-line at recognition time by comparing subsequences of the new text to positive and negative evidence in the corpus.</S>
+    <S sid="6" ssid="6">This way, no information in the training is lost, as can happen in other learning systems that construct a single generalized model at the time of training.</S>
+    <S sid="7" ssid="7">The paper presents experimental results for recognizing noun phrase, subject-verb and verb-object patterns in English.</S>
+    <S sid="8" ssid="8">Since the learning approach enables easy porting to new domains, we plan to apply it to syntactic patterns in other languages and to sub-language patterns for information extraction.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="9" ssid="1">Identifying local patterns of syntactic sequences and relationships is a fundamental task in natural language processing (NLP).</S>
+    <S sid="10" ssid="2">Such patterns may correspond to syntactic phrases, like noun phrases, or to pairs of words that participate in a syntactic relationship, like the heads of a verb-object relation.</S>
+    <S sid="11" ssid="3">Such patterns have been found useful in various application areas, including information extraction, text summarization, and bilingual alignment.</S>
+    <S sid="12" ssid="4">Syntactic patterns are useful also for many basic computational linguistic tasks, such as statistical word similarity and various disambiguation problems.</S>
+    <S sid="13" ssid="5">One approach for detecting syntactic patterns is to obtain a full parse of a sentence and then extract the required patterns.</S>
+    <S sid="14" ssid="6">However, obtaining a complete parse tree for a sentence is difficult in many cases, and may not be necessary at all for identifying most instances of local syntactic patterns.</S>
+    <S sid="15" ssid="7">An alternative approach is to avoid the complexity of full parsing and instead to rely only on local information.</S>
+    <S sid="16" ssid="8">A variety of methods have been developed within this framework, known as shallow parsing, chunking, local parsing etc.</S>
+    <S sid="17" ssid="9">(e.g., (Abney, 1991; Greffenstette, 1993)).</S>
+    <S sid="18" ssid="10">These works have shown that it is possible to identify most instances of local syntactic patterns by rules that examine only the pattern itself and its nearby context.</S>
+    <S sid="19" ssid="11">Often, the rules are applied to sentences that were tagged by partof-speech (POS) and are phrased by some form of regular expressions or finite state automata.</S>
+    <S sid="20" ssid="12">Manual writing of local syntactic rules has become a common practice for many applications.</S>
+    <S sid="21" ssid="13">However, writing rules is often tedious and time consuming.</S>
+    <S sid="22" ssid="14">Furthermore, extending the rules to different languages or sub-language domains can require substantial resources and expertise that are often not available.</S>
+    <S sid="23" ssid="15">As in many areas of NLP, a learning approach is appealing.</S>
+    <S sid="24" ssid="16">Surprisingly, though, rather little work has been devoted to learning local syntactic patterns, mostly noun phrases (Ramshaw and Marcus, 1995; Vilain and Day, 1996).</S>
+    <S sid="25" ssid="17">This paper presents a novel general learning approach for recognizing local sequential patterns, that may be perceived as falling within the memorybased learning paradigm.</S>
+    <S sid="26" ssid="18">The method utilizes a part-of-speech tagged training corpus in which all instances of the target pattern are marked (bracketed).</S>
+    <S sid="27" ssid="19">The training data are stored as-is in suffix-tree data structures, which enable linear time searching for subsequences in the corpus.</S>
+    <S sid="28" ssid="20">The memory-based nature of the presented algorithm stems from its deduction strategy: a new instance of the target pattern is recognized by examining the raw training corpus, searching for positive and negative evidence with respect to the given test sequence.</S>
+    <S sid="29" ssid="21">No model is created for the training corpus, and the raw examples are not converted to any other representation.</S>
+    <S sid="30" ssid="22">Consider the following examplel .</S>
+    <S sid="31" ssid="23">Suppose we want to decide whether the candidate sequence is a noun phrase (NP) by comparing it to the training corpus.</S>
+    <S sid="32" ssid="24">A good match would be if the entire sequence appears as-is several times in the corpus.</S>
+    <S sid="33" ssid="25">However, due to data sparseness, an exact match cannot always be expected.</S>
+    <S sid="34" ssid="26">A somewhat weaker match may be obtained if we consider sub-parts of the candidate sequence (called tiles).</S>
+    <S sid="35" ssid="27">For example, suppose the corpus contains noun phrase instances with the following structures: The first structure provides positive evidence that the sequence &amp;quot;DT ADJ ADJ NM&amp;quot; is a possible NP prefix while the second structure provides evidence for &amp;quot;ADJ NN NNP&amp;quot; being an NP suffix.</S>
+    <S sid="36" ssid="28">Together, these two training instances provide positive evidence that covers the entire candidate.</S>
+    <S sid="37" ssid="29">Considering evidence for sub-parts of the pattern enables us to generalize over the exact structures that are present in the corpus.</S>
+    <S sid="38" ssid="30">Similarly, we also consider the negative evidence for such sub-parts by noting where they occur in the corpus without being a corresponding part of a target instance.</S>
+    <S sid="39" ssid="31">The proposed method, as described in detail in the next section, formalizes this type of reasoning.</S>
+    <S sid="40" ssid="32">It searches specialized data structures for both positive and negative evidence for sub-parts of the candidate structure, and considers additional factors such as context and evidence overlap.</S>
+    <S sid="41" ssid="33">Section 3 presents experimental results for three target syntactic patterns in English, and Section 4 describes related work.</S>
+  </SECTION>
+  <SECTION title="2 The Algorithm" number="2">
+    <S sid="42" ssid="1">The input to the Memory-Based Sequence Learning (MBSL) algorithm is a sentence represented as a sequence of POS tags, and its output is a bracketed sentence, indicating which subsequences of the sentence are to be considered instances of the target pattern (target instances).</S>
+    <S sid="43" ssid="2">MBSL determines the bracketing by first considering each subsequence of the sentence as a candidate to be a target instance.</S>
+    <S sid="44" ssid="3">It computes a score for each candidate by comparing it to the training corpus, which consists of a set of pre-bracketed sentences.</S>
+    <S sid="45" ssid="4">The algorithm then finds a consistent bracketing for the input sentence, giving preference to high scoring subsequences.</S>
+    <S sid="46" ssid="5">In the remainder of this section we describe the scoring and bracketing methods in more detail.</S>
+    <S sid="47" ssid="6">We first describe the mechanism for scoring an individual candidate.</S>
+    <S sid="48" ssid="7">The input is a candidate subsequence, along with its context, i.e., the other tags in the input sentence.</S>
+    <S sid="49" ssid="8">The method is presented at two levels: a general memory-based learning schema and a particular instantiation of it.</S>
+    <S sid="50" ssid="9">Further instantiations of the schema are expected in future work.</S>
+    <S sid="51" ssid="10">The MBSL scoring algorithm works by considering situated candidates.</S>
+    <S sid="52" ssid="11">A situated candidate is a sentence containing one pair of brackets, indicating a candidate to be a target instance.</S>
+    <S sid="53" ssid="12">The portion of the sentence between the brackets is the candidate (as above), while the portion before and after the candidate is its context.</S>
+    <S sid="54" ssid="13">(Although we describe the algorithm here for the general case of unlimited context, for computational reasons our implementation only considers a limited amount of context on either side of the candidate.)</S>
+    <S sid="55" ssid="14">This subsection describes how to compute the score of a situated candidate from the training corpus.</S>
+    <S sid="56" ssid="15">The idea of the MBSL scoring algorithm is to construct a tiling of subsequences of a situated candidate which covers the entire candidate.</S>
+    <S sid="57" ssid="16">We consider as tiles subsequences of the situated candidate which contain a bracket.</S>
+    <S sid="58" ssid="17">(We thus consider only tiles within or adjacent to the candidate that also include a candidate boundary.)</S>
+    <S sid="59" ssid="18">Each tile is assigned a score based on its occurrence in the training memory.</S>
+    <S sid="60" ssid="19">Since brackets correspond to the boundaries of potential target instances, it is important to consider how the bracket positions in the tile correspond to those in the training memory.</S>
+    <S sid="61" ssid="20">For example, consider the training sentence [ NN ] VB [ ADJ NN NN ] ADV PP [ NN ] .</S>
+    <S sid="62" ssid="21">We may now examine the occurrence in this sentence of several possible tiles: VB [ ADJ NN occurs positively in the sentence, and NN NN ADV also occurs positively, while NN [ NN ADV occurs negatively in the training sentence, since the bracket does not correspond.</S>
+    <S sid="63" ssid="22">The positive evidence for a tile is measured by its positive count, the number of times the tile (including brackets) occurs in the training memory with corresponding brackets.</S>
+    <S sid="64" ssid="23">Similarly, the negative evidence for a tile is measured by its negative count, the number of times that the POS sequence of the tile occurs in the training memory with noncorresponding brackets (either brackets in the training where they do not occur in the tile, or vice versa).</S>
+    <S sid="65" ssid="24">The total count of a tile is its positive count plus its negative count, that is, the total count of the POS sequence of the tile, regardless of bracket position.</S>
+    <S sid="66" ssid="25">The score f (t) of a tile t is a function of its positive and negative counts.</S>
+    <S sid="67" ssid="26">The overall score of a situated candidate is generally a function of the scores of all the tiles for the candidate, as well as the relations between the tiles' positions.</S>
+    <S sid="68" ssid="27">These relations include tile adjacency, overlap between tiles, the amount of context in a tile, and so on.</S>
+    <S sid="69" ssid="28">In our instantiation of the MBSL schema, we define the score f(t) of a tile t as the ratio of its positive count pos(t) and its total count total(t): for a predefined threshold 0.</S>
+    <S sid="70" ssid="29">Tiles with a score of 1, and so with sufficient positive evidence, are called matching tiles.</S>
+    <S sid="71" ssid="30">Each matching tile gives supporting evidence that a part of the candidate can be a part of a target instance.</S>
+    <S sid="72" ssid="31">In order to combine this evidence, we try to cover the entire candidate by a set of matching tiles, with no gaps.</S>
+    <S sid="73" ssid="32">Such a covering constitutes evidence that the entire candidate is a target instance.</S>
+    <S sid="74" ssid="33">For example, consider the matching tiles shown for the candidate in Figure 1.</S>
+    <S sid="75" ssid="34">The set of matching tiles 2, 4, and 5 covers the candidate, as does the set of tiles 1 and 5.</S>
+    <S sid="76" ssid="35">Also note that tile 1 constitutes a cover on its own.</S>
+    <S sid="77" ssid="36">To make this precise, we first say that a tile T1 connects to a tile 7'2 if (i) 2'2 starts after T1 starts, (ii) there is no gap between the end of T1 and the start of 7'2 (there may be some overlap), and (iii) T2 ends after T1 (neither tile includes the other).</S>
+    <S sid="78" ssid="37">For example, tiles 2 and 4 in the figure connect, while tiles 2 and 5 do not, and neither do tiles 1 and 4 (since tile 1 includes tile 4 as a subsequence).</S>
+    <S sid="79" ssid="38">A cover for a situated candidate c is a sequence of matching tiles which collectively cover the entire candidate, including the boundary brackets, and possibly some context, such that each tile connects to the following one.</S>
+    <S sid="80" ssid="39">A cover thus provides positive evidence for the entire sequence of tags in the candidate.</S>
+    <S sid="81" ssid="40">The set of all the covers for a candidate summarizes all of the evidence for the candidate being a target instance.</S>
+    <S sid="82" ssid="41">We therefore compute the score of a candidate as a function of some statistics of the set of all its covers.</S>
+    <S sid="83" ssid="42">For example, if a candidate has many different covers, it is more likely to be a target instance, since many different pieces of evidence can be brought to bear.</S>
+    <S sid="84" ssid="43">We have empirically found several statistics of the cover set to be useful.</S>
+    <S sid="85" ssid="44">These include, for each cover, the number of tiles it contains, the total number of context tags it contains, and the number of positions which more than one tile covers (the amount of overlap).</S>
+    <S sid="86" ssid="45">We thus compute, for the set of all covers of a candidate c, the Each of these items gives an indication regarding the overall strength of the cover-based evidence for the candidate.</S>
+    <S sid="87" ssid="46">The score of the candidate is a linear function of its statistics: If candidate c has no covers, we set f(c) = 0.</S>
+    <S sid="88" ssid="47">Note that minsize is weighted negatively, since a cover with fewer tiles provides stronger evidence for the candidate.</S>
+    <S sid="89" ssid="48">In the current implementation, the weights were chosen so as to give a lexicographic ordering, preferring first candidates with more covers, then those with covers containing fewer tiles, then those with larger contexts, and finally, when all else is equal, preferring candidates with more overlap between tiles.</S>
+    <S sid="90" ssid="49">We plan to investigate in the future a datadriven approach (based on the Winnow algorithm) for optimal selection and weighting of statistical features of the score.</S>
+    <S sid="91" ssid="50">We compute a candidate's statistics efficiently by performing a depth-first traversal of the cover graph of the candidate.</S>
+    <S sid="92" ssid="51">The cover graph is a directed acyclic graph (DAG) whose nodes represent matching tiles of the candidate, such that an arc exists between nodes n and n', if tile n connects to n'.</S>
+    <S sid="93" ssid="52">A special start node is added as the root of the DAG, that connects to all of the nodes (tiles) that contain an open bracket.</S>
+    <S sid="94" ssid="53">There is a cover corresponding to each path from the start node to a node (tile) that contains a close bracket.</S>
+    <S sid="95" ssid="54">Thus the statistics of all the covers may be efficiently computed by traversing the cover graph.</S>
+  </SECTION>
+  <SECTION title="2.1.3 Summary" number="3">
+    <S sid="96" ssid="1">The MBSL scoring algorithm searches the training corpus for each subsequence of the sentence in order to find matching tiles.</S>
+    <S sid="97" ssid="2">Implementing this search efficiently is therefore of prime importance.</S>
+    <S sid="98" ssid="3">We do so by encoding the training corpus using suffix trees (Edward and McCreight, 1976), which provide string searching in time which is linear in the length of the searched string.</S>
+    <S sid="99" ssid="4">Inspired by Satta (1997), we build two suffix trees for retrieving the positive and total counts for a tile.</S>
+    <S sid="100" ssid="5">The first suffix tree holds all pattern instances from the training corpus surrounded by bracket symbols and a fixed amount of context.</S>
+    <S sid="101" ssid="6">Searching a given tile (which includes a bracket symbol) in this tree yields the positive count for the tile.</S>
+    <S sid="102" ssid="7">The second suffix tree holds an unbracketed version of the entire training corpus.</S>
+    <S sid="103" ssid="8">This tree is used for searching the POS sequence of a tile, with brackets omitted, yielding the total count for the tile (recall that the negative count is the difference between the total and positive counts).</S>
+    <S sid="104" ssid="9">After the above procedure, each situated candidate is assigned a score.</S>
+    <S sid="105" ssid="10">In order to select a bracketing for the input sentence, we assume that target instances are non-overlapping (this is usually the case for the types of patterns with which we experimented).</S>
+    <S sid="106" ssid="11">We use a simple constraint propagation algorithm that finds the best choice of non-overlapping candidates in an input sentence: ber of patterns and average length in the training data.</S>
+  </SECTION>
+  <SECTION title="3 Evaluation" number="4">
+    <S sid="107" ssid="1">We have tested our algorithm in recognizing three syntactic patterns: noun phrase sequences (NP), verb-object (VO), and subject-verb (SV) relations.</S>
+    <S sid="108" ssid="2">The NP patterns were delimited by 'P and ' ] ' symbols at the borders of the phrase.</S>
+    <S sid="109" ssid="3">For VO patterns, we have put the starting delimiter before the main verb and the ending delimiter after the object head, thus covering the whole noun phrase comprising the object; for example: ... investigators started to [ view the lower price levels 7 as attractive ... We used a similar policy for SV patterns, defining the start of the pattern at the start of the subject noun phrase and the end at the first verb encountered (not including auxiliaries and modals); for example: ... argue that [ the U.S. should regulate ] the class ...</S>
+    <S sid="110" ssid="4">The subject and object noun-phrase borders were those specified by the annotators, phrases which contain conjunctions or appositives were not further analyzed.</S>
+    <S sid="111" ssid="5">The training and testing data were derived from the Penn TreeBank.</S>
+    <S sid="112" ssid="6">We used the NP data prepared by Ramshaw and Marcus (1995), hereafter RM95.</S>
+    <S sid="113" ssid="7">The SV and VO data were obtained using T (TreeBank's search script language) scripts.2 Table 1 summarizes the sizes of the training and test data sets and the number of examples in each.</S>
+    <S sid="114" ssid="8">The T scripts did not attempt to match dependencies over very complex structures, since we are concerned with shallow, or local, patterns.</S>
+    <S sid="115" ssid="9">Table 2 shows the distribution of pattern length in the train data.</S>
+    <S sid="116" ssid="10">We also did not attempt to extract passivevoice VO relations.</S>
+    <S sid="117" ssid="11">The test procedure has two parameters: (a) maximum context size of a candidate, which limits what queries are performed on the memory, and (b) the threshold 9 used for establishing a matching tile, which determines how to make use of the query results.</S>
+    <S sid="118" ssid="12">Recall and precision figures were obtained for various parameter values.</S>
+    <S sid="119" ssid="13">Fo (van Rijsbergen, 1979), a common measure in information retrieval, was used as a single-figure measure of performance: We use # = 1 which gives no preference to either recall or precision.</S>
+    <S sid="120" ssid="14">Table 3 summarizes the optimal parameter settings and results for NP, VO, and SV on the test set.</S>
+    <S sid="121" ssid="15">In order to find the optimal values of the context size and threshold, we tried 0.1 &lt; 9 &lt; 0.95, and maximum context sizes of 1,2, and 3.</S>
+    <S sid="122" ssid="16">Our experiments used 5-fold cross-validation on the training data to determine the optimal parameter settings.</S>
+    <S sid="123" ssid="17">In experimenting with the maximum context size parameter, we found that the difference between the values of Fo for context sizes of 2 and 3 is less than 0.5% for the optimal threshold.</S>
+    <S sid="124" ssid="18">Scores for a context size of 1 yielded Fo values smaller by more than 1% than the values for the larger contexts.</S>
+    <S sid="125" ssid="19">Figure 2 shows recall/precision curves for the three data sets, obtained by varying 9 while keeping the maximum context size at its optimal value.</S>
+    <S sid="126" ssid="20">The difference between Fo=1 values for different thresholds was always less than 2%.</S>
+    <S sid="127" ssid="21">Performance may be measured also on a word-by word basis, counting as a success any word which was identified correctly as being part of the target pattern.</S>
+    <S sid="128" ssid="22">That method was employed, along with recall/precision, by RM95.</S>
+    <S sid="129" ssid="23">We preferred to measure performance by recall and precision for complete patterns.</S>
+    <S sid="130" ssid="24">Most errors involved identifications of slightly shifted, shorter or longer sequences.</S>
+    <S sid="131" ssid="25">Given a pattern consisting of five words, for example, identifying only a four-word portion of this pattern would yield both a recall and precision errors.</S>
+    <S sid="132" ssid="26">Tagassignment scoring, on the other hand, will give it a score of 80%.</S>
+    <S sid="133" ssid="27">We hold the view that such an identification is an error, rather than a partial success.</S>
+    <S sid="134" ssid="28">We used the datasets created by RM95 for NP learning; their results are shown in Table 3.3 The Fo difference is small (0.4%), yet they use a richer feature set, which incorporates lexical information as well.</S>
+    <S sid="135" ssid="29">The method of Ramshaw and Marcus makes a decision per word, relying on predefined rule templates.</S>
+    <S sid="136" ssid="30">The method presented here makes decisions on sequences and uses sequences as its memory, thereby attaining a dynamic perspective of the last line shows the results of Ramshaw and Marcus (1995) (recognizing NP's) with the same train/test data.</S>
+    <S sid="137" ssid="31">The optimal parameters were obtained by 5-fold cross-validation. pattern structure.</S>
+    <S sid="138" ssid="32">We aim to incorporate lexical information as well in the future, it is still unclear whether that will improve the results.</S>
+    <S sid="139" ssid="33">Figure 3 shows the learning curves by amount of training examples and number of words in the training data, for particular parameter settings.</S>
+  </SECTION>
+  <SECTION title="4 Related Work" number="5">
+    <S sid="140" ssid="1">Two previous methods for learning local syntactic patterns follow the transformation-based paradigm introduced by Brill (1992).</S>
+    <S sid="141" ssid="2">Vilain and Day (1996) identify (and classify) name phrases such as company names, locations, etc.</S>
+    <S sid="142" ssid="3">Ramshaw and Marcus (1995) detect noun phrases, by classifying each word as being inside a phrase, outside or on the boundary between phrases.</S>
+    <S sid="143" ssid="4">Finite state machines (FSMs) are a natural formalism for learning linear sequences.</S>
+    <S sid="144" ssid="5">It was used for learning linguistic structures other than shallow syntax.</S>
+    <S sid="145" ssid="6">Gold (1978) showed that learning regular languages from positive examples is undecidable in the limit.</S>
+    <S sid="146" ssid="7">Recently, however, several learning methods have been proposed for restricted classes of FSM.</S>
+    <S sid="147" ssid="8">OSTIA (Onward Subsequential Transducer Inference Algorithm; Oncina, Garcia, and Vidal 1993), learns a subsequential transducer in the limit.</S>
+    <S sid="148" ssid="9">This algorithm was used for natural-language tasks by Vilar, Marzal, and Vidal (1994) for learning translation of a limited-domain language, as well as by Gildea and Jurafsky (1994) for learning phonological rules.</S>
+    <S sid="149" ssid="10">Ahonen et al. (1994) describe an algorithm for learning (k,h)-contextual regular languages, which they use for learning the structure of SGML documents.</S>
+    <S sid="150" ssid="11">Apart from deterministic FSMs, there are a number of algorithms for learning stochastic models, eg., (Stolcke and Omohundro, 1992; Carrasco and Oncina, 1994; Ron et al., 1995).</S>
+    <S sid="151" ssid="12">These algorithms differ mainly by their state-merging strategies, used for generalizing from the training data.</S>
+    <S sid="152" ssid="13">A major difference between the abovementioned learning methods and our memory-based approach is that the former employ generalized models that were created at training time while the latter uses the training corpus as-is and generalizes only at recognition time.</S>
+    <S sid="153" ssid="14">Much work aimed at learning models for full parsing, i.e., learning hierarchical structures.</S>
+    <S sid="154" ssid="15">We refer here only to the DOP (Data Oriented Parsing) method (Bod, 1992) which, like the present work, is a memory-based approach.</S>
+    <S sid="155" ssid="16">This method constructs parse alternatives for a sentence based on combinations of subtrees in the training corpus.</S>
+    <S sid="156" ssid="17">The MBSL approach may be viewed as a linear analogy to DOP in that it constructs a cover for a candidate based on subsequences of training instances.</S>
+    <S sid="157" ssid="18">Other implementations of the memory-based paradigm for NLP tasks include Daelemans et al. (1996), for POS tagging; Cardie (1993), for syntactic and semantic tagging; and Stanfill and Waltz (1986), for word pronunciation.</S>
+    <S sid="158" ssid="19">In all these works, examples are represented as sets of features and the deduction is carried out by finding the most similar cases.</S>
+    <S sid="159" ssid="20">The method presented here is radically different in that it makes use of the raw sequential form of the data, and generalizes by reconstructing test examples from different pieces of the training data.</S>
+  </SECTION>
+  <SECTION title="5 Conclusions" number="6">
+    <S sid="160" ssid="1">We have presented a novel general schema and a particular instantiation of it for learning sequential patterns.</S>
+    <S sid="161" ssid="2">Applying the method to three syntactic patterns in English yielded positive results, suggesting its applicability for recognizing local linguistic patterns.</S>
+    <S sid="162" ssid="3">In future work we plan to investigate a datadriven approach for optimal selection and weighting of statistical features of candidate scores, as well as to apply the method to syntactic patterns of Hebrew and to domain-specific patterns for information extraction.</S>
+  </SECTION>
+  <SECTION title="6 acknowledgements" number="7">
+    <S sid="163" ssid="1">The authors wish to thank Yoram Singer for his collaboration in an earlier phase of this research project, and Giorgio Satta for helpful discussions.</S>
+    <S sid="164" ssid="2">We aiso thank the anonymous reviewers for their instructive comments.</S>
+    <S sid="165" ssid="3">This research was supported in part by grant 498/95-1 from the Israel Science Foundation, and by grant 8560296 from the Israeli Ministry of Science.</S>
+  </SECTION>
+</PAPER>

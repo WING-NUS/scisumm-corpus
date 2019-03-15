@@ -1,0 +1,316 @@
+<PAPER>
+  <S sid="0">Dependency Parsing by Belief Propagation</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We formulate dependency parsing as a graphical model with the novel ingredient of global constraints.</S>
+    <S sid="2" ssid="2">We show how to apply loopy belief propagation (BP), a simple and tool for and inference.</S>
+    <S sid="3" ssid="3">As a parsing algorithm, BP is both asymptotically and empirically efficient.</S>
+    <S sid="4" ssid="4">Even with second-order features or latent variables, which would make exact parsing considerslower or NP-hard, BP needs only with a small constant factor.</S>
+    <S sid="5" ssid="5">Furthermore, such features significantly improve parse accuracy over exact first-order methods.</S>
+    <S sid="6" ssid="6">Incorporating additional features would increase the runtime additively rather than multiplicatively.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="7" ssid="1">Computational linguists worry constantly about runtime.</S>
+    <S sid="8" ssid="2">Sometimes we oversimplify our models, trading linguistic nuance for fast dynamic programming.</S>
+    <S sid="9" ssid="3">Alternatively, we write down a better but intractable model and then use approximations.</S>
+    <S sid="10" ssid="4">The CL community has often approximated using heavy pruning or reranking, but is beginning to adopt other methods from the machine learning community, such as Gibbs sampling, rejection sampling, and certain variational approximations.</S>
+    <S sid="11" ssid="5">We propose borrowing a different approximation technique from machine learning, namely, loopy belief propagation (BP).</S>
+    <S sid="12" ssid="6">In this paper, we show that BP can be used to train and decode complex parsing models.</S>
+    <S sid="13" ssid="7">Our approach calls a simpler parser as a subroutine, so it still exploits the useful, well-studied combinatorial structure of the parsing problem.1</S>
+  </SECTION>
+  <SECTION title="2 Overview and Related Work" number="2">
+    <S sid="14" ssid="1">We wish to make a dependency parse&#8217;s score depend on higher-order features, which consider arbitrary interactions among two or more edges in the parse (and perhaps also other latent variables such as part-of-speech tags or edge labels).</S>
+    <S sid="15" ssid="2">Such features can help accuracy&#8212;as we show.</S>
+    <S sid="16" ssid="3">Alas, they raise the polynomial runtime of projective parsing, and render non-projective parsing NP-hard.</S>
+    <S sid="17" ssid="4">Hence we seek approximations.</S>
+    <S sid="18" ssid="5">We will show how BP&#8217;s &#8220;message-passing&#8221; discipline offers a principled way for higher-order features to incrementally adjust the numerical edge weights that are fed to a fast first-order parser.</S>
+    <S sid="19" ssid="6">Thus the first-order parser is influenced by higher-order interactions among edges&#8212;but not asymptotically slowed down by considering the interactions itself.</S>
+    <S sid="20" ssid="7">BP&#8217;s behavior in our setup can be understood intuitively as follows.</S>
+    <S sid="21" ssid="8">Inasmuch as the first-order parser finds that edge e is probable, the higher-order features will kick in and discourage other edges e' to the extent that they prefer not to coexist with e.2 Thus, the next call to the first-order parser assigns lower probabilities to parses that contain these e'.</S>
+    <S sid="22" ssid="9">(The method is approximate because a first-order parser must equally penalize all parses containing e', even those that do not in fact contain e.) This behavior is somewhat similar to parser stacking (Nivre and McDonald, 2008; Martins et al., 2008), in which a first-order parser derives some of its input features from the full 1-best output of another parser.</S>
+    <S sid="23" ssid="10">In our method, a first-order parser derives such input features from its own previous full output (but probabilistic output rather than just 1best).</S>
+    <S sid="24" ssid="11">This circular process is iterated to convergence.</S>
+    <S sid="25" ssid="12">Our method also permits the parse to interact cheaply with other variables.</S>
+    <S sid="26" ssid="13">Thus first-order parsing, part-of-speech tagging, and other tasks on a common input could mutually influence one another.</S>
+    <S sid="27" ssid="14">Our method and its numerical details emerge naturally as an instance of the well-studied loopy BP algorithm, suggesting several potential future improvements to accuracy (Yedidia et al., 2004; Braunstein et al., 2005) and efficiency (Sutton and McCallum, 2007).</S>
+    <S sid="28" ssid="15">Loopy BP has occasionally been used before in NLP, with good results, to handle non-local features (Sutton and McCallum, 2004) or joint decoding (Sutton et al., 2004).</S>
+    <S sid="29" ssid="16">However, our application to parsing requires an innovation to BP that we explain in &#167;5&#8212;a global constraint to enforce that the parse is a tree.</S>
+    <S sid="30" ssid="17">The tractability of some such global constraints points the way toward applying BP to other computationally intensive NLP problems, such as syntax-based alignment of parallel text.</S>
+  </SECTION>
+  <SECTION title="3 Graphical Models of Dependency Trees" number="3">
+    <S sid="31" ssid="1">To apply BP, we must formulate dependency parsing as a search for an optimal assignment to the variables of a graphical model.</S>
+    <S sid="32" ssid="2">We encode a parse using the following variables: Sentence.</S>
+    <S sid="33" ssid="3">The n-word input sentence W is fully observed (not a lattice).</S>
+    <S sid="34" ssid="4">Let W = W0W1 &#183; &#183; &#183; Wn, where W0 is always the special symbol ROOT.</S>
+    <S sid="35" ssid="5">Tags.</S>
+    <S sid="36" ssid="6">If desired, the variables T = T1T2 &#183; &#183; &#183; Tn may specify tags on the n words, drawn from some tagset T (e.g., parts of speech).</S>
+    <S sid="37" ssid="7">These variables are needed iff the tags are to be inferred jointly with the parse.</S>
+    <S sid="38" ssid="8">Links.</S>
+    <S sid="39" ssid="9">The O(n2) boolean variables {Lij : 0 &lt; i &lt; n,1 &lt; j &lt; n, i =&#65533; j} correspond to the possible links in the dependency parse.3 Lij = true is interpreted as meaning that there exists a dependency link from parent i &#8212;* child j.4 Link roles, etc.</S>
+    <S sid="40" ssid="10">It would be straightforward to add other variables, such as a binary variable Lij that is true iff there is a link i &#65533; j labeled with role r (e.g., AGENT, PATIENT, TEMPORAL ADJUNCT).</S>
+    <S sid="41" ssid="11">We wish to define a probability distribution over all configurations, i.e., all joint assignments A to these variables.</S>
+    <S sid="42" ssid="12">Our distribution is simply an undirected graphical model, or Markov random field (MRF):5 specified by the collection of factors Fm : A H R[ 'O.</S>
+    <S sid="43" ssid="13">Each factor is a function that consults only a subset of A.</S>
+    <S sid="44" ssid="14">We say that the factor has degree d if it depends on the values of d variables in A, and that it is unary, binary, ternary, or global if d is respectively 1, 2, 3, or unbounded (grows with n).</S>
+    <S sid="45" ssid="15">A factor function Fm(A) may also depend freely on the observed variables&#8212;the input sentence W and a known (learned) parameter vector 0.</S>
+    <S sid="46" ssid="16">For notational simplicity, we suppress these extra arguments when writing and drawing factor functions, and when computing their degree.</S>
+    <S sid="47" ssid="17">In this treatment, these observed variables are not specified by A, but instead are absorbed into the very definition of Fm.</S>
+    <S sid="48" ssid="18">In defining a factor Fm, we often define the circumstances under which it fires.</S>
+    <S sid="49" ssid="19">These are the only circumstances that allow Fm(A) =&#65533; 1.</S>
+    <S sid="50" ssid="20">When Fm does not fire, Fm(A) = 1 and does not affect the product in equation (1).</S>
+    <S sid="51" ssid="21">A hard factor Fm fires only on parses A that violate some specified condition.</S>
+    <S sid="52" ssid="22">It has value 0 on those parses, acting as a hard constraint to rule them out.</S>
+    <S sid="53" ssid="23">TREE.</S>
+    <S sid="54" ssid="24">A hard global constraint on all the Lij variables at once.</S>
+    <S sid="55" ssid="25">It requires that exactly n of these variables be true, and that the corresponding links form a directed tree rooted at position 0.</S>
+    <S sid="56" ssid="26">PTREE.</S>
+    <S sid="57" ssid="27">This stronger version of TREE requires further that the tree be projective.</S>
+    <S sid="58" ssid="28">That is, it prohibits Lij and LH from both being true if i &#8212;* j crosses k &#8212;* E. (These links are said to cross if one of k, E is strictly between i and j while the other is strictly outside that range.)</S>
+    <S sid="59" ssid="29">EXACTLY1.</S>
+    <S sid="60" ssid="30">A family of O(n) hard global constraints, indexed by 1 &lt; j &lt; n. EXACTLY1j requires that j have exactly one parent, i.e., exactly one of the Lij variables must be true.</S>
+    <S sid="61" ssid="31">Note that EXACTLY1 is implied by TREE or PTREE.</S>
+    <S sid="62" ssid="32">ATMOST1.</S>
+    <S sid="63" ssid="33">A weaker version.</S>
+    <S sid="64" ssid="34">ATMOST1j requires j to have one or zero parents.</S>
+    <S sid="65" ssid="35">NAND.</S>
+    <S sid="66" ssid="36">A family of hard binary constraints.</S>
+    <S sid="67" ssid="37">NANDij,kt requires that Lij and Lkt may not both be true.</S>
+    <S sid="68" ssid="38">We will be interested in certain subfamilies.</S>
+    <S sid="69" ssid="39">NOT2.</S>
+    <S sid="70" ssid="40">Shorthand for the family of O(n3) binary constraints {NANDij,kj}.</S>
+    <S sid="71" ssid="41">These are collectively equivalent to ATMOST1, but expressed via a larger number of simpler constraints, which can make the BP approximation less effective (footnote 30).</S>
+    <S sid="72" ssid="42">NO2CYCLE.</S>
+    <S sid="73" ssid="43">Shorthand for the family of O(n2) binary constraints {NANDij,ji}.</S>
+    <S sid="74" ssid="44">A soft factor Fm acts as a soft constraint that prefers some parses to others.</S>
+    <S sid="75" ssid="45">In our experiments, it is always a log-linear function returning positive values: where &#952; is a learned, finite collection of weights and f is a corresponding collection of feature functions, some of which are used by Fm.</S>
+    <S sid="76" ssid="46">(Note that fh is permitted to consult the observed input W. It also sees which factor Fm it is scoring, to support reuse of a single feature function fh and its weight &#952;h by unboundedly many factors in a model.)</S>
+    <S sid="77" ssid="47">LINK.</S>
+    <S sid="78" ssid="48">A family of unary soft factors that judge the links in a parse A individually.</S>
+    <S sid="79" ssid="49">LINKij fires iff Lij = true, and then its value depends on (i, j), W, and &#952;.</S>
+    <S sid="80" ssid="50">Our experiments use the same features as McDonald et al. (2005).</S>
+    <S sid="81" ssid="51">A first-order (or &#8220;edge-factored&#8221;) parsing model (McDonald et al., 2005) contains only LINK factors, along with a global TREE or PTREE factor.</S>
+    <S sid="82" ssid="52">Though there are O(n2) link factors (one per Lij), only n of them fire on any particular parse, since the global factor ensures that exactly n are true.</S>
+    <S sid="83" ssid="53">We&#8217;ll consider various higher-order soft factors: PAIR.</S>
+    <S sid="84" ssid="54">The binary factor PAIRij,kt fires with some value iff Lij and Lkt are both true.</S>
+    <S sid="85" ssid="55">Thus, it penalizes or rewards a pair of links for being simultaneously present.</S>
+    <S sid="86" ssid="56">This is a soft version of NAND.</S>
+    <S sid="87" ssid="57">GRAND.</S>
+    <S sid="88" ssid="58">Shorthand for the family of O(n3) binary factors {PAIRij,jk}, which evaluate grandparentparent-child configurations, i &#8212;* j &#8212;* k. For example, whether preposition j attaches to verb i might depend on its object k. In non-projective parsing, we might prefer (but not require) that a parent and child be on the same side of the grandparent.</S>
+    <S sid="89" ssid="59">SIB.</S>
+    <S sid="90" ssid="60">Shorthand for the family of O(n3) binary factors {PAIRij,ik}, which judge whether two children of the same parent are compatible.</S>
+    <S sid="91" ssid="61">E.g., a given verb may not like to have two noun children both to its left.6 The children do not need to be adjacent.</S>
+    <S sid="92" ssid="62">CHILDSEQ.</S>
+    <S sid="93" ssid="63">A family of O(n) global factors.</S>
+    <S sid="94" ssid="64">CHILDSEQi scores i&#8217;s sequence of children; hence it consults all variables of the form Lij.</S>
+    <S sid="95" ssid="65">The scoring follows the parametrization of a weighted split head-automaton grammar (Eisner and Satta, 1999).</S>
+    <S sid="96" ssid="66">If 5 has children 2, 7, 9 under A, then CHILDSEQi is a product of subfactors of the form PAIR5#,57, PAIR57,59, PAIR59,5# (right child sequence) and PAIR5#,52, PAIR52,5# (left child sequence).</S>
+    <S sid="97" ssid="67">NOCROSS.</S>
+    <S sid="98" ssid="68">A family of O(n2) global constraints.</S>
+    <S sid="99" ssid="69">If the parent-to-j link crosses the parent-to-` link, then NOCROSSjt fires with a value that depends only on j and `.</S>
+    <S sid="100" ssid="70">(If j and ` do not each have exactly one parent, NOCROSSjt fires with value 0; i.e., it incorporates EXACTLY1j and EXACTLY1t.</S>
+    <S sid="101" ssid="71">)7 TAGi is a unary factor that evaluates whether Ti&#8217;s value is consistent with W (especially Wi).</S>
+    <S sid="102" ssid="72">TAGLINKij is a ternary version of the LINKij factor whose value depends on Lij, Ti and Tj (i.e., its feature functions consult the tag variables to decide whether a link is likely).</S>
+    <S sid="103" ssid="73">One could similarly enrich the other features above to depend on tags and/or link roles; TAGLINK is just an illustrative example.</S>
+    <S sid="104" ssid="74">TRIGRAM is a global factor that evaluates the tag sequence T according to a trigram model.</S>
+    <S sid="105" ssid="75">It is a product of subfactors, each of which scores a trigram of adjacent tags Ti_2, Ti_1, Ti, possibly also considering the word sequence W (as in CRFs).</S>
+  </SECTION>
+  <SECTION title="4 A Sketch of Belief Propagation" number="4">
+    <S sid="106" ssid="1">MacKay (2003, chapters 16 and 26) provides an excellent introduction to belief propagation, a generalization of the forward-backward algorithm that is deeply studied in the graphical models literature (Yedidia et al., 2004, for example).</S>
+    <S sid="107" ssid="2">We briefly sketch the method in terms of our parsing task.</S>
+    <S sid="108" ssid="3">The basic BP idea is simple.</S>
+    <S sid="109" ssid="4">Variable L34 maintains a distribution over values true and false&#8212;a &#8220;belief&#8221;&#8212;that is periodically recalculated based on the current distributions at other variables.8 Readers familiar with Gibbs sampling can regard this as a kind of deterministic approximation.</S>
+    <S sid="110" ssid="5">In Gibbs sampling, L34&#8217;s value is periodically resampled based on the current values of other variables.</S>
+    <S sid="111" ssid="6">Loopy BP works not with random samples but their expectations.</S>
+    <S sid="112" ssid="7">Hence it is approximate but tends to converge much faster than Gibbs sampling will mix.</S>
+    <S sid="113" ssid="8">It is convenient to visualize an undirected factor graph (Fig.</S>
+    <S sid="114" ssid="9">1), in which each factor is connected to the variables it depends on.</S>
+    <S sid="115" ssid="10">Many factors may connect to&#8212;and hence influence&#8212;a given variable such as L34.</S>
+    <S sid="116" ssid="11">If X is a variable or a factor, N(X) denotes its set of neighbors.</S>
+    <S sid="117" ssid="12">Given an input sentence W and a parameter vector &#952;, the collection of factors Fm defines a probability distribution (1).</S>
+    <S sid="118" ssid="13">The parser should determine the values of the individual variables.</S>
+    <S sid="119" ssid="14">In other words, we would like to marginalize equation (1) to obtain the distribution p(L34) over L34 = true vs. false, the distribution p(T4) over tags, etc.</S>
+    <S sid="120" ssid="15">If the factor graph is acyclic, then BP computes these marginal distributions exactly.</S>
+    <S sid="121" ssid="16">Given 8Or, more precisely&#8212;this is the tricky part&#8212;based on versions of those other distributions that do not factor in L34&#8217;s reciprocal influence on them.</S>
+    <S sid="122" ssid="17">This prevents (e.g.)</S>
+    <S sid="123" ssid="18">L34 and T3 from mutually reinforcing each other&#8217;s existing beliefs. an HMM, for example, BP reduces to the forwardbackward algorithm.</S>
+    <S sid="124" ssid="19">BP&#8217;s estimates of these distributions are called beliefs about the variables.</S>
+    <S sid="125" ssid="20">BP also computes beliefs about the factors, which are useful in learning &#952; (see &#167;7).</S>
+    <S sid="126" ssid="21">E.g., if the model includes the factor TAGLINKij, which is connected to variables Lij, Ti, Tj, then BP will estimate the marginal joint distribution p(Lij, Ti, Tj) over (boolean, tag, tag) triples.</S>
+    <S sid="127" ssid="22">When the factor graph has loops, BP&#8217;s beliefs are usually not the true marginals of equation (1) (which are in general intractable to compute).</S>
+    <S sid="128" ssid="23">Indeed, BP&#8217;s beliefs may not be the true marginals of any distribution p(A) over assignments, i.e., they may be globally inconsistent.</S>
+    <S sid="129" ssid="24">All BP does is to incrementally adjust the beliefs till they are at least locally consistent: e.g., the beliefs at factors TAGLINKij and TAGLINKik must both imply9 the same belief about variable Ti, their common neighbor.</S>
+    <S sid="130" ssid="25">This iterated negotiation among the factors is handled by message passing along the edges of the factor graph.</S>
+    <S sid="131" ssid="26">A message to or from a variable is a (possibly unnormalized) probability distribution over the values of that variable.</S>
+    <S sid="132" ssid="27">The variable V sends a message to factor F, saying &#8220;My other neighboring factors G jointly suggest that I have posterior distribution qV ,F (assuming that they are sending me independent evidence).&#8221; Meanwhile, factor F sends messages to V , saying, &#8220;Based on my factor function and the messages received from my other neighboring variables U about their values (and assuming that those messages are independent), I suggest you have posterior distribution rF,V over your values.&#8221; To be more precise, BP at each iteration k (until convergence) updates two kinds of messages: from factors to variables.</S>
+    <S sid="133" ssid="28">Each message is a probability distribution over values v of V , normalized by a scaling constant n. Alternatively, messages may be left as unnormalized distributions, choosing n =&#65533; 1 only as needed to prevent over- or underflow.</S>
+    <S sid="134" ssid="29">Messages are initialized to uniform distributions.</S>
+    <S sid="135" ssid="30">Whenever we wish, we may compute the beliefs at V and F: These beliefs do not truly characterize the expected behavior of Gibbs sampling (&#167;4.1), since the products in (5)&#8211;(6) make conditional independence assumptions that are valid only if the factor graph is acyclic.</S>
+    <S sid="136" ssid="31">Furthermore, on cyclic (&#8220;loopy&#8221;) graphs, BP might only converge to a local optimum (Weiss and Freedman, 2001), or it might not converge at all.</S>
+    <S sid="137" ssid="32">Still, BP often leads to good, fast approximations.</S>
+  </SECTION>
+  <SECTION title="5 Achieving Low Asymptotic Runtime" number="5">
+    <S sid="138" ssid="1">One iteration of standard BP simply updates all the messages as in equations (3)&#8211;(4): one message per edge of the factor graph.</S>
+    <S sid="139" ssid="2">Therefore, adding new factors to the model increases the runtime per iteration additively, by increasing the number of messages to update.</S>
+    <S sid="140" ssid="3">We believe this is a compelling advantage over dynamic programming&#8212;in which new factors usually increase the runtime and space multiplicatively by exploding the number of distinct items.10 But how long does updating each message take?</S>
+    <S sid="141" ssid="4">The runtime of summing over all assignments EA in 10For example, with unknown tags T, a model with PTREE+TAGLINK will take only O(n3 + n2g2) time for BP, compared to O(n3g2) time for dynamic programming (Eisner &amp; Satta 1999).</S>
+    <S sid="142" ssid="5">Adding TRIGRAM, which is string-local rather than tree-local, will increase this only to O(n3 + n2g2 + ng3), compared to O(n3g6) for dynamic programming.</S>
+    <S sid="143" ssid="6">Even more dramatic, adding the SIB family of O(n3) PAIRij,ik factors will add only O(n3) to the runtime of BP (Table 1).</S>
+    <S sid="144" ssid="7">By contrast, the runtime of dynamic programming becomes exponential, because each item must record its headword&#8217;s full set of current children. equation (4) may appear prohibitive.</S>
+    <S sid="145" ssid="8">Crucially, however, F(A) only depends on the values in A of F&#8217;s its neighboring variables N(F).</S>
+    <S sid="146" ssid="9">So this sum is proportional to a sum over restricted assignments to just those variables.11 For example, computing a message from TAGLINKij &#8212;* Ti only requires iterating over all (boolean, tag, tag) triples.12 The runtime to update that message is therefore O(2 &#183; |T  |&#183; |T |).</S>
+    <S sid="147" ssid="10">The above may be tolerable for a ternary factor.</S>
+    <S sid="148" ssid="11">But how about global factors?</S>
+    <S sid="149" ssid="12">EXACTLY1j has n neighboring boolean variables: surely we cannot iterate over all 2n assignments to these!</S>
+    <S sid="150" ssid="13">TREE is even worse, with 2O(n2) assignments to consider.</S>
+    <S sid="151" ssid="14">We will give specialized algorithms for handling these summations more efficiently.</S>
+    <S sid="152" ssid="15">A historical note is in order.</S>
+    <S sid="153" ssid="16">Traditional constraint satisfaction corresponds to the special case of (1) where all factors Fm are hard constraints (with values in {0,1}).</S>
+    <S sid="154" ssid="17">In that case, loopy BP reduces to an algorithm for generalized arc consistency (Mackworth, 1977; Bessi`ere and R&#180;egin, 1997; Dechter, 2003), and updating a factor&#8217;s outgoing messages is known as constraint propagation.</S>
+    <S sid="155" ssid="18">R&#180;egin (1994) famously introduced an efficient propagator for a global constraint, ALLDIFFERENT, by adapting combinatorial bipartite matching algorithms.</S>
+    <S sid="156" ssid="19">In the same spirit, we will demonstrate efficient propagators for our global constraints, e.g. by adapting combinatorial algorithms for weighted parsing.</S>
+    <S sid="157" ssid="20">We are unaware of any previous work on global factors in sum-product BP, although for max-product BP,13 Duchi et al. (2007) independently showed that a global 1-to-1 alignment constraint&#8212;a kind of weighted ALLDIFFERENT&#8212;permits an efficient propagator based on weighted bipartite matching.</S>
+    <S sid="158" ssid="21">Table 1 shows our asymptotic runtimes for all factors in &#167;&#167;3.3&#8211;3.4.</S>
+    <S sid="159" ssid="22">Remember that if several of these factors are included, the total runtime is additive.14 Propagating the local factors is straightforward (&#167;5.1).</S>
+    <S sid="160" ssid="23">We now explain how to handle the global factors.</S>
+    <S sid="161" ssid="24">Our main trick is to work backwards from marginal beliefs.</S>
+    <S sid="162" ssid="25">Let F be a factor and V be one of its neighboring variables.</S>
+    <S sid="163" ssid="26">At any time, F has a marginal belief about V (see footnote 9), A s.t.</S>
+    <S sid="164" ssid="27">A[V]=v a sum over (6)&#8217;s products of incoming messages.</S>
+    <S sid="165" ssid="28">By the definition of rF&#8594;V in (4), and distributivity, we can also express the marginal belief (7) as a pointwise product of outgoing and incoming messages15 up to a constant.</S>
+    <S sid="166" ssid="29">If we can quickly sum up the marginal belief (7), then (8) says we can divide out each particular incoming message q&#65533;&#65533;) V &#8594;F to obtain its corresponding outgoing message r&#65533;&#65533;&#65533;1) 14We may ignore the cost of propagators at the variables.</S>
+    <S sid="167" ssid="30">Each outgoing message from a variable can be computed in time proportional to its size, which may be amortized against the cost of generating the corresponding incoming message.</S>
+    <S sid="168" ssid="31">15E.g., the familiar product of forward and backward messages that is used to extract posterior marginals from an HMM.</S>
+    <S sid="169" ssid="32">Note that the marginal belief and both messages are unnormalized distributions over values v of V .</S>
+    <S sid="170" ssid="33">F and k are clear from context below, so we simplify the notation so that (7)&#8211;(8) become TRIGRAM must sum over assignments to the tag sequence T. The belief (6) in a given assignment is a product of trigram scores (which play the role of transition weights) and incoming messages qTj (playing the role of emission weights).</S>
+    <S sid="171" ssid="34">The marginal belief (7) needed above, b(Ti = t), is found by summing over assignments where Ti = t. All marginal beliefs are computed together in O(ng3) total time by the forward-backward algorithm.16 EXACTLY1j is a sparse hard constraint.</S>
+    <S sid="172" ssid="35">Even though there are 2n assignments to its n neighboring variables {Lij}, the factor function returns 1 on only n assignments and 0 on the rest.</S>
+    <S sid="173" ssid="36">In fact, for a given i, b(Lij = true) in (7) is defined by (6) to have exactly one non-zero summand, in which A puts Lij = true and all other Ligj = false.</S>
+    <S sid="174" ssid="37">We compute the marginal beliefs for all i together in O(n) total time: TREE and PTREE must sum over assignments to the O(n2) neighboring variables {Lij}.</S>
+    <S sid="175" ssid="38">There are now exponentially many non-zero summands, those in which A corresponds to a valid tree.</S>
+    <S sid="176" ssid="39">Nonetheless, 16Which is itself an exact BP algorithm, but on a different graph&#8212;a junction tree formed from the graph of TRIGRAM subfactors.</S>
+    <S sid="177" ssid="40">Each variable in the junction tree is a bigram.</S>
+    <S sid="178" ssid="41">If we had simply replaced the global TRIGRAM factor with its subfactors in the full factor graph, we would have had to resort to Generalized BP (Yedidia et al., 2004) to obtain the same exact results.</S>
+    <S sid="179" ssid="42">17But taking it = 1 gives the same results, up to a constant.</S>
+    <S sid="180" ssid="43">18As a matter of implementation, this odds ratio qL,, can be used to represent the incoming message qL., everywhere. we can follow the same approach as for EXACTLY1.</S>
+    <S sid="181" ssid="44">Steps 1 and 4 are modified to iterate over all i, j such that Lij is a variable.</S>
+    <S sid="182" ssid="45">In step 3, the partition function PA b(A) is now 7r times the total weight of all trees, where the weight of a given tree is the product of the gLij values of its n edges.</S>
+    <S sid="183" ssid="46">In step 2, the marginal belief b(Lij = true) is now 7r times the total weight of all trees having edge i &#8594; j.</S>
+    <S sid="184" ssid="47">We perform these combinatorial sums by calling a first-order parsing algorithm, with edge weights qij.</S>
+    <S sid="185" ssid="48">Thus, as outlined in &#167;2, a first-order parser is called each time we propagate through the global TREE or PTREE constraint, using edge weights that include the first-order LINK factors but also multiply in any current messages from higher-order factors.</S>
+    <S sid="186" ssid="49">The parsing algorithm simultaneously computes the partition function b(), and all O(n2) marginal beliefs b(Lij = true).</S>
+    <S sid="187" ssid="50">For PTREE (projective), it is the inside-outside version of a dynamic programming algorithm (Eisner, 1996).</S>
+    <S sid="188" ssid="51">For TREE (nonprojective), Koo et al. (2007) and Smith and Smith (2007) show how to employ the matrix-tree theorem.</S>
+    <S sid="189" ssid="52">In both cases, the total time is O(n3).19 NOCROSSj` must sum over assignments to O(n) neighboring variables {Lij} and {Lk`}.</S>
+    <S sid="190" ssid="53">The nonzero summands are assignments where j and E each have exactly one parent.</S>
+    <S sid="191" ssid="54">At step 1, 7r def = Qi qLij(false) &#183; Qk qLke(false).</S>
+    <S sid="192" ssid="55">At step 2, the marginal belief b(Lij = true) sums over the n nonzero assignments containing i &#8594; j.</S>
+    <S sid="193" ssid="56">It is 7r &#183; gLij &#183; Pk &#65533;qLke &#183; PAIRij,k`, where PAIRij,k` is xj` if i &#8594; j crosses k &#8594; E and is 1 otherwise. xj` is some factor value defined by equation (2) to penalize or reward the crossing.</S>
+    <S sid="194" ssid="57">Steps 3&#8211;4 are just as in EXACTLY1j.</S>
+    <S sid="195" ssid="58">The question is how to compute b(Lij = true) for each i in only O(1) time,20 so that we can propagate each of the O(n2) NOCROSSj` in O(n) time.</S>
+    <S sid="196" ssid="59">This is why we allowed xj` to depend only on j, E. We can rewrite the sum b(Lij = true) as crossing k noncrossing k 19A dynamic algorithm could incrementally update the outgoing messages if only a few incoming messages have changed (as in asynchronous BP).</S>
+    <S sid="197" ssid="60">In the case of TREE, dynamic matrix inverse allows us to update any row or column (i.e., messages from all parents or children of a given word) and find the new inverse in O(n2) time (Sherman and Morrison, 1950).</S>
+    <S sid="198" ssid="61">20Symmetrically, we compute b(Lke = true) for each k. To find this in O(1) time, we precompute for each E an array of partial sums Q`[s, t] def = Ps&lt;k&lt;t &#65533;qLke.</S>
+    <S sid="199" ssid="62">Since Q`[s, t] = Q`[s, t&#8722;1]+&#65533;qLte, we can compute each entry in O(1) time.</S>
+    <S sid="200" ssid="63">The total precomputation time over all E, s, t is then O(n3), with the array Q` shared across all factors NOCROSSjq.</S>
+    <S sid="201" ssid="64">The crossing sum is respectively Q`[0, i&#8722;1]+Q`[j+1, n], Q`[i+ 1, j &#8722; 1], or 0 according to whether E &#8712; (i, j), E &#8712;&#65533; [i, j], or E = i.21 The non-crossing sum is Q`[0, n] minus the crossing sum.</S>
+    <S sid="202" ssid="65">CHILDSEQi , like TRIGRAM, is propagated by a forward-backward algorithm.</S>
+    <S sid="203" ssid="66">In this case, the algorithm is easiest to describe by replacing CHILDSEQi in the factor graph by a collection of local subfactors, which pass messages in the ordinary way.22 Roughly speaking,23 at each j &#8712; [1, n], we introduce a new variable Cij&#8212;a hidden state whose value is the position of i&#8217;s previous child, if any (so 0 &#8804; Cij &lt; j).</S>
+    <S sid="204" ssid="67">So the ternary subfactor on (Cij, Lij, Ci,j+1) has value 1 if Lij = false and Ci,j+1 = Ci,j; a sibling-bigram score (PAIRiCij,iCi,j+1) if Lij = true and Ci,j+1 = j; and 0 otherwise.</S>
+    <S sid="205" ssid="68">The sparsity of this factor, which is 0 almost everywhere, is what gives CHILDSEQi a total runtime of O(n2) rather than O(n3).</S>
+    <S sid="206" ssid="69">It is equivalent to forward-backward on an HMM with n observations (the Lij) and n states per observation (the Cj), with a deterministic (thus sparse) transition function.</S>
+  </SECTION>
+  <SECTION title="6 Decoding Trees" number="6">
+    <S sid="207" ssid="1">BP computes local beliefs, e.g. the conditional probability that a link Lij is present.</S>
+    <S sid="208" ssid="2">But if we wish to output a single well-formed dependency tree, we need to find a single assignment to all the {Lij} that satisfies the TREE (or PTREE) constraint.</S>
+    <S sid="209" ssid="3">Our final belief about the TREE factor is a distribution over such assignments, in which a tree&#8217;s probability is proportional to the probability of its edge weights gLij (incoming messages).</S>
+    <S sid="210" ssid="4">We could simply return the mode of this distribution (found by using a 1-best first-order parser) or the k-best trees, or take samples.</S>
+    <S sid="211" ssid="5">21There are no NOCROSSje factors with f = j.</S>
+    <S sid="212" ssid="6">22We still treat CHILDSEQi as a global factor and compute all its correct outgoing messages on a single BP iteration, via serial forward and backward sweeps through the subfactors.</S>
+    <S sid="213" ssid="7">Handling the subfactors in parallel, (3)&#8211;(4), would need O(n) iterations.</S>
+    <S sid="214" ssid="8">23Ignoring the treatment of boundary symbols &#8220;#&#8221; (see &#167;3.4).</S>
+    <S sid="215" ssid="9">In our experiments, we actually take the edge weights to be not the messages &#65533;qLij from the links, def &#65533;bLij = log bLij(true)/bLij(false)).</S>
+    <S sid="216" ssid="10">These are passed into a fast algorithm for maximum spanning tree (Tarjan, 1977) or maximum projective spanning tree (Eisner, 1996).</S>
+    <S sid="217" ssid="11">This procedure is equivalent to minimum Bayes risk (MBR) parsing (Goodman, 1996) with a dependency accuracy loss function.</S>
+    <S sid="218" ssid="12">Notice that the above decoding approaches do not enforce any hard constraints other than TREE in the final output.</S>
+    <S sid="219" ssid="13">In addition, they only recover values of the Lij variables.</S>
+    <S sid="220" ssid="14">They marginalize over other variables such as tags and link roles.</S>
+    <S sid="221" ssid="15">This solves the problem of &#8220;nuisance&#8221; variables (which merely fragment probability mass among refinements of a parse).</S>
+    <S sid="222" ssid="16">On the other hand, it may be undesirable for variables whose values we desire to recover.24</S>
+  </SECTION>
+  <SECTION title="7 Training" number="7">
+    <S sid="223" ssid="1">Our training method also uses beliefs computed by BP, but at the factors.</S>
+    <S sid="224" ssid="2">We choose the weight vector 0 by maximizing the log-probability of training data 24An alternative is to attempt to find the most probable (&#8220;MAP&#8221;) assignment to all variables&#8212;using the max-product algorithm (footnote 13) or one of its recent variants.</S>
+    <S sid="225" ssid="3">The estimated marginal beliefs become &#8220;max marginals,&#8221; which assess the 1-best assignment consistent with each value of the variable.</S>
+    <S sid="226" ssid="4">We can indeed build max-product propagators for our global constraints.</S>
+    <S sid="227" ssid="5">PTREE still propagates in O(n3) time: simply change the first-order parser&#8217;s semiring (Goodman, 1999) to use max instead of sum.</S>
+    <S sid="228" ssid="6">TREE requires O(n4) time: it seems that the O(n2) max marginals must be computed separately, each requiring a separate call to an O(n2) maximum spanning tree algorithm (Tarjan, 1977).</S>
+    <S sid="229" ssid="7">If max-product BP converges, we may simply output each variable&#8217;s favorite value (according to its belief), if unique.</S>
+    <S sid="230" ssid="8">However, max-product BP tends to be unstable on loopy graphs, and we may not wish to wait for full convergence in any case.</S>
+    <S sid="231" ssid="9">A more robust technique for extracting an assignment is to mimic Viterbi decoding, and &#8220;follow backpointers&#8221; of the max-product computation along some spanning subtree of the factor graph.</S>
+    <S sid="232" ssid="10">A slower but potentially more stable alternative is deterministic annealing.</S>
+    <S sid="233" ssid="11">Replace each factor Fm(A) with Fm(A)1/T , where T &gt; 0 is a temperature.</S>
+    <S sid="234" ssid="12">As T --+ 0 (&#8220;quenches&#8221;), the distribution (1) retains the same mode (the MAP assignment), but becomes more sharply peaked at the mode, and sum-product BP approaches max-product BP.</S>
+    <S sid="235" ssid="13">Deterministic annealing runs sum-product BP while gradually reducing T toward 0 as it iterates.</S>
+    <S sid="236" ssid="14">By starting at a high T and reducing T slowly, it often manages in practice to find a good local optimum.</S>
+    <S sid="237" ssid="15">We may then extract an assignment just as we do for max-product. under equation (1), regularizing only by early stopping.</S>
+    <S sid="238" ssid="16">If all variables are observed in training, this objective function is convex (as for any log-linear model).</S>
+    <S sid="239" ssid="17">The difficult step in computing the gradient of our objective is finding V&#952; log Z, where Z in equation (1) is the normalizing constant (partition function) that sums over all assignments A.</S>
+    <S sid="240" ssid="18">(Recall that Z, like each Fm, depends implicitly on W and 0.)</S>
+    <S sid="241" ssid="19">As usual for log-linear models, Since V&#952;Fm(A) only depends on the assignment A&#8217;s values for variables that are connected to Fm in the factor graph, its expectation under p(A) depends only on the marginalization of p(A) to those variables jointly.</S>
+    <S sid="242" ssid="20">Fortunately, BP provides an estimate of that marginal distribution, namely, its belief about the factor Fm, given W and 0 (&#167;4.2).25 Note that the hard constraints do not depend on 0 at all; so their summands in equation (10) will be 0.</S>
+    <S sid="243" ssid="21">We employ stochastic gradient descent (Bottou, 2003), since this does not require us to compute the objective function itself but only to (approximately) estimate its gradient as explained above.</S>
+    <S sid="244" ssid="22">Alternatively, given any of the MAP decoding procedures from &#167;6, we could use an error-driven learning method such as the perceptron or MIRA.26</S>
+  </SECTION>
+  <SECTION title="8 Experiments" number="8">
+    <S sid="245" ssid="1">We asked: (1) For projective parsing, where higherorder factors have traditionally been incorporated into slow but exact dynamic programming (DP), what are the comparative speed and quality of the BP approximation?</S>
+    <S sid="246" ssid="2">(2) How helpful are such higherorder factors&#8212;particularly for non-projective parsing, where BP is needed to make them tractable?</S>
+    <S sid="247" ssid="3">(3) Do our global constraints (e.g., TREE) contribute to the goodness of BP&#8217;s approximation?</S>
+    <S sid="248" ssid="4">We built a first-order projective parser&#8212;one that uses only factors PTREE and LINK&#8212;and then compared the cost of incorporating second-order factors, GRAND and CHILDSEQ, by BP versus DP.28 Under DP, the first-order runtime of O(n3) is increased to O(n4) with GRAND, and to O(n5) when we add CHILDSEQ as well.</S>
+    <S sid="249" ssid="5">BP keeps runtime down to O(n3)&#8212;although with a higher constant factor, since it takes several rounds to converge, and since it computes more than just the best parse.29 Figures 2&#8211;3 compare the empirical runtimes for various input sentence lengths.</S>
+    <S sid="250" ssid="6">With only the GRAND factor, exact DP can still find the Viterbi parse (though not the MBR parse29) faster than ten iterations of the asymptotically better BP (Fig.</S>
+    <S sid="251" ssid="7">2), at least for sentences with n &lt; 75.</S>
+    <S sid="252" ssid="8">However, once we add the CHILDSEQ factor, BP is always faster&#8212; dramatically so for longer sentences (Fig.</S>
+    <S sid="253" ssid="9">3).</S>
+    <S sid="254" ssid="10">More complex models would widen BP&#8217;s advantage.</S>
+    <S sid="255" ssid="11">Fig.</S>
+    <S sid="256" ssid="12">4 shows the tradeoff between runtime and search error of BP in the former case (GRAND only).</S>
+    <S sid="257" ssid="13">To determine BP&#8217;s search error at finding the MBR parse, we measured its dependency accuracy not against the gold standard, but against the optimal MBR parse under the model, which DP is able to find.</S>
+    <S sid="258" ssid="14">After 10 iterations, the overall macro-averaged search error compared to O(n4) DP MBR is 0.4%; compared to O(n5) (not shown), 2.4%.</S>
+    <S sid="259" ssid="15">More BP iterations may help accuracy.</S>
+    <S sid="260" ssid="16">In future work, we plan to compare BP&#8217;s speed-accuracy curve on more complex projective models with the speed-accuracy curve of pruned or reranked DP.</S>
+    <S sid="261" ssid="17">The BP approximation can be used to improve the accuracy of non-projective parsing by adding higher-order features.</S>
+    <S sid="262" ssid="18">These would be NP-hard to incorporate exactly; DP cannot be used.</S>
+    <S sid="263" ssid="19">We used BP with a non-projective TREE factor to train conditional log-linear parsing models of two highly non-projective languages, Danish and Dutch, as well as slightly non-projective English (&#167;8.1).</S>
+    <S sid="264" ssid="20">In all three languages, the first-order non-projective parser greatly overpredicts the number of crossing links.</S>
+    <S sid="265" ssid="21">We thus added NOCROSS factors, as well as GRAND and CHILDSEQ as before.</S>
+    <S sid="266" ssid="22">All of these significantly improve the first-order baseline, though not necessarily cumulatively (Table 2).</S>
+    <S sid="267" ssid="23">Finally, Table 2 compares loopy BP to a previously proposed &#8220;hill-climbing&#8221; method for approximate inference in non-projective parsing McDonald and Pereira (2006).</S>
+    <S sid="268" ssid="24">Hill-climbing decodes our richest non-projective model by finding the best projective parse under that model&#8212;using slow, higherorder DP&#8212;and then greedily modifies words&#8217; parents until the parse score (1) stops improving. with TREE, decoding it with weaker constraints is asymptotically faster (except for NOT2) but usually harmful.</S>
+    <S sid="269" ssid="25">(Parenthetical numbers show that the harm is compounded if the weaker constraints are used in training as well; even though this matches training to test conditions, it may suffer more from BP&#8217;s approximate gradients.)</S>
+    <S sid="270" ssid="26">Decoding the TREE model with the even stronger PTREE constraint can actually be helpful for a more projective language.</S>
+    <S sid="271" ssid="27">All results use 5 iterations of BP.</S>
+    <S sid="272" ssid="28">BP for non-projective languages is much faster and more accurate than the hill-climbing method.</S>
+    <S sid="273" ssid="29">Also, hill-climbing only produces an (approximate) 1-best parse, but BP also obtains (approximate) marginals of the distribution over all parses.</S>
+    <S sid="274" ssid="30">Given the BP architecture, do we even need the hard TREE constraint?</S>
+    <S sid="275" ssid="31">Or would it suffice for more local hard constraints to negotiate locally via BP?</S>
+    <S sid="276" ssid="32">We investigated this for non-projective first-order parsing.</S>
+    <S sid="277" ssid="33">Table 3 shows that global constraints are indeed important, and that it is essential to use TREE during training.</S>
+    <S sid="278" ssid="34">At test time, the weaker but still global EXACTLY1 may suffice (followed by MBR decoding to eliminate cycles), for total time O(n2).</S>
+    <S sid="279" ssid="35">Table 3 includes NOT2, which takes O(n3) time, merely to demonstrate how the BP approximation becomes more accurate for training and decoding when we join the simple NOT2 constraints into more global ATMOST1 constraints.</S>
+    <S sid="280" ssid="36">This does not change the distribution (1), but makes BP enforce stronger local consistency requirements at the factors, relying less on independence assumptions.</S>
+    <S sid="281" ssid="37">In general, one can get better BP approximations by replacing a group of factors F,,t(A) with their product.30 The above experiments concern gold-standard 30In the limit, one could replace the product (1) with a single all-purpose factor; then BP would be exact&#8212;but slow.</S>
+    <S sid="282" ssid="38">(In constraint satisfaction, joining constraints similarly makes arc consistency slower but better at eliminating impossible values.) accuracy under a given first-order, non-projective model.</S>
+    <S sid="283" ssid="39">Flipping all three of these parameters for Danish, we confirmed the pattern by instead measuring search error under a higher-order, projective model (PTREE+LINK+GRAND), when PTREE was weakened during decoding.</S>
+    <S sid="284" ssid="40">Compared to the MBR parse under that model, the search errors from decoding with weaker hard constraints were 2.2% for NOT2, 2.1% for EXACTLY1, 1.7% for EXACTLY1 + NO2CYCLE, and 0.0% for PTREE.</S>
+  </SECTION>
+  <SECTION title="9 Conclusions and Future Work" number="9">
+    <S sid="285" ssid="1">Belief propagation improves non-projective dependency parsing with features that would make exact inference intractable.</S>
+    <S sid="286" ssid="2">For projective parsing, it is significantly faster than exact dynamic programming, at the cost of small amounts of search error, We are interested in extending these ideas to phrase-structure and lattice parsing, and in trying other higher-order features, such as those used in parse reranking (Charniak and Johnson, 2005; Huang, 2008) and history-based parsing (Nivre and McDonald, 2008).</S>
+    <S sid="287" ssid="3">We could also introduce new variables, e.g., nonterminal refinements (Matsuzaki et al., 2005), or secondary links Mid (not constrained by TREE/PTREE) that augment the parse with representations of control, binding, etc.</S>
+    <S sid="288" ssid="4">(Sleator and Temperley, 1993; Buch-Kromann, 2006).</S>
+    <S sid="289" ssid="5">Other parsing-like problems that could be attacked with BP appear in syntax-based machine translation.</S>
+    <S sid="290" ssid="6">Decoding is very expensive with a synchronous grammar composed with an n-gram language model (Chiang, 2007)&#8212;but our footnote 10 suggests that BP might incorporate a language model rapidly.</S>
+    <S sid="291" ssid="7">String alignment with synchronous grammars is quite expensive even for simple synchronous formalisms like ITG (Wu, 1997)&#8212;but Duchi et al. (2007) show how to incorporate bipartite matching into max-product BP.</S>
+    <S sid="292" ssid="8">Finally, we can take advantage of improvements to BP proposed in the context of other applications.</S>
+    <S sid="293" ssid="9">For example, instead of updating all messages in parallel at every iteration, it is empirically faster to serialize updates using a priority queue (Elidan et al., 2006; Sutton and McCallum, 2007).31 31These methods need alteration to handle our global propagators, which do update all their outgoing messages at once.</S>
+  </SECTION>
+</PAPER>

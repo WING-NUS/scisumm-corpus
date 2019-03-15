@@ -1,0 +1,271 @@
+<PAPER>
+	<S sid="0">Top Accuracy and Fast Dependency Parsing is not a Contradiction</S><ABSTRACT>
+		<S sid="1" ssid="1">In addition to a high accuracy, short parsing and training times are the most important properties of a parser.</S>
+		<S sid="2" ssid="2">However, pars ing and training times are still relatively long.</S>
+		<S sid="3" ssid="3">To determine why, we analyzed thetime usage of a dependency parser.</S>
+		<S sid="4" ssid="4">We il lustrate that the mapping of the features onto their weights in the support vectormachine is the major factor in time complexity.</S>
+		<S sid="5" ssid="5">To resolve this problem, we implemented the passive-aggressive percep tron algorithm as a Hash Kernel.</S>
+		<S sid="6" ssid="6">The Hash Kernel substantially improves the parsing times and takes into account thefeatures of negative examples built dur ing the training.</S>
+		<S sid="7" ssid="7">This has lead to a higher accuracy.</S>
+		<S sid="8" ssid="8">We could further increase theparsing and training speed with a paral lel feature extraction and a parallel parsing algorithm.</S>
+		<S sid="9" ssid="9">We are convinced that the HashKernel and the parallelization can be ap plied successful to other NLP applicationsas well such as transition based depen dency parsers, phrase structrue parsers, and machine translation.</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number="1">
+			<S sid="10" ssid="10">Highly accurate dependency parsers have high de mands on resources and long parsing times.</S>
+			<S sid="11" ssid="11">The training of a parser frequently takes several days and the parsing of a sentence can take on averageup to a minute.</S>
+			<S sid="12" ssid="12">The parsing time usage is impor tant for many applications.</S>
+			<S sid="13" ssid="13">For instance, dialog systems only have a few hundred milliseconds toanalyze a sentence and machine translation sys tems, have to consider in that time some thousandtranslation alternatives for the translation of a sen tence.</S>
+			<S sid="14" ssid="14">Parsing and training times can be improved by methods that maintain the accuracy level, or methods that trade accuracy against better parsing times.</S>
+			<S sid="15" ssid="15">Software developers and researchers areusually unwilling to reduce the quality of their ap plications.</S>
+			<S sid="16" ssid="16">Consequently, we have to consider atfirst methods to improve a parser, which do not in volve an accuracy loss, such as faster algorithms,faster implementation of algorithms, parallel al gorithms that use several CPU cores, and feature selection that eliminates the features that do not improve accuracy.</S>
+			<S sid="17" ssid="17">We employ, as a basis for our parser, the secondorder maximum spanning tree dependency pars ing algorithm of Carreras (2007).</S>
+			<S sid="18" ssid="18">This algorithmfrequently reaches very good, or even the best la beled attachment scores, and was one of the most used parsing algorithms in the shared task 2009 of the Conference on Natural Language Learning (CoNLL) (Hajic?</S>
+			<S sid="19" ssid="19">et al, 2009).</S>
+			<S sid="20" ssid="20">We combined thisparsing algorithm with the passive-aggressive perceptron algorithm (Crammer et al, 2003; McDon ald et al, 2005; Crammer et al, 2006).</S>
+			<S sid="21" ssid="21">A parser build out of these two algorithms provides a good baseline and starting point to improve upon the parsing and training times.</S>
+			<S sid="22" ssid="22">The rest of the paper is structured as follows.</S>
+			<S sid="23" ssid="23">In Section 2, we describe related work.</S>
+			<S sid="24" ssid="24">In section 3, we analyze the time usage of the components of 89the parser.</S>
+			<S sid="25" ssid="25">In Section 4, we introduce a new Kernel that resolves some of the bottlenecks and im proves the performance.</S>
+			<S sid="26" ssid="26">In Section 5, we describethe parallel parsing algorithms which nearly allowed us to divide the parsing times by the number of cores.</S>
+			<S sid="27" ssid="27">In Section 6, we determine the opti mal setting for the Non-Projective ApproximationAlgorithm.</S>
+			<S sid="28" ssid="28">In Section 7, we conclude with a sum mary and an outline of further research.</S>
+	</SECTION>
+	<SECTION title="Related Work. " number="2">
+			<S sid="29" ssid="1">The two main approaches to dependency parsing are transition based dependency parsing (Nivre, 2003; Yamada and Matsumoto., 2003; Titov and Henderson, 2007) and maximum spanning tree based dependency parsing (Eisner, 1996; Eisner, 2000; McDonald and Pereira, 2006).</S>
+			<S sid="30" ssid="2">Transition based parsers typically have a linear or quadratic complexity (Nivre et al, 2004; Attardi, 2006).Nivre (2009) introduced a transition based non projective parsing algorithm that has a worst casequadratic complexity and an expected linear pars ing time.</S>
+			<S sid="31" ssid="3">Titov and Henderson (2007) combined a transition based parsing algorithm, which used abeam search with a latent variable machine learn ing technique.</S>
+			<S sid="32" ssid="4">Maximum spanning tree dependency based parsers decomposes a dependency structure into parts known as ?factors?.</S>
+			<S sid="33" ssid="5">The factors of the first order maximum spanning tree parsing algorithm are edges consisting of the head, the dependent (child) and the edge label.</S>
+			<S sid="34" ssid="6">This algorithm has a quadratic complexity.</S>
+			<S sid="35" ssid="7">The second order parsing algorithm of McDonald and Pereira (2006) uses aseparate algorithm for edge labeling.</S>
+			<S sid="36" ssid="8">This algo rithm uses in addition to the first order factors: theedges to those children which are closest to the de pendent.</S>
+			<S sid="37" ssid="9">The second order algorithm of Carreras (2007) uses in addition to McDonald and Pereira (2006) the child of the dependent occurring in the sentence between the head and the dependent, and the an edge to a grandchild.</S>
+			<S sid="38" ssid="10">The edge labeling is an integral part of the algorithm which requires an additional loop over the labels.</S>
+			<S sid="39" ssid="11">This algorithm therefore has a complexity of O(n4).</S>
+			<S sid="40" ssid="12">Johansson and Nugues (2008) reduced the needed number of loops over the edge labels by using only the edges that existed in the training corpus for a distinct head and child part-of-speech tag combination.The transition based parsers have a lower com plexity.</S>
+			<S sid="41" ssid="13">Nevertheless, the reported run times inthe last shared tasks were similar to the maxi mum spanning tree parsers.</S>
+			<S sid="42" ssid="14">For a transition based parser, Gesmundo et al (2009) reported run times between 2.2 days for English and 4.7 days forCzech for the joint training of syntactic and se mantic dependencies.</S>
+			<S sid="43" ssid="15">The parsing times were about one word per second, which speeds upquickly with a smaller beam-size, although the ac curacy of the parser degrades a bit.</S>
+			<S sid="44" ssid="16">Johansson and Nugues (2008) reported training times of 2.4 days for English with the high-order parsing algorithm of Carreras (2007).</S>
+	</SECTION>
+	<SECTION title="Analysis of Time Usage. " number="3">
+			<S sid="45" ssid="1">We built a baseline parser to measure the time usage.</S>
+			<S sid="46" ssid="2">The baseline parser resembles the architec ture of McDonald and Pereira (2006).</S>
+			<S sid="47" ssid="3">It consists of the second order parsing algorithm of Carreras(2007), the non-projective approximation algorithm (McDonald and Pereira, 2006), the passive aggressive support vector machine, and a feature extraction component.</S>
+			<S sid="48" ssid="4">The features are listed in Table 4.</S>
+			<S sid="49" ssid="5">As in McDonald et al (2005), the parser stores the features of each training example in a file.</S>
+			<S sid="50" ssid="6">In each epoch of the training, the feature file is read, and the weights are calculated and stored in an array.</S>
+			<S sid="51" ssid="7">This procedure is up to 5 times faster than computing the features each time anew.</S>
+			<S sid="52" ssid="8">But the parser has to maintain large arrays: for the weights of the sentence and the training file.</S>
+			<S sid="53" ssid="9">Therefore, the parser needs 3GB of main memoryfor English and 100GB of disc space for the train ing file.</S>
+			<S sid="54" ssid="10">The parsing time is approximately 20% faster, since some of the values did not have to be recalculated.</S>
+			<S sid="55" ssid="11">Algorithm 1 illustrates the training algorithm in pseudo code.</S>
+			<S sid="56" ssid="12">is the set of training examples where an example is a pair (xi, yi) of a sentence and the corresponding dependency structure.</S>
+			<S sid="57" ssid="13">??wand ??v are weight vectors.</S>
+			<S sid="58" ssid="14">The first loop ex tracts features from the sentence xi and maps the features to numbers.</S>
+			<S sid="59" ssid="15">The numbers are grouped into three vectors for the features of all possible edges ?h,d, possible edges in combination withsiblings ?h,d,s and in combination with grandchil 90 te+s tr tp ta rest total te pars.</S>
+			<S sid="60" ssid="16">train.</S>
+			<S sid="61" ssid="17">sent.</S>
+			<S sid="62" ssid="18">feat.</S>
+			<S sid="63" ssid="19">LAS UAS Chinese 4582 748 95 - 3 846 3298 3262 84h 22277 8.76M 76.88 81.27 English 1509 168 12.5 20 1.5 202 1223 1258 38.5h 39279 8.47M 90.14 92.45 German 945 139 7.7 17.8 1.5 166 419 429 26.7h 36020 9.16M 87.64 90.03 Spanish 3329 779 36 - 2 816 2518 2550 16.9h 14329 5.51M 86.02 89.54 Table 1: te+s is the elapsed time in milliseconds to extract and store the features, tr to read the features and to calculate the weight arrays, tp to predict the projective parse tree, ta to apply the non-projective approximation algorithm, rest is the time to conduct the other parts such as the update function, train.</S>
+			<S sid="64" ssid="20">is the total training time per instance (tr + tp + ta+rest ), and te is the elapsed time to extract the features.</S>
+			<S sid="65" ssid="21">The next columns illustrate the parsing time in milliseconds per sentence for the test set, training time in hours, the number of sentences in the training set, the total number of features in million, the labeled attachment score of the test set, and the unlabeled attachment score.</S>
+			<S sid="66" ssid="22">Algorithm 1: Training ? baseline algorithm ? = {(xi, yi)}Ii=1 // Training data??w = 0,??v = 0 ? = E ? I // passive-aggresive update weight for i = 1 to I tss+e; extract-and-store-features(xi); tes+e; for n = 1 to E // iteration over the training epochs for i = 1 to I // iteration over the training examples k ?</S>
+			<S sid="67" ssid="23">(n? 1) ? I + i ? = E ? I ? k + 2 // passive-aggressive weight tsr,k; A = read-features-and-calc-arrays(i,??w ) ; ter,k tsp,k; yp = predicte-projective-parse-tree(A);tep,k tsa,k; ya = non-projective-approx.(yp ,A); tea,k update ??w , ??v according to ?(yp, yi) and ? w = v/(E ? I) // average dren ?h,d,g where h, d, g, and s are the indexes of the words included in xi.</S>
+			<S sid="68" ssid="24">Finally, the method stores the feature vectors on the hard disc.</S>
+			<S sid="69" ssid="25">The next two loops build the main part of the training algorithm.</S>
+			<S sid="70" ssid="26">The outer loop iterates over the number of training epochs, while the innerloop iterates over all training examples.</S>
+			<S sid="71" ssid="27">The on line training algorithm considers a single training example in each iteration.</S>
+			<S sid="72" ssid="28">The first function in the loop reads the features and computes the weights A for the factors in the sentence xi.</S>
+			<S sid="73" ssid="29">A is a set of weight arrays.</S>
+			<S sid="74" ssid="30">A = {??w ? ??f h,d,??w ? ??f h,d,s,??w ? ??f h,d,g} The parsing algorithm uses the weight arrays to predict a projective dependency structure yp.</S>
+			<S sid="75" ssid="31">The non-projective approximation algorithm has as input the dependency structure and the weightarrays.</S>
+			<S sid="76" ssid="32">It rearranges the edges and tries to in crease the total score of the dependency structure.</S>
+			<S sid="77" ssid="33">This algorithm builds a dependency structure ya,which might be non-projective.</S>
+			<S sid="78" ssid="34">The training al gorithm updates ??w according to the difference between the predicted dependency structures ya and the reference structure yi.</S>
+			<S sid="79" ssid="35">It updates ??v as well, whereby the algorithm additionally weights the updates by ?.</S>
+			<S sid="80" ssid="36">Since the algorithm decreases ? in each round, the algorithm adapts the weights more aggressively at the beginning (Crammer etal., 2006).</S>
+			<S sid="81" ssid="37">After all iterations, the algorithm com putes the average of ??v , which reduces the effect of overfitting (Collins, 2002).</S>
+			<S sid="82" ssid="38">We have inserted into the training algorithm functions to measure the start times ts and the end times te for the procedures to compute andstore the features, to read the features, to predict the projective parse, and to calculate the nonprojective approximation.</S>
+			<S sid="83" ssid="39">We calculate the aver age elapsed time per instance, as the average over all training examples and epochs: tx = ?E?I k=1 t e x,k?tsx,k E?I . We use the training set and the test set of theCoNLL shared task 2009 for our experiments.</S>
+			<S sid="84" ssid="40">Ta ble 1 shows the elapsed times in 11000 seconds (milliseconds) of the selected languages for the procedure calls in the loops of Algorithm 1.</S>
+			<S sid="85" ssid="41">We had to measure the times for the feature extractionin the parsing algorithm, since in the training al gorithm, the time can only be measured together with the time for storing the features.</S>
+			<S sid="86" ssid="42">The table contains additional figures for the total training time and parsing scores.1 The parsing algorithm itself only required, to our surprise, 12.5 ms (tp) for a English sentence 1We use a Intel Nehalem i7 CPU 3.33 Ghz.</S>
+			<S sid="87" ssid="43">With turbo mode on, the clock speed was 3.46 Ghz.</S>
+			<S sid="88" ssid="44">91 on average, while the feature extraction needs 1223 ms. To extract the features takes about100 times longer than to build a projective dependency tree.</S>
+			<S sid="89" ssid="45">The feature extraction is already implemented efficiently.</S>
+			<S sid="90" ssid="46">It uses only numbers to rep resent features which it combines to a long integer number and then maps by a hash table2 to a 32bit integer number.</S>
+			<S sid="91" ssid="47">The parsing algorithm uses the integer number as an index to access the weights in the vectors ??w and ??v .The complexity of the parsing algorithm is usu ally considered the reason for long parsing times.However, it is not the most time consuming component as proven by the above analysis.</S>
+			<S sid="92" ssid="48">There fore, we investigated the question further, askingwhat causes the high time consumption of the fea ture extraction?</S>
+			<S sid="93" ssid="49">In our next experiment, we left out the mapping of the features to the index of the weight vectors.The feature extraction takes 88 ms/sentence with out the mapping and 1223 ms/sentence with the mapping.</S>
+			<S sid="94" ssid="50">The feature?index mapping needs 93% of the time to extract the features and 91% of thetotal parsing time.</S>
+			<S sid="95" ssid="51">What causes the high time con sumption of the feature?index mapping?The mapping has to provide a number as an in dex for the features in the training examples and to filter out the features of examples built, while theparser predicts the dependency structures.</S>
+			<S sid="96" ssid="52">The al gorithm filters out negative features to reduce the memory requirement, even if they could improve the parsing result.</S>
+			<S sid="97" ssid="53">We will call the features built due to the training examples positive features and the rest negative features.</S>
+			<S sid="98" ssid="54">We counted 5.8 timesmore access to negative features than positive fea tures.We now look more into the implementation details of the used hash table to answer the pre viously asked question.</S>
+			<S sid="99" ssid="55">The hash table for the feature?index mapping uses three arrays: one for the keys, one for the values and a status array to indicate the deleted elements.</S>
+			<S sid="100" ssid="56">If a program storesa value then the hash function uses the key to cal culate the location of the value.</S>
+			<S sid="101" ssid="57">Since the hashfunction is a heuristic function, the predicted lo cation might be wrong, which leads to so-called 2We use the hash tables of the trove library: http://sourceforge.net/projects/trove4j.</S>
+			<S sid="102" ssid="58">hash misses.</S>
+			<S sid="103" ssid="59">In such cases the hash algorithm has to retry to find the value.</S>
+			<S sid="104" ssid="60">We counted 87% hash misses including misses where the hash had to retry several times.</S>
+			<S sid="105" ssid="61">The number of hash misseswas high, because of the additional negative fea tures.</S>
+			<S sid="106" ssid="62">The CPU cache can only store a small amount of the data from the hash table.</S>
+			<S sid="107" ssid="63">Therefore, the memory controller has frequently to transfer data from the main memory into the CPU.</S>
+			<S sid="108" ssid="64">This procedure is relatively slow.</S>
+			<S sid="109" ssid="65">We traced down the high time consumption to the access of the key and the access of the value.</S>
+			<S sid="110" ssid="66">Successive accessesto the arrays are fast, but the relative random ac cesses via the hash function are very slow.</S>
+			<S sid="111" ssid="67">Thelarge number of accesses to the three arrays, be cause of the negative features, positive features and because of the hash misses multiplied by the time needed to transfer the data into the CPU are the reason for the high time consumption.We tried to solve this problem with Bloom filters, larger hash tables and customized hash func tions to reduce the hash misses.</S>
+			<S sid="112" ssid="68">These techniquesdid not help much.</S>
+			<S sid="113" ssid="69">However, a substantial im provement did result when we eliminated the hash table completely, and directly accessed the weight vectors ??w and ??v with a hash function.</S>
+			<S sid="114" ssid="70">This led us to the use of Hash Kernels.</S>
+	</SECTION>
+	<SECTION title="Hash Kernel. " number="4">
+			<S sid="115" ssid="1">A Hash Kernel for structured data uses a hash function h : J ? {1...n} to index ?, cf.</S>
+			<S sid="116" ssid="2">Shi etal.</S>
+			<S sid="117" ssid="3">(2009).</S>
+			<S sid="118" ssid="4">maps the observations X to a feature space.</S>
+			<S sid="119" ssid="5">We define ?(x, y) as the numeric fea ture representation indexed by J . Let ?k(x, y) = ?j(x, y) the hash based feature?index mapping,where h(j) = k. The process of parsing a sen tence xi is to find a parse tree yp that maximizes a scoring function argmaxyF (xi, y).</S>
+			<S sid="120" ssid="6">The learning problem is to fit the function F so that the errors of the predicted parse tree y are as low as possible.</S>
+			<S sid="121" ssid="7">The scoring function of the Hash Kernel is F (x, y) = ??w ? ?(x, y) where ??w is the weight vector and the size of ??w is n. Algorithm 2 shows the update function of the Hash Kernel.</S>
+			<S sid="122" ssid="8">We derived the update function from the update function of MIRA (Crammer et 92 Algorithm 2: Update of the Hash Kernel // yp = arg maxyF (xi, y) update(??w,??v , xi, yi, yp, ?) ?</S>
+			<S sid="123" ssid="9">= ?(yi, yp) // number of wrong labeled edges if ? &gt; 0 then ??u ?</S>
+			<S sid="124" ssid="10">(?(xi, yi)?</S>
+			<S sid="125" ssid="11">?(xi, yp)) ? = ??(F (xt,yi)?F (xi,yp))||??u ||2??w ? ??w + ? ?</S>
+			<S sid="126" ssid="12">??u ??v ? ~v + ? ?</S>
+			<S sid="127" ssid="13">??u return ??w , ??v al., 2006).</S>
+			<S sid="128" ssid="14">The parameters of the function are the weight vectors ??w and ??v , the sentence xi, the gold dependency structure yi, the predicted dependency structure yp, and the update weight ?.</S>
+			<S sid="129" ssid="15">The function ? calculates the number ofwrong labeled edges.</S>
+			<S sid="130" ssid="16">The update function updates the weight vectors, if at least one edge is la beled wrong.</S>
+			<S sid="131" ssid="17">It calculates the difference ??u of the feature vectors of the gold dependency structure ?(xi, yi) and the predicted dependency structure?(xi, yp).</S>
+			<S sid="132" ssid="18">Each time, we use the feature represen tation ?, the hash function h maps the features to integer numbers between 1 and |??w |.</S>
+			<S sid="133" ssid="19">After that the update function calculates the margin ? and updates ??w and ??v respectively.</S>
+			<S sid="134" ssid="20">Algorithm 3 shows the training algorithm forthe Hash Kernel in pseudo code.</S>
+			<S sid="135" ssid="21">A main dif ference to the baseline algorithm is that it does not store the features because of the required time which is needed to store the additional negative features.</S>
+			<S sid="136" ssid="22">Accordingly, the algorithm first extracts the features for each training instance, then maps the features to indexes for the weight vector with the hash function and calculates the weight arrays.</S>
+			<S sid="137" ssid="23">Algorithm 3: Training ? Hash Kernel for n?</S>
+			<S sid="138" ssid="24">1 to E // iteration over the training epochs for i?</S>
+			<S sid="139" ssid="25">1 to I // iteration over the training exmaples k ?</S>
+			<S sid="140" ssid="26">(n? 1) ? I + i ? ?</S>
+			<S sid="141" ssid="27">E ? I ? k + 2 // passive-aggressive weight tse,k; A?</S>
+			<S sid="142" ssid="28">extr.-features-&amp;-calc-arrays(i,??w ) ; tee,k tsp,k; yp?</S>
+			<S sid="143" ssid="29">predicte-projective-parse-tree(A);tep,k tsa,k; ya?</S>
+			<S sid="144" ssid="30">non-projective-approx.(yp ,A); tea,k update ??w , ??v according to ?(yp, yi) and ? w = v/(E ? I) // average For different j, the hash function h(j) might generate the same value k. This means that the hash function maps more than one feature to thesame weight.</S>
+			<S sid="145" ssid="31">We call such cases collisions.</S>
+			<S sid="146" ssid="32">Col lisions can reduce the accuracy, since the weights are changed arbitrarily.</S>
+			<S sid="147" ssid="33">This procedure is similar to randomization of weights (features), which aims to save space by sharing values in the weight vector (Blum., 2006; Rahimi and Recht, 2008).</S>
+			<S sid="148" ssid="34">The Hash Kernel shares values when collisions occur that can be considered as an approximation of the kernel function, because a weight might be adapted due to more than one feature.</S>
+			<S sid="149" ssid="35">If the approximation works well then we would need only a relatively small weight vector otherwise we need a larger weight vector to reduce the chance of collisions.</S>
+			<S sid="150" ssid="36">In an experiments, we compared two hash functions and different hash sizes.</S>
+			<S sid="151" ssid="37">We selected for the comparison a standard hash function (h1) and a custom hash function (h2).</S>
+			<S sid="152" ssid="38">The idea for the custom hash function h2 is not to overlap the values of the feature sequence number and the edge label with other values.</S>
+			<S sid="153" ssid="39">These values are stored at the beginning of a long number, which represents a feature.</S>
+			<S sid="154" ssid="40">h1 ? |(l xor(l ? 0xffffffff00000000 &gt;&gt; 32))% size|3 h2 ? |(l xor ((l &gt;&gt; 13) ? 0xffffffffffffe000) xor ((l &gt;&gt; 24) ? 0xffffffffffff0000) xor ((l &gt;&gt; 33) ? 0xfffffffffffc0000) xor ((l &gt;&gt; 40) ? 0xfffffffffff00000)) % size | vector size h1 #(h1) h2 #(h2) 411527 85.67 0.41 85.74 0.41 3292489 87.82 3.27 87.97 3.28 10503061 88.26 8.83 88.35 8.77 21006137 88.19 12.58 88.41 12.53 42012281 88.32 12.45 88.34 15.27 115911564?</S>
+			<S sid="155" ssid="41">88.32 17.58 88.39 17.34 179669557 88.34 17.65 88.28 17.84Table 2: The labeled attachment scores for differ ent weight vector sizes and the number of nonzero values in the feature vectors in millions.</S>
+			<S sid="156" ssid="42">Not a prime number.</S>
+			<S sid="157" ssid="43">Table 2 shows the labeled attachment scores for selected weight vector sizes and the number of nonzero weights.</S>
+			<S sid="158" ssid="44">Most of the numbers in Table2 are primes, since they are frequently used to obtain a better distribution of the content in hash ta 3&gt;&gt; n shifts n bits right, and % is the modulo operation.</S>
+			<S sid="159" ssid="45">93bles.</S>
+			<S sid="160" ssid="46">h2 has more nonzero weights than h1.</S>
+			<S sid="161" ssid="47">Nevertheless, we did not observe any clear improve ment of the accuracy scores.</S>
+			<S sid="162" ssid="48">The values do not change significantly for a weight vector size of 10 million and more elements.</S>
+			<S sid="163" ssid="49">We choose a weightvector size of 115911564 values for further exper iments since we get more non zero weights and therefore fewer collisions.</S>
+			<S sid="164" ssid="50">te tp ta r total par.</S>
+			<S sid="165" ssid="51">trai.</S>
+			<S sid="166" ssid="52">Chinese 1308 - 200 3 1511 1184 93h English 379 21.3 18.2 1.5 420 354 46h German 209 12 15.3 1.7 238 126 24h Spanish 1056 - 39 2 1097 1044 44h Table 3: The time in milliseconds for the featureextraction, projective parsing, non-projective ap proximation, rest (r), the total training time perinstance, the average parsing (par.)</S>
+			<S sid="167" ssid="53">time in mil liseconds for the test set and the training time in hours 0 1 2 3 0 5000 10000 15000 Spanish Figure 1: The difference of the labeled attachment score between the baseline parser and the parser with the Hash Kernel (y-axis) for increasing large training sets (x-axis).</S>
+			<S sid="168" ssid="54">Table 3 contains the measured times for the Hash Kernel as used in Algorithm 2.</S>
+			<S sid="169" ssid="55">The parserneeds 0.354 seconds in average to parse a sen tence of the English test set.</S>
+			<S sid="170" ssid="56">This is 3.5 times faster than the baseline parser.</S>
+			<S sid="171" ssid="57">The reason for that is the faster feature mapping of the Hash Kernel.Therefore, the measured time te for the feature ex traction and the calculation of the weight arrays are much lower than for the baseline parser.</S>
+			<S sid="172" ssid="58">The training is about 19% slower since we could no longer use a file to store the feature indexes of the training examples because of the large number of negative features.</S>
+			<S sid="173" ssid="59">We counted about twice the number of nonzero weights in the weight vector of the Hash Kernel compared to the baseline parser.For instance, we counted for English 17.34 Mil lions nonzero weights in the Hash Kernel and 8.47 Millions in baseline parser and for Chinese 18.28 Millions nonzero weights in the Hash Kernel and 8.76 Millions in the baseline parser.</S>
+			<S sid="174" ssid="60">Table 6 shows.</S>
+			<S sid="175" ssid="61">the scores for all languages of the shared task2009.</S>
+			<S sid="176" ssid="62">The attachment scores increased for all languages.</S>
+			<S sid="177" ssid="63">It increased most for Catalan and Span ish.</S>
+			<S sid="178" ssid="64">These two corpora have the smallest training sets.</S>
+			<S sid="179" ssid="65">We searched for the reason and found thatthe Hash Kernel provides an overproportional ac curacy gain with less training data compared to MIRA.</S>
+			<S sid="180" ssid="66">Figure 1 shows the difference between the labeled attachment score of the parser with MIRA and the Hash Kernel for Spanish.</S>
+			<S sid="181" ssid="67">The decreasing curve shows clearly that the Hash Kernel providesan overproportional accuracy gain with less train ing data compared to the baseline.</S>
+			<S sid="182" ssid="68">This provides an advantage for small training corpora.However, this is probably not the main rea son for the high improvement, since for languageswith only slightly larger training sets such as Chinese the improvement is much lower and the gra dient at the end of the curve is so that a huge amount of training data would be needed to make the curve reach zero.</S>
+	</SECTION>
+	<SECTION title="Parallelization. " number="5">
+			<S sid="183" ssid="1">Current CPUs have up to 12 cores and we will see soon CPUs with more cores.</S>
+			<S sid="184" ssid="2">Also graphiccards provide many simple cores.</S>
+			<S sid="185" ssid="3">Parsing algo rithms can use several cores.</S>
+			<S sid="186" ssid="4">Especially, the tasks to extract the features and to calculate the weightarrays can be well implemented as parallel algo rithm.</S>
+			<S sid="187" ssid="5">We could also successful parallelize theprojective parsing and the non-projective approximation algorithm.</S>
+			<S sid="188" ssid="6">Algorithm 4 shows the paral lel feature extraction in pseudo code.</S>
+			<S sid="189" ssid="7">The mainmethod prepares a list of tasks which can be per formed in parallel and afterwards it creates thethreads that perform the tasks.</S>
+			<S sid="190" ssid="8">Each thread re moves from the task list an element, carries out the task and stores the result.</S>
+			<S sid="191" ssid="9">This procedure is repeated until the list is empty.</S>
+			<S sid="192" ssid="10">The main method waits until all threads are completed and returns the result.</S>
+			<S sid="193" ssid="11">For the parallel algorithms, Table 5 shows the elapsed times depend on the number of 94 # Standard Features # Linear Features Linear G. Features Sibling Features 1 l,hf ,hp,d(h,d) 14 l,hp,h+1p,dp,d(h,d) 44 l,gp,dp,d+1p,d(h,d) 99 l,sl,hp,d(h,d)?r(h,d) 2 l,hf ,d(h,d) 15 l,hp,d-1p,dp,d(h,d) 45 l,gp,dp,d-1p,d(h,d) 100 l,sl,dp,d(h,d)?r(h,d) 3 l,hp,d(h,d) 16 l,hp,dp,d+1p,d(h,d) 46 l,gp,g+1p,d-1p,dp,d(h,d) 101 l,hl,dp,d(h,d)?r(h,d) 4 l,df ,dp,d(h,d) 17 l,hp,h+1p,d-1p,dp,d(h,d) 47 l,g-1p,gp,d-1p,dp,d(h,d) 102 l,dl,sp,d(h,d)?r(h,d) 5 l,hp,d(h,d) 18 l,h-1p,h+1p,d-1p,dp,d(h,d) 48 l,gp,g+1p,dp,d+1p,d(h,d) 75 l,?dm,?sm,d(h,d) 6 l,dp,d(h,d) 19 l,hp,h+1p,dp,d+1p,d(h,d) 49 l,g-1p,gp,dp,d+1p,d(h,d) 76 l,?hm,?sm,d(h,s) 7 l,hf ,hp,df ,dp,d(h,d) 20 l,h-1p,hp,dp,d-1p,d(h,d) 50 l,gp,g+1p,hp,d(h,d) Linear S. Features 8 l,hp,df ,dp,d(h,d) Grandchild Features 51 l,gp,g-1p,hp,d(h,d) 58 l,sp,s+1p,hp,d(h,d) 9 l,hf ,df ,dp,d(h,d) 21 l,hp,dp,gp,d(h,d,g) 52 l,gp,hp,h+1p,d(h,d) 59 l,sp,s-1p,hp,d(h,d) 10 l,hf ,hp,df ,d(h,d) 22 l,hp,gp,d(h,d,g) 53 l,gp,hp,h-1p,d(h,d) 60 l,sp,hp,h+1p,d(h,d) 11 l,hf ,df ,hp,d(h,d) 23 l,dp,gp,d(h,d,g) 54 l,gp,g+1p,h-1p,hp,d(h,d) 61 l,sp,hp,h-1p,d(h,d) 12 l,hf ,df ,d(h,d) 24 l,hf ,gf ,d(h,d,g) 55 l,g-1p,gp,h-1p,hp,d(h,d) 62 l,sp,s+1p,h-1p,d(h,d) 13 l,hp,dp,d(h,d) 25 l,df ,gf ,d(h,d,g) 56 l,gp,g+1p,hp,h+1p,d(h,d) 63 l,s-1p,sp,h-1p,d(h,d) 77 l,hl,hp,d(h,d) 26 l,gf ,hp,d(h,d,g) 57 l,g-1p,gp,hp,h+1p,d(h,d) 64 l,sp,s+1p,hp,d(h,d) 78 l,hl,d(h,d) 27 l,gf ,dp,d(h,d,g) Sibling Features 65 l,s-1p,sp,hp,h+1p,d(h,d) 79 l,hp,d(h,d) 28 l,hf ,gp,d(h,d,g) 30 l,hp,dp,sp,d(h,d) ?r(h,d) 66 l,sp,s+1p,dp,d(h,d) 80 l,dl,dp,d(h,d) 29 l,df ,gp,d(h,d,g) 31 l,hp,sp,d(h,d)?r(h,d) 67 l,sp,s-1p,dp,d(h,d) 81 l,dl,d(h,d) 91 l,hl,gl,d(h,d,g) 32 l,dp,sp,d(h,d)?r(h,d) 68 sp,dp,d+1p,d(h,d) 82 l,dp,d(h,d) 92 l,dp,gp,d(h,d,g) 33 l,pf ,sf ,d(h,d)?r(h,d) 69 sp,dp,d-1p,d(h,d) 83 l,dl,hp,dp,hl,d(h,d) 93 l,gl,hp,d(h,d,g) 34 l,pp,sf ,d(h,d)?r(h,d) 70 sp,s+1p,d-1p,dp,d(h,d) 84 l,dl,hp,dp,d(h,d) 94 l,gl,dp,d(h,d,g) 35 l,sf ,pp,d(h,d)?r(h,d) 71 s-1p,sp,d-1p,dp,d(h,d) 85 l,hl,dl,dp,d(h,d) 95 l,hl,gp,d(h,d,g) 36 l,sf ,dp,d(h,d)?r(h,d) 72 sp,s+1p,dp,d+1p,d(h,d) 86 l,hl,hp,dp,d(h,d) 96 l,dl,gp,d(h,d,g) 37 l,sf ,dp,d(h,d)?r(h,d) 73 s-1p,sp,dp,d+1p,d(h,d) 87 l,hl,dl,hp,d(h,d) 74 l,?dm,?gm,d(h,d) 38 l,df ,sp,d(h,d)?r(h,d) Special Feature 88 l,hl,dl,d(h,d) Linear G. Features 97 l,hl,sl,d(h,d)?r(h,d) 39 ?l,hp,dp,xpbetween h,d 89 l,hp,dp,d(h,d) 42 l,gp,g+1p,dp,d(h,d) 98 l,dl,sl,d(h,d)?r(h,d) 41 l,?hm,?dm,d(h,d) 43 l,gp,g-1p,dp,d(h,d) Table 4: Features Groups.</S>
+			<S sid="194" ssid="12">l represents the label, h the head, d the dependent, s a sibling, and g a grandchild, d(x,y,[,z]) the order of words, and r(x,y) the distance.</S>
+			<S sid="195" ssid="13">used cores.</S>
+			<S sid="196" ssid="14">The parsing time is 1.9 times fasteron two cores and 3.4 times faster on 4 cores.</S>
+			<S sid="197" ssid="15">Hy per threading can improve the parsing times again and we get with hyper threading 4.6 faster parsingtimes.</S>
+			<S sid="198" ssid="16">Hyper threading possibly reduces the over head of threads, which contains already our single core version.</S>
+			<S sid="199" ssid="17">Algorithm 4: Parallel Feature Extraction A // weight arrays extract-features-and-calc-arrays(xi) data-list?</S>
+			<S sid="200" ssid="18">{} // thread-save data list for w1 ? 1 to |xi| for w2 ? 1 to |xi| data-list?</S>
+			<S sid="201" ssid="19">data-list ?{(w1, w2)} c?</S>
+			<S sid="202" ssid="20">number of CPU cores for t?</S>
+			<S sid="203" ssid="21">1 to c Tt ? create-array-thread(t, xi,data-list) start array-thread Tt// start thread t for t?</S>
+			<S sid="204" ssid="22">1 to c join Tt// wait until thread t is finished A?</S>
+			<S sid="205" ssid="23">A ? collect-result(Tt) return A // array-thread T d?</S>
+			<S sid="206" ssid="24">remove-first-element(data-list) if d is empty then end-thread ...</S>
+			<S sid="207" ssid="25">// extract features and calculate part d of A Cores te tp ta rest total pars.</S>
+			<S sid="208" ssid="26">train.</S>
+			<S sid="209" ssid="27">1 379 21.3 18.2 1.5 420 354 45.8h 2 196 11.7 9.2 2.1 219 187 23.9h 3 138 8.9 6.5 1.6 155 126 16.6h 4 106 8.2 5.2 1.6 121 105 13.2h 4+4h 73.3 8.8 4.8 1.3 88.2 77 9.6hTable 5: Elapsed times in milliseconds for differ ent numbers of cores.</S>
+			<S sid="210" ssid="28">The parsing time (pars.)</S>
+			<S sid="211" ssid="29">are expressed in milliseconds per sentence and the training (train.)</S>
+			<S sid="212" ssid="30">time in hours.</S>
+			<S sid="213" ssid="31">The last row shows the times for 8 threads on a 4 core CPU with Hyper-threading.</S>
+			<S sid="214" ssid="32">For these experiment, we set the clock speed to 3.46 Ghz in order to have the same clock speed for all experiments.</S>
+	</SECTION>
+	<SECTION title="Non-Projective Approximation. " number="6">
+			<S sid="215" ssid="1">ThresholdFor non-projective parsing, we use the NonProjective Approximation Algorithm of McDon ald and Pereira (2006).</S>
+			<S sid="216" ssid="2">The algorithm rearranges edges in a dependency tree when they improve the score.</S>
+			<S sid="217" ssid="3">Bohnet (2009) extended the algorithm by a threshold which biases the rearrangement of the edges.</S>
+			<S sid="218" ssid="4">With a threshold, it is possible to gain a higher percentage of correct dependency links.</S>
+			<S sid="219" ssid="5">We determined a threshold in experiments for Czech, English and German.</S>
+			<S sid="220" ssid="6">In the experiment,we use the Hash Kernel and increase the thresh 95 System Average Catalan Chinese Czech English German Japanese Spanish Top CoNLL 09 85.77(1) 87.86(1) 79.19(4) 80.38(1) 89.88(2) 87.48(2) 92.57(3) 87.64(1) Baseline Parser 85.10 85.70 76.88 76.93 90.14 87.64 92.26 86.12 this work 86.33 87.45 76.99 80.96 90.33 88.06 92.47 88.13 Table 6: Top LAS of the CoNLL 2009 of (1) Gesmundo et al (2009), (2) Bohnet (2009), (3) Che et al.</S>
+			<S sid="221" ssid="7">(2009), and (4) Ren et al (2009); LAS of the baseline parser and the parser with Hash Kernel.</S>
+			<S sid="222" ssid="8">The numbers in bold face mark the top scores.</S>
+			<S sid="223" ssid="9">We used for Catalan, Chinese, Japanese and Spanish the projective parsing algorithm.</S>
+			<S sid="224" ssid="10">old at the beginning in small steps by 0.1 and later in larger steps by 0.5 and 1.0.</S>
+			<S sid="225" ssid="11">Figure 2 showsthe labeled attachment scores for the Czech, En glish and German development set in relation to the rearrangement threshold.</S>
+			<S sid="226" ssid="12">The curves for all languages are a bit volatile.</S>
+			<S sid="227" ssid="13">The English curve is rather flat.</S>
+			<S sid="228" ssid="14">It increases a bit until about 0.3and remains relative stable before it slightly decreases.</S>
+			<S sid="229" ssid="15">The labeled attachment score for Ger man and Czech increases until 0.3 as well and thenboth scores start to decrease.</S>
+			<S sid="230" ssid="16">For English a thresh old between 0.3 and about 2.0 would work well.</S>
+			<S sid="231" ssid="17">For German and Czech, a threshold of about 0.3is the best choice.</S>
+			<S sid="232" ssid="18">We selected for all three lan guages a threshold of 0.3.</S>
+			<S sid="233" ssid="19">74 76 78 80 82 84 86 88 0 1 2 3 4 5 Czech English GermanFigure 2: English, German, and Czech labeled at tachment score (y-axis) for the development set in relation to the rearrangement threshold (x-axis).</S>
+	</SECTION>
+	<SECTION title="Conclusion and Future Work. " number="7">
+			<S sid="234" ssid="1">We have developed a very fast parser with ex cellent attachment scores.</S>
+			<S sid="235" ssid="2">For the languages of the 2009 CoNLL Shared Task, the parser could reach higher accuracy scores on average than the top performing systems.</S>
+			<S sid="236" ssid="3">The scores for Catalan, Chinese and Japanese are still lower than the top scores.</S>
+			<S sid="237" ssid="4">However, the parser would have ranked second for these languages.</S>
+			<S sid="238" ssid="5">For Catalan and Chinese, the top results obtained transition-basedparsers.</S>
+			<S sid="239" ssid="6">Therefore, the integration of both tech niques as in Nivre and McDonald (2008) seems to be very promising.</S>
+			<S sid="240" ssid="7">For instance, to improvethe accuracy further, more global constrains capturing the subcategorization correct could be inte grated as in Riedel and Clarke (2006).</S>
+			<S sid="241" ssid="8">Our fasteralgorithms may make it feasible to consider fur ther higher order factors.</S>
+			<S sid="242" ssid="9">In this paper, we have investigated possibilities for increasing parsing speed without any accuracyloss.</S>
+			<S sid="243" ssid="10">The parsing time is 3.5 times faster on a sin gle CPU core than the baseline parser which has an typical architecture for a maximum spanning tree parser.</S>
+			<S sid="244" ssid="11">The improvement is due solely to theHash Kernel.</S>
+			<S sid="245" ssid="12">The Hash Kernel was also a prereq uisite for the parallelization of the parser because it requires much less memory bandwidth which is nowadays a bottleneck of parsers and many other applications.</S>
+			<S sid="246" ssid="13">By using parallel algorithms, we could further increase the parsing time by a factor of 3.4 on a 4 core CPU and including hyper threading by a factor of 4.6.</S>
+			<S sid="247" ssid="14">The parsing speed is 16 times fasterfor the English test set than the conventional ap proach.</S>
+			<S sid="248" ssid="15">The parser needs only 77 millisecond in average to parse a sentence and the speed willscale with the number of cores that become avail able in future.</S>
+			<S sid="249" ssid="16">To gain even faster parsing times, it may be possible to trade accuracy against speed.</S>
+			<S sid="250" ssid="17">In a pilot experiment, we have shown that it is possible to reduce the parsing time in this way to as little as 9 milliseconds.</S>
+			<S sid="251" ssid="18">We are convinced thatthe Hash Kernel can be applied successful to tran sition based dependency parsers, phrase structure parsers and many other NLP applications.</S>
+			<S sid="252" ssid="19">4 4We provide the Parser and Hash Kernel as open source for download from http://code.google.com/p/mate-tools.</S>
+			<S sid="253" ssid="20">96</S>
+	</SECTION>
+</PAPER>

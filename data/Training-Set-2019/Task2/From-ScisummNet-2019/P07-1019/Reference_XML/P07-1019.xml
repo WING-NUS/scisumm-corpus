@@ -1,0 +1,143 @@
+<PAPER>
+  <S sid="0">Forest Rescoring: Faster Decoding with Integrated Language Models</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Efficient decoding has been a fundamental problem in machine translation, especially with an integrated language model which is essential for achieving good translation quality.</S>
+    <S sid="2" ssid="2">We develop faster approaches for problem based on parsing algorithms and demonstrate their effectiveness on both phrase-based and syntax-based MT systems.</S>
+    <S sid="3" ssid="3">In both cases, our methods achieve significant speed improvements, often by more than a factor of ten, over the conventional beam-search method at the same levels of search error and translation accuracy.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="4" ssid="1">Recent efforts in statistical machine translation (MT) have seen promising improvements in output quality, especially the phrase-based models (Och and Ney, 2004) and syntax-based models (Chiang, 2005; Galley et al., 2006).</S>
+    <S sid="5" ssid="2">However, efficient decoding under these paradigms, especially with integrated language models (LMs), remains a difficult problem.</S>
+    <S sid="6" ssid="3">Part of the complexity arises from the expressive power of the translation model: for example, a phrase- or word-based model with full reordering has exponential complexity (Knight, 1999).</S>
+    <S sid="7" ssid="4">The language model also, if fully integrated into the decoder, introduces an expensive overhead for maintaining target-language boundary words for dynamic programming (Wu, 1996; Och and Ney, 2004).</S>
+    <S sid="8" ssid="5">In practice, one must prune the search space aggressively to reduce it to a reasonable size.</S>
+    <S sid="9" ssid="6">A much simpler alternative method to incorporate the LM is rescoring: we first decode without the LM (henceforth &#8722;LM decoding) to produce a k-best list of candidate translations, and then rerank the k-best list using the LM.</S>
+    <S sid="10" ssid="7">This method runs much faster in practice but often produces a considerable number of search errors since the true best translation (taking LM into account) is often outside of the k-best list.</S>
+    <S sid="11" ssid="8">Cube pruning (Chiang, 2007) is a compromise between rescoring and full-integration: it rescores k subtranslations at each node of the forest, rather than only at the root node as in pure rescoring.</S>
+    <S sid="12" ssid="9">By adapting the k-best parsing Algorithm 2 of Huang and Chiang (2005), it achieves significant speed-up over full-integration on Chiang&#8217;s Hiero system.</S>
+    <S sid="13" ssid="10">We push the idea behind this method further and make the following contributions in this paper: Cube pruning and cube growing are collectively called forest rescoring since they both approximately rescore the packed forest of derivations from &#8722;LM decoding.</S>
+    <S sid="14" ssid="11">In practice they run an order of magnitude faster than full-integration with beam search, at the same level of search errors and translation accuracy as measured by BLEU.</S>
+  </SECTION>
+  <SECTION title="2 Preliminaries" number="2">
+    <S sid="15" ssid="1">We establish in this section a unified framework for translation with an integrated n-gram language model in both phrase-based systems and syntaxbased systems based on synchronous context-free grammars (SCFGs).</S>
+    <S sid="16" ssid="2">An SCFG (Lewis and Stearns, 1968) is a context-free rewriting system for generating string pairs.</S>
+    <S sid="17" ssid="3">Each rule A &#8594; &#945;, Q rewrites a pair of nonterminals in both languages, where &#945; and Q are the source and target side components, and there is a one-to-one correspondence between the nonterminal occurrences in &#945; and the nonterminal occurrences in Q.</S>
+    <S sid="18" ssid="4">For example, the following rule captures the swapping of VP and PP between Chinese (source) and English (target).</S>
+    <S sid="19" ssid="5">We will use the following example from Chinese to English for both systems described in this section: y&#711;u Sh&#175;al&#180;ong j&#711;uxing le huit&#180;an with Sharon hold [past] meeting &#8216;held a meeting with Sharon&#8217; A typical phrase-based decoder generates partial target-language outputs in left-to-right order in the form of hypotheses (Koehn, 2004).</S>
+    <S sid="20" ssid="6">Each hypothesis has a coverage vector capturing the source-language words translated so far, and can be extended into a longer hypothesis by a phrase-pair translating an uncovered segment.</S>
+    <S sid="21" ssid="7">This process can be formalized as a deductive system.</S>
+    <S sid="22" ssid="8">For example, the following deduction step grows a hypothesis by the phrase-pair hy&#711;u Sh&#175;al&#180;ong, with Sharoni: where a &#8226; in the coverage vector indicates the source word at this position is &#8220;covered&#8221; (for simplicity we omit here the ending position of the last phrase which is needed for distortion costs), and where w and w + c are the weights of the two hypotheses, respectively, with c being the cost of the phrase-pair.</S>
+    <S sid="23" ssid="9">Similarly, the decoding problem with SCFGs can also be cast as a deductive (parsing) system (Shieber et al., 1995).</S>
+    <S sid="24" ssid="10">Basically, we parse the input string using the source projection of the SCFG while building the corresponding subtranslations in parallel.</S>
+    <S sid="25" ssid="11">A possible deduction of the above example is notated: where the subscripts denote indices in the input sentence just as in CKY parsing, w1, w2 are the scores of the two antecedent items, and t1 and t2 are the corresponding subtranslations.</S>
+    <S sid="26" ssid="12">The resulting translation t2t1 is the inverted concatenation as specified by the target-side of the SCFG rule with the additional cost c&#8242; being the cost of this rule.</S>
+    <S sid="27" ssid="13">These two deductive systems represent the search space of decoding without a language model.</S>
+    <S sid="28" ssid="14">When one is instantiated for a particular input string, it defines a set of derivations, called a forest, represented in a compact structure that has a structure of a graph in the phrase-based case, or more generally, a hypergraph in both cases.</S>
+    <S sid="29" ssid="15">Accordingly we call items like (&#8226;&#8226;&#8226;&#8226;&#8226;) and (VP1,6) nodes in the forest, and instantiated deductions like we call hyperedges that connect one or more antecedent nodes to a consequent node.</S>
+    <S sid="30" ssid="16">To integrate with a bigram language model, we can use the dynamic-programming algorithms of Och and Ney (2004) and Wu (1996) for phrase-based and SCFG-based systems, respectively, which we may think of as doing a finer-grained version of the deductions above.</S>
+    <S sid="31" ssid="17">Each node v in the forest will be split into a set of augmented items, which we call +LM items.</S>
+    <S sid="32" ssid="18">For phrase-based decoding, a +LM item has the form (v a) where a is the last word of the hypothesis.</S>
+    <S sid="33" ssid="19">Thus a +LM version of Deduction (1) might be: where the score of the resulting +LM item w&#8242; = w + c &#8722; log Plm(with  |talk) now includes a combination cost due to the bigrams formed when applying the phrase-pair.</S>
+    <S sid="34" ssid="20">Similarly, a +LM item in SCFG-based models has the form (va*b), where a and b are boundary words of the hypothesis string, and &#8902; is a placeholder symbol for an elided part of that string, indicating that a possible translation of the part of the input spanned by v starts with a and ends with b.</S>
+    <S sid="35" ssid="21">An example +LM version of Deduction (2) is: where w = w1 +w2 +c&#8242;&#8722;log Plm(with  |talk) with a similar combination cost formed in combining adjacent boundary words of antecedents.</S>
+    <S sid="36" ssid="22">This scheme can be easily extended to work with a general ngram model (Chiang, 2007).</S>
+    <S sid="37" ssid="23">The experiments in this paper use trigram models.</S>
+    <S sid="38" ssid="24">The conventional full-integration approach traverses the forest bottom-up and explores all possible +LM deductions along each hyperedge.</S>
+    <S sid="39" ssid="25">The theoretical running time of this algorithm is O(|F||T|(m&#8722;1)) for phrase-based models, and O(|F||T|4(m&#8722;1)) for binary-branching SCFG-based models, where |F |is the size of the forest, and |T| is the number of possible target-side words.</S>
+    <S sid="40" ssid="26">Even if we assume a constant number of translations for each word in the input, with a trigram model, this still amounts to O(n11) for SCFG-based models and O(2nn2) for phrase-based models.</S>
+  </SECTION>
+  <SECTION title="3 Cube Pruning" number="3">
+    <S sid="41" ssid="1">Cube pruning (Chiang, 2007) reduces the search space significantly based on the observation that when the above method is combined with beam search, only a small fraction of the possible +LM items at a node will escape being pruned, and moreover we can select with reasonable accuracy those top-k items without computing all possible items first.</S>
+    <S sid="42" ssid="2">In a nutshell, cube pruning works on the &#8722;LM forest, keeping at most k +LM items at each node, and uses the k-best parsing Algorithm 2 of Huang and Chiang (2005) to speed up the computation.</S>
+    <S sid="43" ssid="3">For simplicity of presentation, we will use concrete SCFG-based examples, but the method applies to the general hypergraph framework in Section 2.</S>
+    <S sid="44" ssid="4">Consider Figure 1(a).</S>
+    <S sid="45" ssid="5">Here k = 3 and we use D(v) to denote the top-k +LM items (in sorted order) of node v. Suppose we have computed D(u1) and D(u2) for the two antecedent nodes u1 = (VP3,6) and u2 = (PP1,3) respectively.</S>
+    <S sid="46" ssid="6">Then for the consequent node v = (VP1,6) we just need to derive the top-3 from the 9 combinations of (Di(u1), Dj(u2)) with i, j E [1, 3].</S>
+    <S sid="47" ssid="7">Since the antecedent items are sorted, it is very likely that the best consequent items in this grid lie towards the upper-left corner.</S>
+    <S sid="48" ssid="8">This situation is very similar to kbest parsing and we can adapt the Algorithm 2 of Huang and Chiang (2005) here to explore this grid in a best-first order.</S>
+    <S sid="49" ssid="9">Suppose that the combination costs are negligible, and therefore the weight of a consequent item is just the product of the weights of the antecedent items.</S>
+    <S sid="50" ssid="10">Then we know that D1(v) = (D1(u1),D1(u2)), the upper-left corner of the grid.</S>
+    <S sid="51" ssid="11">Moreover, we know that D2(v) is the better of (D1(u1), D2(u2)) and (D2(u1),D1(u2)), the two neighbors of the upper-left corner.</S>
+    <S sid="52" ssid="12">We continue in this way (see Figure 1(b)&#8211;(d)), enumerating the consequent items best-first while keeping track of a relatively small number of candidates (shaded cells in Figure 1(b), cand in Figure 2) for the next-best item.</S>
+    <S sid="53" ssid="13">However, when we take into account the combination costs, this grid is no longer monotonic in general, and the above algorithm will not always enumerate items in best-first order.</S>
+    <S sid="54" ssid="14">We can see this in the first iteration in Figure 1(b), where an item with score 2.5 has been enumerated even though there is an item with score 2.4 still to come.</S>
+    <S sid="55" ssid="15">Thus we risk making more search errors than the full-integration method, but in practice the loss is much less significant than the speedup.</S>
+    <S sid="56" ssid="16">Because of this disordering, we do not put the enumerated items directly into D(v); instead, we collect items in a buffer (buf in Figure 2) and re-sort the buffer into D(v) after it has accumulated k items.1 In general the grammar may have multiple rules that share the same source side but have different target sides, which we have treated here as separate k-best +LM rescoring.. . only at the root node on-the-fly at each node on-the-fly at each node hyperedges in the &#8722;LM forest.</S>
+    <S sid="57" ssid="17">In Hiero, these hyperedges are processed as a single unit which we call a hyperedge bundle.</S>
+    <S sid="58" ssid="18">The different target sides then constitute a third dimension of the grid, forming a cube of possible combinations (Chiang, 2007).</S>
+    <S sid="59" ssid="19">Now consider that there are many hyperedges that derive v, and we are only interested the top +LM items of v over all incoming hyperedges.</S>
+    <S sid="60" ssid="20">Following Algorithm 2, we initialize the priority queue cand with the upper-left corner item from each hyperedge, and proceed as above.</S>
+    <S sid="61" ssid="21">See Figure 2 for the pseudocode for cube pruning.</S>
+    <S sid="62" ssid="22">We use the notation (e, j) to identify the derivation of v via the hyperedge e and the jith best subderivation of antecedent ui (1 &lt; i &lt; |j|).</S>
+    <S sid="63" ssid="23">Also, we let 1 stand for a vector whose elements are all 1, and W for the vector whose members are all 0 except for the ith whose value is 1 (the dimensionality of either should be evident from the context).</S>
+    <S sid="64" ssid="24">The heart of the algorithm is lines 10&#8211;12.</S>
+    <S sid="65" ssid="25">Lines 10&#8211;11 move the best derivation (e, j) from cand to buf , and then line 12 pushes its successors {(e, j + W)  |i E 1... |e|I into cand.</S>
+  </SECTION>
+  <SECTION title="4 Cube Growing" number="4">
+    <S sid="66" ssid="1">Although much faster than full-integration, cube pruning still computes a fixed amount of +LM items at each node, many of which will not be useful for arriving at the 1-best hypothesis at the root.</S>
+    <S sid="67" ssid="2">It would be more efficient to compute as few +LM items at each node as are needed to obtain the 1-best hypothesis at the root.</S>
+    <S sid="68" ssid="3">This new method, called cube growing, is a lazy version of cube pruning just as Algorithm 3 of Huang and Chiang (2005), is a lazy version of Algorithm 2 (see Table 1).</S>
+    <S sid="69" ssid="4">Instead of traversing the forest bottom-up, cube growing visits nodes recursively in depth-first order from the root node (Figure 4).</S>
+    <S sid="70" ssid="5">First we call LAZYJTHBEST(TOP,1), which uses the same algorithm as cube pruning to find the 1-best +LM item of the root node using the best +LM items of assuming hcombo(e) = 0.1 for this hyperedge; (b) cube growing prevents early ranking of the top-left cell (2.5) as the best item in this grid. the antecedent nodes.</S>
+    <S sid="71" ssid="6">However, in this case the best +LM items of the antecedent nodes are not known, because we have not visited them yet.</S>
+    <S sid="72" ssid="7">So we recursively invoke LAZYJTHBEST on the antecedent nodes to obtain them as needed.</S>
+    <S sid="73" ssid="8">Each invocation of LAZYJTHBEST(v, j) will recursively call itself on the antecedents of v until it is confident that the jth best +LM item for node v has been found.</S>
+    <S sid="74" ssid="9">Consider again the case of one hyperedge e. Because of the nonmonotonicity caused by combination costs, the first +LM item ((e,1)) popped from cand is not guaranteed to be the best of all combinations along this hyperedge (for example, the top-left cell of 2.5 in Figure 1 is not the best in the grid).</S>
+    <S sid="75" ssid="10">So we cannot simply enumerate items just as they come off of cand.2 Instead, we need to store up popped items in a buffer buf , just as in cube pruning, and enumerate an item only when we are confident that it will never be surpassed in the future.</S>
+    <S sid="76" ssid="11">In other words, we would like to have an estimate of the best item not explored yet (analogous to the heuristic function in A* search).</S>
+    <S sid="77" ssid="12">If we can establish a lower bound hcombo(e) on the combination cost of any +LM deduction via hyperedge e, then we can form a monotonic grid (see Figure 3(a)) of lower bounds on the grid of combinations, by using hcombo(e) in place of the true combination cost for each +LM item x in the grid; call this lower bound h(x).</S>
+    <S sid="78" ssid="13">Now suppose that the gray-shaded cells in Figure 3(a) are the members of cand.</S>
+    <S sid="79" ssid="14">Then the minimum of h(x) over the items in cand, in this example, min{2.2, 5.1} = 2.2 is a lower bound on the cost of any item in the future for the hyperedge e. Indeed, if cand contains items from multiple hyperedges for a single consequent node, this is still a valid lower bound.</S>
+    <S sid="80" ssid="15">More formally: Lemma 1.</S>
+    <S sid="81" ssid="16">For each node v in the forest, the term is a lower bound on the true cost of any future item that is yet to be explored for v. Proof.</S>
+    <S sid="82" ssid="17">For any item x that is not explored yet, the true cost c(x) &gt; h(x), by the definition of h. And there exists an item y E cand[v] along the same hyperedge such that h(x) &gt; h(y), due to the monotonicity of h within the grid along one hyperedge.</S>
+    <S sid="83" ssid="18">We also have h(y) &gt; bound by the definition of bound.</S>
+    <S sid="84" ssid="19">Therefore c(x) &gt; bound.</S>
+    <S sid="85" ssid="20">Now we can safely pop the best item from buf if its true cost MIN(buf ) is better than bound and pass it up to the consequent node (lines 21&#8211;23); but otherwise, we have to wait for more items to accumulate in buf to prevent a potential search error, for example, in the case of Figure 3(b), where the top-left cell current bin (#2) into longer ones.</S>
+    <S sid="86" ssid="21">(b) In Cubit, hypotheses in previous bins are fed via hyperedge bundles (solid arrows) into a priority queue (shaded triangle), which empties into the current bin (#5).</S>
+    <S sid="87" ssid="22">(2.5) is worse than the current bound of 2.2.</S>
+    <S sid="88" ssid="23">The update of bound in each iteration (line 10) can be efficiently implemented by using another heap with the same contents as cand but prioritized by h instead.</S>
+    <S sid="89" ssid="24">In practice this is a negligible overhead on top of cube pruning.</S>
+    <S sid="90" ssid="25">We now turn to the problem of estimating the heuristic function h,o,,,bo.</S>
+    <S sid="91" ssid="26">In practice, computing true lower bounds of the combination costs is too slow and would compromise the speed up gained from cube growing.</S>
+    <S sid="92" ssid="27">So we instead use a much simpler method that just calculates the minimum combination cost of each hyperedge in the top-i derivations of the root node in &#8722;LM decoding.</S>
+    <S sid="93" ssid="28">This is just an approximation of the true lower bound, and bad estimates can lead to search errors.</S>
+    <S sid="94" ssid="29">However, the hope is that by choosing the right value of i, these estimates will be accurate enough to affect the search quality only slightly, which is analogous to &#8220;almost admissible&#8221; heuristics in A* search (Soricut, 2006).</S>
+  </SECTION>
+  <SECTION title="5 Experiments" number="5">
+    <S sid="95" ssid="1">We test our methods on two large-scale English-toChinese translation systems: a phrase-based system and our tree-to-string system (Huang et al., 2006).</S>
+    <S sid="96" ssid="2">We implemented Cubit, a Python clone of the Pharaoh decoder (Koehn, 2004),3 and adapted cube pruning to it as follows.</S>
+    <S sid="97" ssid="3">As in Pharaoh, each bin i contains hypotheses (i.e., +LM items) covering i words on the source-side.</S>
+    <S sid="98" ssid="4">But at each bin (see Figure 5), all +LM items from previous bins are first partitioned into &#8722;LM items; then the hyperedges leading from those &#8722;LM items are further grouped into hyperedge bundles (Figure 6), which are placed into the priority queue of the current bin.</S>
+    <S sid="99" ssid="5">Our data preparation follows Huang et al. (2006): the training data is a parallel corpus of 28.3M words on the English side, and a trigram language model is trained on the Chinese side.</S>
+    <S sid="100" ssid="6">We use the same test set as (Huang et al., 2006), which is a 140-sentence subset of the NIST 2003 test set with 9&#8211;36 words on the English side.</S>
+    <S sid="101" ssid="7">The weights for the log-linear model are tuned on a separate development set.</S>
+    <S sid="102" ssid="8">We set the decoder phrase-table limit to 100 as suggested in (Koehn, 2004) and the distortion limit to 4.</S>
+    <S sid="103" ssid="9">Figure 7(a) compares cube pruning against fullintegration in terms of search quality vs. search efficiency, under various pruning settings (threshold beam set to 0.0001, stack size varying from 1 to 200).</S>
+    <S sid="104" ssid="10">Search quality is measured by average model cost per sentence (lower is better), and search efficiency is measured by the average number of hypotheses generated (smaller is faster).</S>
+    <S sid="105" ssid="11">At each level of search quality, the speed-up is always better than a factor of 10.</S>
+    <S sid="106" ssid="12">The speed-up at the lowest searcherror level is a factor of 32.</S>
+    <S sid="107" ssid="13">Figure 7(b) makes a similar comparison but measures search quality by BLEU, which shows an even larger relative speed-up for a given BLEU score, because translations with very different model costs might have similar BLEU scores.</S>
+    <S sid="108" ssid="14">It also shows that our full-integration implementation in Cubit faithfully reproduces Pharaoh&#8217;s performance.</S>
+    <S sid="109" ssid="15">Fixing the stack size to 100 and varying the threshold yielded a similar result.</S>
+    <S sid="110" ssid="16">In tree-to-string (also called syntax-directed) decoding (Huang et al., 2006; Liu et al., 2006), the source string is first parsed into a tree, which is then recursively converted into a target string according to transfer rules in a synchronous grammar (Galley et al., 2006).</S>
+    <S sid="111" ssid="17">For instance, the following rule translates an English passive construction into Chinese: Our tree-to-string system performs slightly better than the state-of-the-art phrase-based system Pharaoh on the above data set.</S>
+    <S sid="112" ssid="18">Although different from the SCFG-based systems in Section 2, its derivation trees remain context-free and the search space is still a hypergraph, where we can adapt the methods presented in Sections 3 and 4.</S>
+    <S sid="113" ssid="19">The data set is same as in Section 5.1, except that we also parsed the English-side using a variant of the Collins (1997) parser, and then extracted 24.7M tree-to-string rules using the algorithm of (Galley et al., 2006).</S>
+    <S sid="114" ssid="20">Since our tree-to-string rules may have many variables, we first binarize each hyperedge in the forest on the target projection (Huang, 2007).</S>
+    <S sid="115" ssid="21">All the three +LM decoding methods to be compared below take these binarized forests as input.</S>
+    <S sid="116" ssid="22">For cube growing, we use a non-duplicate k-best method (Huang et al., 2006) to get 100-best unique translations according to &#8722;LM to estimate the lower-bound heuristics.4 This preprocessing step takes on average 0.12 seconds per sentence, which is negligible in comparison to the +LM decoding time.</S>
+    <S sid="117" ssid="23">Figure 8(a) compares cube growing and cube pruning against full-integration under various beam settings in the same fashion of Figure 7(a).</S>
+    <S sid="118" ssid="24">At the lowest level of search error, the relative speed-up from cube growing and cube pruning compared with full-integration is by a factor of 9.8 and 4.1, respectively.</S>
+    <S sid="119" ssid="25">Figure 8(b) is a similar comparison in terms of BLEU scores and shows an even bigger advantage of cube growing and cube pruning over the baseline.</S>
+    <S sid="120" ssid="26">4If a hyperedge is not represented at all in the 100-best &#8722;LM derivations at the root node, we use the 1-best &#8722;LM derivation of this hyperedge instead.</S>
+    <S sid="121" ssid="27">Here, rules that share the same source side but have different target sides are treated as separate hyperedges, not collected into hyperedge bundles, since grouping becomes difficult after binarization.</S>
+  </SECTION>
+  <SECTION title="6 Conclusions and Future Work" number="6">
+    <S sid="122" ssid="1">We have presented a novel extension of cube pruning called cube growing, and shown how both can be seen as general forest rescoring techniques applicable to both phrase-based and syntax-based decoding.</S>
+    <S sid="123" ssid="2">We evaluated these methods on large-scale translation tasks and observed considerable speed improvements, often by more than a factor of ten.</S>
+    <S sid="124" ssid="3">We plan to investigate how to adapt cube growing to phrasebased and hierarchical phrase-based systems.</S>
+    <S sid="125" ssid="4">These forest rescoring algorithms have potential applications to other computationally intensive tasks involving combinations of different models, for example, head-lexicalized parsing (Collins, 1997); joint parsing and semantic role labeling (Sutton and McCallum, 2005); or tagging and parsing with nonlocal features.</S>
+    <S sid="126" ssid="5">Thus we envision forest rescoring as being of general applicability for reducing complicated search spaces, as an alternative to simulated annealing methods (Kirkpatrick et al., 1983).</S>
+  </SECTION>
+</PAPER>

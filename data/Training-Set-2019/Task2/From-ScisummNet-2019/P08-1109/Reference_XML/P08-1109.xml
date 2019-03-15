@@ -1,0 +1,172 @@
+<PAPER>
+  <S sid="0">Efficient Feature-based Conditional Random Field Parsing</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Discriminative feature-based methods are widely used in natural language processing, but sentence parsing is still dominated by generative methods.</S>
+    <S sid="2" ssid="2">While prior feature-based dynamic programming parsers have restricted training and evaluation to artificially short sentences, we present the first general, featurerich discriminative parser, based on a conditional random field model, which has been successfully scaled to the full WSJ parsing data.</S>
+    <S sid="3" ssid="3">Our efficiency is primarily due to the use of stochastic optimization techniques, as well as parallelization and chart prefiltering.</S>
+    <S sid="4" ssid="4">On WSJ15, we attain a state-of-the-artF-score a 14% relative reduction in error over previous models, while being two orders of magnitude faster.</S>
+    <S sid="5" ssid="5">On sentences of length our system achieves an F-score of a 36% relative reduction in error over a generative baseline.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="6" ssid="1">Over the past decade, feature-based discriminative models have become the tool of choice for many natural language processing tasks.</S>
+    <S sid="7" ssid="2">Although they take much longer to train than generative models, they typically produce higher performing systems, in large part due to the ability to incorporate arbitrary, potentially overlapping features.</S>
+    <S sid="8" ssid="3">However, constituency parsing remains an area dominated by generative methods, due to the computational complexity of the problem.</S>
+    <S sid="9" ssid="4">Previous work on discriminative parsing falls under one of three approaches.</S>
+    <S sid="10" ssid="5">One approach does discriminative reranking of the n-best list of a generative parser, still usually depending highly on the generative parser score as a feature (Collins, 2000; Charniak and Johnson, 2005).</S>
+    <S sid="11" ssid="6">A second group of papers does parsing by a sequence of independent, discriminative decisions, either greedily or with use of a small beam (Ratnaparkhi, 1997; Henderson, 2004).</S>
+    <S sid="12" ssid="7">This paper extends the third thread of work, where joint inference via dynamic programming algorithms is used to train models and to attempt to find the globally best parse.</S>
+    <S sid="13" ssid="8">Work in this context has mainly been limited to use of artificially short sentences due to exorbitant training and inference times.</S>
+    <S sid="14" ssid="9">One exception is the recent work of Petrov et al. (2007), who discriminatively train a grammar with latent variables and do not restrict themselves to short sentences.</S>
+    <S sid="15" ssid="10">However their model, like the discriminative parser of Johnson (2001), makes no use of features, and effectively ignores the largest advantage of discriminative training.</S>
+    <S sid="16" ssid="11">It has been shown on other NLP tasks that modeling improvements, such as the switch from generative training to discriminative training, usually provide much smaller performance gains than the gains possible from good feature engineering.</S>
+    <S sid="17" ssid="12">For example, in (Lafferty et al., 2001), when switching from a generatively trained hidden Markov model (HMM) to a discriminatively trained, linear chain, conditional random field (CRF) for part-of-speech tagging, their error drops from 5.7% to 5.6%.</S>
+    <S sid="18" ssid="13">When they add in only a small set of orthographic features, their CRF error rate drops considerably more to 4.3%, and their out-of-vocabulary error rate drops by more than half.</S>
+    <S sid="19" ssid="14">This is further supported by Johnson (2001), who saw no parsing gains when switching from generative to discriminative training, and by Petrov et al. (2007) who saw only small gains of around 0.7% for their final model when switching training methods.</S>
+    <S sid="20" ssid="15">In this work, we provide just such a framework for training a feature-rich discriminative parser.</S>
+    <S sid="21" ssid="16">Unlike previous work, we do not restrict ourselves to short sentences, but we do provide results both for training and testing on sentences of length &lt; 15 (WSJ15) and for training and testing on sentences of length &lt; 40, allowing previous WSJ15 results to be put in context with respect to most modern parsing literature.</S>
+    <S sid="22" ssid="17">Our model is a conditional random field based model.</S>
+    <S sid="23" ssid="18">For a rule application, we allow arbitrary features to be defined over the rule categories, span and split point indices, and the words of the sentence.</S>
+    <S sid="24" ssid="19">It is well known that constituent length influences parse probability, but PCFGs cannot easily take this information into account.</S>
+    <S sid="25" ssid="20">Another benefit of our feature based model is that it effortlessly allows smoothing over previously unseen rules.</S>
+    <S sid="26" ssid="21">While the rule may be novel, it will likely contain features which are not.</S>
+    <S sid="27" ssid="22">Practicality comes from three sources.</S>
+    <S sid="28" ssid="23">We made use of stochastic optimization methods which allow us to find optimal model parameters with very few passes through the data.</S>
+    <S sid="29" ssid="24">We found no difference in parser performance between using stochastic gradient descent (SGD), and the more common, but significantly slower, L-BFGS.</S>
+    <S sid="30" ssid="25">We also used limited parallelization, and prefiltering of the chart to avoid scoring rules which cannot tile into complete parses of the sentence.</S>
+    <S sid="31" ssid="26">This speed-up does not come with a performance cost; we attain an F-score of 90.9%, a 14% relative reduction in errors over previous work on WSJ15.</S>
+  </SECTION>
+  <SECTION title="2 The Model" number="2">
+    <S sid="32" ssid="1">Our parsing model is based on a conditional random field model, however, unlike previous TreeCRF work, e.g., (Cohn and Blunsom, 2005; Jousse et al., 2006), we do not assume a particular tree structure, and instead find the most likely structure and labeling.</S>
+    <S sid="33" ssid="2">This is similar to conventional probabilistic context-free grammar (PCFG) parsing, with two exceptions: (a) we maximize conditional likelihood of the parse tree, given the sentence, not joint likelihood of the tree and sentence; and (b) probabilities are normalized globally instead of locally &#8211; the graphical models depiction of our trees is undirected.</S>
+    <S sid="34" ssid="3">Formally, we have a CFG G, which consists of (Manning and Sch&#168;utze, 1999): (i) a set of terminals {wk},k = 1,...,V; (ii) a set of nonterminals {Nk},k = 1,...,n; (iii) a designated start symbol ROOT; and (iv) a set of rules, {&#961; = Ni &#8212;* &#950; j}, where &#950; j is a sequence of terminals and nonterminals.</S>
+    <S sid="35" ssid="4">A PCFG additionally assigns probabilities to each rule &#961; such that Vi&#8721;j P(Ni &#8212;* &#950; j) = 1.</S>
+    <S sid="36" ssid="5">Our conditional random field CFG (CRF-CFG) instead defines local clique potentials &#966;(r|s;&#952;), where s is the sentence, and r contains a one-level subtree of a tree t, corresponding to a rule &#961;, along with relevant information about the span of words which it encompasses, and, if applicable, the split position (see Figure 1).</S>
+    <S sid="37" ssid="6">These potentials are relative to the sentence, unlike a PCFG where rule scores do not have access to words at the leaves of the tree, or even how many words they dominate.</S>
+    <S sid="38" ssid="7">We then define a conditional probability distribution over entire trees, using the standard CRF distribution, shown in (1).</S>
+    <S sid="39" ssid="8">There is, however, an important subtlety lurking in how we define the partition function.</S>
+    <S sid="40" ssid="9">The partition function Zs, which makes the probability of all possible parses sum to unity, is defined over all structures as well as all labelings of those structures.</S>
+    <S sid="41" ssid="10">We define &#964;(s) to be the set of all possible parse trees for the given sentence licensed by the grammar G. where The above model is not well-defined over all CFGs.</S>
+    <S sid="42" ssid="11">Unary rules of the form Ni &#8212;* Nj can form cycles, leading to infinite unary chains with infinite mass.</S>
+    <S sid="43" ssid="12">However, it is standard in the parsing literature to transform grammars into a restricted class of CFGs so as to permit efficient parsing.</S>
+    <S sid="44" ssid="13">Binarization of rules (Earley, 1970) is necessary to obtain cubic parsing time, and closure of unary chains is required for finding total probability mass (rather than just best parses) (Stolcke, 1995).</S>
+    <S sid="45" ssid="14">To address this issue, we define our model over a restricted class of CFGs which limits unary chains to not have any repeated states.</S>
+    <S sid="46" ssid="15">This was done by collapsing all allowed unary chains to single unary rules, and disallowing multiple unary rule applications over the same span.1 We give the details of our binarization scheme in Section 5.</S>
+    <S sid="47" ssid="16">Note that there exists a grammar in this class which is weakly equivalent with any arbitrary CFG.</S>
+    <S sid="48" ssid="17">Our clique potentials take an exponential form.</S>
+    <S sid="49" ssid="18">We have a feature function, represented by f(r,s), which returns a vector with the value for each feature.</S>
+    <S sid="50" ssid="19">We denote the value of feature fi by fi(r,s) and our model has a corresponding parameter &#952;i for each feature.</S>
+    <S sid="51" ssid="20">The clique potential function is then: The log conditional likelihood of the training data D, with an additional L2 regularization term, is then: And the partial derivatives of the log likelihood, with respect to the model weights are, as usual, the difference between the empirical counts and the model expectations: 1In our implementation of the inside-outside algorithm, we then need to keep two inside and outside scores for each span: one from before and one from after the application of unary rules.</S>
+    <S sid="52" ssid="21">The partition function Zs and the partial derivatives can be efficiently computed with the help of the inside-outside algorithm.2 Zs is equal to the inside score of ROOT over the span of the entire sentence.</S>
+    <S sid="53" ssid="22">To compute the partial derivatives, we walk through each rule, and span/split, and add the outside log-score of the parent, the inside log-score(s) of the child(ren), and the log-score for that rule and span/split.</S>
+    <S sid="54" ssid="23">Zs is subtracted from this value to get the normalized log probability of that rule in that position.</S>
+    <S sid="55" ssid="24">Using the probabilities of each rule application, over each span/split, we can compute the expected feature values (the second term in Equation 4), by multiplying this probability by the value of the feature corresponding to the weight for which we are computing the partial derivative.</S>
+    <S sid="56" ssid="25">The process is analogous to the computation of partial derivatives in linear chain CRFs.</S>
+    <S sid="57" ssid="26">The complexity of the algorithm for a particular sentence is O(n3), where n is the length of the sentence.</S>
+    <S sid="58" ssid="27">Unlike (Taskar et al., 2004), our algorithm has the advantage of being easily parallelized (see footnote 7 in their paper).</S>
+    <S sid="59" ssid="28">Because the computation of both the log likelihood and the partial derivatives involves summing over each tree individually, the computation can be parallelized by having many clients which each do the computation for one tree, and one central server which aggregates the information to compute the relevant information for a set of trees.</S>
+    <S sid="60" ssid="29">Because we use a stochastic optimization method, as discussed in Section 3, we compute the objective for only a small portion of the training data at a time, typically between 15 and 30 sentences.</S>
+    <S sid="61" ssid="30">In 2In our case the values in the chart are the clique potentials which are non-negative numbers, but not probabilities. this case the gains from adding additional clients decrease rapidly, because the computation time is dominated by the longest sentences in the batch.</S>
+    <S sid="62" ssid="31">Training is also sped up by prefiltering the chart.</S>
+    <S sid="63" ssid="32">On the inside pass of the algorithm one will see many rules which cannot actually be tiled into complete parses.</S>
+    <S sid="64" ssid="33">In standard PCFG parsing it is not worth figuring out which rules are viable at a particular chart position and which are not.</S>
+    <S sid="65" ssid="34">In our case however this can make a big difference.We are not just looking up a score for the rule, but must compute all the features, and dot product them with the feature weights, which is far more time consuming.</S>
+    <S sid="66" ssid="35">We also have to do an outside pass as well as an inside one, which is sped up by not considering impossible rule applications.</S>
+    <S sid="67" ssid="36">Lastly, we iterate through the data multiple times, so if we can compute this information just once, we will save time on all subsequent iterations on that sentence.</S>
+    <S sid="68" ssid="37">We do this by doing an insideoutside pass that is just boolean valued to determine which rules are possible at which positions in the chart.</S>
+    <S sid="69" ssid="38">We simultaneously compute the features for the possible rules and then save the entire data structure to disk.</S>
+    <S sid="70" ssid="39">For all but the shortest of sentences, the disk I/O is easily worth the time compared to recomputation.</S>
+    <S sid="71" ssid="40">The first time we see a sentence this method is still about one third faster than if we did not do the prefiltering, and on subsequent iterations the improvement is closer to tenfold.</S>
+  </SECTION>
+  <SECTION title="3 Stochastic Optimization Methods" number="3">
+    <S sid="72" ssid="1">Stochastic optimization methods have proven to be extremely efficient for the training of models involving computationally expensive objective functions like those encountered with our task (Vishwanathan et al., 2006) and, in fact, the on-line backpropagation learning used in the neural network parser of Henderson (2004) is a form of stochastic gradient descent.</S>
+    <S sid="73" ssid="2">Standard deterministic optimization routines such as L-BFGS (Liu and Nocedal, 1989) make little progress in the initial iterations, often requiring several passes through the data in order to satisfy sufficient descent conditions placed on line searches.</S>
+    <S sid="74" ssid="3">In our experiments SGD converged to a lower objective function value than L-BFGS, however it required far fewer iterations (see Figure 2) and achieved comparable test set performance to L-BFGS in a fraction of the time.</S>
+    <S sid="75" ssid="4">One early experiment on WSJ15 showed a seven time speed up.</S>
+    <S sid="76" ssid="5">Utilization of stochastic optimization routines requires the implementation of a stochastic objective function.</S>
+    <S sid="77" ssid="6">This function, L&#710; is designed to approximate the true function L based off a small subset of the training data represented by Db.</S>
+    <S sid="78" ssid="7">Here b, the batch size, means that Db is created by drawing b training examples, with replacement, from the training set D. With this notation we can express the stochastic evaluation of the function as L&#710; (Db;e).</S>
+    <S sid="79" ssid="8">This stochastic function must be designed to ensure that: Note that this property is satisfied, without scaling, for objective functions that sum over the training data, as it is in our case, but any priors must be scaled down by a factor of b/|D|.</S>
+    <S sid="80" ssid="9">The stochastic gradient, &#65533;L (D(i) b ;e), is then simply the derivative of the stochastic function value.</S>
+    <S sid="81" ssid="10">SGD was implemented using the standard update: ek+1 = ek &#8722; gk0L (D(k) And employed a gain schedule in the form where parameter &#964; was adjusted such that the gain is halved after five passes through the data.</S>
+    <S sid="82" ssid="11">We found that an initial gain of &#951;0 = 0.1 and batch size between 15 and 30 was optimal for this application.</S>
+  </SECTION>
+  <SECTION title="4 Features" number="4">
+    <S sid="83" ssid="1">As discussed in Section 5 we performed experiments on both sentences of length &lt; 15 and length &lt; 40.</S>
+    <S sid="84" ssid="2">All feature development was done on the length 15 corpus, due to the substantially faster train and test times.</S>
+    <S sid="85" ssid="3">This has the unfortunate effect that our features are optimized for shorter sentences and less training data, but we found development on the longer sentences to be infeasible.</S>
+    <S sid="86" ssid="4">Our features are divided into two types: lexicon features, which are over words and tags, and grammar features which are over the local subtrees and corresponding span/split (both have access to the entire sentence).</S>
+    <S sid="87" ssid="5">We ran two kinds of experiments: a discriminatively trained model, which used only the rules and no other grammar features, and a featurebased model which did make use of grammar features.</S>
+    <S sid="88" ssid="6">Both models had access to the lexicon features.</S>
+    <S sid="89" ssid="7">We viewed this as equivalent to the more elaborate, smoothed unknown word models that are common in many PCFG parsers, such as (Klein and Manning, 2003; Petrov et al., 2006).</S>
+    <S sid="90" ssid="8">We preprocessed the words in the sentences to obtain two extra pieces of information.</S>
+    <S sid="91" ssid="9">Firstly, each word is annotated with a distributional similarity tag, from a distributional similarity model (Clark, 2000) trained on 100 million words from the British National Corpus and English Gigaword corpus.</S>
+    <S sid="92" ssid="10">Secondly, we compute a class for each word based on the unknown word model of Klein and Manning (2003); this model takes into account capitalization, digits, dashes, and other character-level features.</S>
+    <S sid="93" ssid="11">The full set of features, along with an explanation of our notation, is listed in Table 1.</S>
+  </SECTION>
+  <SECTION title="5 Experiments" number="5">
+    <S sid="94" ssid="1">For all experiments, we trained and tested on the Penn treebank (PTB) (Marcus et al., 1993).</S>
+    <S sid="95" ssid="2">We used the standard splits, training on sections 2 to 21, testing on section 23 and doing development on section 22.</S>
+    <S sid="96" ssid="3">Previous work on (non-reranking) discriminative parsing has given results on sentences of length &lt; 15, but most parsing literature gives results on either sentences of length &lt; 40, or all sentences.</S>
+    <S sid="97" ssid="4">To properly situate this work with respect to both sets of literature we trained models on both length &lt; 15 (WSJ15) and length &lt; 40 (WSJ40), and we also tested on all sentences using the WSJ40 models.</S>
+    <S sid="98" ssid="5">Our results also provide a context for interpreting previous work which used WSJ15 and not WSJ40.</S>
+    <S sid="99" ssid="6">We used a relatively simple grammar with few additional annotations.</S>
+    <S sid="100" ssid="7">Starting with the grammar read off of the training set, we added parent annotations onto each state, including the POS tags, resulting in rules such as S-ROOT &#8212;* NP-S VP-S. We also added head tag annotations to VPs, in the same manner as (Klein and Manning, 2003).</S>
+    <S sid="101" ssid="8">Lastly, for the WSJ40 runs we used a simple, right branching binarization where each active state is annotated with its previous sibling and first child.</S>
+    <S sid="102" ssid="9">This is equivalent to children of a state being produced by a second order Markov process.</S>
+    <S sid="103" ssid="10">For the WSJ15 runs, each active state was annotated with only its first child, which is equivalent to a first order Markov process.</S>
+    <S sid="104" ssid="11">See Table 5 for the number of states and rules produced.</S>
+    <S sid="105" ssid="12">For both WSJ15 and WSJ40, we trained a generative model; a discriminative model, which used lexicon features, but no grammar features other than the rules themselves; and a feature-based model which had access to all features.</S>
+    <S sid="106" ssid="13">For the length 15 data we also did experiments in which we relaxed the grammar.</S>
+    <S sid="107" ssid="14">By this we mean that we added (previously unseen) rules to the grammar, as a means of smoothing.</S>
+    <S sid="108" ssid="15">We chose which rules to add by taking existing rules and modifying the parent annotation on the parent of the rule.</S>
+    <S sid="109" ssid="16">We used stochastic gradient descent for if some child is a verb tag, then rule, with that child replaced by the word Unaries which span one word: (r,w) (r,ds(w)) (b(p(r)),w) (b(p(r)),ds(w)) these experiments; the length 15 models had a batch size of 15 and we allowed twenty passes through the data.3 The length 40 models had a batch size of 30 and we allowed ten passes through the data.</S>
+    <S sid="110" ssid="17">We used development data to decide when the models had converged.</S>
+    <S sid="111" ssid="18">Additionally, we provide generative numbers for training on the entire PTB to give a sense of how much performance suffered from the reduced training data (generative-all in Table 4).</S>
+    <S sid="112" ssid="19">The full results for WSJ15 are shown in Table 3 and for WSJ40 are shown in Table 4.</S>
+    <S sid="113" ssid="20">The WSJ15 models were each trained on a single Dual-Core AMD OpteronTM using three gigabytes of RAM and no parallelization.</S>
+    <S sid="114" ssid="21">The discriminatively trained generative model (discriminative in Table 3) took approximately 12 minutes per pass through the data, while the feature-based model (feature-based in Table 3) took 35 minutes per pass through the data.</S>
+    <S sid="115" ssid="22">The feature-based model with the relaxed grammar (relaxed in Table 3) took about four times as long as the regular feature-based model.</S>
+    <S sid="116" ssid="23">The discriminatively trained generative WSJ40 model (discriminative in Table 4) was trained using two of the same machines, with 16 gigabytes of RAM each for the clients.4 It took about one day per pass through the data.</S>
+    <S sid="117" ssid="24">The feature-based WSJ40 model (featurebased in Table 4) was trained using four of these machines, also with 16 gigabytes of RAM each for the clients.</S>
+    <S sid="118" ssid="25">It took about three days per pass through the data.</S>
+    <S sid="119" ssid="26">The results clearly show that gains came from both the switch from generative to discriminative training, and from the extensive use of features.</S>
+    <S sid="120" ssid="27">In Figure 3 we show for an example from section 22 the parse trees produced by our generative model and our feature-based discriminative model, and the correct parse.</S>
+    <S sid="121" ssid="28">The parse from the feature-based model better exhibits the right branching tendencies of English.</S>
+    <S sid="122" ssid="29">This is likely due to the heavy feature, which encourages long constituents at the end of the sentence.</S>
+    <S sid="123" ssid="30">It is difficult for a standard PCFG to learn this aspect of the English language, because the score it assigns to a rule does not take its span into account.</S>
+  </SECTION>
+  <SECTION title="6 Comparison With Related Work" number="6">
+    <S sid="124" ssid="1">The most similar related work is (Johnson, 2001), which did discriminative training of a generative PCFG.</S>
+    <S sid="125" ssid="2">The model was quite similar to ours, except that it did not incorporate any features and it required the parameters (which were just scores for rules) to be locally normalized, as with a generatively trained model.</S>
+    <S sid="126" ssid="3">Due to training time, they used the ATIS treebank corpus , which is much smaller than even WSJ15, with only 1,088 training sentences, 294 testing sentences, and an average sentence length of around 11.</S>
+    <S sid="127" ssid="4">They found no significant difference in performance between their generatively and discriminatively trained parsers.</S>
+    <S sid="128" ssid="5">There are two probable reasons for this result.</S>
+    <S sid="129" ssid="6">The training set is very small, and it is a known fact that generative models tend to work better for small datasets and discriminative models tend to work better for larger datasets (Ng and Jordan, 2002).</S>
+    <S sid="130" ssid="7">Additionally, they made no use of features, one of the primary benefits of discriminative learning.</S>
+    <S sid="131" ssid="8">Taskar et al. (2004) took a large margin approach to discriminative learning, but achieved only small gains.</S>
+    <S sid="132" ssid="9">We suspect that this is in part due to the grammar that they chose &#8211; the grammar of (Klein and Manning, 2003), which was hand annotated with the intent of optimizing performance of a PCFG.</S>
+    <S sid="133" ssid="10">This grammar is fairly sparse &#8211; for any particular state there are, on average, only a few rules with that state as a parent &#8211; so the learning algorithm may have suffered because there were few options to discriminate between.</S>
+    <S sid="134" ssid="11">Starting with this grammar we found it difficult to achieve gains as well.</S>
+    <S sid="135" ssid="12">Additionally, their long training time (several months for WSJ15, according to (Turian and Melamed, 2006)) made feature engineering difficult; they were unable to really explore the space of possible features.</S>
+    <S sid="136" ssid="13">More recent is the work of (Turian and Melamed, 2006; Turian et al., 2007), which improved both the training time and accuracy of (Taskar et al., 2004).</S>
+    <S sid="137" ssid="14">They define a simple linear model, use boosted decision trees to select feature conjunctions, and a line search to optimize the parameters.</S>
+    <S sid="138" ssid="15">They use an agenda parser, and define their atomic features, from which the decision trees are constructed, over the entire state being considered.</S>
+    <S sid="139" ssid="16">While they make extensive use of features, their setup is much more complex than ours and takes substantially longer to train &#8211; up to 5 days on WSJ15 &#8211; while achieving only small gains over (Taskar et al., 2004).</S>
+    <S sid="140" ssid="17">The most recent similar research is (Petrov et al., 2007).</S>
+    <S sid="141" ssid="18">They also do discriminative parsing of length 40 sentences, but with a substantially different setup.</S>
+    <S sid="142" ssid="19">Following up on their previous work (Petrov et al., 2006) on grammar splitting, they do discriminative parsing with latent variables, which requires them to optimize a non-convex function.</S>
+    <S sid="143" ssid="20">Instead of using a stochastic optimization technique, they use LBFGS, but do coarse-to-fine pruning to approximate their gradients and log likelihood.</S>
+    <S sid="144" ssid="21">Because they were focusing on grammar splitting they, like (Johnson, 2001), did not employ any features, and, like (Taskar et al., 2004), they saw only small gains from switching from generative to discriminative training.</S>
+  </SECTION>
+  <SECTION title="7 Conclusions" number="7">
+    <S sid="145" ssid="1">We have presented a new, feature-rich, dynamic programming based discriminative parser which is simpler, more effective, and faster to train and test than previous work, giving us new state-of-the-art performance when training and testing on sentences of length &lt; 15 and the first results for such a parser trained and tested on sentences of length &lt; 40.</S>
+    <S sid="146" ssid="2">We also show that the use of SGD for training CRFs performs as well as L-BFGS in a fraction of the time.</S>
+    <S sid="147" ssid="3">Other recent work on discriminative parsing has neglected the use of features, despite their being one of the main advantages of discriminative training methods.</S>
+    <S sid="148" ssid="4">Looking at how other tasks, such as named entity recognition and part-of-speech tagging, have evolved over time, it is clear that greater gains are to be gotten from developing better features than from better models.</S>
+    <S sid="149" ssid="5">We have provided just such a framework for improving parsing performance.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="8">
+    <S sid="150" ssid="1">Many thanks to Teg Grenager and Paul Heymann for their advice (and their general awesomeness), and to our anonymous reviewers for helpful comments.</S>
+    <S sid="151" ssid="2">This paper is based on work funded in part by the Defense Advanced Research Projects Agency through IBM, by the Disruptive Technology Office (DTO) Phase III Program for Advanced Question Answering for Intelligence (AQUAINT) through Broad Agency Announcement (BAA) N61339-06R-0034, and by a Scottish Enterprise EdinburghStanford Link grant (R37588), as part of the EASIE project.</S>
+  </SECTION>
+</PAPER>

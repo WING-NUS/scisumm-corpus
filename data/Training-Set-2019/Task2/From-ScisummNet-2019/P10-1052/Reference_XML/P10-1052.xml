@@ -1,0 +1,208 @@
+<PAPER>
+  <S sid="0">Practical Very Large Scale CRFs</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Conditional Random Fields (CRFs) are a widely-used approach for supervised sequence labelling, notably due to their ability to handle large description spaces and to integrate structural dependency between labels.</S>
+    <S sid="2" ssid="2">Even for the simple linearchain model, taking structure into account implies a number of parameters and a computational effort that grows quadratically with the cardinality of the label set.</S>
+    <S sid="3" ssid="3">In this paper, we address the issue of training very large CRFs, containing up to hundreds output labels and several billion features.</S>
+    <S sid="4" ssid="4">Efficiency stems here from the sparinduced by the use of a term.</S>
+    <S sid="5" ssid="5">Based on our own implementation, we compare three recent proposals for implementing this regularization strategy.</S>
+    <S sid="6" ssid="6">Our experiments demonstrate that very large CRFs can be trained efficiently and that very large models are able to improve the accuracy, while delivering compact parameter sets.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="7" ssid="1">Conditional Random Fields (CRFs) (Lafferty et al., 2001; Sutton and McCallum, 2006) constitute a widely-used and effective approach for supervised structure learning tasks involving the mapping between complex objects such as strings and trees.</S>
+    <S sid="8" ssid="2">An important property of CRFs is their ability to handle large and redundant feature sets and to integrate structural dependency between output labels.</S>
+    <S sid="9" ssid="3">However, even for simple linear chain CRFs, the complexity of learning and inference This work was partly supported by ANR projects CroTaL (ANR-07-MDCO-003) and MGA (ANR-07-BLAN-031102). grows quadratically with respect to the number of output labels and so does the number of structural features, ie. features testing adjacent pairs of labels.</S>
+    <S sid="10" ssid="4">Most empirical studies on CRFs thus either consider tasks with a restricted output space (typically in the order of few dozens of output labels), heuristically reduce the use of features, especially of features that test pairs of adjacent labels1, and/or propose heuristics to simulate contextual dependencies, via extended tests on the observations (see discussions in, eg., (Punyakanok et al., 2005; Liang et al., 2008)).</S>
+    <S sid="11" ssid="5">Limitating the feature set or the number of output labels is however frustrating for many NLP tasks, where the type and number of potentially relevant features are very large.</S>
+    <S sid="12" ssid="6">A number of studies have tried to alleviate this problem.</S>
+    <S sid="13" ssid="7">Pal et al. (2006) propose to use a &#8220;sparse&#8221; version of the forward-backward algorithm during training, where sparsity is enforced through beam pruning.</S>
+    <S sid="14" ssid="8">Related ideas are discussed by Dietterich et al. (2004); by Cohn (2006), who considers &#8220;generalized&#8221; feature functions; and by Jeong et al.</S>
+    <S sid="15" ssid="9">(2009), who use approximations to simplify the forward-backward recursions.</S>
+    <S sid="16" ssid="10">In this paper, we show that the sparsity that is induced by il-penalized estimation of CRFs can be used to reduce the total training time, while yielding extremely compact models.</S>
+    <S sid="17" ssid="11">The benefits of sparsity are even greater during inference: less features need to be extracted and included in the potential functions, speeding up decoding with a lesser memory footprint.</S>
+    <S sid="18" ssid="12">We study and compare three different ways to implement il penalty for CRFs that have been introduced recently: orthantwise Quasi Newton (Andrew and Gao, 2007), stochastic gradient descent (Tsuruoka et al., 2009) and coordinate descent (Sokolovska et al., 2010), concluding that these methods have complementary strengths and weaknesses.</S>
+    <S sid="19" ssid="13">Based on an efficient implementation of these algorithms, we were able to train very large CRFs containing more than a hundred of output labels and up to several billion features, yielding results that are as good or better than the best reported results for two NLP benchmarks, text phonetization and part-of-speech tagging.</S>
+    <S sid="20" ssid="14">Our contribution is therefore twofold: firstly a detailed analysis of these three algorithms, discussing implementation, convergence and comparing the effect of various speed-ups.</S>
+    <S sid="21" ssid="15">This comparison is made fair and reliable thanks to the reimplementation of these techniques in the same software package.</S>
+    <S sid="22" ssid="16">Second, the experimental demonstration that using large output label sets is doable and that very large feature sets actually help improve prediction accuracy.</S>
+    <S sid="23" ssid="17">In addition, we show how sparsity in structured feature sets can be used in incremental training regimes, where long-range features are progressively incorporated in the model insofar as the shorter range features have proven useful.</S>
+    <S sid="24" ssid="18">The rest of the paper is organized as follows: we first recall the basics of CRFs in Section 2, and discuss three ways to train CRFs with a `1 penalty in Section 3.</S>
+    <S sid="25" ssid="19">We then detail several implementation issues that need to be addressed when dealing with massive feature sets in Section 4.</S>
+    <S sid="26" ssid="20">Our experiments are reported in Section 5.</S>
+    <S sid="27" ssid="21">The main conclusions of this study are drawn in Section 6.</S>
+  </SECTION>
+  <SECTION title="2 Conditional Random Fields" number="2">
+    <S sid="28" ssid="1">In this section, we recall the basics of Conditional Random Fields (CRFs) (Lafferty et al., 2001; Sutton and McCallum, 2006) and introduce the notations that will be used throughout.</S>
+    <S sid="29" ssid="2">CRFs are based on the following model where x = (x1, ...,xT) and y = (y1, ... , yT) are, respectively, the input and output sequences2, and Fk(x, y) is equal to PTt=1 fk(yt&#8722;1, yt, xt), where {fk}1&#8804;k&#8804;K is an arbitrary set of feature functions and {&#952;k}1&#8804;k&#8804;K are the associated parameter values.</S>
+    <S sid="30" ssid="3">We denote by Y and X, respectively, the sets in which yt and xt take their values.</S>
+    <S sid="31" ssid="4">The normalization factor in (1) is defined by The most common choice of feature functions is to use binary tests.</S>
+    <S sid="32" ssid="5">In the sequel, we distinguish between two types of feature functions: unigram features fy,x, associated with parameters &#181;y,x, and bigram features fyl,y,x, associated with parameters &#955;y/,y,x.</S>
+    <S sid="33" ssid="6">These are defined as where 1(cond.) is equal to 1 when the condition is verified and to 0 otherwise.</S>
+    <S sid="34" ssid="7">In this setting, the number of parameters K is equal to |Y |2x|X|train, where |&#183; |denotes the cardinal and |X|train refers to the number of configurations of xt observed during training.</S>
+    <S sid="35" ssid="8">Thus, even in moderate size applications, the number of parameters can be very large, mostly due to the introduction of sequential dependencies in the model.</S>
+    <S sid="36" ssid="9">This also explains why it is hard to train CRFs with dependencies spanning more than two adjacent labels.</S>
+    <S sid="37" ssid="10">Using only unigram features {fy,x}(y,x)&#8712;Y &#215;X results in a model equivalent to a simple bag-of-tokens positionby-position logistic regression model.</S>
+    <S sid="38" ssid="11">On the other hand, bigram features {fy/,y,x}(y,x)&#8712;Y 2&#215;X are helpful in modelling dependencies between successive labels.</S>
+    <S sid="39" ssid="12">The motivations for using simultaneously both types of feature functions are evaluated experimentally in Section 5.</S>
+    <S sid="40" ssid="13">Given N independent sequences {x(i), y(i)}Ni=1, where x(i) and y(i) contain T(i) symbols, conditional maximum likelihood estimation is based on the minimization, with respect to &#952;, of the negated conditional log-likelihood of the observations This term is usually complemented with an additional regularization term so as to avoid overfitting (see Section 3.1 below).</S>
+    <S sid="41" ssid="14">The gradient of l(&#952;) is where Ep&#952;(y|x) denotes the conditional expectation given the observation sequence, i.e.</S>
+    <S sid="42" ssid="15">Although l(&#952;) is a smooth convex function, its optimum cannot be computed in closed form, and l(&#952;) has to be optimized numerically.</S>
+    <S sid="43" ssid="16">The computation of its gradient implies to repeatedly compute the conditional expectation in (5) for all input sequences x(i) and all positions t. The standard approach for computing these expectations is inspired by the forward-backward algorithm for hidden Markov models: using the notations introduced above, the algorithm implies the computation of the forward and backward recursions These recursions require a number of operations that grows quadratically with |Y |.</S>
+  </SECTION>
+  <SECTION title="3 V Regularization in CRFs" number="3">
+    <S sid="44" ssid="1">The standard approach for parameter estimation in CRFs consists in minimizing the logarithmic loss l(&#952;) defined by (3) with an additional `2 penalty term &#961;22 k&#952;k22, where &#961;2 is a regularization parameter.</S>
+    <S sid="45" ssid="2">The objective function is then a smooth convex function to be minimized over an unconstrained parameter space.</S>
+    <S sid="46" ssid="3">Hence, any numerical optimization strategy may be used and practical solutions include limited memory BFGS (L-BFGS) (Liu and Nocedal, 1989), which is used in the popular CRF++ (Kudo, 2005) and CRFsuite (Okazaki, 2007) packages; conjugate gradient (Nocedal and Wright, 2006) and Stochastic Gradient Descent (SGD) (Bottou, 2004; Vishwanathan et al., 2006), used in CRFsgd (Bottou, 2007).</S>
+    <S sid="47" ssid="4">The only caveat is to avoid numerical optimizers that require the full Hessian matrix (e.g., Newton&#8217;s algorithm) due to the size of the parameter vector in usual applications of CRFs.</S>
+    <S sid="48" ssid="5">The most significant alternative to `2 regularization is to use a `1 penalty term &#961;1k&#952;k1: such regularizers are able to yield sparse parameter vectors in which many component have been zeroed (Tibshirani, 1996).</S>
+    <S sid="49" ssid="6">Using a `1 penalty term thus implicitly performs feature selection, where &#961;1 controls the amount of regularization and the number of extracted features.</S>
+    <S sid="50" ssid="7">In the following, we will jointly use both penalty terms, yielding the socalled elastic net penalty (Zhou and Hastie, 2005) which corresponds to the objective function The use of both penalty terms makes it possible to control the number of non zero coefficients and to avoid the numerical problems that might occur in large dimensional parameter settings (see also (Chen, 2009)).</S>
+    <S sid="51" ssid="8">However, the introduction of a `1 penalty term makes the optimization of (6) more problematic, as the objective function is no longer differentiable in 0.</S>
+    <S sid="52" ssid="9">Various strategies have been proposed to handle this difficulty.</S>
+    <S sid="53" ssid="10">We will only consider here exact approaches and will not discuss heuristic strategies such as grafting (Perkins et al., 2003; Riezler and Vasserman, 2004).</S>
+    <S sid="54" ssid="11">To deal with `1 penalties, a simple idea is that of (Kazama and Tsujii, 2003), originally introduced for maxent models.</S>
+    <S sid="55" ssid="12">It amounts to reparameterizing &#952;k as &#952;k = &#952;+k &#8722;&#952;&#8722;k , where &#952;+k and &#952;&#8722;k are positive.</S>
+    <S sid="56" ssid="13">The `1 penalty thus becomes &#961;1(&#952;+ &#8722; &#952;&#8722;).</S>
+    <S sid="57" ssid="14">In this formulation, the objective function recovers its smoothness and can be optimized with conventional algorithms, subject to domain constraints.</S>
+    <S sid="58" ssid="15">Optimization is straightforward, but the number of parameters is doubled and convergence is slow (Andrew and Gao, 2007): the procedure lacks a mechanism for zeroing out useless parameters.</S>
+    <S sid="59" ssid="16">A more efficient strategy is the orthant-wise quasi-Newton (OWL-QN) algorithm introduced in (Andrew and Gao, 2007).</S>
+    <S sid="60" ssid="17">The method is based on the observation that the `1 norm is differentiable when restricted to a set of points in which each coordinate never changes its sign (an &#8220;orthant&#8221;), and that its second derivative is then zero, meaning that the `1 penalty does not change the Hessian of the objective on each orthant.</S>
+    <S sid="61" ssid="18">An OWL-QN update then simply consists in (i) computing the Newton update in a well-chosen orthant; (ii) performing the update, which might cause some component of the parameter vector to change sign; and (iii) projecting back the parameter value onto the initial orthant, thereby zeroing out those components.</S>
+    <S sid="62" ssid="19">In (Gao et al., 2007), the authors show that OWL-QN is faster than the algorithm proposed by Kazama and Tsujii (2003) and can perform model selection even in very high-dimensional problems, with no loss of performance compared to the use of `2 penalty terms.</S>
+    <S sid="63" ssid="20">Stochastic gradient (SGD) approaches update the parameter vector based on an crude approximation of the gradient (4), where the computation of expectations only includes a small batch of observations.</S>
+    <S sid="64" ssid="21">SGD updates have the following form where &#951; is the learning rate.</S>
+    <S sid="65" ssid="22">In (Tsuruoka et al., 2009), various ways of adapting this update to `1penalized likelihood functions are discussed.</S>
+    <S sid="66" ssid="23">Two effective ideas are proposed: (i) only update parameters that correspond to active features in the current observation, (ii) keep track of the cumulated penalty zk that &#952;k should have received, had the gradient been computed exactly, and use this value to &#8220;clip&#8221; the parameter value.</S>
+    <S sid="67" ssid="24">This is implemented by patching the update (7) as follows Based on a study of three NLP benchmarks, the authors of (Tsuruoka et al., 2009) claim this approach to be much faster than the orthant-wise approach and yet to yield very comparable performance, while selecting slightly larger feature sets.</S>
+    <S sid="68" ssid="25">The coordinate descent approach of Dudik et al. (2004) and Friedman et al.</S>
+    <S sid="69" ssid="26">(2008) uses the fact that optimizing a mono-dimensional quadratic function augmented with a `1 penalty can be performed analytically.</S>
+    <S sid="70" ssid="27">For arbitrary functions, this idea can be adapted by considering quadratic approximations of the objective around the current value &#952;&#175; Coordinate descent is ported to CRFs in (Sokolovska et al., 2010).</S>
+    <S sid="71" ssid="28">Making this scheme practical requires a number of adaptations, including (i) approximating the second order term in (10), (ii) performing updates in block, where a block contains the |Y  |&#215; |Y + 1 |features &#957;y1,y,x and &#955;y,x for a fixed test x on the observation sequence and (iii) approximating the Hessian for a block by its diagonal terms.</S>
+    <S sid="72" ssid="29">(ii) is specially critical, as repeatedly cycling over individual features to perform the update (10) is only possible with restricted sets of features.</S>
+    <S sid="73" ssid="30">The block update schemes uses the fact that all features within a block appear in the same set of sequences, which means that most of the computations needed to perform theses updates can be shared within the block.</S>
+    <S sid="74" ssid="31">One advantage of the resulting algorithm, termed BCD in the following, is that the update of &#952;k only involves carrying out the forward-backward recursions for the set of sequences that contain symbols x such that at least one {fk(y', y, x)}(y y1)EY 2 is non null, which can be much smaller than the whole training set.</S>
+  </SECTION>
+  <SECTION title="4 Implementation Issues" number="4">
+    <S sid="75" ssid="1">Efficiently processing very-large feature and observation sets requires to pay attention to many implementation details.</S>
+    <S sid="76" ssid="2">In this section, we present several optimizations devised to speed up training.</S>
+    <S sid="77" ssid="3">For all algorithms, the computation time is dominated by the evaluations of the gradient: our implementation takes advantage of the sparsity to accelerate these computations.</S>
+    <S sid="78" ssid="4">Assume the set of bigram features {&#955;y0,y,xt+1}(y0,y)&#8712;Y 2 is sparse with only r(xt+1) &#171; |Y |2 non null values and define al., 2010) explains how computational savings can be obtained using the fact that the vector/matrix products in the recursions above only involve the sparse matrix Mt+1(y0, y).</S>
+    <S sid="79" ssid="5">They can thus be computed with exactly r(xt+1) multiplications instead of |Y |2.</S>
+    <S sid="80" ssid="6">The same idea can be used when the set {&#181;y,xt+1}y&#8712;Y of unigram features is sparse.</S>
+    <S sid="81" ssid="7">Using this implementation, the complexity of the forward-backward procedure for x(&#65533;) can be made proportional to the average number of active features per position, which can be much smaller than the number of potentially active features.</S>
+    <S sid="82" ssid="8">For BCD, forward-backward can even be made slightly faster.</S>
+    <S sid="83" ssid="9">When computing the gradient wrt. features &#955;y,x and &#181;y0,y,x (for all the values of y and y0) for sequence x(&#65533;), assuming that x only occurs once in x(&#65533;) at position t, all that is needed is &#945;0t(y), bt0 &lt; t and &#946;0t(y), bt0 &gt; t. ZB(x) is then recovered as Ey &#945;t(y)&#946;t(y).</S>
+    <S sid="84" ssid="10">Forward-backward recursions can thus be truncated: in our experiments, this divided the computational cost by 1,8 on average.</S>
+    <S sid="85" ssid="11">Note finally that forward-backward is performed on a per-observation basis and is easily parallelized (see also (Mann et al., 2009) for more powerful ways to distribute the computation when dealing with very large datasets).</S>
+    <S sid="86" ssid="12">In our implementation, it is distributed on all available cores, resulting in significant speed-ups for OWL-QN and L-BFGS; for BCD the gain is less acute, as parallelization only helps when updating the parameters for a block of features that are occur in many sequences; for SGD, with batches of size one, this parallelization policy is useless.</S>
+    <S sid="87" ssid="13">Most existing implementations of CRFs, eg.</S>
+    <S sid="88" ssid="14">CRF++ and CRFsgd perform the forwardbackward recursions in the log-domain, which guarantees that numerical over/underflows are avoided no matter the length T(&#65533;) of the sequence.</S>
+    <S sid="89" ssid="15">It is however very inefficient from an implementation point of view, due to the repeated calls to the exp() and log() functions.</S>
+    <S sid="90" ssid="16">As an alternative way of avoiding numerical problems, our implementation, like crfSuite&#8217;s, resorts to &#8220;scaling&#8221;, a solution commonly used for HMMs.</S>
+    <S sid="91" ssid="17">Scaling amounts to normalizing the values of &#945;t and &#946;t to one, making sure to keep track of the cumulated normalization factors so as to compute ZB(x) and the conditional expectations Epo(y|x).</S>
+    <S sid="92" ssid="18">Also note that in our implementation, all the computations of exp(x) are vectorized, which provides an additional speed up of about 20%.</S>
+    <S sid="93" ssid="19">Processing very large feature vectors, up to billions of components, is problematic in many ways.</S>
+    <S sid="94" ssid="20">Sparsity has been used here to speed up forwardbackward, but we have made no attempt to accelerate the computation of the OWL-QN updates, which are linear in the size of the parameter vector.</S>
+    <S sid="95" ssid="21">Of the three algorithms, BCD is the most affected by increases in the number of features, or more precisely, in the number of features blocks, where one block correspond to a specific test of the observation.</S>
+    <S sid="96" ssid="22">In the worst case scenario, each block may require to visit all the training instances, yielding terrible computational wastes.</S>
+    <S sid="97" ssid="23">In practice though, most blocks only require to process a small fraction of the training set, and the actual complexity depends on the average number of blocks per observations.</S>
+    <S sid="98" ssid="24">Various strategies have been tried to further accelerate BCD, such as processing blocks that only visit one observation in parallel and updating simultaneously all the blocks that visit all the training instances, leading to a small speed-up on the POS-tagging task.</S>
+    <S sid="99" ssid="25">Working with billions of features finally requires to worry also about memory usage.</S>
+    <S sid="100" ssid="26">In this respect, BCD is the most efficient, as it only requires to store one K-dimensional vector for the parameter itself.</S>
+    <S sid="101" ssid="27">SGD requires two such vectors, one for the parameter and one for storing the zk (see Eq.</S>
+    <S sid="102" ssid="28">(8)).</S>
+    <S sid="103" ssid="29">In comparison, OWL-QN requires much more memory, due to the internals of the update routines, which require several histories of the parameter vector and of its gradient.</S>
+    <S sid="104" ssid="30">Typically, our implementation necessitates in the order of a dozen K-dimensional vectors.</S>
+    <S sid="105" ssid="31">Parallelization only makes things worse, as each core will also need to maintain its own copy of the gradient.</S>
+  </SECTION>
+  <SECTION title="5 Experiments" number="5">
+    <S sid="106" ssid="1">Our experiments use two standard NLP tasks, phonetization and part-of-speech tagging, chosen here to illustrate two very different situations, and to allow for comparison with results reported elsewhere in the literature.</S>
+    <S sid="107" ssid="2">Unless otherwise mentioned, the experiments use the same protocol: 10 fold cross validation, where eight folds are used for training, one for development, and one for testing.</S>
+    <S sid="108" ssid="3">Results are reported in terms of phoneme error rates or tag error rates on the test set.</S>
+    <S sid="109" ssid="4">Comparing run-times can be a tricky matter, especially when different software packages are involved.</S>
+    <S sid="110" ssid="5">As discussed above, the observed runtimes depend on many small implementation details.</S>
+    <S sid="111" ssid="6">As the three algorithms share as much code as possible, we believe the comparison reported hereafter to be fair and reliable.</S>
+    <S sid="112" ssid="7">All experiments were performed on a server with 64G of memory and two Xeon processors with 4 cores at 2.27 Ghz.</S>
+    <S sid="113" ssid="8">For comparison, all measures of run-times include the cumulated activity of all cores and give very pessimistic estimates of the wall time, which can be up to 7 times smaller.</S>
+    <S sid="114" ssid="9">For OWL-QN, we use 5 past values of the gradient to approximate the inverse of the Hessian matrix: increasing this value had no effect on accuracy or convergence and was detrimental to speed; for SGD, the learning rate parameter was tuned manually.</S>
+    <S sid="115" ssid="10">Note that we have not spent much time optimizing the values of p1 and p2.</S>
+    <S sid="116" ssid="11">Based on a pilot study on Nettalk, we found that taking p1 = .5 and p2 in the order of 10&#8722;5 to yield nearly optimal performance, and have used these values throughout.</S>
+    <S sid="117" ssid="12">Our first benchmark is the word phonetization task, using the Nettalk dictionary (Sejnowski and Rosenberg, 1987).</S>
+    <S sid="118" ssid="13">This dataset contains approximately 20,000 English word forms, their pronunciation, plus some prosodic information (stress markers for vowels, syllabic parsing for consonants).</S>
+    <S sid="119" ssid="14">Grapheme and phoneme strings are aligned at the character level, thanks to the use of a &#8220;null sound&#8221; in the latter string when it is shorter than the former; likewise, each prosodic mark is aligned with the corresponding letter.</S>
+    <S sid="120" ssid="15">We have derived two test conditions from this database.</S>
+    <S sid="121" ssid="16">The first one is standard and aims at predicting the pronunciation information only.</S>
+    <S sid="122" ssid="17">In this setting, the set of observations (X) contains 26 graphemes, and the output label set contains |Y  |= 51 phonemes.</S>
+    <S sid="123" ssid="18">The second condition aims at jointly predicting phonemic and prosodic information3.</S>
+    <S sid="124" ssid="19">The reasons for designing this new condition are twofold: firstly, it yields a large set of composite labels (|Y  |= 114) and makes the problem computationally challenging.</S>
+    <S sid="125" ssid="20">Second, it allows to quantify how much the information provided by the prosodic marks help predict the phonemic labels.</S>
+    <S sid="126" ssid="21">Both information are quite correlated, as the stress mark and the syllable openness, for instance, greatly influence the realization of some archi-phonemes.</S>
+    <S sid="127" ssid="22">The features used in Nettalk experiments take the form fy,,,, (unigram) and fy0,y,,,, (bigram), where w is a n-gram of letters.</S>
+    <S sid="128" ssid="23">The n-grm feature sets (n = 11, 3, 5, 7}) includes all features testing embedded windows of k letters, for all 0 &lt; k &lt; n; the n-grm- setting is similar, but only includes the window of length n; in the n-grm+ setting, we add features for odd-size windows; in the ngrm++ setting, we add all sequences of letters up to size n occurring in current window.</S>
+    <S sid="129" ssid="24">For instance, the active bigram features at position t = 2 in the sequence x=&#8217;lemma&#8217; are as follows: the 3grm feature set contains fy,y0, fy,y0,e and fy0,y,lem; only the latter appears in the 3-grm- setting.</S>
+    <S sid="130" ssid="25">In the 3-grm+ feature set, we also have fy0,y,le and fy0,y,em.</S>
+    <S sid="131" ssid="26">The 3-grm++ feature set additionally includes fy0,y,l and fy0,y,m.</S>
+    <S sid="132" ssid="27">The number of features ranges from 360 thousands (1-grm setting) to 1.6 billion (7-grm).</S>
+    <S sid="133" ssid="28">3Given the design of the Nettalk dictionary, this experiment required to modify the original database so as to reassign prosodic marks to phonemes, rather than to letters.</S>
+    <S sid="134" ssid="29">Our second benchmark is a part-of-speech (POS) tagging task using the PennTreeBank corpus (Marcus et al., 1993), which provides us with a quite different condition.</S>
+    <S sid="135" ssid="30">For this task, the number of labels is smaller (|Y  |= 45) than for Nettalk, and the set of observations is much larger (IXI = 43207).</S>
+    <S sid="136" ssid="31">This benchmark, which has been used in many studies, allows for direct comparisons with other published work.</S>
+    <S sid="137" ssid="32">We thus use a standard experimental set-up, where sections 0-18 of the Wall Street Journal are used for training, sections 19-21 for development, and sections 22-24 for testing.</S>
+    <S sid="138" ssid="33">Features are also standard and follow the design of (Suzuki and Isozaki, 2008) and test the current words (as written and lowercased), prefixes and suffixes up to length 4, and typographical characteristics (case, etc.) of the words.</S>
+    <S sid="139" ssid="34">Our baseline feature set also contains tests on individual and pairs of words in a window of 5 words.</S>
+    <S sid="140" ssid="35">The first important issue is to assess the benefits of using large feature sets, notably including features testing both a bigram of labels and an observation.</S>
+    <S sid="141" ssid="36">Table 1 compares the results obtained with and without these features for various setting (using OWL-QN to perform the optimization), suggesting that for the tasks at hand, these features are actually helping.</S>
+    <S sid="142" ssid="37">The training speed depends of two main factors: the number of iterations needed to achieve convergence and the computational cost of one iteration.</S>
+    <S sid="143" ssid="38">In this section, we analyze and compare the runtime efficiency of the three optimizers.</S>
+    <S sid="144" ssid="39">As far as convergence is concerned, the two forms of regularization (E2 and E1) yield the same performance (see Table 3), and the three algorithms exhibit more or less the same behavior.</S>
+    <S sid="145" ssid="40">They quickly reach an acceptable set of active parameters, which is often several orders of magnitude smaller than the whole parameter set (see results below in Table 4 and 5).</S>
+    <S sid="146" ssid="41">Full convergence, reflected by a stabilization of the objective function, is however not so easily achieved.</S>
+    <S sid="147" ssid="42">We have often observed a slow, yet steady, decrease of the log-loss, accompanied with a diminution of the number of active features as the number of iterations increases.</S>
+    <S sid="148" ssid="43">Based on this observation, we have chosen to stop all algorithms based on their performance on an independent development set, allowing a fair comparison of the overall training time; for OWL-QN, it allowed to divide the total training time by almost 2.</S>
+    <S sid="149" ssid="44">It has finally often been found useful to fine tune the non-zero parameters by running a final handful of L-BFGS iterations using only a small E2 penalty; at this stage, all the other features are removed from the model.</S>
+    <S sid="150" ssid="45">This had a small impact BCD and SGD&#8217;s performance and allowed them to catch up with OWL-QN&#8217;s performance.</S>
+    <S sid="151" ssid="46">As explained in section 4.1, the forward-backward algorithm can be written so as to use the sparsity of the matrix My&#65533;y,&#65533;,,.</S>
+    <S sid="152" ssid="47">To evaluate the resulting speed-up, we ran a series of experiments using Nettalk (see Table 2).</S>
+    <S sid="153" ssid="48">In this table, the 3-grm- setting corresponds to maximum sparsity for M, and training with the sparse algorithm is three times faster than with the non-sparse version.</S>
+    <S sid="154" ssid="49">Throwing in more features has the effect of making M much more dense, mitigating the benefits of the sparse recursions.</S>
+    <S sid="155" ssid="50">Nevertheless, even for very large feature sets, the percentage of zeros in M averages 20% to 30%, and the sparse version remains 10 to 20% faster than the non-sparse one.</S>
+    <S sid="156" ssid="51">Note that the non-sparse version is faster with a E' penalty term than with only the E2 term: this is because exp(0) is faster to evaluate than exp(x) when x 7&#65533; 0.</S>
+    <S sid="157" ssid="52">Table 4 displays the results achieved on the Nettalk task.</S>
+    <S sid="158" ssid="53">The three algorithms yield very comparable accuracy results, and deliver compact models: for the 5-gram+ setting, only 50,000 out of 250 million features are selected.</S>
+    <S sid="159" ssid="54">SGD is the fastest of the three, up to twice as fast as OWL-QN and BCD depending on the feature set.</S>
+    <S sid="160" ssid="55">The performance it achieves are consistently slightly worst than the other optimizers, and only catch up when the parameters are fine-tuned (see above).</S>
+    <S sid="161" ssid="56">There are not so many comparisons for Nettalk with CRFs, due to the size of the label set.</S>
+    <S sid="162" ssid="57">Our results compare favorably with those reported in (Pal et al., 2006), where the accuracy attains 91.7% using 19075 examples for training and 934 for testing, and with those in (Jeong et al., 2009) (88.4% accuracy with 18,000 (2,000) training (test) instances).</S>
+    <S sid="163" ssid="58">Table 5 gives the results obtained for the larger Nettalk+prosody task.</S>
+    <S sid="164" ssid="59">Here, we only report the results obtained with SGD and BCD.</S>
+    <S sid="165" ssid="60">For OWL-QN, the largest model we could handle was the 3-grm model, which contained 69 million features, and took 48min to train.</S>
+    <S sid="166" ssid="61">Here again, performance steadily increase with the number of features, showing the benefits of large-scale models.</S>
+    <S sid="167" ssid="62">We lack comparisons for this task, which seems considerably harder than the sole phonetization task, and all systems seem to plateau around 13.5% accuracy.</S>
+    <S sid="168" ssid="63">Interestingly, simultaneously predicting the phoneme and its prosodic markers allows to improve the accuracy on the prediction of phonemes, which improves of almost a half point as compared to the best Nettalk system.</S>
+    <S sid="169" ssid="64">For the POS tagging task, BCD appears to be unpractically slower to train than the others approaches (SGD takes about 40min to train, OWLQN about 1 hour) due the simultaneous increase in the sequence length and in the number of observations.</S>
+    <S sid="170" ssid="65">As a result, one iteration of BCD typically requires to repeatedly process over and over the same sequences: on average, each sequence is visited 380 times when we use the baseline feature set.</S>
+    <S sid="171" ssid="66">This technique should reserved for tasks where the number of blocks is small, or, as below, when memory usage is an issue.</S>
+    <S sid="172" ssid="67">In many tasks, the ambiguity of tokens can be reduced by looking up increasingly large windows of local context.</S>
+    <S sid="173" ssid="68">This strategy however quickly runs into a combinatorial increase of the number of features.</S>
+    <S sid="174" ssid="69">A side note of the Nettalk experiments is that when using embedded features, the active feature set tends to reflect this hierarchical organization.</S>
+    <S sid="175" ssid="70">This means that when a feature testing a n-gram is active, in most cases, the features for all embedded k-grams are also selected.</S>
+    <S sid="176" ssid="71">Based on this observation, we have designed an incremental training strategy for the POS tagging task, where more specific features are progressively incorporated into the model if the corresponding less specific feature is active.</S>
+    <S sid="177" ssid="72">This experiment used BCD, which is the most memory efficient algorithm.</S>
+    <S sid="178" ssid="73">The first iteration only includes tests on the current word.</S>
+    <S sid="179" ssid="74">During the second iteration, we add tests on bigram of words, on suffixes and prefixes up to length 4.</S>
+    <S sid="180" ssid="75">After four iterations, we throw in features testing word trigrams, subject to the corresponding unigram block being active.</S>
+    <S sid="181" ssid="76">After 6 iterations, we finally augment the model with windows of length 5, subject to the corresponding trigram being active.</S>
+    <S sid="182" ssid="77">After 10 iterations, the model contains about 4 billion features, out of which 400,000 are active.</S>
+    <S sid="183" ssid="78">It achieves an error rate of 2.63% (resp.</S>
+    <S sid="184" ssid="79">2.78%) on the development (resp. test) data, which compares favorably with some of the best results for this task (for instance (Toutanova et al., 2003; Shen et al., 2007; Suzuki and Isozaki, 2008)).</S>
+  </SECTION>
+  <SECTION title="6 Conclusion and Perspectives" number="6">
+    <S sid="185" ssid="1">In this paper, we have discussed various ways to train extremely large CRFs with a ' penalty term and compared experimentally the results obtained, both in terms of training speed and of accuracy.</S>
+    <S sid="186" ssid="2">The algorithms studied in this paper have complementary strength and weaknesses: OWL-QN is probably the method of choice in small or moderate size applications while BCD is most efficient when using very large feature sets combined with limited-size observation alphabets; SGD complemented with fine tuning appears to be the preferred choice in most large-scale applications.</S>
+    <S sid="187" ssid="3">Our analysis demonstrate that training large-scale sparse models can be done efficiently and allows to improve over the performance of smaller models.</S>
+    <S sid="188" ssid="4">The CRF package developed in the course of this study implements many algorithmic optimizations and allows to design innovative training strategies, such as the one presented in section 5.4.</S>
+    <S sid="189" ssid="5">This package is released as open-source software and is available at http://wapiti.limsi.fr.</S>
+    <S sid="190" ssid="6">In the future, we intend to study how sparsity can be used to speed-up training in the face of more complex dependency patterns (such as higher-order CRFs or hierarchical dependency structures (Rozenknop, 2002; Finkel et al., 2008).</S>
+    <S sid="191" ssid="7">From a performance point of view, it might also be interesting to combine the use of large-scale feature sets with other recent improvements such as the use of semi-supervised learning techniques (Suzuki and Isozaki, 2008) or variable-length dependencies (Qian et al., 2009).</S>
+  </SECTION>
+</PAPER>

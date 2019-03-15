@@ -1,0 +1,199 @@
+<PAPER>
+	<S sid="0">Determining The Sentiment Of Opinions</S><ABSTRACT>
+		<S sid="1" ssid="1">Identifying sentiments (the affective parts of opinions) is a challenging problem.</S>
+		<S sid="2" ssid="2">We present a system that, given a topic, automatically finds the people who hold opinions about that topic and the sentiment of each opinion.</S>
+		<S sid="3" ssid="3">The system contains a module for determining word sentiment and another for combining sentiments within a sentence.</S>
+		<S sid="4" ssid="4">We experiment with various models of classifying and combining sentiment at word and sentence levels, with promising results.</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number="1">
+			<S sid="5" ssid="5">What is an opinion?</S>
+			<S sid="6" ssid="6">The many opinions on opinions are reflected in a considerable literature (Aristotle 1954; Perelman 1970; Toulmin et al 1979; Wallace 1975; Toulmin 2003).</S>
+			<S sid="7" ssid="7">Recent computational work either focuses on sentence ?subjectivity?</S>
+			<S sid="8" ssid="8">(Wiebe et al 2002; Riloff et al 2003), concentrates just on explicit statements of evaluation, such as of films (Turney 2002; Pang et al 2002), or focuses on just one aspect of opinion, e.g., (Hatzivassiloglou and McKeown 1997) on adjectives.</S>
+			<S sid="9" ssid="9">We wish to study opinion in general; our work most closely resembles that of (Yu and Hatzivassiloglou 2003).</S>
+			<S sid="10" ssid="10">Since an analytic definition of opinion is probably impossible anyway, we will not summarize past discussion or try to define formally what is and what is not an opinion.</S>
+			<S sid="11" ssid="11">For our purposes, we describe an opinion as a quadruple [Topic, Holder, Claim, Sentiment] in which the Holder believes a Claim about the Topic, and in many cases associates a Sentiment, such as good or bad, with the belief.</S>
+			<S sid="12" ssid="12">For example, the following opinions contain Claims but no Sentiments: ?I believe the world is flat?</S>
+			<S sid="13" ssid="13">?The Gap is likely to go bankrupt?</S>
+			<S sid="14" ssid="14">?Bin Laden is hiding in Pakistan?</S>
+			<S sid="15" ssid="15">?Water always flushes anti-clockwise in the southern hemisphere?</S>
+			<S sid="16" ssid="16">Like Yu and Hatzivassiloglou (2003), we want to automatically identify Sentiments, which in this work we define as an explicit or implicit expression in text of the Holder?s positive, negative, or neutral regard toward the Claim about the Topic.</S>
+			<S sid="17" ssid="17">(Other sentiments we plan to study later.)</S>
+			<S sid="18" ssid="18">Sentiments always involve the Holder?s emotions or desires, and may be present explicitly or only implicitly: ?I think that attacking Iraq would put the US in a difficult position?</S>
+			<S sid="19" ssid="19">(implicit) ?The US attack on Iraq is wrong?</S>
+			<S sid="20" ssid="20">(explicit) ?I like Ike?</S>
+			<S sid="21" ssid="21">(explicit) ?We should decrease our dependence on oil?</S>
+			<S sid="22" ssid="22">(implicit) ?Reps. Tom Petri and William F. Goodling asserted that counting illegal aliens violates citizens?</S>
+			<S sid="23" ssid="23">basic right to equal representation?</S>
+			<S sid="24" ssid="24">(implicit) In this paper we address the following challenge problem.</S>
+			<S sid="25" ssid="25">Given a Topic (e.g., ?Should abortion be banned??)</S>
+			<S sid="26" ssid="26">and a set of texts about the topic, find the Sentiments expressed about (claims about) the Topic (but not its supporting subtopics) in each text, and identify the people who hold each sentiment.</S>
+			<S sid="27" ssid="27">To avoid the problem of differentiating between shades of sentiments, we simplify the problem to: identify just expressions of positive, negative, or neutral sentiments, together with their holders.</S>
+			<S sid="28" ssid="28">In addition, for sentences that do not express a sentiment but simply state that some sentiment(s) exist(s), return these sentences in a separate set.</S>
+			<S sid="29" ssid="29">For example, given the topic ?What should be done with Medicare??</S>
+			<S sid="30" ssid="30">the sentence ?After years of empty promises, Congress has rolled out two Medicare prescription plans, one from House Republicans and the other from the Democratic Sentence POS Tagger verbs nounsAdjectives Adjective Senti ment classifier sentiment sentiment Sentence sentiment classifier Opinion region + polarity + holder Holder finder Named Entity Tagger Sentence Sentence texts + topic sentiment sentiment sentiment V rbs Verb Senti ment classifier Nouns Noun Senti ment classifier WordNet Sentence : Figure 1: System architecture.</S>
+			<S sid="31" ssid="31">Sens. Bob Graham of Florida and Zell Miller of Georgia?</S>
+			<S sid="32" ssid="32">should be returned in the separate set.</S>
+			<S sid="33" ssid="33">We approach the problem in stages, starting with words and moving on to sentences.</S>
+			<S sid="34" ssid="34">We take as unit sentiment carrier a single word, and first classify each adjective, verb, and noun by its sentiment.</S>
+			<S sid="35" ssid="35">We experimented with several classifier models.</S>
+			<S sid="36" ssid="36">But combining sentiments requires additional care, as Table 1 shows.</S>
+			<S sid="37" ssid="37">California Supreme Court agreed that the state?s new term-limit law was constitutional.</S>
+			<S sid="38" ssid="38">California Supreme Court disagreed that the state?s new term-limit law was constitutional.</S>
+			<S sid="39" ssid="39">California Supreme Court agreed that the state?s new term-limit law was unconstitutional.</S>
+			<S sid="40" ssid="40">California Supreme Court disagreed that the state?s new term-limit law was unconstitutional.</S>
+			<S sid="41" ssid="41">Table 1: Combining sentiments.</S>
+			<S sid="42" ssid="42">A sentence might even express opinions of different people.</S>
+			<S sid="43" ssid="43">When combining word-level sentiments, we therefore first determine for each Holder a relevant region within the sentence and then experiment with various models for combining word sentiments.</S>
+			<S sid="44" ssid="44">We describe our models and algorithm in Section 2, system experiments and discussion in Section 3, and conclude in Section 4.</S>
+	</SECTION>
+	<SECTION title="Algorithm. " number="2">
+			<S sid="45" ssid="1">Given a topic and a set of texts, the system operates in four steps.</S>
+			<S sid="46" ssid="2">First it selects sentences that contain both the topic phrase and holder candidates.</S>
+			<S sid="47" ssid="3">Next, the holder-based regions of opinion are delimited.</S>
+			<S sid="48" ssid="4">Then the sentence sentiment classifier calculates the polarity of all sentiment-bearing words individually.</S>
+			<S sid="49" ssid="5">Finally, the system combines them to produce the holder?s sentiment for the whole sentence.</S>
+			<S sid="50" ssid="6">Figure 1 shows the overall system architecture.</S>
+			<S sid="51" ssid="7">Section 2.1 describes the word sentiment classifier and Section 2.2 describes the sentence sentiment classifier.</S>
+			<S sid="52" ssid="8">2.1 Word Sentiment Classifier.</S>
+			<S sid="53" ssid="9">2.1.1 Word Classification Models For word sentiment classification we developed two models.</S>
+			<S sid="54" ssid="10">The basic approach is to assemble a small amount of seed words by hand, sorted by polarity into two lists?positive and negative?and then to grow this by adding words obtained from WordNet (Miller et al 1993; Fellbaum et al 1993).</S>
+			<S sid="55" ssid="11">We assume synonyms of positive words are mostly positive and antonyms mostly negative, e.g., the positive word ?good?</S>
+			<S sid="56" ssid="12">has synonyms ?virtuous, honorable, righteous?</S>
+			<S sid="57" ssid="13">and antonyms ?evil, disreputable, unrighteous?.</S>
+			<S sid="58" ssid="14">Antonyms of negative words are added to the positive list, and synonyms to the negative one.</S>
+			<S sid="59" ssid="15">To start the seed lists we selected verbs (23 positive and 21 negative) and adjectives (15 positive and 19 negative), adding nouns later.</S>
+			<S sid="60" ssid="16">Since adjectives and verbs are structured differently in WordNet, we obtained from it synonyms and antonyms for adjectives but only synonyms for verbs.</S>
+			<S sid="61" ssid="17">For each seed word, we extracted from WordNet its expansions and added them back into the appropriate seed lists.</S>
+			<S sid="62" ssid="18">Using these expanded lists, we extracted an additional cycle of words from WordNet, to obtain finally 5880 positive adjectives, 6233 negative adjectives, 2840 positive verbs, and 3239 negative verbs.</S>
+			<S sid="63" ssid="19">However, not all synonyms and antonyms could be used: some had opposite sentiment or were neutral.</S>
+			<S sid="64" ssid="20">In addition, some common words such as ?great?, ?strong?, ?take?, and ?get?</S>
+			<S sid="65" ssid="21">occurred many times in both positive and negative categories.</S>
+			<S sid="66" ssid="22">This indicated the need to develop a measure of strength of sentiment polarity (the alternative was simply to discard such ambiguous words)?to determine how strongly a word is positive and also how strongly it is negative.</S>
+			<S sid="67" ssid="23">This would enable us to discard sentiment-ambiguous words but retain those with strengths over some threshold.</S>
+			<S sid="68" ssid="24">Armed with such a measure, we can also assign strength of sentiment polarity to as yet unseen words.</S>
+			<S sid="69" ssid="25">Given a new word, we use WordNet again to obtain a synonym set of the unseen word to determine how it interacts with our sentiment seed lists.</S>
+			<S sid="70" ssid="26">That is, we compute (1) ).....,|(maxarg )|(maxarg 21 n c c synsynsyncP wcP ? where c is a sentiment category (positive or negative), w is the unseen word, and synn are the WordNet synonyms of w. To compute Equation (1), we tried two different models: (2) )|()(maxarg )|()(maxarg )|()(maxarg)|(maxarg 1 ))(,( ...3 2 1 ? = = = = m k wsynsetfcount k c n c cc kcfPcP csynsynsynsynPcP cwPcPwcP where fk is the kth feature (list word) of sentiment class c which is also a member of the synonym set of w, and count(fk,synset(w)) is the total number of occurrences of fk in the synonym set of w. P(c) is the number of words in class c divided by the total number of words considered.</S>
+			<S sid="71" ssid="27">This model derives from document classification.</S>
+			<S sid="72" ssid="28">We used the synonym and antonym lists obtained from Wordnet instead of learning word sets from a corpus, since the former is simpler and does not require manually annotated data for training.</S>
+			<S sid="73" ssid="29">Equation (3) shows the second model for a word sentiment classifier.</S>
+			<S sid="74" ssid="30">(3) )( ),( )(maxarg )|()(maxarg)|(maxarg 1 ccount csyncount cP cwPcPwcP n i i c cc ? == = To compute the probability P(w|c) of word w given a sentiment class c, we count the occurrence of w?s synonyms in the list of c. The intuition is that the more synonyms occuring in c, the more likely the word belongs.</S>
+			<S sid="75" ssid="31">We computed both positive and negative sentiment strengths for each word and compared their relative magnitudes.</S>
+			<S sid="76" ssid="32">Table 2 shows several examples of the system output, computed with Equation (2), in which ?+?</S>
+			<S sid="77" ssid="33">represents positive category strength and ?-?</S>
+			<S sid="78" ssid="34">negative.</S>
+			<S sid="79" ssid="35">The word ?amusing?, for example, was classified as carrying primarily positive sentiment, and ?blame?</S>
+			<S sid="80" ssid="36">as primarily negative.</S>
+			<S sid="81" ssid="37">The absolute value of each category represents the strength of its sentiment polarity.</S>
+			<S sid="82" ssid="38">For instance, ?afraid?</S>
+			<S sid="83" ssid="39">with strength -0.99 represents strong negavitity while ?abysmal?</S>
+			<S sid="84" ssid="40">with strength -0.61 represents weaker negativity.</S>
+			<S sid="85" ssid="41">abysmal : NEGATIVE [+ : 0.3811][- : 0.6188] adequate : POSITIVE [+ : 0.9999][- : 0.0484e-11] afraid : NEGATIVE [+ : 0.0212e-04][- : 0.9999] ailing : NEGATIVE [+ : 0.0467e-8][- : 0.9999] amusing : POSITIVE [+ : 0.9999][- : 0.0593e-07] answerable : POSITIVE [+ : 0.8655][- : 0.1344] apprehensible: POSITIVE [+ : 0.9999][- : 0.0227e-07] averse : NEGATIVE [+ : 0.0454e-05][- : 0.9999] blame : NEGATIVE [+ : 0.2530][- : 0.7469] Table 2: Sample output of word sentiment classifier.</S>
+			<S sid="86" ssid="42">2.2 Sentence Sentiment Classifier.</S>
+			<S sid="87" ssid="43">As shows in Table 1, combining sentiments in a sentence can be tricky.</S>
+			<S sid="88" ssid="44">We are interested in the sentiments of the Holder about the Claim.</S>
+			<S sid="89" ssid="45">Manual analysis showed that such sentiments can be found most reliably close to the Holder; without either Holder or Topic/Claim nearby as anchor points, even humans sometimes have trouble reliably determining the source of a sentiment.</S>
+			<S sid="90" ssid="46">We therefore included in the algorithm steps to identify the Topic (through direct matching, since we took it as given) and any likely opinion Holders (see Section 2.2.1).</S>
+			<S sid="91" ssid="47">Near each Holder we then identified a region in which sentiments would be considered; any sentiments outside such a region we take to be of undetermined origin and ignore (Section 2.2.2).</S>
+			<S sid="92" ssid="48">We then defined several models for combining the sentiments expressed within a region (Section 2.2.3).</S>
+			<S sid="93" ssid="49">2.2.1 Holder Identification We used BBN?s named entity tagger IdentiFinder to identify potential holders of an opinion.</S>
+			<S sid="94" ssid="50">We considered PERSON and ORGANIZATION as the only possible opinion holders.</S>
+			<S sid="95" ssid="51">For sentences with more than one Holder, we chose the one closest to the Topic phrase, for simplicity.</S>
+			<S sid="96" ssid="52">This is a very crude step.</S>
+			<S sid="97" ssid="53">A more sophisticated approach would employ a parser to identify syntactic relationships between each Holder and all dependent expressions of sentiment.</S>
+			<S sid="98" ssid="54">2.2.2 Sentiment Region Lacking a parse of the sentence, we were faced with a dilemma: How large should a region be?</S>
+			<S sid="99" ssid="55">We therefore defined the sentiment region in various ways (see Table 3) and experimented with their effectiveness, as reported in Section 3.</S>
+			<S sid="100" ssid="56">Window1: full sentence Window2: words between Holder and Topic Window3: window2 ? 2 words Window4: window2 to the end of sentence Table 3: Four variations of region size.</S>
+			<S sid="101" ssid="57">2.2.3 Classification Models We built three models to assign a sentiment category to a given sentence, each combining the individual sentiments of sentiment-bearing words, as described above, in a different way.</S>
+			<S sid="102" ssid="58">Model 0 simply considers the polarities of the sentiments, not the strengths: Model 0: ?</S>
+			<S sid="103" ssid="59">(signs in region) The intuition here is something like ?negatives cancel one another out?.</S>
+			<S sid="104" ssid="60">Here the system assigns the same sentiment to both ?the California Supreme Court agreed that the state?s new term-limit law was constitutional?</S>
+			<S sid="105" ssid="61">and ?the California Supreme Court disagreed that the state?s new term-limit law was unconstitutional?.</S>
+			<S sid="106" ssid="62">For this model, we also included negation words such as not and never to reverse the sentiment polarity.</S>
+			<S sid="107" ssid="63">Model 1 is the harmonic mean (average) of the sentiment strengths in the region: Model 1: cwcp wcp cn scP ij n i i = = ? = )|(argmax if ,)|( )( 1)|( j 1 Here n(c) is the number of words in the region whose sentiment category is c. If a region contains more and stronger positive than negative words, the sentiment will be positive.</S>
+			<S sid="108" ssid="64">Model 2 is the geometric mean: Model 2: cwcpif wcpscP ij n i i cn = ?= ? = ? )|(argmax ,)|(10)|( j 1 1)( 2.2.4 Examples The following are two example outputs.</S>
+			<S sid="109" ssid="65">Public officials throughout California have condemned a U.S. Senate vote Thursday to exclude illegal aliens from the 1990 census, saying the action will shortchange California in Congress and possibly deprive the state of millions of dollars of federal aid for medical emergency services and other programs for poor people.</S>
+			<S sid="110" ssid="66">TOPIC : illegal alien HOLDER : U.S. Senate OPINION REGION: vote/NN Thursday/NNP to/TO exclude/VB illegal/JJ aliens/NNS from/IN the/DT 1990/CD census,/NN SENTIMENT_POLARITY: negative For that reason and others, the Constitutional Convention unanimously rejected term limits and the First Congress soundly defeated two subsequent term-limit proposals.</S>
+			<S sid="111" ssid="67">TOPIC : term limit HOLDER : First Congress OPINION REGION: soundly/RB defeated/VBD two/CD subsequent/JJ term-limit/JJ proposals./NN SENTIMENT_POLARITY: negative</S>
+	</SECTION>
+	<SECTION title="Experiments. " number="3">
+			<S sid="112" ssid="1">The first experiment examines the two word sentiment classifier models and the second the three sentence sentiment classifier models.</S>
+			<S sid="113" ssid="2">3.1 Word Sentiment Classifier.</S>
+			<S sid="114" ssid="3">For test material, we asked three humans to classify data.</S>
+			<S sid="115" ssid="4">We started with a basic English word list for foreign students preparing for the TOEFL test and intersected it with an adjective list containing 19748 English adjectives and a verb list of 8011 verbs to obtain common adjectives and verbs.</S>
+			<S sid="116" ssid="5">From this we randomly selected 462 adjectives and 502 verbs for human classification.</S>
+			<S sid="117" ssid="6">Human1 and human2 each classified 462 adjectives, and human2 and human3 502 verbs.</S>
+			<S sid="118" ssid="7">The classification task is defined as assigning each word to one of three categories: positive, negative, and neutral.</S>
+			<S sid="119" ssid="8">3.1.1 Human?Human Agreement Adjectives Verbs Human1 : Human2 Human1 : Human3 Strict 76.19% 62.35% Lenient 88.96% 85.06% Table 4: Inter-human classification agreement.</S>
+			<S sid="120" ssid="9">Table 4 shows inter-human agreement.</S>
+			<S sid="121" ssid="10">The strict measure is defined over all three categories, whereas the lenient measure is taken over only two categories, where positive and neutral have been merged, should we choose to focus only on differentiating words of negative sentiment.</S>
+			<S sid="122" ssid="11">3.1.2 Human?Machine Agreement Table 5 shows results, using Equation (2) of Section 2.1.1, compared against a baseline that randomly assigns a sentiment category to each word (averaged over 10 iterations).</S>
+			<S sid="123" ssid="12">The system achieves lower agreement than humans but higher than the random process.</S>
+			<S sid="124" ssid="13">Of the test data, the algorithm classified 93.07% of adjectives and 83.27% of verbs as either positive and negative.</S>
+			<S sid="125" ssid="14">The remainder of adjectives and verbs failed to be classified, since they did not overlap with the synonym set of adjectives and verbs.</S>
+			<S sid="126" ssid="15">In Table 5, the seed list included just a few manually selected seed words (23 positive and 21 negative verbs and 15 and 19 adjectives, repectively).</S>
+			<S sid="127" ssid="16">We decided to investigate the effect of more seed words.</S>
+			<S sid="128" ssid="17">After collecting the annotated data, we added half of it (231 adjectives and 251 verbs) to the training set, retaining the other half for the test.</S>
+			<S sid="129" ssid="18">As Table 6 shows, agreement of both adjectives and verbs with humans improves.</S>
+			<S sid="130" ssid="19">Recall is also improved.</S>
+			<S sid="131" ssid="20">Adjective (Train: 231 Test : 231) Verb (Train: 251 Test : 251) Lenient agreement Lenient agreement H1:M H2:M recall H1:M H3:M recall 75.66% 77.88% 97.84% 81.20% 79.06% 93.23% Table 6: Results including manual data.</S>
+			<S sid="132" ssid="21">3.2 Sentence Sentiment Classifier.</S>
+			<S sid="133" ssid="22">3.2.1 Data 100 sentences were selected from the DUC 2001 corpus with the topics ?illegal alien?, ?term limits?, ?gun control?, and ?NAFTA?.</S>
+			<S sid="134" ssid="23">Two humans annotated the 100 sentences with three categories (positive, negative, and N/A).</S>
+			<S sid="135" ssid="24">To measure the agreement between humans, we used the Kappa statistic (Siegel and Castellan Jr. 1988).</S>
+			<S sid="136" ssid="25">The Kappa value for the annotation task of 100 sentences was 0.91, which is considered to be reliable.</S>
+			<S sid="137" ssid="26">3.2.2 Test on Human Annotated Data We experimented on Section 2.2.3?s 3 models of sentiment classifiers, using the 4 different window definitions and 4 variations of word-level classifiers (the two word sentiment equations introduced in Section 2.1.1, first with and then without normalization, to compare performance).</S>
+			<S sid="138" ssid="27">Since Model 0 considers not probabilities of words but only their polarities, the two word- level classifier equations yield the same results.</S>
+			<S sid="139" ssid="28">Consequently, Model 0 has 8 combinations and Models 1 and 2 have 16 each.</S>
+			<S sid="140" ssid="29">To test the identification of opinion Holder, we first ran models with holders that were annotated by humans then ran the same models with the automatic holder finding strategies.</S>
+			<S sid="141" ssid="30">The results appear in Figures 2 and 3.</S>
+			<S sid="142" ssid="31">The models are numbered as follows: m0 through m4 represent 4 sentence classifier models, Table 5.</S>
+			<S sid="143" ssid="32">Agreement between humans and system.</S>
+			<S sid="144" ssid="33">Adjective (test: 231 adjectives) Verb (test : 251 verbs) Lenient agreement Lenient agreement H1:M H2:M recall H1:M H3:M recall Random selection (average of 10 iterations) 59.35% 57.81% 100% 59.02% 56.59% 100% Basic method 68.37% 68.60% 93.07% 75.84% 72.72% 83.27% p1/p2 and p3/p4 represent the word classifier models in Equation (2) and Equation (3) with normalization and without normalization respectively.</S>
+			<S sid="145" ssid="34">0.3 0.4 0.5 0.6 0.7 0.8 0.9 m0p1 m0p3 m1p1 m1p2 m1p3 m1p4 m2p1 m2p2 m2p3 m2p4 ac cu ra cy Window 1 Window 2 Window 3 Window 4 0.3 0.4 0.5 0.6 0.7 0.8 0.9 m0p1 m0p3 m1p1 m1p2 m1p3 m1p4 m2p1 m2p2 m2p3 m2p4 ac cu rac y Window 1 Window 2 Window 3 Window 4 Human 1 : Machine Human 2 : Machine Figure 2: Results with manually annotated Holder.</S>
+			<S sid="146" ssid="35">0.3 0.4 0.5 0.6 0.7 0.8 0.9 m0p1 m0p3 m1p1 m1p2 m1p3 m1p4 m2p1 m2p2 m2p3 m2p4 ac cu rac y Window 1 Window 2 Window 3 Window 4 0.3 0.4 0.5 0.6 0.7 0.8 0.9 m0p1 m0p3 m1p1 m1p2 m1p3 m1p4 m2p1 m2p2 m2p3 m2p4 ac cu rac y Window 1 Window 2 Window 3 Window 4 Human 1 : Machine Human 2 : Machine Figure 3: Results with automatic Holder detection.</S>
+			<S sid="147" ssid="36">Correctness of an opinion is determined when the system finds both a correct holder and the appropriate sentiment within the sentence.</S>
+			<S sid="148" ssid="37">Since human1 classified 33 sentences positive and 33 negative, random classification gives 33 out of 66 sentences.</S>
+			<S sid="149" ssid="38">Similarly, since human2 classified 29 positive and 34 negative, random classification gives 34 out of 63 when the system blindly marks all sentences as negative and 29 out of 63 when it marks all as positive.</S>
+			<S sid="150" ssid="39">The system?s best model performed at 81% accuracy with the manually provided holder and at 67% accuracy with automatic holder detection.</S>
+			<S sid="151" ssid="40">3.3 Problems.</S>
+			<S sid="152" ssid="41">3.3.1 Word Sentiment Classification As mentioned, some words have both strong positive and negative sentiment.</S>
+			<S sid="153" ssid="42">For these words, it is difficult to pick one sentiment category without considering context.</S>
+			<S sid="154" ssid="43">Second, a unigram model is not sufficient: common words without much sentiment alone can combine to produce reliable sentiment.</S>
+			<S sid="155" ssid="44">For example, in ??Term limits really hit at democracy,?</S>
+			<S sid="156" ssid="45">says Prof. Fenno?, the common and multi-meaning word ?hit?</S>
+			<S sid="157" ssid="46">was used to express a negative point of view about term limits.</S>
+			<S sid="158" ssid="47">If such combinations occur adjacently, we can use bigrams or trigrams in the seed word list.</S>
+			<S sid="159" ssid="48">When they occur at a distance, however, it is more difficult to identify the sentiment correctly, especially if one of the words falls outside the sentiment region.</S>
+			<S sid="160" ssid="49">3.3.2 Sentence Sentiment Classification Even in a single sentence, a holder might express two different opinions.</S>
+			<S sid="161" ssid="50">Our system only detects the closest one.</S>
+			<S sid="162" ssid="51">Another difficult problem is that the models cannot infer sentiments from facts in a sentence.</S>
+			<S sid="163" ssid="52">?She thinks term limits will give women more opportunities in politics?</S>
+			<S sid="164" ssid="53">expresses a positive opinion about term limits but the absence of adjective, verb, and noun sentiment-words prevents a classification.</S>
+			<S sid="165" ssid="54">Although relatively easy task for people, detecting an opinion holder is not simple either.</S>
+			<S sid="166" ssid="55">As a result, our system sometimes picks a wrong holder when there are multiple plausible opinion holder candidates present.</S>
+			<S sid="167" ssid="56">Employing a parser to delimit opinion regions and more accurately associate them with potential holders should help.</S>
+			<S sid="168" ssid="57">3.4 Discussion.</S>
+			<S sid="169" ssid="58">Which combination of models is best?</S>
+			<S sid="170" ssid="59">The best overall performance is provided by Model 0.</S>
+			<S sid="171" ssid="60">Apparently, the mere presence of negative words is more important than sentiment strength.</S>
+			<S sid="172" ssid="61">For manually tagged holder and topic, Model 0 has the highest single performance, though Model 1 averages best.</S>
+			<S sid="173" ssid="62">Which is better, a sentence or a region?</S>
+			<S sid="174" ssid="63">With manually identified topic and holder, the region window4 (from Holder to sentence end) performs better than other regions.</S>
+			<S sid="175" ssid="64">How do scores differ from manual to automatic holder identification?</S>
+			<S sid="176" ssid="65">Table 7 compares the average results with automatic holder identification to manually annotated holders in 40 different models.</S>
+			<S sid="177" ssid="66">Around 7 more sentences (around 11%) were misclassified by the automatic detection method.</S>
+			<S sid="178" ssid="67">positive negative total Human1 5.394 1.667 7.060 Human2 4.984 1.714 6.698 Table 7: Average difference between manual and automatic holder detection.</S>
+			<S sid="179" ssid="68">How does adding the neutral sentiment as a separate category affect the score?</S>
+			<S sid="180" ssid="69">It is very confusing even for humans to distinguish between a neutral opinion and non opinion bearing sentences.</S>
+			<S sid="181" ssid="70">In previous research, we built a sentence subjectivity classifier.</S>
+			<S sid="182" ssid="71">Unfortunately, in most cases it classifies neutral and weak sentiment sentences as non-opinion bearing sentences.</S>
+	</SECTION>
+	<SECTION title="Conclusion. " number="4">
+			<S sid="183" ssid="1">Sentiment recognition is a challenging and difficult part of understanding opinions.</S>
+			<S sid="184" ssid="2">We plan to extend our work to more difficult cases such as sentences with weak-opinion-bearing words or sentences with multiple opinions about a topic.</S>
+			<S sid="185" ssid="3">To improve identification of the Holder, we plan to use a parser to associate regions more reliably with holders.</S>
+			<S sid="186" ssid="4">We plan to explore other learning techniques, such as decision lists or SVMs.</S>
+			<S sid="187" ssid="5">Nonetheless, as the experiments show, encouraging results can be obtained even with relatively simple models and only a small amount of manual seeding effort.</S>
+	</SECTION>
+</PAPER>

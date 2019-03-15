@@ -1,0 +1,358 @@
+<PAPER>
+  <S sid="0">Semantic-Head-Driven Generation</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">present algorithm for generating strings from logical form encodings that improves upon previous algorithms in that it places fewer restrictions on the class of grammars to which it is applicable.</S>
+    <S sid="2" ssid="2">In particular, unlike a previous bottom-up generator, it allows use of semantically nonmonotonic grammars, yet unlike top-down methods, it also permits left-recursion.</S>
+    <S sid="3" ssid="3">The enabling design feature of the algorithm is its implicit traversal of the analysis tree for the string being generated in a semantic-head-driven fashion.</S>
+  </ABSTRACT>
+  <SECTION title="AT &amp; T Bell Laboratories Murray Hill, NJ 07974 Robert C. Moore Artificial Intelligence Center SRI International Menlo Park, CA 94025" number="1">
+    <S sid="4" ssid="1">We present an algorithm for generating strings from logical form encodings that improves upon previous algorithms in that it places fewer restrictions on the class of grammars to which it is applicable.</S>
+    <S sid="5" ssid="2">In particular, unlike a previous bottom-up generator, it allows use of semantically nonmonotonic grammars, yet unlike top-down methods, it also permits left-recursion.</S>
+    <S sid="6" ssid="3">The enabling design feature of the algorithm is its implicit traversal of the analysis tree for the string being generated in a semantic-head-driven fashion.</S>
+  </SECTION>
+  <SECTION title="1 INTRODUCTION" number="2">
+    <S sid="7" ssid="1">The problem of generating a well-formed natural language expression from an encoding of its meaning possesses properties that distinguish it from the converse problem of recovering a meaning encoding from a given natural language expression.</S>
+    <S sid="8" ssid="2">This much is axiomatic.</S>
+    <S sid="9" ssid="3">In previous work (Shieber 1988), however, one of us attempted to characterize these differing properties in such a way that a single uniform architecture, appropriately parameterized, might be used for both natural language processes.</S>
+    <S sid="10" ssid="4">In particular, we developed an architecture inspired by the Earley deduction work of Pereira and Warren (1983), but which generalized that work allowing for its use in both a parsing and generation mode merely by setting the values of a small number of parameters.</S>
+    <S sid="11" ssid="5">As a method for generating natural language expressions, the Earley deduction method is reasonably successful along certain dimensions.</S>
+    <S sid="12" ssid="6">It is quite simple, general in its applicability to a range of unification-based and logic grammar formalisms, and uniform, in that it places only one restriction (discussed below) on the form of the linguistic analyses allowed by the grammars used in generation.</S>
+    <S sid="13" ssid="7">In particular, generation from grammars with recursions whose well-foundedness relies on lexical information will terminate; top-down generation regimes such as those of Wedekind (1988) or Dymetman and Isabelle (1988) lack this property; further discussion can be found in Section 2.1.</S>
+    <S sid="14" ssid="8">Unfortunately, the bottom-up, left-to-right processing regime of Earley generation&#8212;as it might be called&#8212;has its own inherent frailties.</S>
+    <S sid="15" ssid="9">Efficiency considerations require that only grammars possessing a property of semantic monotonicity can be effectively used, and even for those grammars, processing can become overly nondeterministic.</S>
+    <S sid="16" ssid="10">The algorithm described in this paper is an attempt to resolve these problems in a satisfactory manner.</S>
+    <S sid="17" ssid="11">Although we believe that this algorithm could be seen as an instance of a uniform architecture for parsing and generation&#8212;just as the extended Earley parser (Shieber, 1985b) and the bottom-up generator were instances of the generalized Earley deduction architecture&#8212;our efforts to date have been aimed foremost toward the development of the algorithm for generation alone.</S>
+    <S sid="18" ssid="12">We will mention efforts toward this end in Section 5.</S>
+    <S sid="19" ssid="13">As does the Earley-based generator, the new algorithm assumes that the grammar is a unification-based or logic grammar with a phrase structure backbone and complex nonterminals.</S>
+    <S sid="20" ssid="14">Furthermore, and again consistent with previous work, we assume that the nonterminals associate to the phrases they describe logical expressions encoding their possible meanings.</S>
+    <S sid="21" ssid="15">Beyond these requirements common to logic-based formalisms, the methods are generally applicable.</S>
+    <S sid="22" ssid="16">A variant of our method is used in Van Noord's BUG (Bottom-Up Generator) system, part of MiMo2, an experimental machine translation system for translating international news items of Teletext, which uses a Prolog version of PATR-II similar to that of Hirsh (1987).</S>
+    <S sid="23" ssid="17">According to Martin Kay (personal communication), the STREP machine translation project at the Center for the Study of Language and Information uses a version of our algorithm to generate with respect to grammars based on head-driven phrase structure grammar (HPSG).</S>
+    <S sid="24" ssid="18">Finally, Calder et al. (1989) report on a generation algorithm for unification categorial grammar that appears to be a special case of ours.</S>
+    <S sid="25" ssid="19">Despite the general applicability of the algorithm, we will, for the sake of concreteness, describe it and other generation algorithms in terms of their implementation for definiteclause grammars (DCG).</S>
+    <S sid="26" ssid="20">For ease of exposition, the encoding will be a bit more cumbersome than is typically found in Prolog DCG interpreters.</S>
+    <S sid="27" ssid="21">The standard DCG encoding in Prolog uses the notation (mid --&gt; (coil), , (coin). where the (cat,) are terms representing the grammatical category of an expression and its subconstituents.</S>
+    <S sid="28" ssid="22">Terminal symbols are introduced into rules by enclosing them in list brackets, for example sbar/S --&gt; [that] , s/S.</S>
+    <S sid="29" ssid="23">Such rules can be translated into Prolog directly using a difference list encoding of string positions; we assume readers are familiar with this technique (Pereira and Shieber, 1985).</S>
+    <S sid="30" ssid="24">Because we concentrate on the relationship between expressions in a language and their logical forms, we will assume that the category terms have both a syntactic and a semantic component.</S>
+    <S sid="31" ssid="25">In particular, the infix function symbol / will be used to form categories of the form Syn/Sem where Syn is the syntactic category of the expression and Sem is an encoding of its semantics as a logical form; the previous rule uses this notation, for example.</S>
+    <S sid="32" ssid="26">From a DCG perspective, all the rules involve the single nonterminal /, with the given intended interpretation.</S>
+    <S sid="33" ssid="27">Furthermore, the representation of grammars that we will postulate includes the threading of string positions explicitly, so that a node description will be of the form node (Syn/Sem, PO-P).</S>
+    <S sid="34" ssid="28">The first argument of the node functor is the category, divided into its syntactic and semantic components; the second argument is the difference list encoding of the substring it covers.</S>
+    <S sid="35" ssid="29">In summary, a DCG grammar rule will be encoded as the clause node(( syno )1 (semo), PO-P) ---&gt; [node((sym) I (semi), PO-P1), .</S>
+    <S sid="36" ssid="30">.</S>
+    <S sid="37" ssid="31">.</S>
+    <S sid="38" ssid="32">, node((syn&#8222;) I (sem&#8222;)), P&#8222;_1-P].</S>
+    <S sid="39" ssid="33">We use the functor `---&gt;' to distinguish this node encoding from the standard one.</S>
+    <S sid="40" ssid="34">The right-hand-side elements are kept as a Prolog list for easier manipulation by the interpreters we will build.</S>
+    <S sid="41" ssid="35">We turn now to the issue of terminal symbols on the right-hand sides of rules in the node encoding.</S>
+    <S sid="42" ssid="36">During the compilation process from the standard encoding to the node encoding, the right-hand side of a rule is converted from a list of categories and terminal strings to a list of nodes connected together by the difference-list threading technique used for standard DCG compilation.</S>
+    <S sid="43" ssid="37">At that point, terminal strings can be introduced into the string threading and need never be considered further.</S>
+    <S sid="44" ssid="38">For instance, the previous rule becomes node(sbar/S, IthatIPOI-P) ---&gt; node(s/S, PO-P).</S>
+    <S sid="45" ssid="39">Throughout, we will alternate between the two encodings, using the standard one for readability and the node encoding as the actual data for grammar interpretation.</S>
+    <S sid="46" ssid="40">As the latter, more cumbersome, representation is algorithmically generable from the former, no loss of generality ensues from using both.</S>
+  </SECTION>
+  <SECTION title="2 PROBLEMS WITH EXISTING GENERATORS" number="3">
+    <S sid="47" ssid="1">Existing generation algorithms have efficiency or termination problems with respect to certain classes of grammars.</S>
+    <S sid="48" ssid="2">We review the problems of both top-down and bottom-up regimes in this section.</S>
+    <S sid="49" ssid="3">Consider a naive top-down generation mechanism that takes as input the semantics to generate from and a corresponding syntactic category and builds a complete tree, top-down, left-to-right by applying rules of the grammar nondeterministically to the fringe of the expanding tree.</S>
+    <S sid="50" ssid="4">This control regime is realized, for instance, when running a DCG &amp;quot;backwards&amp;quot; as a generator.</S>
+    <S sid="51" ssid="5">Concretely, the following DCG interpreter&#8212;written in Prolog and taking as its data the grammar in encoded form&#8212;implements such a generation method.</S>
+    <S sid="52" ssid="6">Clearly, such a generator may not terminate.</S>
+    <S sid="53" ssid="7">For example, consider a grammar that includes the rules Computational Linguistics Volume 16, Number 1, March 1990 31 Shieber et at.</S>
+    <S sid="54" ssid="8">Semantic Head-Driven Grammar This grammar admits sentences like &amp;quot;John left&amp;quot; and &amp;quot;John's father left&amp;quot; with logical form encodings left(john) and left(mod(father, john)), respectively.</S>
+    <S sid="55" ssid="9">The technique used here to build the logical forms is well-known in logic grammars.'</S>
+    <S sid="56" ssid="10">Generation with the goal gen(left(john), Sent) using the generator above will result in application of the first rule to the node node(s/left(john), Sent-H).</S>
+    <S sid="57" ssid="11">A subgoal for the generation of a node node(np/NP, Sent-P) will result.</S>
+    <S sid="58" ssid="12">To this subgoal, the second rule will apply, leading to a subgoal for generation of the node node(det(N)/NP, Sent-P1), which itself, by virtue of the third rule, leads to another instance of the NP node generation subgoal.</S>
+    <S sid="59" ssid="13">Of course, the loop may now be repeated an arbitrary number of times.</S>
+    <S sid="60" ssid="14">Graphing the tree being constructed by the traversal of this algorithm, as in Figure 1, immediately exhibits the potential for nontermination in the control structure.</S>
+    <S sid="61" ssid="15">(The repeated goals along the left branch are presented in boldface in the figure.</S>
+    <S sid="62" ssid="16">Dashed lines indicate portions of the tree yet to be generated.)</S>
+    <S sid="63" ssid="17">This is an instance of the general problem familiar from logic programming that a logic program may not terminate when called with a goal less instantiated than what was intended by the program's designer.</S>
+    <S sid="64" ssid="18">Several researchers have noted that a different ordering of the branches in the top-down traversal would, in the case at hand, remedy the nontermination problem.</S>
+    <S sid="65" ssid="19">For the example above, the solution is to generate the VP first&#8212;using the goal generate (node(vp(NP)/left(john), P1-[ ]))&#8212;in the course of which the variable NP will become bound so that the generation from node(np/NP, Sent-P1) will terminate.</S>
+    <S sid="66" ssid="20">We might allow for reordering of the traversal of the children by sorting the nodes before generating them.</S>
+    <S sid="67" ssid="21">This can be simply done, by modifying the first clause of generate.</S>
+    <S sid="68" ssid="22">Here, we have introduced a predicate sort_children to reorder the child nodes before generating.</S>
+    <S sid="69" ssid="23">Dymetman and Isabelle (1988) propose a node-ordering solution to the top-down nontermination problem; they allow the grammar writer to specify a separate goal ordering for parsing and for generation by annotating the rules by hand.</S>
+    <S sid="70" ssid="24">Strzalkowski (1989) develops an algorithm for generating such annotations automatically.</S>
+    <S sid="71" ssid="25">In both of these cases, the node ordering is known a priori, and can be thought of as applying to the rules at compile time.</S>
+    <S sid="72" ssid="26">Wedekind (1988) achieves the reordering by first generating nodes that are connected, that is, whose semantics is instantiated.</S>
+    <S sid="73" ssid="27">Since the NP is not connected in this sense, but the VP is, the latter will be expanded first.</S>
+    <S sid="74" ssid="28">In essence, the technique is a kind of goal freezing (Colmerauer 1982) or implicit wait declaration (Naish 1986).</S>
+    <S sid="75" ssid="29">This method is more general, as the reordering is dynamic; the ordering of child nodes can, in principle at least, be different for di fferent uses of the same rule.</S>
+    <S sid="76" ssid="30">The generality seems necessary; for cases in which the a priori ordering of goals is insufficient, Dymetman and Isabelle also introduce goal freezing to control expansion.</S>
+    <S sid="77" ssid="31">Although vastly superior to the naive top-down algorithm, even this sort of amended top-down approach to generation based on goal freezing under one guise or another is insufficient with respect to certain linguistically plausible analyses.</S>
+    <S sid="78" ssid="32">The symptom is an ordering paradox in the sorting.</S>
+    <S sid="79" ssid="33">For example, the &amp;quot;complements&amp;quot; rule given by Shieber (1985a) in the PATR-II formalism can be encoded as the DCG rule: Top-down generation using this rule will be forced to expand the lower VP before its complement, since LF is uninstantiated initially.</S>
+    <S sid="80" ssid="34">Any of the reordering methods must choose to expand the child VP node first.</S>
+    <S sid="81" ssid="35">But in that case, application of the rule can recur indefinitely, leading to nontermination.</S>
+    <S sid="82" ssid="36">Thus, no matter what ordering of subgoals is chosen, nontermination results.</S>
+    <S sid="83" ssid="37">Of course, if one knew ahead of time that the subcategorizat ion list being built up as the value for Syncat was bounded in size, then an ad hoc solution would be to limit recursive use of this rule when that limit had been reached.</S>
+    <S sid="84" ssid="38">But even this ad hoc solution is problematic, as there may be no principled bound on the size of the subcategorization list.</S>
+    <S sid="85" ssid="39">For instance, in analyses of Dutch cross-serial verb constructions (Evers 1975; Huybrechts 1984), subcategorization lists may be concatenated by syntactic rules (MoortThe string of verbs is analyzed by appending their subcategorization lists as in Figure 2.</S>
+    <S sid="86" ssid="40">Subcategorization lists under this analysis can have any length, and it is impossible to predict from a semantic structure the size of its corresponding subcategorization list merely by examining the lexicon.</S>
+    <S sid="87" ssid="41">Strzalkowski refers to this problem quite aptly as constituting a deadlock situation.</S>
+    <S sid="88" ssid="42">He notes that by combining deadlock-prone rules (using a technique akin to partial execution2) many deadlock-prone rules can be replaced by rules that allow reordering; however, he states that &amp;quot;the general solution to this normalization problem is still under investigation.&amp;quot; We think that such a general solution is unlikely because of cases like the one above in which no finite amount of partial execution can necessarily bring sufficient information to bear on the rule to allow ordering.</S>
+    <S sid="89" ssid="43">The rule would have to be partially executed with respect to itself and all verbs so as to bring the lexical information that well-founds the ordering to bear on the ordering problem.</S>
+    <S sid="90" ssid="44">In general, this is not a finite process, as the previous Dutch example reveals.</S>
+    <S sid="91" ssid="45">This does not deny that compilation methods may be able to convert a grammar into a program that generates without termination problems.</S>
+    <S sid="92" ssid="46">In fact, the partial execution techniques described by two of us (Pereira and Shieber 1985) could form the basis of a compiler built by partial execution of the new algorithm we propose below relative to a grammar.</S>
+    <S sid="93" ssid="47">However, the compiler will not generate a program that generates top-down, as Strzalkowski's does. helpen voeren help feed In summary, top-down generation algorithms, even if controlled by the instantiation status of goals, can fail to terminate on certain grammars.</S>
+    <S sid="94" ssid="48">The critical property of the example given above is that the well-foundedness of the generation process resides in lexical information unavailable to top-down regimes.</S>
+    <S sid="95" ssid="49">This property is the hallmark of several linguistically reasonable analyses based on lexical encoding of grammatical information such as are found in categorial grammar and its unification-based and combinatorial variants, in head-driven phrase-structure grammar, and in lexical-functional grammar.</S>
+    <S sid="96" ssid="50">The bottom-up Earley-deduction generator does not fall prey to these problems of nontermination in the face of recursion, because lexical information is available immediately.</S>
+    <S sid="97" ssid="51">However, several important frailties of the Earley generation method were noted, even in the earlier work.</S>
+    <S sid="98" ssid="52">For efficiency, generation using this Earley deduction method requires an incomplete search strategy, filtering the search space using semantic information.</S>
+    <S sid="99" ssid="53">The semantic filter makes generation from a logical form computationally feasible, but preserves completeness of the generation process only in the case of semantically monotonic grammars&#8212;those grammars in which the semantic component of each right-hand-side nonterminal subsumes some portion of the semantic component of the left-hand-side.</S>
+    <S sid="100" ssid="54">The semantic monotonicity constraint itself is quite restrictive.</S>
+    <S sid="101" ssid="55">As stated in the original Earley generation paper (Shieber 1988), &amp;quot;perhaps the most immediate problem raised by [Earley generation] is the strong requirement of semantic monotonicity.</S>
+    <S sid="102" ssid="56">.</S>
+    <S sid="103" ssid="57">.</S>
+    <S sid="104" ssid="58">.</S>
+    <S sid="105" ssid="59">Finding a weaker constraint on grammars that still allows efficient processing is thus an important research objective.&amp;quot; Although it is intuitively plausible that the semantic content of subconstituents ought to play a role in the semantics of their combination&#8212;this is just a kind of compositionality claim&#8212;there are certain cases in which reasonable linguistic analyses might violate this intuition.</S>
+    <S sid="106" ssid="60">In general, these cases arise when a particular lexical item is stipulated to occur, the stipulation being either lexical (as in the case of particles or idioms) or grammatical (as in the case of expletive expressions).</S>
+    <S sid="107" ssid="61">Second, the left-to-right scheduling of Earley parsing, geared as it is toward the structure of the string rather than that of its meaning, is inherently more appropriate for parsing than generation.3 This manifests itself in an overly high degree of nondeterminism in the generation process.</S>
+    <S sid="108" ssid="62">For instance, various nondeterministic possibilities for generating a noun phrase (using different cases, say) might be entertained merely because the NP occurs before the verb which would more fully specify, and therefore limit, the options.</S>
+    <S sid="109" ssid="63">This nondeterminism has been observed in practice.</S>
+    <S sid="110" ssid="64">We can think of a parsing or generation process as discovering an analysis tree,4 one admitted by the grammar and zag saw Computational Linguistics Volume 16, Number 1, March 1990 33 Shieber et at.</S>
+    <S sid="111" ssid="65">Semantic Head-Driven Grammar satisfying certain syntactic or semantic conditions, by traversing a virtual tree and constructing the actual tree during the traversal.</S>
+    <S sid="112" ssid="66">The conditions to be satisfied&#8212; possessing a given yield in the parsing case, or having a root node labeled with given semantic information in the case of generation&#8212;reflect the different premises of the two types of problems.</S>
+    <S sid="113" ssid="67">This perspective purposely abstracts issues of nondeterminism in the parsing or generation process, as it assumes an oracle to provide traversal steps that happen to match the ethereal virtual tree being constructed.</S>
+    <S sid="114" ssid="68">It is this abstraction that makes it a useful expository device, but should not be taken literally as a description of an algorithm.</S>
+    <S sid="115" ssid="69">From this point of view, a naive top-down parser or generator performs a depth-first, left-to-right traversal of the tree.</S>
+    <S sid="116" ssid="70">Completion steps in Earley's algorithm, whether used for parsing or generation, correspond to a post-order traversal (with prediction acting as a pre-order filter).</S>
+    <S sid="117" ssid="71">The left-to-right traversal order of both of these methods is geared towards the given information in a parsing problem, the string, rather than that of a generation problem, the goal logical form.</S>
+    <S sid="118" ssid="72">It is exactly this mismatch between structure of the traversal and structure of the problem premise that accounts for the profligacy of these approaches when used for generation.</S>
+    <S sid="119" ssid="73">Thus, for generation, we want a traversal order geared to the premise of the generation problem, that is, to the semantic structure of the sentence.</S>
+    <S sid="120" ssid="74">The new algorithm is designed to reflect such a traversal strategy respecting the semantic structure of the string being generated, rather than the string itself.</S>
+  </SECTION>
+  <SECTION title="3 THE NEW ALGORITHM" number="4">
+    <S sid="121" ssid="1">Given an analysis tree for a sentence, we define the pivot node as the lowest node in the tree such that it and all higher nodes up to the root have the same semantics.</S>
+    <S sid="122" ssid="2">Intuitively speaking, the pivot serves as the semantic head of the root node.</S>
+    <S sid="123" ssid="3">Our traversal will proceed both top-down and bottom-up from the pivot, a sort of semantic-headdriven traversal of the tree.</S>
+    <S sid="124" ssid="4">The choice of this traversal allows a great reduction in the search for rules used to build the analysis tree.</S>
+    <S sid="125" ssid="5">To be able to identify possible pivots, we distinguish a subset of the rules of the grammar, the chain rules, in which the semantics of some right-hand-side element is identical to the semantics of the left-hand-side.</S>
+    <S sid="126" ssid="6">The righthand-side element will be called the rule's semantic head.</S>
+    <S sid="127" ssid="7">The traversal, then, will work top-down from the pivot using a nonchain rule, for if a chain rule were used, the pivot would not be the lowest node sharing semantics with the root.</S>
+    <S sid="128" ssid="8">Instead, the pivot's semantic head would be.</S>
+    <S sid="129" ssid="9">After the nonchain rule is chosen, each of its children must be generated recursively.</S>
+    <S sid="130" ssid="10">The bottom-up steps to connect the pivot to the root of the analysis tree can be restricted to chain rules only, as the pivot (along with all intermediate nodes) has the same semantics as the root and must therefore be the semantic head.</S>
+    <S sid="131" ssid="11">Again, after a chain rule is chosen to move up one node in the tree being constructed, the remaining (nonsemantic-head) children must be generated recursively.</S>
+    <S sid="132" ssid="12">The top-down base case occurs when the nonchain rule has no nonterminal children; that is, it introduces lexical material only.</S>
+    <S sid="133" ssid="13">The bottom-up base case occurs when the pivot and root are trivially connected because they are one and the same node.</S>
+    <S sid="134" ssid="14">An interesting side issue arises when there are two right-hand-side elements that are semantically identical to the left-hand-side.</S>
+    <S sid="135" ssid="15">This provides some freedom in choosing the semantic head, although the choice is not without ramifications.</S>
+    <S sid="136" ssid="16">For instance, in some analyses of NP structure, a rule such as np/NP --&gt; det/NP, nbar/NP. is postulated.</S>
+    <S sid="137" ssid="17">In general, a chain rule is used bottom-up from its semantic head and top-down on the non-semantichead siblings.</S>
+    <S sid="138" ssid="18">Thus, if a non-semantic-head subconstituent has the same semantics as the left-hand-side, a recursive top-down generation with the same semantics will be invoked.</S>
+    <S sid="139" ssid="19">In theory, this can lead to nontermination, unless syntactic factors eliminate the recursion, as they would in the rule above regardless of which element is chosen as semantic head.</S>
+    <S sid="140" ssid="20">In a rule for relative clause introduction such as the following (in highly abbreviated form) nbar/N --&gt; nbar/N, sbar/N. we can (and must) choose the nominal as semantic head to effect termination.</S>
+    <S sid="141" ssid="21">However, there are other problematic cases, such as verb-movement analyses of verb-second languages.</S>
+    <S sid="142" ssid="22">We discuss this topic further in Section 4.3.</S>
+    <S sid="143" ssid="23">To make the description more explicit, we will develop a Prolog implementation of the algorithm for DCGs, along the way introducing some niceties of the algorithm previously glossed over.</S>
+    <S sid="144" ssid="24">As before, a term of the form node(Cat, PO-P) represents a phrase with the syntactic and semantic information given by Cat starting at position PO and ending at position P in the string being generated.</S>
+    <S sid="145" ssid="25">As usual for DCGs, a string position is represented by the list of string elements after the position.</S>
+    <S sid="146" ssid="26">The generation process starts with a goal category and attempts to generate an appropriate node, in the process instantiating the generated string. gen(Cat, String) :- generate(node(Cat, String-[ ])).</S>
+    <S sid="147" ssid="27">To generate from a node, we nondeterministically choose a nonchain rule whose left-hand-side will serve as the pivot.</S>
+    <S sid="148" ssid="28">For each right-hand-side element, we recursively generate, and then connect the pivot to the root.</S>
+    <S sid="149" ssid="29">The connection of a pivot to the root, as noted before, requires choice of a chain rule whose semantic head matches the pivot, and the recursive generation of the remainder of its right-hand side.</S>
+    <S sid="150" ssid="30">We assume a predicate applicable_ chain_ rule(SemHead, LHS, Root, RHS) that holds if there is a chain rule admitting a node LHS as the left-hand side, SemHead as its semantic head, and RHS as the remaining right-hand-side nodes, such that the lefthand-side node and the root node Root can themselves be connected.</S>
+    <S sid="151" ssid="31">The base case occurs when the root and the pivot are the same.</S>
+    <S sid="152" ssid="32">To implement the generator correctly, identity checks like this one must use a sound unification algorithm with the occurs check.</S>
+    <S sid="153" ssid="33">(The default unification in most Prolog systems is unsound in this respect.)</S>
+    <S sid="154" ssid="34">The reason is simple.</S>
+    <S sid="155" ssid="35">Consider, for example, a grammar with a gap-threading treatment of wh-movement (Pereira 1981; Pereira and Shieber 1985), which might include the rule np(Agr, [np(Agr)/SeminX)/Sem &#8212;&gt; stating that an NP with agreement Agr and semantics Sem can be empty provided that the list of gaps in the NP can be represented as the difference list [np(Agr)/SeminX, that is, the list containing an NP gap with the same agreement features Agr.</S>
+    <S sid="156" ssid="36">Because the above rule is a nonchain rule, it will be considered when trying to generate any nongap NP, such as the proper noun np(3-sing,G-G)/john.</S>
+    <S sid="157" ssid="37">The base case of connect will try to unify that term with the head of the rule above, leading to the attempted unification of X with [np(Agr)/SemIX], an occurs-check failure that would not be caught by the default Prolog unification algorithm.</S>
+    <S sid="158" ssid="38">The base case, incorporating the explicit call to a sound unification algorithm, is therefore as follows: connect(Pivot, Root) :% trivially connect pivot to root unify(Pivot, Root).</S>
+    <S sid="159" ssid="39">Now, we need only define the notion of an applicable chain or nonchain rule.</S>
+    <S sid="160" ssid="40">A nonchain rule is applicable if the semantics of the left-hand side of the rule (which is to become the pivot) matches that of the root.</S>
+    <S sid="161" ssid="41">Further, we require a top-down check that syntactically the pivot can serve as the semantic head of the root.</S>
+    <S sid="162" ssid="42">For this purpose, we assume a predicate chained_ nodes that codifies the transitive closure of the semantic head relation over categories.</S>
+    <S sid="163" ssid="43">This is the correlate of the link relation used in left-corner parsers with top-down filtering; we direct the reader to the discussion by Matsumoto et al. (1983) or Pereira and Shieber (1985) for further information.</S>
+    <S sid="164" ssid="44">A chain rule is applicable to connect a pivot to a root if the pivot can serve as the semantic head of the rule and the left-hand side of the rule is appropriate for linking to the root. applicable_ chain_ rule(Pivot, Parent, Root, RHS) :% choose a chain rule chain_ rule(Parent, RHS, SemHead), % .</S>
+    <S sid="165" ssid="45">.</S>
+    <S sid="166" ssid="46">. whose sem. head matches pivot unify(Pivot, SemHead), % make sure the categories can connect chained_ nodes(Parent, Root).</S>
+    <S sid="167" ssid="47">The information needed to guide the generation (given as the predicates chain_ rule, non_ chain_ rule, and chained_ nodes) can be computed automatically from the grammar.</S>
+    <S sid="168" ssid="48">A program to compile a DCG into these tables has in fact been implemented.</S>
+    <S sid="169" ssid="49">The details of the process will not be discussed further; interested readers may write to the first author for the required Prolog code.</S>
+    <S sid="170" ssid="50">We turn now to a simple example to give a sense of the order of processing pursued by this generation algorithm.</S>
+    <S sid="171" ssid="51">As in previous examples, the grammar fragment in Figure 3 uses the infix operator / to separate syntactic and semantic category information, and subcategorization for complements is performed lexically.</S>
+    <S sid="172" ssid="52">Consider the generation from the category sentence/ decl(call_ up(john,friends)).</S>
+    <S sid="173" ssid="53">The analysis tree that we will be implicitly traversing in the course of generation is given Computational Linguistics Volume 16, Number 1, March 1990 35 Shieber et al. Semantic Head-Driven Grammar in Figure 4.</S>
+    <S sid="174" ssid="54">The rule numbers are keyed to the grammar.</S>
+    <S sid="175" ssid="55">The pivots chosen during generation and the branches corresponding to the semantic head relation are shown in boldface.</S>
+    <S sid="176" ssid="56">We begin by attempting to find a nonchain rule that will define the pivot.</S>
+    <S sid="177" ssid="57">This is a rule whose left-hand-side semantics matches the root semantics decl(call _ up(john, friends)) (although its syntax may differ).</S>
+    <S sid="178" ssid="58">In fact, the only such nonchain rule is We conjecture that the pivot is labeled sentence/ decl(call_up(john,friends)).</S>
+    <S sid="179" ssid="59">In terms of the tree traversal, we are implicitly choosing the root node [a] as the pivot.</S>
+    <S sid="180" ssid="60">We recursively generate from the child's node [b], whose category is s(finite)/call_up(john, friends).</S>
+    <S sid="181" ssid="61">For this category, the pivot (which will turn out to be node [fl) will be defined by the nonchain rule (If there were other forms of the verb, these would be potential candidates, but most would be eliminated by the chained_nodes check, as the semantic head relation requires identity of the verb form of a sentence and its VP head.</S>
+    <S sid="182" ssid="62">See Section 4.2 for a technique for further reducing the nondeterminism in lexical item selection.)</S>
+    <S sid="183" ssid="63">Again, we recursively generate for all the nonterminal elements of the right-hand side of this rule, of which there are none.</S>
+    <S sid="184" ssid="64">We must therefore connect the pivot [f] to the root [b].</S>
+    <S sid="185" ssid="65">A chain rule whose semantic head matches the pivot must be chosen.</S>
+    <S sid="186" ssid="66">The only choice is the rule Unifying the pivot in, we find that we must recursively generate the remaining RHS element np(_)/friends, and then connect the left-hand-side node [e] with category vp(finiteAlex /up, np(3-sing)/johnp/call_ up(john,friends) to the same root [b].</S>
+    <S sid="187" ssid="67">The recursive generation yields a node covering the string &amp;quot;friends&amp;quot; following the previously generated string &amp;quot;calls&amp;quot;.</S>
+    <S sid="188" ssid="68">The recursive connection will use the same chain rule, generating the particle &amp;quot;up&amp;quot;, and the new node to be connected [d].</S>
+    <S sid="189" ssid="69">This node requires the chain rule for connection.</S>
+    <S sid="190" ssid="70">Again, the recursive generation for the subject yields the string &amp;quot;John&amp;quot;, and the new node to be connected s(finite)/call_up(john,friends).</S>
+    <S sid="191" ssid="71">This last node connects to the root [b] by virtue of identity.</S>
+    <S sid="192" ssid="72">This completes the process of generating top-down from the original pivot sentence/decl(call_up(john,friends)).</S>
+    <S sid="193" ssid="73">All that remains is to connect this pivot to the original root.</S>
+    <S sid="194" ssid="74">Again, the process is trivial, by virtue of the base case for connection.</S>
+    <S sid="195" ssid="75">The generation process is thus completed, yielding the string &amp;quot;John calls friends up&amp;quot;.</S>
+    <S sid="196" ssid="76">The drawing in Figure 4 summarizes the generation process by showing which steps were performed top-down or bottom-up by arrows on the analysis tree branches.</S>
+    <S sid="197" ssid="77">The grammar presented here was forced for expository reasons to be trivial.</S>
+    <S sid="198" ssid="78">(We have developed more extensive experimental grammars that can generate relative clauses with gaps and sentences with quantified NPs from quantifled logical forms by using a version of Cooper storage [Cooper, 1983].</S>
+    <S sid="199" ssid="79">An outline of our treatment of quantification is provided in Section 3.4.)</S>
+    <S sid="200" ssid="80">Nonetheless, several important properties of the algorithm are exhibited even in the preceding simple example.</S>
+    <S sid="201" ssid="81">First, the order of processing is not left-to-right.</S>
+    <S sid="202" ssid="82">The verb was generated before any of its complements.</S>
+    <S sid="203" ssid="83">Because of this, full information about the subject, including agreement information, was available before it was generated.</S>
+    <S sid="204" ssid="84">Thus, the nondeterminism that is an artifact of left-to-right processing, and a source of inefficiency in the Earley generator, is eliminated.</S>
+    <S sid="205" ssid="85">Indeed, the example here was completely deterministic; all rule choices were forced.</S>
+    <S sid="206" ssid="86">In addition, the semantic information about the particle &amp;quot;up&amp;quot; was available, even though this information appears nowhere in the goal semantics.</S>
+    <S sid="207" ssid="87">That is, the generator operated appropriately despite a semantically nonmonotonic grammar.</S>
+    <S sid="208" ssid="88">Finally, even though much of the processing is top-down, left-recursive rules, even deadlock-prone rules (e.g. rule (3)), are handled in a constrained manner by the algorithm.</S>
+    <S sid="209" ssid="89">For these reasons, we feel that the semantic-head-driven algorithm is a significant improvement over top-down methods and the previous bottom-up method based on Earley deduction.</S>
+    <S sid="210" ssid="90">We will outline here how the new algorithm can generate, from a quantified logical form, sentences with quantified NPs one of whose readings is the original logical form; that is, how it performs quantifier lowering automatically.</S>
+    <S sid="211" ssid="91">For this, we will associate a quantifier store with certain categories and add to the grammar suitable store manipulation rules.</S>
+    <S sid="212" ssid="92">Each category whose constituents may create store elements will have a store feature.</S>
+    <S sid="213" ssid="93">Furthermore, for each such category whose semantics can be the scope of a quantifier, there will be an optional nonchain rule to take the top element of an ordered store and apply it to the semantics of the category.</S>
+    <S sid="214" ssid="94">For example, here is the rule for sentences: s(Form, GO-G, Store)/quant(Q,X,R,S) ---&gt; (8) s(Form, GO-G, [qterm(Q,X,R)IStore])/S.</S>
+    <S sid="215" ssid="95">The term quant(Q,X,R,S) represents a quantified formula with quantifier Q, bound variable X, restriction R, and scope S; qterm(Q,X,R) is the corresponding store element.</S>
+    <S sid="216" ssid="96">In addition, some mechanism is needed to combine the stores of the immediate constituents of a phrase into a store for the phrase.</S>
+    <S sid="217" ssid="97">For example, the combination of subject and complement stores for a verb into a clause store is done in one of our test grammars by lexical rules such as vp(finite, [np(_, S0)/0, np(3-sing, SS)/S], SC)/gen(S,O) --&gt; (9) [generates], (shuffle(SS, SO, SC)]. which states that the store SC of a clause with main verb &amp;quot;love&amp;quot; and the stores SS and SO of the subject and object the verb subcategorizes for satisfy the constraint shuffle (SS, SO, SC), meaning that SC is an interleaving of elements of SS and SO in their original order.5 Constraints in grammar rules such as the one above are handled in the generator by the clause generate(lGoalsp call(Goals). which passes the conditions to Prolog for execution.</S>
+    <S sid="218" ssid="98">This extension must be used with great care, because it is in general difficult to know the instantion state of such goals when they are called from the generator, and as noted before underinstantiated goals may lead to nontermination.</S>
+    <S sid="219" ssid="99">A safer scheme would rely on delaying the execution of goals until their required instantiation patterns are satisfied (Naish 1986).</S>
+    <S sid="220" ssid="100">Finally, it is necessary to deal with the noun phrases that create store elements.</S>
+    <S sid="221" ssid="101">Ignoring the issue of how to treat quantifiers from within complex noun phrases, we need lexical rules for determiners, of the form stating that the semantics of a quantified NP is simply the variable bound by the store element arising from the NP.</S>
+    <S sid="222" ssid="102">For rules of this form to work properly, it is essential that distinct bound logical-form variables be represented as distinct constants in the terms encoding the logical forms.</S>
+    <S sid="223" ssid="103">This is an instance of the problem of coherence discussed in Section 4.1.</S>
+    <S sid="224" ssid="104">Figure 5 shows the analysis tree traversal for generating the sentence &amp;quot;No program generates every sentence&amp;quot; from the logical form deol(quant(no,p,prog(p) , quant(every,s,sent(s),gen(p,$)))) The numbers labeling nodes in the figure correspond to tree traversal order.</S>
+    <S sid="225" ssid="105">We will only discuss the aspects of the traversal involving the new grammer rules given above.</S>
+    <S sid="226" ssid="106">The remaining rules are like the ones in Figure 3, except that nonterminals have an additional store argument where necessary.</S>
+    <S sid="227" ssid="107">Pivot nodes [b] and [c] result from the application of rule (8) to reverse the unstoring of the quantifiers in the goal logical form.</S>
+    <S sid="228" ssid="108">The next pivot node is node [j], where rule (9) is applied.</S>
+    <S sid="229" ssid="109">For the application of this rule to terminate, it is necessary that at least either the first two or the last argument of the shuffle condition be instantiated.</S>
+    <S sid="230" ssid="110">The pivot node must obtain the required store instantiation from the goal node being generated.</S>
+    <S sid="231" ssid="111">This happens automatically in the rule applicability check that identified the pivot, since the table chained_ nodes identifies the store variables for the goal and pivot nodes.</S>
+    <S sid="232" ssid="112">Given the sentence store, the shuffle predicate nondeterministically generates every the substores for the constituents subcategorized for by the verb.</S>
+    <S sid="233" ssid="113">The next interesting event occurs at pivot node [I], where rule (10) is used to absorb the store for the object quantified noun phrase.</S>
+    <S sid="234" ssid="114">The bound variable for the stored quantifier, in this case s, must be the same as the meaning of the noun phrase and determiner.6 This condition was already used to filter out inappropriate shuffle results when node [l] was selected as pivot for a noun phrase goal, again through the nonterminal argument identifications included in the chained_ nodes table.</S>
+    <S sid="235" ssid="115">The rules outlined here are less efficient than they might be because during the distribution of store elements among the subject and complements of a verb no check is performed as to whether the variable bound by a store element actually appears in the semantics of the phrase to which it is being assigned, leading to many dead ends in the generation process.</S>
+    <S sid="236" ssid="116">Also, the rules are sound for generation but not for analysis, because they do not enforce the constraint that every occurrence of a variable in logical form be outscoped by the variable's binder.</S>
+    <S sid="237" ssid="117">Adding appropriate side conditions to the rules, following the constraints discussed by Hobbs and Shieber (1987) would not be difficult.</S>
+  </SECTION>
+  <SECTION title="4 EXTENSIONS" number="5">
+    <S sid="238" ssid="1">The basic semantic-head-driven generation algorithm can be augmented in various ways so as to encompass some important analyses and constraints.</S>
+    <S sid="239" ssid="2">In particular, we discuss the incorporation of Wedekind (1988) defines completeness and coherence of a generation algorithm as follows.</S>
+    <S sid="240" ssid="3">Suppose a generator derives a string w from a logical form s, and the grammar assigns to w the logical form a.</S>
+    <S sid="241" ssid="4">The generator is complete if s always subsumes a and coherent if a always subsumes s. The generator defined in Section 3.1 is not coherent or complete in this sense; it requires only that a and s be compatible, that is, unifiable.</S>
+    <S sid="242" ssid="5">If the logical-form language and semantic interpretation system provide a sound treatment of variable binding and scope, abstraction and application, then completeness and coherence will be irrelevant because the logical form of any phrase will not contain free variables.</S>
+    <S sid="243" ssid="6">However, neither semantic projections in lexical-functional grammar (LFG; Halvorsen and Kaplan 1988) nor definite-clause grammars provide the means for such a sound treatment: logical-form variables or missing arguments of predicates are both encoded as unbound variables (attributes with unspecified values in the LFG semantic projection) at the description level.</S>
+    <S sid="244" ssid="7">Under such conditions, completeness and coherence become important.</S>
+    <S sid="245" ssid="8">For example, suppose a grammar associated the following strings and logical forms.</S>
+    <S sid="246" ssid="9">'John ate a nice yellow banana' The generator of Section 3.1 would generate any of these sentences for the logical form eat(john, X) (because of its incoherence) and would generate &amp;quot;John ate&amp;quot; for the logical form eat(john, banana) (because of its incompleteness).</S>
+    <S sid="247" ssid="10">Coherence can be achieved by removing the confusion between object-level and metalevel variables mentioned above; that is, by treating logical-form variables as constants at the description level.</S>
+    <S sid="248" ssid="11">In practice, this can be achieved by replacing each variable in the semantics from which we are generating by a new distinct constant (for instance with the numbervars predicate built into some implementations of Prolog).</S>
+    <S sid="249" ssid="12">These new constants will not unify with any augmentations to the semantics.</S>
+    <S sid="250" ssid="13">A suitable modification of our generator would be This leaves us with the completeness problem.</S>
+    <S sid="251" ssid="14">This problem arises when there are phrases whose semantics are not ground at the description level, but instead subsume the goal logical form or generation.</S>
+    <S sid="252" ssid="15">For instance, in our hypothetical example, the string &amp;quot;John eats&amp;quot; will be generated for semantics eat(john, banana).</S>
+    <S sid="253" ssid="16">The solution is to test at the end of the generation procedure whether the feature structure that is found is complete with respect to the original feature structure.</S>
+    <S sid="254" ssid="17">However, because of the way in which top-down information is used, it is unclear what semantic information is derived by the rules themselves, and what semantic information is available because of unifications with the original semantics.</S>
+    <S sid="255" ssid="18">For this reason, &amp;quot;shadow&amp;quot; variables are added to the generator that represent the feature structure derived by the grammar itself.</S>
+    <S sid="256" ssid="19">Furthermore, a copy of the semantics of the original feature structure is made at the start of the generation process.</S>
+    <S sid="257" ssid="20">Completeness is achieved by testing whether the semantics of the shadow is subsumed by the copy.</S>
+    <S sid="258" ssid="21">As it stands, the generation algorithm chooses particular lexical forms on-line.</S>
+    <S sid="259" ssid="22">This approach can lead to a certain amount of unnecessary nondeterminism.</S>
+    <S sid="260" ssid="23">The choice of a particular form depends on the available semantic and syntactic information.</S>
+    <S sid="261" ssid="24">Sometimes there is not enough information available to choose a form deterministically.</S>
+    <S sid="262" ssid="25">For instance, the choice of verb form might depend on syntactic features of the verb's subject available only after the subject has been generated.</S>
+    <S sid="263" ssid="26">This nondeterminism can be eliminated by deferring lexical choice to a postprocess.</S>
+    <S sid="264" ssid="27">Inflectional and orthographical rules are only applied when the generation process is finished and all syntactic features are known.</S>
+    <S sid="265" ssid="28">In short, the generator will yield a list of lexical items instead of a list of words.</S>
+    <S sid="266" ssid="29">To this list the inflectional and orthographical rules are applied.</S>
+    <S sid="267" ssid="30">The MiMo2 system incorporates such a mechanism into the previous generation algorithm quite successfully.</S>
+    <S sid="268" ssid="31">Experiments with particular grammars of Dutch, Spanish, and English have shown that the delay mechanism results in a generator that is faster by a factor of two or three on short sentences.</S>
+    <S sid="269" ssid="32">Of course, the same mechanism could be added to any of the other generation techniques discussed in this paper; it is independent of the traversal order.</S>
+    <S sid="270" ssid="33">The particular approach to delaying lexical choice found in the MiMo2 system relies on the structure of the system's morphological component as presented in Figure 6.</S>
+    <S sid="271" ssid="34">The figure shows how inflectional rules, orthographical rules, morphology and syntax are related: orthographical rules are applied to the results of inflectional rules.</S>
+    <S sid="272" ssid="35">These infectional rules are applied to the results of the morphological rules.</S>
+    <S sid="273" ssid="36">The result of the orthographical part are then input for the syntax.</S>
+    <S sid="274" ssid="37">Grammar of syntax and semantics Two-level orthography Paradigmatic inflection Morphological unification grammar for derivations, compounds and lexical rules Lexicon of stems Computational Linguistics Volume 16, Number 1, March 1990 39 Shieber et at.</S>
+    <S sid="275" ssid="38">Semantic Head-Driven Grammar However, in the lexical-delayed scheme the inflectional and orthographical rules are delayed.</S>
+    <S sid="276" ssid="39">During the generation process the results of the morphological grammar are used directly.</S>
+    <S sid="277" ssid="40">We emphasize that this is possible only because the inflectional and orthographical rules are monotonic, in the sense that they only further instantiate the feature structure of a lexical item but do not change it.</S>
+    <S sid="278" ssid="41">This implies, for example, that a rule that relates an active and a passive variant of a verb will not be an inflectional rule but rather a rule in the morphological grammar, although the rule that builds a participle from a stem may in fact be an inflectional rule if it only instantiates the feature vform.</S>
+    <S sid="279" ssid="42">When the generation process proper is finished the delayed rules are applied and the correct forms can be chosen deterministically.</S>
+    <S sid="280" ssid="43">The delay mechanism is useful in the following two general cases: First, the mechanism is useful if an inflectional variant depends on syntatic features that are not yet available.</S>
+    <S sid="281" ssid="44">The particular choice of whether a verb has singular or plural inflection depends on the syntactic agreement features of its subject; these are only available after the subject has been generated.</S>
+    <S sid="282" ssid="45">Other examples may include the particular choice of personal and relative pronouns, and so forth.</S>
+    <S sid="283" ssid="46">Second, delaying lexical choice is useful when there are several variants for some word that are equally possible because they are semantically and syntactically identical.</S>
+    <S sid="284" ssid="47">For example, a word may have several spelling variants.</S>
+    <S sid="285" ssid="48">If we delay orthography then the generation process computes with only one &amp;quot;abstract&amp;quot; variant.</S>
+    <S sid="286" ssid="49">After the generation process is completed, several variants can be filled in for this abstract one.</S>
+    <S sid="287" ssid="50">Examples from English include words that take both regular and irregular tense forms (e.g.</S>
+    <S sid="288" ssid="51">&amp;quot;burned/burnt&amp;quot;); and variants such as &amp;quot;traveller/traveler,&amp;quot; realize/realise,&amp;quot; etc.</S>
+    <S sid="289" ssid="52">The success of the generation algorithm presented here comes about because lexical information is available as soon as possible.</S>
+    <S sid="290" ssid="53">Returning to the Dutch examples in Section 2.1, the list of subcategorization elements is usually known in time.</S>
+    <S sid="291" ssid="54">Semantic heads can then deterministically pick out their arguments.</S>
+    <S sid="292" ssid="55">An example in which this is not the case is an analysis of German and Dutch, where the position of the verb in root sentences (the second position) is different from its position in subordinates (the last position).</S>
+    <S sid="293" ssid="56">In most traditional analyses it is assumed that the verb in root sentences has been &amp;quot;moved&amp;quot; from the final position to the second position.</S>
+    <S sid="294" ssid="57">Koster (1975) argues for this analysis of Dutch.</S>
+    <S sid="295" ssid="58">Thus, a simple root sentence in German and Dutch is analyzed as in the following examples: Vandaag kust, de man de vrouw, Today kisses the man the woman Vandaag heeft, de man de vrouw e gekust Today has the man the woman kissed Vandaag [ziet en hoortli de man de vrouw Ei Today sees and hears the man the woman In DCG such an analysis can easily be defined by unifying the information on the verb in second position to some empty verb in final position, as exemplified by the simple grammar for a Dutch fragment in Figure 7.</S>
+    <S sid="296" ssid="59">In this grammar, a special empty element is defined corresponding to the missing verb.</S>
+    <S sid="297" ssid="60">All information on the verb in second position is percolated through the rules to this empty verb.</S>
+    <S sid="298" ssid="61">Therefore the definition of the several VP rules is valid for both root and subordinate clauses.7 The problem comes about because the generator can (and must) at some point predict the empty verb as the pivot of the construction.</S>
+    <S sid="299" ssid="62">However, in the definition of this empty verb no information (such as the list of complements) will get instantiated.</S>
+    <S sid="300" ssid="63">Therefore, the VP complement rule (11) can be applied an unbounded number of times.</S>
+    <S sid="301" ssid="64">The length of the lists of complements now is not known in advance, and the generator will not terminate.</S>
+    <S sid="302" ssid="65">Van Noord (1989a) proposes an ad hoc solution that assumes that the empty verb is an inflectional variant of a verb.</S>
+    <S sid="303" ssid="66">As inflection rules are delayed, the generation process acts as if the empty verb is an ordinary verb, thereby circumventing the problem.</S>
+    <S sid="304" ssid="67">However, this solution only works if the head that is displaced is always lexical.</S>
+    <S sid="305" ssid="68">This is not the case in general.</S>
+    <S sid="306" ssid="69">In Dutch the verb second position can not only be filled by lexical verbs but also by a conjunction of verbs.</S>
+    <S sid="307" ssid="70">Similarly, Spanish clause structure can be analyzed by assuming the &amp;quot;movement&amp;quot; of complex verbal constructions to the second position.</S>
+    <S sid="308" ssid="71">Finally, in German it is possible to topicalize a verbal head.</S>
+    <S sid="309" ssid="72">Note that in these problematic cases the head that lacks sufficient information (the empty verb anaphor) is overtly realized in a position where there is enough information (the antecedent).</S>
+    <S sid="310" ssid="73">Thus it appears that the problem might be solved if the antecedent is generated before the anaphor.</S>
+    <S sid="311" ssid="74">This is the case if the antecedent is the semantic head of the clause; the anaphor will then be instantiated via top-down information through the chained_nodes predicate.</S>
+    <S sid="312" ssid="75">However, in the example grammar the antecedent is not necessarily the semantic head of the clause because of the VP modifier rule (12).</S>
+    <S sid="313" ssid="76">Typically, there is a relation between the empty anaphor and some antecedent expressed implicitly in the grammar; in the case at hand, it comes about by percolating the information through different rules from the antecedent to the anaphor.</S>
+    <S sid="314" ssid="77">We propose to make this relation explicit by defining an empty head with a Prolog clause using the predicate head_gap. head _ gap(v(A,B,ni1)/Sem, v(A,B,v(A,B)/Sem)/Sem).</S>
+    <S sid="315" ssid="78">Such a definition can intuitively be understood as follows: once there is some node X (the first argument of head_gap), then there could just as well have been the empty node Y (the second argument of head_gap).</S>
+    <S sid="316" ssid="79">Note that a lot of information is shared between the two nodes, thereby making the relation between anaphor and antecedent explicit.</S>
+    <S sid="317" ssid="80">Such rules can be incorporated in the generator by adding the following clause for connect: connect(Pivot,Root) head_ gap(Pivot,Gap), connect(Gap,Root).</S>
+    <S sid="318" ssid="81">Note that the problem is now solved because the gap will only be selected after its antecedent has been built.</S>
+    <S sid="319" ssid="82">Some parts of this antecedent are then unified with some parts of the gap.</S>
+    <S sid="320" ssid="83">The subcategorization list, for example, will thus be instantiated in time.</S>
+  </SECTION>
+  <SECTION title="5 FURTHER RESEARCH" number="6">
+    <S sid="321" ssid="1">We mentioned earlier that, although the algorithm as stated is applicable specifically to generation, we expect that it could be thought of as an instance of a uniform architecture for parsing and generation, as the Earley generation algorithm was.</S>
+    <S sid="322" ssid="2">Two pieces of evidence point this way.</S>
+    <S sid="323" ssid="3">First, Martin Kay (1990) has developed a parsing algorithm that seems to be the parsing correlate to the generation algorithm presented here.</S>
+    <S sid="324" ssid="4">Its existence might point the way toward a uniform architecture.</S>
+    <S sid="325" ssid="5">Second, one of us (van Noord 1989b) has developed a general proof procedure for Horn clauses that can serve as a skeleton for both a semantic-head-driven generator and a left-corner parser.</S>
+    <S sid="326" ssid="6">However, the parameterization is much more broad than for the uniform Earley architecture (Shieber 1988).</S>
+    <S sid="327" ssid="7">Further enhancements to the algorithm are envisioned.</S>
+    <S sid="328" ssid="8">First, any system making use of a tabular link predicate over complex nonterminals (like the chained_nodes predicate used by the generation algorithm and including the link predicate used in the BUP parser; Matsumoto et al. 1983) is subject to a problem of spurious redundancy in processing if the elements in the link table are not mutually exclusive.</S>
+    <S sid="329" ssid="9">For instance, a single chain rule might be considered to be applicable twice because of the nondeterminism of the call to chained_nodes.</S>
+    <S sid="330" ssid="10">This general problem has to date received little attention, and no satisfactory solution is found in the logic grammar literature.</S>
+    <S sid="331" ssid="11">More generally, the backtracking regimen of our implementation of the algorithm may lead to recomputation of results.</S>
+    <S sid="332" ssid="12">Again, this is a general property of backtrack methods and is not particular to our application.</S>
+    <S sid="333" ssid="13">The use of dynamic programming techniques, as in chart parsing, would be an appropriate augmentation to the implementation of the algorithm.</S>
+    <S sid="334" ssid="14">Happily, such an augmentation would serve to eliminate the redundancy caused by the linking relation as well.</S>
+    <S sid="335" ssid="15">Finally, to incorporate a general facility for auxiliary conditions in rules, some sort of delayed evaluation triggered by appropriate instantiation (e.g. wait declarations; Naish 1986) would be desirable, as mentioned in Section 3.4.</S>
+    <S sid="336" ssid="16">None of these changes, however, constitutes restructuring of the algorithm; rather, they modify its realization in significant and important ways.</S>
+  </SECTION>
+  <SECTION title="ACKNOWLEDGMENTS" number="7">
+    <S sid="337" ssid="1">The research reported herein was primarily completed while Shieber and Pereira were at the Artificial Intelligence Center, SRI International.</S>
+    <S sid="338" ssid="2">They and Moore were supported in this work by a contract with the Nippon Telephone and Telegraph Corporation and by a gift from the Systems Development Foundation as part of a coordinated research effort with the Center for the Study of Language and Information, Stanford University; van Noord was supported by the European Community and the Nederlands Bureau voor Bibliotheekwezen en Informatieverzorgin through the Eurotra project.</S>
+    <S sid="339" ssid="3">We would like to thank Mary Dalrymple and Louis des Tombe for their helpful discussions regarding this work, the Artificial Intelligence Center for their support of the research, and the participants in the MiMo2 project, a research machine translation project of some members of Eurotra-Utrecht.</S>
+  </SECTION>
+</PAPER>
