@@ -1,0 +1,334 @@
+<PAPER>
+	<S sid="0">Better K-Best Parsing</S><ABSTRACT>
+		<S sid="1" ssid="1">We discuss the relevance of k-best parsing torecent applications in natural language pro cessing, and develop efficient algorithms for k-best trees in the framework of hypergraphparsing.</S>
+		<S sid="2" ssid="2">To demonstrate the efficiency, scal ability and accuracy of these algorithms, we present experiments on Bikel?s implementation of Collins?</S>
+		<S sid="3" ssid="3">lexicalized PCFG model, and on Chiang?s CFG-based decoder for hierarchicalphrase-based translation.</S>
+		<S sid="4" ssid="4">We show in particu lar how the improved output of our algorithms has the potential to improve results from parse reranking systems and other applications.</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number="1">
+			<S sid="5" ssid="5">Many problems in natural language processing (NLP) in volve optimizing some objective function over a set of possible analyses of an input string.</S>
+			<S sid="6" ssid="6">This set is often exponential-sized but can be compactly represented by merging equivalent subanalyses.</S>
+			<S sid="7" ssid="7">If the objective function is compatible with a packed representation, then it can beoptimized efficiently by dynamic programming.</S>
+			<S sid="8" ssid="8">For ex ample, the distribution of parse trees for a given sentence under a PCFG can be represented as a packed forest from which the highest-probability tree can be easily extracted.However, when the objective function f has no com patible packed representation, exact inference would beintractable.</S>
+			<S sid="9" ssid="9">To alleviate this problem, one common approach from machine learning is loopy belief propaga tion (Pearl, 1988).</S>
+			<S sid="10" ssid="10">Another solution (which is popular in NLP) is to split the computation into two phases: in the first phase, use some compatible objective function f ? to produce a k-best list (the top k candidates under f ?), which serves as an approximation to the full set.Then, in the second phase, optimize f over all the analyses in the k-best list.</S>
+			<S sid="11" ssid="11">A typical example is discrimina tive reranking on k-best lists from a generative module, such as (Collins, 2000) for parsing and (Shen et al, 2004) for translation, where the reranking model has nonlocal features that cannot be computed during parsing proper.Another example is minimum-Bayes-risk decoding (Kumar and Byrne, 2004; Goodman, 1998),where, assuming f ? defines a probability distribution over all candi dates, one seeks the candidate with the highest expected score according to an arbitrary metric (e.g., PARSEVALor BLEU); since in general the metric will not be com patible with the parsing algorithm, the k-best lists canbe used to approximate the full distribution f ?.</S>
+			<S sid="12" ssid="12">A simi lar situation occurs when the parser can produce multiple derivations that are regarded as equivalent (e.g., multiplelexicalized parse trees corresponding to the same unlexi calized parse tree); if we want the maximum a posteriori parse, we have to sum over equivalent derivations.</S>
+			<S sid="13" ssid="13">Again,the equivalence relation will in general not be compati ble with the parsing algorithm, so the k-best lists can be used to approximate f ?, as in Data Oriented Parsing (Bod, 2000) and in speech recognition (Mohri and Riley, 2002).</S>
+			<S sid="14" ssid="14">Another instance of this k-best approach is cascadedoptimization.</S>
+			<S sid="15" ssid="15">NLP systems are often cascades of mod ules, where we want to optimize the modules?</S>
+			<S sid="16" ssid="16">objectivefunctions jointly.</S>
+			<S sid="17" ssid="17">However, often a module is incompati ble with the packed representation of the previous module due to factors like non-local dependencies.</S>
+			<S sid="18" ssid="18">So we might want to postpone some disambiguation by propagating k-best lists to subsequent phases, as in joint parsing and semantic role labeling (Gildea and Jurafsky, 2002; Suttonand McCallum, 2005), information extraction and coreference resolution (Wellner et al, 2004), and formal se mantics of TAG (Joshi and Vijay-Shanker, 1999).Moreover, much recent work on discriminative training uses k-best lists; they are sometimes used to approximate the normalization constant or partition func tion (which would otherwise be intractable), or to train a model by optimizing some metric incompatible with the packed representation.</S>
+			<S sid="19" ssid="19">For example, Och (2003) showshow to train a log-linear translation model not by max imizing the likelihood of training data, but maximizing the BLEU score (among other metrics) of the model on 53the data.</S>
+			<S sid="20" ssid="20">Similarly, Chiang (2005) uses the k-best pars ing algorithm described below in a CFG-based log-linear translation model in order to learn feature weights which maximize BLEU.</S>
+			<S sid="21" ssid="21">For algorithms whose packed representations aregraphs, such as Hidden Markov Models and other finitestate methods, Ratnaparkhi?s MXPARSE parser (Ratnaparkhi, 1997), and many stack-based machine transla tion decoders (Brown et al, 1995; Och and Ney, 2004), the k-best paths problem is well-studied in both pure algorithmic context (see (Eppstein, 2001) and (Branderand Sinclair, 1995) for surveys) and NLP/Speech community (Mohri, 2002; Mohri and Riley, 2002).</S>
+			<S sid="22" ssid="22">This pa per, however, aims at the k-best tree algorithms whose packed representations are hypergraphs (Gallo et al, 1993; Klein and Manning, 2001) (equivalently, and/or graphs or packed forests), which includes most parsersand parsing-based MT decoders.</S>
+			<S sid="23" ssid="23">Any algorithm express ible as a weighted deductive system (Shieber et al, 1995; Goodman, 1999; Nederhof, 2003) falls into this class.</S>
+			<S sid="24" ssid="24">Inour experiments, we apply the algorithms to the lexical ized PCFG parser of Bikel (2004), which is very similar to Collins?</S>
+			<S sid="25" ssid="25">Model 2 (Collins, 2003), and to a synchronous CFG based machine translation system (Chiang, 2005).</S>
+	</SECTION>
+	<SECTION title="Previous Work. " number="2">
+			<S sid="26" ssid="1">As pointed out by Charniak and Johnson (2005), the ma jor difficulty in k-best parsing is dynamic programming.The simplest method is to abandon dynamic programming and rely on aggressive pruning to maintain tractabil ity, as is used in (Collins, 2000; Bikel, 2004).</S>
+			<S sid="27" ssid="2">But thisapproach is prohibitively slow, and produces rather lowquality k-best lists (see Sec.</S>
+			<S sid="28" ssid="3">5.1.2).</S>
+			<S sid="29" ssid="4">Gildea and Juraf sky (2002) described an O(k2)-overhead extension for the CKY algorithm and reimplemented Collins?</S>
+			<S sid="30" ssid="5">Model 1 to obtain k-best parses with an average of 14.9 parses per sentence.</S>
+			<S sid="31" ssid="6">Their algorithm turns out to be a special case of our Algorithm 0 (Sec.</S>
+			<S sid="32" ssid="7">4.1), and is reported to also be prohibitively slow.</S>
+			<S sid="33" ssid="8">Since the original design of the algorithm described below, we have become aware of two efforts that are very closely related to ours, one by Jime?nez and Marzal (2000) and another done in parallel to ours by Charniakand Johnson (2005).</S>
+			<S sid="34" ssid="9">Jime?nez and Marzal present an al gorithm very similar to our Algorithm 3 (Sec.</S>
+			<S sid="35" ssid="10">4.4) while Charniak and Johnson propose using an algorithm similar to our Algorithm 0, but with multiple passes to improve efficiency.</S>
+			<S sid="36" ssid="11">They apply this method to the Charniak (2000)parser to get 50-best lists for reranking, yielding an im provement in parsing accuracy.</S>
+			<S sid="37" ssid="12">Our work differs from Jime?nez and Marzal?s in thefollowing three respects.</S>
+			<S sid="38" ssid="13">First, we formulate the parsing problem in the more general framework of hypergraphs (Klein and Manning, 2001), making it applica ble to a very wide variety of parsing algorithms, whereasJime?nez and Marzal define their algorithm as an exten sion of CKY, for CFGs in Chomsky Normal Form (CNF)only.</S>
+			<S sid="39" ssid="14">This generalization is not only of theoretical importance, but also critical in the application to state-of-the art parsers such as (Collins, 2003) and (Charniak, 2000).In Collins?</S>
+			<S sid="40" ssid="15">parsing model, for instance, the rules are dynamically generated and include unary productions, mak ing it very hard to convert to CNF by preprocessing, whereas our algorithms can be applied directly to these parsers.</S>
+			<S sid="41" ssid="16">Second, our Algorithm 3 has an improvementover Jime?nez and Marzal which leads to a slight theoret ical and empirical speedup.</S>
+			<S sid="42" ssid="17">Third, we have implementedour algorithms on top of state-of-the-art, large-scale sta tistical parser/decoders and report extensive experimentalresults while Jime?nez and Marzal?s was tested on rela tively small grammars.</S>
+			<S sid="43" ssid="18">On the other hand, our algorithms are more scalable and much more general than the coarse-to-fine approachof Charniak and Johnson.</S>
+			<S sid="44" ssid="19">In our experiments, we can ob tain 10000-best lists nearly as fast as 1-best parsing, with very modest use of memory.</S>
+			<S sid="45" ssid="20">Indeed, Charniak (p.c.) hasadopted our Algorithm 3 into his own parser implemen tation and confirmed our findings.</S>
+			<S sid="46" ssid="21">In the literature of k shortest-path problems, Minieka (1974) generalized the Floyd algorithm in a way very similar to our Algorithm 0 and Lawler (1977) improvedit using an idea similar to but a little slower than the bi nary branching case of our Algorithm 1.</S>
+			<S sid="47" ssid="22">For hypergraphs, Gallo et al (1993) study the shortest hyperpath problemand Nielsen et al (2005) extend it to k shortest hyper path.</S>
+			<S sid="48" ssid="23">Our work differes from (Nielsen et al, 2005) in two aspects.</S>
+			<S sid="49" ssid="24">First, we solve the problem of k-best derivations (i.e., trees), not the k-best hyperpaths, although in many cases they coincide (see Sec.</S>
+			<S sid="50" ssid="25">3 for further discussions).Second, their work assumes non-negative costs (or probabilities ? 1) so that they can apply Dijkstra-like algorithms.</S>
+			<S sid="51" ssid="26">Although generative models, being probability based, do not suffer from this problem, more general models (e.g., log-linear models) may require negative edge costs (McDonald et al, 2005; Taskar et al, 2004).Our work, based on the Viterbi algorithm, is still appli cable as long as the hypergraph is acyclic, and is used by McDonald et al (2005) to get the k-best parses.</S>
+	</SECTION>
+	<SECTION title="Formulation. " number="3">
+			<S sid="52" ssid="1">Following Klein and Manning (2001), we use weighted directed hypergraphs (Gallo et al, 1993) as an abstraction of the probabilistic parsing problem.Definition 1.</S>
+			<S sid="53" ssid="2">An ordered hypergraph (henceforth hy pergraph) H is a tuple ?V, E, t,R?, where V is a finite set of vertices, E is a finite set of hyperarcs, and R is the set of weights.</S>
+			<S sid="54" ssid="3">Each hyperarc e ? E is a triple 54 e = ?T (e), h(e), f (e)?, where h(e) ? V is its head andT (e) ? V? is a vector of tail nodes.</S>
+			<S sid="55" ssid="4">f (e) is a weight func tion from R|T (e)| to R. t ? V is a distinguished vertex called target vertex.Note that our definition is different from those in previ ous work in the sense that the tails are now vectors rather than sets, so that we can allow multiple occurrences of the same vertex in a tail and there is an ordering among the components of a tail.</S>
+			<S sid="56" ssid="5">Definition 2.</S>
+			<S sid="57" ssid="6">A hypergraph H is said to be monotonic if there is a total ordering ? on R such that every weightfunction f in H is monotonic in each of its arguments ac cording to ?, i.e., if f : Rm 7?</S>
+			<S sid="58" ssid="7">R, then ?1 ? i ? m, if ai ?a?i , then f (a1, ? ?</S>
+			<S sid="59" ssid="8">, ai, ? ?</S>
+			<S sid="60" ssid="9">, am) ? f (a1, ? ?</S>
+			<S sid="61" ssid="10">, a?i , ? ?</S>
+			<S sid="62" ssid="11">, am).We also define the comparison function min?(a, b) to out put a if a ? b, or b if otherwise.</S>
+			<S sid="63" ssid="12">In this paper we will assume this monotonicity, whichcorresponds to the optimal substructure property in dy namic programming (Cormen et al, 2001).</S>
+			<S sid="64" ssid="13">Definition 3.</S>
+			<S sid="65" ssid="14">We denote |e| = |T (e)| to be the arity of the hyperarc.</S>
+			<S sid="66" ssid="15">If |e| = 0, then f (e) ? R is a constant and wecall h(e) a source vertex.</S>
+			<S sid="67" ssid="16">We define the arity of a hyper graph to be the maximum arity of its hyperarcs.</S>
+			<S sid="68" ssid="17">Definition 4.</S>
+			<S sid="69" ssid="18">The backward-star BS(v) of a vertex v is the set of incoming hyperarcs {e ? E | h(e) = v}.</S>
+			<S sid="70" ssid="19">The in-degree of v is |BS (v)|.Definition 5.</S>
+			<S sid="71" ssid="20">A derivation D of a vertex v in a hyper graph H, its size |D| and its weight w(D) are recursively defined as follows: ? If e ? BS (v) with |e| = 0, then D = ?e, ??</S>
+			<S sid="72" ssid="21">is a derivation of v, its size |D| = 1, and its weight w(D) = f (e)().</S>
+			<S sid="73" ssid="22">If e ? BS (v) where |e| &gt; 0 and Di is a derivation of Ti(e) for 1 ? i ? |e|, then D = ?e,D1 ? ?</S>
+			<S sid="74" ssid="23">?D|e|?</S>
+			<S sid="75" ssid="24">is a derivation of v, its size |D| = 1 + ?|e|i=1 |Di| and itsweight w(D) = f (e)(w(D1), . . .</S>
+			<S sid="76" ssid="25">,w(D|e|)).</S>
+			<S sid="77" ssid="26">The ordering on weights in R induces an ordering on derivations: D ? D? iff w(D) ? w(D?).</S>
+			<S sid="78" ssid="27">Definition 6.</S>
+			<S sid="79" ssid="28">Define Di(v) to be the ith-best derivation of v. We can think of D1(v), . . .</S>
+			<S sid="80" ssid="29">,Dk(v) as the components of a vector we shall denote by D(v).</S>
+			<S sid="81" ssid="30">The k-best derivationsproblem for hypergraphs, then, is to find D(t) given a hy pergraph ?V, E, t,R?.</S>
+			<S sid="82" ssid="31">With the derivations thus ranked, we can introduce anonrecursive representation for derivations that is analogous to the use of back-pointers in parser implementa tion.</S>
+			<S sid="83" ssid="32">Definition 7.</S>
+			<S sid="84" ssid="33">A derivation with back-pointers (dbp) D?</S>
+			<S sid="85" ssid="34">of v is a tuple ?e, j?</S>
+			<S sid="86" ssid="35">such that e ? BS(v), and j ? {1, 2, . . .</S>
+			<S sid="87" ssid="36">, k}|e|.</S>
+			<S sid="88" ssid="37">There is a one-to-one correspondence ? between dbps of v and derivations of v: ?e, ( j1 ? ?</S>
+			<S sid="89" ssid="38">j|e|)?</S>
+			<S sid="90" ssid="39">?e,D j1 (T1(e)) ? ?</S>
+			<S sid="91" ssid="40">?D j|e| (T |e|(e))?</S>
+			<S sid="92" ssid="41">Accordingly, we extend the weight function w to dbps: w(D?) = w(D) if D?</S>
+			<S sid="93" ssid="42">D. This in turn induces an ordering on dbps: D?</S>
+			<S sid="94" ssid="43">D??</S>
+			<S sid="95" ssid="44">iff w(D?) ? w(D??).</S>
+			<S sid="96" ssid="45">Let D?i(v) denote the ith-best dbp of v.Where no confusion will arise, we use the terms ?deriva tion?</S>
+			<S sid="97" ssid="46">and ?dbp?</S>
+			<S sid="98" ssid="47">interchangeably.</S>
+			<S sid="99" ssid="48">Computationally, then, the k-best problem can bestated as follows: given a hypergraph H with arity a, com pute D?1(t), . . .</S>
+			<S sid="100" ssid="49">, D?k(t).1 As shown by Klein and Manning (2001), hypergraphs can be used to represent the search space of most parsers (just as graphs, also known as trellises or lattices, can represent the search space of finite-state automata orHMMs).</S>
+			<S sid="101" ssid="50">More generally, hypergraphs can be used to represent the search space of most weighted deductive sys tem (Nederhof, 2003).</S>
+			<S sid="102" ssid="51">For example, the weighted CKY algorithm given a context-free grammar G = ?N,T, P, S ? in Chomsky Normal Form (CNF) and an input string w can be represented as a hypergraph of arity 2 as follows.Each item [X, i, j] is represented as a vertex v, corre sponding to the recognition of nonterminal X spanning w from positions i+1 through j. For each production rule X ? YZ in P and three free indices i &lt; j &lt; k, we have a hyperarc ?((Y, i, k), (Z, k, j)), (X, i, k), f ? corresponding tothe instantiation of the inference rule C???????</S>
+			<S sid="103" ssid="52">in the de ductive system of (Shieber et al, 1995), and the weight function f is defined as f (a, b) = ab ?Pr(X ? YZ), whichis the same as in (Nederhof, 2003).</S>
+			<S sid="104" ssid="53">In this sense, hypergraphs can be thought of as compiled or instantiated ver sions of weighted deductive systems.A parser does nothing more than traverse this hypergraph.</S>
+			<S sid="105" ssid="54">In order that derivation values be computed cor rectly, however, we need to traverse the hypergraph in a particular order: Definition 8.</S>
+			<S sid="106" ssid="55">The graph projection of a hypergraph H = ?V, E, t,R? is a directed graph G = ?V, E??</S>
+			<S sid="107" ssid="56">where E?</S>
+			<S sid="108" ssid="57">= {(u, v) | ?e ? BS (v), u ? T (e)}.</S>
+			<S sid="109" ssid="58">A hypergraph H is said to be acyclic if its graph projection G is a directed acyclic graph; then a topological ordering of H is an ordering of V that is a topological ordering in G (from sources to target).</S>
+			<S sid="110" ssid="59">We assume the input hypergraph is acyclic so that we can use its topological ordering to traverse it.</S>
+			<S sid="111" ssid="60">In practice the hypergraph is typically not known in advance, but the1Note that although we have defined the weight of a deriva tion as a function on derivations, in practice one would store a derivation?s weight inside the dbp itself, to avoid recomputing it over and over.</S>
+			<S sid="112" ssid="61">55 p v u t q w (a) p v u t w (b) p u v t q u w (c) Figure 1: Examples of hypergraph, hyperpath, and derivation: (a) a hypergraph H, with t as the target vertex and p, q as source vertices, (b) a hyperpath pit in H, and (c) a derivation of t in H, where vertex u appears twice with two different (sub-)derivations.</S>
+			<S sid="113" ssid="62">This would be impossible in a hyperpath.topological ordering often is, so that the (dynamic) hy pergraph can be generated in that order.</S>
+			<S sid="114" ssid="63">For example, for CKY it is sufficient to generate all items [X, i, j] before all items [Y, i?, j?]</S>
+			<S sid="115" ssid="64">when j?</S>
+			<S sid="116" ssid="65">i? &gt; j ? i (X and Y are arbitrary nonterminals).</S>
+			<S sid="117" ssid="66">Excursus: Derivations and HyperpathsThe work of Klein and Manning (2001) introduces a cor respondence between hyperpaths and derivations.</S>
+			<S sid="118" ssid="67">When extended to the k-best case, however, that correspondence no longer holds.</S>
+			<S sid="119" ssid="68">Definition 9.</S>
+			<S sid="120" ssid="69">(Nielsen et al, 2005) Given a hypergraph H = ?V, E, t,R?, a hyperpath piv of destination v ? V is an acyclic minimal hypergraph Hpi = ?Vpi, Epi, v,R? such that 1.</S>
+			<S sid="121" ssid="70">Epi ? E. 2.</S>
+			<S sid="122" ssid="71">v ? Vpi = ?e?Epi (T (e) ? {h(e)}) 3.</S>
+			<S sid="123" ssid="72">?u ? Vpi, u is either a source vertex or connected to a source vertex in Hpi.As illustrated by Figure 1, derivations (as trees) are dif ferent from hyperpaths (as minimal hypergraphs) in the sense that in a derivation the same vertex can appear more than once with possibly different sub-derivations while itis represented at most once in a hyperpath.</S>
+			<S sid="124" ssid="73">Thus, the k best derivations problem we solve in this paper is verydifferent in nature from the k-shortest hyperpaths prob lem in (Nielsen et al, 2005).</S>
+			<S sid="125" ssid="74">However, the two problems do coincide when k = 1 (since all the sub-derivations must be optimal) and for this reason the 1-best hyperpath algorithm in (Klein andManning, 2001) is very similar to the 1-best tree algo rithm in (Knuth, 1977).</S>
+			<S sid="126" ssid="75">For k-best case (k &gt; 1), they alsocoincide when the hypergraph is isomorphic to a Case Factor Diagram (CFD) (McAllester et al, 2004) (proof omitted).</S>
+			<S sid="127" ssid="76">The derivation forest of CFG parsing under the CKY algorithm, for instance, can be represented as a CFD while the forest of Earley algorithm can not.</S>
+			<S sid="128" ssid="77">An (A? ?.B?, i, j) (A? ?.B?, i, j) (B? .?, j, j) ? ?</S>
+			<S sid="129" ssid="78">(B? ?., j, k) (A? ?B.?, i, k) Figure 2: An Earley derivation.</S>
+			<S sid="130" ssid="79">Note that item (A ? ?.B?, i, j) appears twice (predict and complete).</S>
+			<S sid="131" ssid="80">1: procedure V??????(k) 2: for v ? V in topological order do 3: for e ? BS(v) do . for all incoming hyperarcs 4: D?1(v)?</S>
+			<S sid="132" ssid="81">min?(D?1(v), ?e, 1?)</S>
+			<S sid="133" ssid="82">update Figure 3: The generic 1-best Viterbi algorithm item (or equivalently, a vertex in hypergraph) can appear twice in an Earley derivation because of the prediction rule (see Figure 2 for an example).</S>
+			<S sid="134" ssid="83">The k-best derivations problem has potentially more applications in tree generation (Knight and Graehl,2005), which can not be modeled by hyperpaths.</S>
+			<S sid="135" ssid="84">But de tailed discussions along this line are out of the scope of this paper.</S>
+	</SECTION>
+	<SECTION title="Algorithms. " number="4">
+			<S sid="136" ssid="1">The traditional 1-best Viterbi algorithm traverses the hypergraph in topological order and for each vertex v, calculates its 1-best derivation D1(v) using all incoming hy perarcs e ? BS(v) (see Figure 3).</S>
+			<S sid="137" ssid="2">If we take the arity ofthe hypergraph to be constant, then the overall time com plexity of this algorithm is O(|E|).</S>
+			<S sid="138" ssid="3">4.1 Algorithm 0: na??ve.</S>
+			<S sid="139" ssid="4">Following (Goodman, 1999; Mohri, 2002), we isolate two basic operations in line 4 of the 1-best algorithm that 56 can be generalized in order to extend the algorithm: first,the formation of the derivation ?e, 1?</S>
+			<S sid="140" ssid="5">out of |e| best sub derivations (this is a generalization of the binary operator ? in a semiring); second, min?, which chooses the betterof two derivations (same as the ? operator in an idem potent semiring (Mohri, 2002)).</S>
+			<S sid="141" ssid="6">We now generalize these two operations to operate on k-best lists.</S>
+			<S sid="142" ssid="7">Let r = |e|.</S>
+			<S sid="143" ssid="8">The new multiplication operation, mult?k(e), is performed in three steps: 1.</S>
+			<S sid="144" ssid="9">enumerate the kr derivations {?e, j1 ? ?</S>
+			<S sid="145" ssid="10">jr? | ?i, 1 ? ji ? k}.</S>
+			<S sid="146" ssid="11">Time: O(kr).</S>
+			<S sid="147" ssid="12">2.</S>
+			<S sid="148" ssid="13">sort these kr derivations (according to weight).</S>
+			<S sid="149" ssid="14">Time: O(kr log(kr)) = O(rkr log k).</S>
+			<S sid="150" ssid="15">3.</S>
+			<S sid="151" ssid="16">select the first k elements from the sorted list of kr elements.</S>
+			<S sid="152" ssid="17">Time: O(k).</S>
+			<S sid="153" ssid="18">So the overall time complexity of mult?k is O(rkr log k).</S>
+			<S sid="154" ssid="19">We also have to extend min?</S>
+			<S sid="155" ssid="20">to merge?k, which takes two vectors of length k (or fewer) as input and outputs the top k (in sorted order) of the 2k elements.</S>
+			<S sid="156" ssid="21">This is similar to merge-sort (Cormen et al, 2001) and can be done in linear time O(k).</S>
+			<S sid="157" ssid="22">Then, we only need to rewrite line 4 of the Viterbi algorithm (Figure 3) to extend it to the k-best case: 4: D?(v) ? merge?k(D?(v),mult?k(e)) and the time complexity for this line is O(|e|k|e| log k),making the overall complexity O(|E|ka log k) if we con sider the arity a of the hypergraph to be constant.2 The overall space complexity is O(|V |k) since for each vertex we need to store a vector of length k. In the context of CKY parsing for CFG, the 1-bestViterbi algorithm has complexity O(n3|P|) while the kbest version is O(n3|P|k2 log k), which is slower by a fac tor of O(k2 log k).</S>
+			<S sid="158" ssid="23">4.2 Algorithm 1: speed up mult?k. First we seek to exploit the fact that input vectors are all sorted and the function f is monotonic; moreover, we areonly interested in the top k elements of the k|e| possibili ties.Define 1 to be the vector whose elements are all 1; de fine bi to be the vector whose elements are all 0 exceptbii = 1.As we compute pe = mult?k(e), we maintain a candi date set C of derivations that have the potential to be the next best derivation in the list.</S>
+			<S sid="159" ssid="24">If we picture the input as an |e|-dimensional space, C contains those derivations that 2Actually, we do not need to sort all k|e| elements in order to extract the top k among them; there is an efficient algorithm (Cormen et al, 2001) that can select the kth best element from the k|e| elements in time O(k|e|).</S>
+			<S sid="160" ssid="25">So we can improve the overhead to O(ka).have not yet been included in pe, but are on the bound ary with those which have.</S>
+			<S sid="161" ssid="26">It is initialized to {?e, 1?}.</S>
+			<S sid="162" ssid="27">At each step, we extract the best derivation from C?call it ?e, j??and append it to pe.</S>
+			<S sid="163" ssid="28">Then ?e, j?</S>
+			<S sid="164" ssid="29">must be replaced in C by its neighbors, {?e, j + bl?</S>
+			<S sid="165" ssid="30">| 1 ? l ? |e|} (see Figure 4.2 for an illustration).</S>
+			<S sid="166" ssid="31">We implement C as apriority queue (Cormen et al, 2001) to make the extrac tion of its best derivation efficient.</S>
+			<S sid="167" ssid="32">At each iteration, there are one E??????-M??</S>
+			<S sid="168" ssid="33">and |e| I?????</S>
+			<S sid="169" ssid="34">operations.</S>
+			<S sid="170" ssid="35">If we use a binary-heap implementation for priority queues, we get O(|e| log k|e|) time complexity for each iteration.3 Since we are only interested in the top k elements, there are k iterations and the time complexity for a single mult?k is O(k|e| log k|e|), yielding an overall time complexity of O(|E|k log k) and reducing the multiplicative overhead by a factor of O(ka?1) (again, assuming a is constant).</S>
+			<S sid="171" ssid="36">In the context of CKY parsing, this reduces the overhead to O(k log k).</S>
+			<S sid="172" ssid="37">Figure 5 shows the additional pseudocode needed for this algorithm.</S>
+			<S sid="173" ssid="38">It is integrated into the Viterbialgorithm (Figure 3) simply by rewriting line 4 of to in voke the function M???(e, k): 4: D?(v) ? merge?k(D?(v),M???(e, k)) 4.3 Algorithm 2: combine merge?k into mult?k. We can further speed up both merge?k and mult?k by a similar idea.</S>
+			<S sid="174" ssid="39">Instead of letting each mult?k generate a full k derivations for each hyperarc e and only then applying merge?k to the results, we can combine the candidate sets for all the hyperarcs into a single candidate set.</S>
+			<S sid="175" ssid="40">That is, we initialize C to {?e, 1?</S>
+			<S sid="176" ssid="41">| e ? BS (v)}, the set of all the top parses from each incoming hyperarc (cf.</S>
+			<S sid="177" ssid="42">Algorithm 1).</S>
+			<S sid="178" ssid="43">Indeed, it suffices to keep only the top k out of the |BS (v)| candidates in C, which would lead to a significant speedup in the case where |BS (v)| ? k. 4 Now the top derivation in C is the top derivation for v. Then, whenever we remove an element ?e, j?</S>
+			<S sid="179" ssid="44">from C, we replace it with the |e| elements {?e, j + bl?</S>
+			<S sid="180" ssid="45">| 1 ? l ? |e|} (again, as in Algorithm 1).</S>
+			<S sid="181" ssid="46">The full pseudocode for this algorithm is shown in Figure 6.</S>
+			<S sid="182" ssid="47">4.4 Algorithm 3: compute mult?k lazily.</S>
+			<S sid="183" ssid="48">Algorithm 2 exploited the idea of lazy computation: per forming mult?k only as many times as necessary.</S>
+			<S sid="184" ssid="49">But thisalgorithm still calculates a full k-best list for every ver tex in the hypergraph, whereas we are only interested in 3If we maintain a Min-Heap along with the Min-Heap, wecan reduce the per-iteration cost to O(|e| log k), and with Fi bonacci heap we can further improve it to be O(|e| + log k).</S>
+			<S sid="185" ssid="50">But these techniques do not change the overall complexity when a is constant, as we will see.4This can be implemented by a linear-time randomized selection algorithm (a.k.a. quick-select) (Cormen et al, 2001).</S>
+			<S sid="186" ssid="51">57 2 2 ? 0 ? ?</S>
+			<S sid="187" ssid="52">1 ? 1 2 4 (a) 2 2 ? ?</S>
+			<S sid="188" ssid="53">3 ? 0 1 ? ?</S>
+			<S sid="189" ssid="54">2 ? 1 2 4 (b) 2 2 ? ?</S>
+			<S sid="190" ssid="55">3 ? ?</S>
+			<S sid="191" ssid="56">4 0 1 2 ? ?</S>
+			<S sid="192" ssid="57">4 1 2 4 (c) Figure 4: An illustration of Algorithm 1 in |e| = 2 dimensions.</S>
+			<S sid="193" ssid="58">Here k = 3, ? is the numerical ?, and the monotonic function f is defined as f (a, b) = a + b. Italic numbers on the x and y axes are ai?s and b j?s, respectively.</S>
+			<S sid="194" ssid="59">We want to compute the top 3 results from f (ai, b j) with 1 ? i, j ? 3.</S>
+			<S sid="195" ssid="60">In each iteration the current frontier is shown in oval boxes, with the bold-face denoting the best element among them.</S>
+			<S sid="196" ssid="61">That element will be extracted and replaced by its two neighbors (?</S>
+			<S sid="197" ssid="62">and?)</S>
+			<S sid="198" ssid="63">in the next iteration.</S>
+			<S sid="199" ssid="64">1: function M???(e, k) 2: cand ? {?e, 1?}</S>
+			<S sid="200" ssid="65">initialize the heap 3: p?</S>
+			<S sid="201" ssid="66">empty list . the result of mult?k 4: while |p| &lt; k and |cand| &gt; 0 do 5: A?????N???(cand,p, k) 6: return p 7: 8: procedure A?????N???(cand, p) 9: ?e, j?</S>
+			<S sid="202" ssid="67">E??????-M??(cand) 10: append ?e, j?</S>
+			<S sid="203" ssid="68">to p 11: for i?</S>
+			<S sid="204" ssid="69">1 . . .</S>
+			<S sid="205" ssid="70">|e| do . add the |e| neighbors 12: j?</S>
+			<S sid="206" ssid="71">j + bi 13: if j?i ? |D?(Ti(e))| and ?e, j??</S>
+			<S sid="207" ssid="72">&lt; cand then 14: I?????(cand, ?e, j??)</S>
+			<S sid="208" ssid="73">add to heap Figure 5: Part of Algorithm 1.</S>
+			<S sid="209" ssid="74">1: procedure F???A??KB???(k) 2: for v ? V in topological order do 3: F???KB???(v, k) 4: 5: procedure F???KB???(v, k) 6: G??C?????????(v, k) . initialize the heap 7: while |D?(v)| &lt; k and |cand[v]| &gt; 0 do 8: A?????N???(cand[v], D?(v)) 9: 10: procedure G??C?????????(v, k) 11: temp?</S>
+			<S sid="210" ssid="75">{?e, 1?</S>
+			<S sid="211" ssid="76">| e ? BS (v)} 12: cand[v]?</S>
+			<S sid="212" ssid="77">the top k elements in temp . prune away useless candidates 13: H??????(cand[v]) Figure 6: Algorithm 2 1: procedure L???K??B???(v, k, k?)</S>
+			<S sid="213" ssid="78">k? is the global k 2: if |D?(v)| ? k then . kth derivation already computed?</S>
+			<S sid="214" ssid="79">3: return 4: if cand[v] is not defined then . first visit of vertex v?</S>
+			<S sid="215" ssid="80">5: G??C?????????(v, k?)</S>
+			<S sid="216" ssid="81">initialize the heap 6: append E??????-M??(cand[v]) to D?(v) . 1-best 7: while |D?(v)| &lt; k and |cand[v]| &gt; 0 do 8: ?e, j?</S>
+			<S sid="217" ssid="82">D?|D?(v)|(v) . last derivation 9: L???N???(cand[v], e, j, k?)</S>
+			<S sid="218" ssid="83">update the heap, adding the successors of last derivation 10: append E??????-M??(cand[v]) to D?(v) . get the next best derivation and delete it from the heap 11: 12: procedure L???N???(cand, e, j, k?)</S>
+			<S sid="219" ssid="84">13: for i?</S>
+			<S sid="220" ssid="85">1 . . .</S>
+			<S sid="221" ssid="86">|e| do . add the |e| neighbors 14: j?</S>
+			<S sid="222" ssid="87">j + bi 15: L???K??B???(Ti(e), j?i , k?)</S>
+			<S sid="223" ssid="88">recursively solve a sub-problem 16: if j?i ? |D?(Ti(e))| and ?e, j??</S>
+			<S sid="224" ssid="89">&lt; cand then . if it exists and is not in heap yet 17: I?????(cand, ?e, j??)</S>
+			<S sid="225" ssid="90">add to heap Figure 7: Algorithm 3 58 Algorithm Time Complexity 1-best Viterbi O(E) Algorithm 0 O(Eka log k) Algorithm 1 O(Ek log k) Algorithm 2 O(E + Vk log k) Algorithm 3 O(E + |Dmax|k log k) generalized J&amp;M O(E + |Dmax|k log(d + k)) Table 1: Summary of Algorithms.</S>
+			<S sid="226" ssid="91">the k-best derivations of the target vertex (goal item).</S>
+			<S sid="227" ssid="92">We can therefore take laziness to an extreme by delaying the whole k-best calculation until after parsing.</S>
+			<S sid="228" ssid="93">Algorithm 3assumes an initial parsing phase that generates the hyper graph and finds the 1-best derivation of each item; then in the second phase, it proceeds as in Algorithm 2, but starts at the goal item and calls itself recursively only as necessary.</S>
+			<S sid="229" ssid="94">The pseudocode for this algorithm is shown inFigure 7.</S>
+			<S sid="230" ssid="95">As a side note, this second phase should be applicable also to a cyclic hypergraph as long as its deriva tion weights are bounded.</S>
+			<S sid="231" ssid="96">Algorithm 2 has an overall complexity of O(|E| + |V |k log k) and Algorithm 3 is O(|E|+ |Dmax|k log k) where|Dmax| is the size of the longest among all top k deriva tions (for CFG in CNF, |D| = 2n?1 for all D, so |Dmax| isO(n)).</S>
+			<S sid="232" ssid="97">These are significant improvements against Algo rithms 0 and 1 since it turns the multiplicative overheadinto an additive overhead.</S>
+			<S sid="233" ssid="98">In practice, |E| usually dom inates, as in CKY parsing of CFG.</S>
+			<S sid="234" ssid="99">So theoretically the running times grow very slowly as k increases, which is exactly demonstrated by our experiments below.</S>
+			<S sid="235" ssid="100">4.5 Summary and Discussion of Algorithms.</S>
+			<S sid="236" ssid="101">The four algorithms, along with the 1-best Viterbi algo rithm and the generalized Jime?nez and Marzal algorithm, are compared in Table 1.</S>
+			<S sid="237" ssid="102">The key difference between our Algorithm 3 and Jime?nez and Marzal?s algorithm is the restriction of top k candidates before making heaps (line 11 in Figure 6, see also Sec.</S>
+			<S sid="238" ssid="103">4.3).</S>
+			<S sid="239" ssid="104">Without this line Algorithm 3 could be considered as a generalization of the Jime?nez andMarzal algorithm to the case of acyclic monotonic hy pergraphs.</S>
+			<S sid="240" ssid="105">This line is also responsible for improving the time complexity from O(|E| + |Dmax|k log(d + k)) (generalized Jime?nez and Marzal algorithm) to O(|E| + |Dmax|k log k), where d = maxv |BS (v)| is the maximumin-degree among all vertices.</S>
+			<S sid="241" ssid="106">So in case k &lt; d, our algo rithm outperforms Jime?nez and Marzal?s.</S>
+	</SECTION>
+	<SECTION title="Experiments. " number="5">
+			<S sid="242" ssid="1">We report results from two sets of experiments.</S>
+			<S sid="243" ssid="2">For prob abilistic parsing, we implemented Algorithms 0, 1, and3 on top of a widely-used parser (Bikel, 2004) and conducted experiments on parsing efficiency and the qual ity of the k-best-lists.</S>
+			<S sid="244" ssid="3">We also implemented Algorithms 2 and 3 in a parsing-based MT decoder (Chiang, 2005) and report results on decoding speed.</S>
+			<S sid="245" ssid="4">5.1 Experiment 1: Bikel Parser.</S>
+			<S sid="246" ssid="5">Bikel?s parser (2004) is a state-of-the-art multilingual parser based on lexicalized context-free models (Collins, 2003; Eisner, 2000).</S>
+			<S sid="247" ssid="6">It does support k-best parsing, but, following Collins?</S>
+			<S sid="248" ssid="7">parse-reranking work (Collins, 2000)(see also Section 5.1.2), it accomplishes this by sim ply abandoning dynamic programming, i.e., no items are considered equivalent (Charniak and Johnson, 2005).</S>
+			<S sid="249" ssid="8">Theoretically, the time complexity is exponential in n (the input sentence length) and constant in k, since, withoutmerging of equivalent items, there is no limit on the num ber of items in the chart.</S>
+			<S sid="250" ssid="9">In practice, beam search is used to reduce the observed time.5 But with the standard beamwidth of 10?4, this method becomes prohibitively expen sive for n ? 25 on Bikel?s parser.</S>
+			<S sid="251" ssid="10">Collins (2000) used a narrower 10?3 beam and further applied a cell limit of 100,6 but, as we will show below, this has a detrimental effect on the quality of the output.</S>
+			<S sid="252" ssid="11">We therefore omit thismethod from our speed comparisons, and use our imple mentation of Algorithm 0 (na??ve) as the baseline.</S>
+			<S sid="253" ssid="12">We implemented our k-best Algorithms 0, 1, and 3 on top of Bikel?s parser and conducted experiments on a 2.4GHz 64-bit AMD Opteron with 32 GB memory.</S>
+			<S sid="254" ssid="13">The pro gram is written in Java 1.5 running on the Sun JVM in server mode with a maximum heap size of 5 GB.</S>
+			<S sid="255" ssid="14">For thisexperiment, we used sections 02?21 of the Penn Tree bank (PTB) (Marcus et al, 1993) as the training data andsection 23 (2416 sentences) for evaluation, as is now stan dard.</S>
+			<S sid="256" ssid="15">We ran Bikel?s parser using its settings to emulate Model 2 of (Collins, 2003).</S>
+			<S sid="257" ssid="16">5.1.1 Efficiency We tested our algorithms under various conditions.</S>
+			<S sid="258" ssid="17">We first did a comparison of the average parsing time per sentence of Algorithms 0, 1, and 3 on section 23, withk ? 10000 for the standard beam of width 10?4.</S>
+			<S sid="259" ssid="18">Figure 8(a) shows that the parsing speed of Algorithm 3 im proved dramatically against the other algorithms and isnearly constant in k, which exactly matches the complexity analysis.</S>
+			<S sid="260" ssid="19">Algorithm 1 (k log k) also significantly out performs the baseline na??ve algorithm (k2 log k).</S>
+			<S sid="261" ssid="20">We also did a comparison between our Algorithm 3 and the Jime?nez and Marzal algorithm in terms of average 5In beam search, or threshold pruning, each cell in the chart (typically containing all the items corresponding to a span [i, j]) is reduced by discarding all items that are worse than ? times the score of the best item in the cell.</S>
+			<S sid="262" ssid="21">This ? is known as the beam width.</S>
+			<S sid="263" ssid="22">6In this type of pruning, also known as histogram pruning, only the ? best items are kept in each cell.</S>
+			<S sid="264" ssid="23">This ? is called the cell limit.</S>
+			<S sid="265" ssid="24">59 1.5 2.5 3.5 4.5 5.5 6.5 7.5 1 10 100 1000 10000 Av er ag e Pa rs in g Ti m e (se co nd s) k Algorithm 0 Algorithm 1 Algorithm 3 (a) Average parsing speed (Algs.</S>
+			<S sid="266" ssid="25">0 vs. 1 vs. 3, log-log) 1 1.2 1.4 1.6 1.8 2 2.2 2.4 2.6 2 4 8 16 32 64 Av er ag e He ap S ize k JM Algorithm with 10-5 beam Algorithm 3 with 10-5 beam JM Algorithm with 10-4 beam Algorithm 3 with 10-4 beam (b) Average heap size (Alg.</S>
+			<S sid="267" ssid="26">3 vs. Jime?nez and Marzal) Figure 8: Efficiency results of the k-best Algorithms, compared to Jime?nez and Marzal?s algorithmheap size.</S>
+			<S sid="268" ssid="27">Figure 8(b) shows that for larger k, the two al gorithms have the same average heap size, but for smaller k, our Algorithm 3 has a considerably smaller average heap size.</S>
+			<S sid="269" ssid="28">This difference is useful in applications whereonly short k-best lists are needed.</S>
+			<S sid="270" ssid="29">For example, McDon ald et al (2005) find that k = 5 gives optimal parsing accuracy.</S>
+			<S sid="271" ssid="30">5.1.2 Accuracy Our efficient k-best algorithms enable us to search over a larger portion of the whole search space (e.g. by lessaggressive pruning), thus producing k-best lists with bet ter quality than previous methods.</S>
+			<S sid="272" ssid="31">We demonstrate this by comparing our k-best lists to those in (Ratnaparkhi,1997), (Collins, 2000) and the parallel work by Char niak and Johnson (2005) in several ways, including oracle reranking and average number of found parses.</S>
+			<S sid="273" ssid="32">Ratnaparkhi (1997) introduced the idea of oracle reranking: suppose there exists a perfect reranking scheme that magically picks the best parse that has the highest F-score among the top k parses for each sentence.</S>
+			<S sid="274" ssid="33">Then the performance of this oracle reranking scheme is the upper bound of any actual reranking system like(Collins, 2000).As k increases, the F-score is nondecreas ing, and there is some k (which might be very large) at which the F-score converges.Ratnaparkhi reports experiments using oracle rerank ing with his statistical parser MXPARSE, which can compute its k-best parses (in his experiments, k = 20).</S>
+			<S sid="275" ssid="34">Collins (2000), in his parse-reranking experiments, used his Model 2 parser (Collins, 2003) with a beam width of 10?3 together with a cell limit of 100 to obtain k-best lists; the average number of parses obtained per sentence was 29.2, the maximum, 101.7 Charniak and Johnson (2005) use coarse-to-fine parsing on top of the Charniak (2000) parser and get 50-best lists for section 23.</S>
+			<S sid="276" ssid="35">Figure 9(a) compares the results of oracle reranking.</S>
+			<S sid="277" ssid="36">Collins?</S>
+			<S sid="278" ssid="37">curve converges at around k = 50 while ours continues to increase.</S>
+			<S sid="279" ssid="38">With a beam width of 10?4 and k = 100, our parser plus oracle reaches an F-score of96.4%, compared to Collins?</S>
+			<S sid="280" ssid="39">94.9%.</S>
+			<S sid="281" ssid="40">Charniak and John son?s work, however, is based on a completely different parser whose 1-best F-score is 1.5 points higher than the1-bests of ours and Collins?, making it difficult to com pare in absolute numbers.</S>
+			<S sid="282" ssid="41">So we instead compared the relative improvement over 1-best.</S>
+			<S sid="283" ssid="42">Figure 9(b) shows that our work has the largest percentage of improvement in terms of F-score when k &gt; 20.</S>
+			<S sid="284" ssid="43">To further explore the impact of Collins?</S>
+			<S sid="285" ssid="44">cell limit on the quality of k-best lists, we plotted average number of parses for a given sentence length (Figure 10).</S>
+			<S sid="286" ssid="45">Generally speaking, as input sentences get longer, the number of parses grows (exponentially).</S>
+			<S sid="287" ssid="46">But we see that the curve for Collins?</S>
+			<S sid="288" ssid="47">k-best list goes down for large k (&gt; 40).</S>
+			<S sid="289" ssid="48">We suspect this is due to the cell limit of 100 pruning awaypotentially good parses too early in the chart.</S>
+			<S sid="290" ssid="49">As sen tences get longer, it is more likely that a lower-probability parse might contribute eventually to the k-best parses.</S>
+			<S sid="291" ssid="50">So we infer that Collins?</S>
+			<S sid="292" ssid="51">k-best lists have limited quality for large k, and this is demonstrated by the early convergence of its oracle-reranking score.</S>
+			<S sid="293" ssid="52">By comparison, our curves of both beam widths continue to grow with k = 100.</S>
+			<S sid="294" ssid="53">All these experiments suggest that our k-best parses are of better quality than those from previous k-best parsers, 7The reason the maximum is 101 and not 100 is that Collins merged the 100-best list using a beam of 10?3 with the 1-best list using a beam of 10?4 (Collins, p.c.).</S>
+			<S sid="295" ssid="54">60 86 88 90 92 94 96 98 1 2 5 10 20 30 50 70 100 O ra cle F -s co re k (Charniak and Johnson, 2005) This work with beam width 10-4(Collins, 2000) (Ratnaparkhi, 1997) (a) Oracle Reranking 0 2 4 6 8 10 1 2 5 10 20 30 50 70 100 Pe rc en ta ge o f I m pr ov em en t o ve r 1 -b es t k (Charniak and Johnson, 2005) This work with beam width 10-4(Collins, 2000) (Ratnaparkhi, 1997) (b) Relative Improvement Figure 9: Absolutive and Relative F-scores of oracle reranking for the top k (?</S>
+			<S sid="296" ssid="55">100) parses for section 23, compared to (Charniak and Johnson, 2005), (Collins, 2000) and (Ratnaparkhi, 1997).</S>
+			<S sid="297" ssid="56">0 20 40 60 80 100 0 10 20 30 40 50 60 70 Av er ag e Nu m be r o f P ar se s Sentence Length This work with beam width 10-4 This work with beam width 10-3 (Collins, 2000) with beam width 10-3 Figure 10: Average number of parses for each sentence length in section 23, using k=100, with beam width 10?4 and 10?3, compared to (Collins, 2000).</S>
+			<S sid="298" ssid="57">61 0.001 0.01 0.1 1 10 10 100 1000 10000 100000 1e+06 s e c o n ds k Algorithm 2 Algorithm 3Figure 11: Algorithm 2 compared with Algorithm 3 (offline) on MT decoding task.</S>
+			<S sid="299" ssid="58">Average time (both exclud ing initial 1-best phase) vs. k (log-log).</S>
+			<S sid="300" ssid="59">and similar quality to those from (Charniak and Johnson,2005) which has so far the highest F-score after rerank ing, and this might lead to better results in real parse reranking.</S>
+			<S sid="301" ssid="60">5.2 Experiment 2: MT decoder.</S>
+			<S sid="302" ssid="61">Our second experiment was on a CKY-based decoderfor a machine translation system (Chiang, 2005), imple mented in Python 2.4 accelerated with Psyco 1.3 (Rigo, 2004).</S>
+			<S sid="303" ssid="62">We implemented Algorithms 2 and 3 to computek-best English translations of Mandarin sentences.</S>
+			<S sid="304" ssid="63">Be cause the CFG used in this system is large to begin with (millions of rules), and then effectively intersected with a finite-state machine on the English side (the language model), the grammar constant for this system is quite large.</S>
+			<S sid="305" ssid="64">The decoder uses a relatively narrow beam search for efficiency.</S>
+			<S sid="306" ssid="65">We ran the decoder on a 2.8 GHz Xeon with 4 GB of memory, on 331 sentences from the 2002 NIST MTEval test set.</S>
+			<S sid="307" ssid="66">We tested Algorithm 2 for k = 2i, 3 ? i ? 10, and Algorithm 3 (offline algorithm) for k = 2i, 3 ? i ? 20.</S>
+			<S sid="308" ssid="67">For each sentence, we measured the time to calculate the k-best list, not including the initial 1-best parsing phase.</S>
+			<S sid="309" ssid="68">We then averaged the times over our test set to produce the graph of Figure 11, which shows that Algorithm 3 runs an average of about 300 times faster than Algorithm 2.</S>
+			<S sid="310" ssid="69">Furthermore, we were able to test Algorithm 3 up to.</S>
+			<S sid="311" ssid="70">k = 106 in a reasonable amount of time.8 8The curvature in the plot for Algorithm 3 for k &lt; 1000 may be due to lack of resolution in the timing function for short times.</S>
+	</SECTION>
+	<SECTION title="Conclusion. " number="6">
+			<S sid="312" ssid="1">The problem of k-best parsing and the effect of k-best listsize and quality on applications are subjects of increas ing interest for NLP research.</S>
+			<S sid="313" ssid="2">We have presented herea general-purpose algorithm for k-best parsing and ap plied it to two state-of-the-art, large-scale NLP systems: Bikel?s implementation of Collins?</S>
+			<S sid="314" ssid="3">lexicalized PCFGmodel (Bikel, 2004; Collins, 2003) and Chiang?s syn chronous CFG based decoder (Chiang, 2005) for machine translation.</S>
+			<S sid="315" ssid="4">We hope that this work will encourage further investigation into whether larger and better k-best lists will improve performance in NLP applications, questions which we ourselves intend to pursue as well.</S>
+			<S sid="316" ssid="5">Acknowledgements We would like to thank one of the anonymous reviewers of a previous version of this paper for pointing out the work by Jime?nez and Marzal, and Eugene Charniak and Mark Johnson for providing an early draft of their paperand very useful comments.</S>
+			<S sid="317" ssid="6">We are also extremely grate ful to Dan Bikel for the help in experiments, and Michael Collins for providing the data in his paper.</S>
+			<S sid="318" ssid="7">Our thanksalso go to Dan Gildea, Jonathan Graehl, Julia Hock enmaier, Aravind Joshi, Kevin Knight, Daniel Marcu,Mitch Marcus, Ryan McDonald, Fernando Pereira, Gior gio Satta, Libin Shen, and Hao Zhang.</S>
+	</SECTION>
+</PAPER>

@@ -1,0 +1,246 @@
+<PAPER>
+  <S sid="0">Probabilistic Text Structuring: Experiments With Sentence Ordering</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Ordering information is a critical task for natural language generation applications.</S>
+    <S sid="2" ssid="2">In this paper we propose an approach to information ordering that is particularly suited for text-to-text generation.</S>
+    <S sid="3" ssid="3">We describe a model that learns constraints on sentence order from a corpus of domainspecific texts and an algorithm that yields the most likely order among several alternatives.</S>
+    <S sid="4" ssid="4">We evaluate the automatically generated orderings against authored texts from our corpus and against human subjects that are asked to mimic the model&#8217;s task.</S>
+    <S sid="5" ssid="5">We also assess the appropriateness of such a model for multidocument summarization.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="6" ssid="1">Structuring a set of facts into a coherent text is a non-trivial task which has received much attention in the area of concept-to-text generation (see Reiter and Dale 2000 for an overview).</S>
+    <S sid="7" ssid="2">The structured text is typically assumed to be a tree (i.e., to have a hierarchical structure) whose leaves express the content being communicated and whose nodes specify how this content is grouped via rhetorical or discourse relations (e.g., contrast, sequence, elaboration).</S>
+    <S sid="8" ssid="3">For domains with large numbers of facts and rhetorical relations, there can be more than one possible tree representing the intended content.</S>
+    <S sid="9" ssid="4">These different trees will be realized as texts with different sentence orders or even paragraph orders and different levels of coherence.</S>
+    <S sid="10" ssid="5">Finding the tree that yields the best possible text is effectively a search problem.</S>
+    <S sid="11" ssid="6">One way to address it is by narrowing down the search space either exhaustively or heuristically.</S>
+    <S sid="12" ssid="7">Marcu (1997) argues that global coherence can be achieved if constraints on local coherence are satisfied.</S>
+    <S sid="13" ssid="8">The latter are operationalized as weights on the ordering and adjacency of facts and are derived from a corpus of naturally occurring texts.</S>
+    <S sid="14" ssid="9">A constraint satisfaction algorithm is used to find the tree with maximal weights from the space of all possible trees.</S>
+    <S sid="15" ssid="10">Mellish et al. (1998) advocate stochastic search as an alternative to exhaustively examining the search space.</S>
+    <S sid="16" ssid="11">Rather than requiring a global optimum to be found, they use a genetic algorithm to select a tree that is coherent enough for people to understand (local optimum).</S>
+    <S sid="17" ssid="12">The problem of finding an acceptable ordering does not arise solely in concept-to-text generation but also in the emerging field of text-to-text generation (Barzilay, 2003).</S>
+    <S sid="18" ssid="13">Examples of applications that require some form of text structuring, are single- and multidocument summarization as well as question answering.</S>
+    <S sid="19" ssid="14">Note that these applications do not typically assume rich semantic knowledge organized in tree-like structures or communicative goals as is often the case in concept-to-text generation.</S>
+    <S sid="20" ssid="15">Although in single document summarization the position of a sentence in a document can provide cues with respect to its ordering in the summary, this is not the case in multidocument summarization where sentences are selected from different documents and must be somehow ordered so as to produce a coherent summary (Barzilay et al., 2002).</S>
+    <S sid="21" ssid="16">Answering a question may also involve the extraction, potentially summarization, and ordering of information across multiple information sources.</S>
+    <S sid="22" ssid="17">Barzilay et al. (2002) address the problem of information ordering in multidocument summarization and show that naive ordering algorithms such as majority ordering (selects most frequent orders across input documents) and chronological ordering (orders facts according to publication date) do not always yield coherent summaries although the latter produces good results when the information is eventbased.</S>
+    <S sid="23" ssid="18">Barzilay et al. further conduct a study where subjects are asked to produce a coherent text from the output of a multidocument summarizer.</S>
+    <S sid="24" ssid="19">Their results reveal that although the generated orders differ from subject to subject, topically related sentences always appear together.</S>
+    <S sid="25" ssid="20">Based on the human study they propose an algorithm that first identifies topically related groups of sentences and then orders them according to chronological information.</S>
+    <S sid="26" ssid="21">In this paper we introduce an unsupervised probabilistic model for text structuring that learns ordering constraints from a large corpus.</S>
+    <S sid="27" ssid="22">The model operates on sentences rather than facts in a knowledge base and is potentially useful for text-to-text generation applications.</S>
+    <S sid="28" ssid="23">For example, it can be used to order the sentences obtained from a multidocument summarizer or a question answering system.</S>
+    <S sid="29" ssid="24">Sentences are represented by a set of informative features (e.g., a verb and its subject, a noun and its modifier) that can be automatically extracted from the corpus without recourse to manual annotation.</S>
+    <S sid="30" ssid="25">The model learns which sequences of features are likely to co-occur and makes predictions concerning preferred orderings.</S>
+    <S sid="31" ssid="26">Local coherence is thus operationalized by sentence proximity in the training corpus.</S>
+    <S sid="32" ssid="27">Global coherence is obtained by greedily searching through the space of possible orders.</S>
+    <S sid="33" ssid="28">As in the case of Mellish et al. (1998) we construct an acceptable ordering rather than the best possible one.</S>
+    <S sid="34" ssid="29">We propose an automatic method of evaluating the orders generated by our model by measuring closeness or distance from the gold standard, a collection of orders produced by humans.</S>
+    <S sid="35" ssid="30">The remainder of this paper is organized as follows.</S>
+    <S sid="36" ssid="31">Section 2 introduces our model and an algorithm for producing a possible order.</S>
+    <S sid="37" ssid="32">Section 3 describes our corpus and the estimation of the model parameters.</S>
+    <S sid="38" ssid="33">Our experiments are detailed in Section 4.</S>
+    <S sid="39" ssid="34">We conclude with a discussion in Section 5.</S>
+  </SECTION>
+  <SECTION title="2 Learning to Order" number="2">
+    <S sid="40" ssid="1">Given a collection of texts from a particular domain, our task is to learn constraints on the ordering of their sentences.</S>
+    <S sid="41" ssid="2">In the training phase our model will learn these constraints from adjacent sentences represented by a set of informative features.</S>
+    <S sid="42" ssid="3">In the testing phase, given a set of unseen sentences, we will rely on our prior experience of how sentences are usually ordered for choosing the most likely ordering.</S>
+    <S sid="43" ssid="4">We express the probability of a text made up of sentences S1...Sn as shown in (1).</S>
+    <S sid="44" ssid="5">According to (1), the task of predicting the next sentence is dependent on its n &#8722; i previous sentences.</S>
+    <S sid="45" ssid="6">We will simplify (1) by assuming that the probability of any given sentence is determined only by its previous sentence: This is a somewhat simplistic attempt at capturing Marcu&#8217;s (1997) local coherence constraints as well as Barzilay et al.&#8217;s (2002) observations about topical relatedness.</S>
+    <S sid="46" ssid="7">While this is clearly a naive view of text coherence, our model has some notion of the types of sentences that typically go together, even though it is agnostic about the specific rhetorical relations that glue sentences into a coherent text.</S>
+    <S sid="47" ssid="8">Also note that the simplification in (2) will make the estimation of the probabilities P(Si|Si&#8722;1) more reliable in the face of sparse data.</S>
+    <S sid="48" ssid="9">Of course estimating P(Si|Si&#8722;1) would be impossible if Si and Si&#8722;1 were actual sentences.</S>
+    <S sid="49" ssid="10">It is unlikely to find the exact same sentence repeated several times in a corpus.</S>
+    <S sid="50" ssid="11">What we can find and count is the number of times a given structure or word appears in the corpus.</S>
+    <S sid="51" ssid="12">We will therefore estimate P(Si|Si&#8722;1) from features that express its structure and content (these features are described in detail in Section 3): where &#57737;a&#57737;i,1&#57738;,a&#57737;i,2&#57738; ...a&#57737;i,n&#57738;&#57738; are features relevant for sentence Si and &#57737;a&#57737;i&#8722;1,1&#57738;,a&#57737;i&#8722;1,2&#57738; ...a&#57737;i&#8722;1,m&#57738;&#57738; for sentence Si&#8722;1.</S>
+    <S sid="52" ssid="13">We will assume that these features are independent and that P(Si|Si&#8722;1) can be estimated from the pairs in the Cartesian product defined over the features expressing sentences Si and Si&#8722;1: Assuming that the features are independent again makes parameter estimation easier.</S>
+    <S sid="53" ssid="14">The Cartesian product over the features in Si and Si&#8722;1 is an attempt to capture inter-sentential dependencies.</S>
+    <S sid="54" ssid="15">Since we don&#8217;t know a priori what the important feature combinations are, we are considering all possible combinations over two sentences.</S>
+    <S sid="55" ssid="16">This will admittedly introduce some noise, given that some dependencies will be spurious, but the model can be easily retrained for different domains for which different feature combinations will be important.</S>
+    <S sid="56" ssid="17">The probawhere f(a&#57737;i,j&#57738;,a&#57737;i&#8722;1,k&#57738;) is the number of times feature a&#57737;i,j&#57738; is preceded by feature a&#57737;i&#8722;1,k&#57738; in the corpus.</S>
+    <S sid="57" ssid="18">The denominator expresses the number of times a&#57737;i&#8722;1,k&#57738; is attested in the corpus (preceded by any feature).</S>
+    <S sid="58" ssid="19">The probabilities P(a&#57737;i,j&#57738;|a&#57737;i&#8722;1,k&#57738;) will be unreliable when the frequency estimates for f (a&#57737;i, j&#57738;,a&#57737;i&#8722;1,k&#57738;) are small, and undefined in cases where the feature combinations are unattested in the corpus.</S>
+    <S sid="59" ssid="20">We therefore smooth the observed frequencies using back-off smoothing (Katz, 1987).</S>
+    <S sid="60" ssid="21">To illustrate with an example consider the text in Figure 1 which has three sentences S1, S2, S3, each represented by their respective features denoted by letters.</S>
+    <S sid="61" ssid="22">The probability P(S3|S2) will be calculated by taking the product of P(h|e), P(h |f), P(h|g), P(i|e), P(i |f), and P(i|g).</S>
+    <S sid="62" ssid="23">To obtain P(h|e), we need f(h,e) and f(e) which can be estimated in Figure 1 by counting the number of edges connecting e and h and the number of edges starting from e, respectively.</S>
+    <S sid="63" ssid="24">So, P(h|e) will be 0.16 given that f(h,e) is one and f(e) is six (see the normalization in (5)).</S>
+    <S sid="64" ssid="25">Once we have collected the counts for our features we can determine the order for a new text that we haven&#8217;t encountered before, since some of the features representing its sentences will be familiar.</S>
+    <S sid="65" ssid="26">Given a text with N sentences there are N! possible orders.</S>
+    <S sid="66" ssid="27">The set of orders can be represented as a complete graph, where the set of vertices V is equal to the set of sentences S and each edge u &#57735; v has a weight, the probability P(u|v).</S>
+    <S sid="67" ssid="28">Cohen et al. (1999) show that the problem of finding an optimal ordering through a directed weighted graph is NP-complete.</S>
+    <S sid="68" ssid="29">Fortunately, they propose a simple greedy algorithm that provides an approximate solution which can be easily modified for our task (see also Barzilay et al. 2002).</S>
+    <S sid="69" ssid="30">The algorithm starts by assigning each vertex v &#57736; V a probability.</S>
+    <S sid="70" ssid="31">Recall that in our case vertices are sentences and their probabilities can be calculated by taking the product of the probabilities of their features.</S>
+    <S sid="71" ssid="32">The greedy algorithm then picks the node with the highest probability and orders it ahead of the other nodes.</S>
+    <S sid="72" ssid="33">The selected node and its incident edges are deleted from the graph.</S>
+    <S sid="73" ssid="34">Each remaining node is now assigned the conditional probability of seeing this node given the previously selected node (see (4)).</S>
+    <S sid="74" ssid="35">The node which yields the highest conditional probability is selected and ordered ahead.</S>
+    <S sid="75" ssid="36">The process is repeated until the graph is empty.</S>
+    <S sid="76" ssid="37">As an example consider again a three sentence text.</S>
+    <S sid="77" ssid="38">We illustrate the search for a path through the graph in Figure 2.</S>
+    <S sid="78" ssid="39">First we calculate which of the three sentences S1, S2, and S3 is most likely to start the text (during training we record which sentences appear in the beginning of each text).</S>
+    <S sid="79" ssid="40">Assuming that P(S2|START) is the highest, we will order S2 first, and ignore the nodes headed by S1 and S3.</S>
+    <S sid="80" ssid="41">We next compare the probabilities P(S1|S2) and P(S3|S2).</S>
+    <S sid="81" ssid="42">Since P(S3|S2) is more likely than P(S1|S2), we order S3 after S2 and stop, returning the order S2, S3, and S1.</S>
+    <S sid="82" ssid="43">As can be seen in Figure 2 for each vertex we keep track of the most probable edge that ends in that vertex, thus setting th beam search width to one.</S>
+    <S sid="83" ssid="44">Note, that equation (4) would assign lower and lower probabilities to sentences with large numbers of features.</S>
+    <S sid="84" ssid="45">Since we need to compare sentence pairs with varied numbers of features, we will normalize the conditional probabilities P(Si|Si&#8722;1) by the number feature of pairs that form the Cartesian product over Si and Si&#8722;1.</S>
+  </SECTION>
+  <SECTION title="3 Parameter Estimation" number="3">
+    <S sid="85" ssid="1">The model in Section 2.1 was trained on the BLLIP corpus (30 M words), a collection of texts from the Wall Street Journal (years 1987-89).</S>
+    <S sid="86" ssid="2">The corpus contains 98,732 stories.</S>
+    <S sid="87" ssid="3">The average story length is 19.2 sentences.</S>
+    <S sid="88" ssid="4">71.30% of the texts in the corpus are less than 50 sentences long.</S>
+    <S sid="89" ssid="5">An example of the texts in this newswire corpus is shown in Figure 3.</S>
+    <S sid="90" ssid="6">The corpus is distributed in a Treebankstyle machine-parsed version which was produced with Charniak&#8217;s (2000) parser.</S>
+    <S sid="91" ssid="7">The parser is a &#8220;maximum-entropy inspired&#8221; probabilistic generative model.</S>
+    <S sid="92" ssid="8">It achieves 90.1% average precision/recall for sentences with maximum length 40 and 89.5% for sentences with maximum length 100 when trained and tested on the standard sections of the Wall Street Journal Treebank (Marcus et al., 1993).</S>
+    <S sid="93" ssid="9">We also obtained a dependency-style version of the corpus using MINIPAR (Lin, 1998) a broad coverage parser for English which employs a manually constructed grammar and a lexicon derived from WordNet with an additional dictionary of proper names (130,000 entries in total).</S>
+    <S sid="94" ssid="10">The grammar is represented as a network of 35 nodes (i.e., grammatical categories) and 59 edges (i.e., types of syntactic (dependency) relations).</S>
+    <S sid="95" ssid="11">The output of MINIPAR is a dependency graph which represents the dependency relations between words in a sentence (see Table 1 for an example).</S>
+    <S sid="96" ssid="12">Lin (1998) evaluated the parser on the SUSANNE corpus (Sampson, 1996), a domain independent corpus of British English, and achieved a recall of 79% and precision of 89% on the dependency relations.</S>
+    <S sid="97" ssid="13">From the two different parsed versions of the BLLIP corpus the following features were extracted: Verbs.</S>
+    <S sid="98" ssid="14">Investigations into the interpretation of narrative discourse (Asher and Lascarides, 2003) have shown that specific lexical information (e.g., verbs, adjectives) plays an important role in determining the discourse relations between propositions.</S>
+    <S sid="99" ssid="15">Although we don&#8217;t have an explicit model of rhetorical relations and their effects on sentence ordering, we capture the lexical inter-dependencies between sentences by focusing on verbs and their precedence relationships in the corpus.</S>
+    <S sid="100" ssid="16">From the Treebank parses we extracted the verbs contained in each sentence.</S>
+    <S sid="101" ssid="17">We obtained two versions of this feature: (a) a lemmatized version where verbs were reduced to their base forms and (b) a non-lemmatized version which preserved tense-related information; more specifically, verbal complexes (e.g., I will have been going) were identified from the parse trees heuristically by devising a set of 30 patterns that search for sequences of modals, auxiliaries and verbs.</S>
+    <S sid="102" ssid="18">This is an attempt at capturing temporal coherence by encoding sequences of events and their morphology which indirectly indicates their tense.</S>
+    <S sid="103" ssid="19">To give an example consider the text in Figure 3.</S>
+    <S sid="104" ssid="20">For the lemmatized version, sentence (1) will be represented by say, will, be, ask, and approve; for the tensed version, the relevant features will be said, will be asked, and to approve.</S>
+    <S sid="105" ssid="21">Nouns.</S>
+    <S sid="106" ssid="22">Centering Theory (CT, Grosz et al. 1995) is an entity-based theory of local coherence, which claims that certain entities mentioned in an utterance are more central than others and that this property constrains a speaker&#8217;s use of certain referring expressions.</S>
+    <S sid="107" ssid="23">The principles underlying CT (e.g., continuity, salience) are of interest to concept-to-text generation as they offer an entity-based model of text and sentence planning which is particularly suited for descriptional genres (Kibble and Power, 2000).</S>
+    <S sid="108" ssid="24">We operationalize entity-based coherence for text-to-text generation by simply keeping track of the nouns attested in a sentence without however taking personal pronouns into account.</S>
+    <S sid="109" ssid="25">This simplification is reasonable if one has text-to-text generation mind.</S>
+    <S sid="110" ssid="26">In multidocument summarization for example, sentences are extracted from different documents; the referents of the pronouns attested in these sentences are typically not known and in some cases identical pronouns may refer to different entities.</S>
+    <S sid="111" ssid="27">So making use of noun-pronoun or pronoun-pronoun co-occurrences will be uninformative or in fact misleading.</S>
+    <S sid="112" ssid="28">We extracted nouns from a lemmatized version of the Treebank-style parsed corpus.</S>
+    <S sid="113" ssid="29">In cases of noun compounds, only the compound head (i.e., rightmost noun) was taken into account.</S>
+    <S sid="114" ssid="30">A small set of rules was used to identify organizations (e.g., United Laboratories Inc.), person names (e.g., Jose Y. Campos), and locations (e.g., New England) spanning more than one word.</S>
+    <S sid="115" ssid="31">These were grouped together and were also given the general categories person, organization, and location.</S>
+    <S sid="116" ssid="32">The model backs off to these categories when unknown person names, locations, and organizations are encountered.</S>
+    <S sid="117" ssid="33">Dates, years, months and numbers were substituted by the categories date, year, month, and number.</S>
+    <S sid="118" ssid="34">In sentence (1) (see Figure 3) we identify the nouns Laidlaw Transportation Ltd., shareholder, Dec 7, meeting, change, name and Laidlaw Inc.</S>
+    <S sid="119" ssid="35">In sentence (2) the relevant nouns are company, name, business, 1984, sale, and operation.</S>
+    <S sid="120" ssid="36">Dependencies.</S>
+    <S sid="121" ssid="37">Note that the noun and verb features do not capture the structure of the sentences to be ordered.</S>
+    <S sid="122" ssid="38">This is important for our domain, as texts seem to be rather formulaic and similar syntactic structures are often used (e.g., direct and indirect speech, restrictive relative clauses, predicative structures).</S>
+    <S sid="123" ssid="39">In this domain companies typically say things, and texts often begin with a statement of what a company or an individual has said (see sentence (1) in Figure 3).</S>
+    <S sid="124" ssid="40">Furthermore, companies and individuals are described with certain attributes (persons can be presidents or governors, companies are bankrupt or manufacturers, etc.) that can give clues for inferring coherence.</S>
+    <S sid="125" ssid="41">The dependencies were obtained from the output of MINIPAR.</S>
+    <S sid="126" ssid="42">Some of the dependencies for sentence (2) from Figure 3 are shown in Table 1.</S>
+    <S sid="127" ssid="43">The dependencies capture structural as well lexical information.</S>
+    <S sid="128" ssid="44">They are represented as triples, consisting of a head (leftmost element, e.g., say, name), a modifier (rightmost element, e.g., company, its) and a relation (e.g., subject (V:subj:N), object (V:obj:N), modifier (N:mod:A)).</S>
+    <S sid="129" ssid="45">For efficiency reasons we focused on triples whose dependency relations (e.g., V:subj:N) were attested in the corpus with frequency larger than one per million.</S>
+    <S sid="130" ssid="46">We further looked at how individual types of relations contribute to the ordering task.</S>
+    <S sid="131" ssid="47">More specifically we experimented with dependencies relating to verbs (49 types), nouns (52 types), verbs and nouns (101 types) (see Table 1 for examples).</S>
+    <S sid="132" ssid="48">We also ran a version of our model with all types of relations, including adjectives, adverbs and</S>
+  </SECTION>
+  <SECTION title="4 Experiments" number="4">
+    <S sid="133" ssid="1">In this section we describe our experiments with the model and the features introduced in the previous sections.</S>
+    <S sid="134" ssid="2">We first evaluate the model by attempting to reproduce the structure of unseen texts from the BLLIP corpus, i.e., the corpus on which the model is trained on.</S>
+    <S sid="135" ssid="3">We next obtain an upper bound for the task by conducting a sentence ordering experiment with humans and comparing the model against the human data.</S>
+    <S sid="136" ssid="4">Finally, we assess whether this model can be used for multi-document summarization using data from Barzilay et al. (2002).</S>
+    <S sid="137" ssid="5">But before we outline the details of our experiments we discuss our choice of metric for comparing different orders.</S>
+    <S sid="138" ssid="6">Our task is to produce an ordering for the sentences of a given text.</S>
+    <S sid="139" ssid="7">We can think of the sentences as objects for which a ranking must be produced.</S>
+    <S sid="140" ssid="8">Table 2 gives an example of a text containing 10 sentences (A&#8211;J) and the orders (i.e., rankings) produced by three hypothetical models.</S>
+    <S sid="141" ssid="9">A number of metrics can be used to measure the distance between two rankings such as Spearman&#8217;s correlation coefficient for ranked data, Cayley distance, or Kendall&#8217;s &#964; (see Lebanon and Lafferty 2002 for details).</S>
+    <S sid="142" ssid="10">Kendall&#8217;s &#964; is based on the number of inversions in the rankings and is defined in (6): where N is the number of objects (i.e., sentences) being ranked and inversions are the number of interchanges of consecutive elements necessary to arrange them in their natural order.</S>
+    <S sid="143" ssid="11">If we think in terms of permutations, then i can be interpreted as the minimum number of adjacent transpositions needed to bring one order to the other.</S>
+    <S sid="144" ssid="12">In Table 2 the number of inversions can be calculated by counting the number of intersections of the lines.</S>
+    <S sid="145" ssid="13">The metric ranges from &#8722;1 (inverse ranks) to 1 (identical ranks).</S>
+    <S sid="146" ssid="14">The i for Model 1 and Model 2 in Table 2 is .822.</S>
+    <S sid="147" ssid="15">Kendall&#8217;s i seems particularly appropriate for the tasks considered in this paper.</S>
+    <S sid="148" ssid="16">The metric is sensitive to the fact that some sentences may be always ordered next to each other even though their absolute orders might differ.</S>
+    <S sid="149" ssid="17">It also penalizes inverse rankings.</S>
+    <S sid="150" ssid="18">Comparison between Model 1 and Model 3 would give a i of 0.244 even though the orders between the two models are identical modulo the beginning and the end.</S>
+    <S sid="151" ssid="19">This seems appropriate given that flipping the introduction in a document with the conclusions seriously disrupts coherence.</S>
+    <S sid="152" ssid="20">The model from Section 2.1 was trained on the BLLIP corpus and tested on 20 held-out randomly selected unseen texts (average length 15.3).</S>
+    <S sid="153" ssid="21">We also used 20 randomly chosen texts (disjoint from the test data) for development purposes (average length 16.2).</S>
+    <S sid="154" ssid="22">All our results are reported on the test set.</S>
+    <S sid="155" ssid="23">The input to the the greedy algorithm (see Section 2.2) was a text with a randomized sentence ordering.</S>
+    <S sid="156" ssid="24">The ordered output was compared against the original authored text using i.</S>
+    <S sid="157" ssid="25">Table 3 gives the average i (T) for all 20 test texts when the following features are used: lemmatized verbs (VL), tensed verbs (VT), lemmatized nouns (NL), lemmatized verbs and nouns (VLNL), tensed verbs and lemmatized nouns (VTNL), verb-related dependencies (VD), noun-related dependencies (ND), verb and noun dependencies (VDND), and all available dependencies (AD).</S>
+    <S sid="158" ssid="26">For comparison we also report the naive baseline of generating a random oder (BR).</S>
+    <S sid="159" ssid="27">As can be seen from Table 3 the best performing features are NL and VDND.</S>
+    <S sid="160" ssid="28">This is not surprising given that NL encapsulates notions of entity-based coherence, which is relatively important for our domain.</S>
+    <S sid="161" ssid="29">A lot of texts are about a particular entity (company or individual) and their properties.</S>
+    <S sid="162" ssid="30">The feature VDND subsumes several other features and does expectedly better: it captures entity-based coherence, the interrelations among verbs, the structure of sentences and also preserves information about argument structure (who is doing what to whom).</S>
+    <S sid="163" ssid="31">The distance between the orders produced by the model and the original texts increases when all types of dependencies are Feature T StdDev Min Max taken into account.</S>
+    <S sid="164" ssid="32">The feature space becomes too big, there are too many spurious feature pairs, and the model can&#8217;t distinguish informative from noninformative features.</S>
+    <S sid="165" ssid="33">We carried out a one-way Analysis of Variance (ANOVA) to examine the effect of different feature types.</S>
+    <S sid="166" ssid="34">The ANOVA revealed a reliable effect of feature type (F(9,171) = 3.31; p &lt; 0.01).</S>
+    <S sid="167" ssid="35">We performed Post-hoc Tukey tests to further examine whether there are any significant differences among the different features and between our model and the baseline.</S>
+    <S sid="168" ssid="36">We found out that NL, VTNL, VD, and VDND are significantly better than BR (a = 0.01), whereas NL and VDND are not significantly different from each other.</S>
+    <S sid="169" ssid="37">However, they are significantly better than all other features (a = 0.05).</S>
+    <S sid="170" ssid="38">In this experiment we compare our model&#8217;s performance against human judges.</S>
+    <S sid="171" ssid="39">Twelve texts were randomly selected from the 20 texts in our test data.</S>
+    <S sid="172" ssid="40">The texts were presented to subjects with the order of their sentences scrambled.</S>
+    <S sid="173" ssid="41">Participants were asked to reorder the sentences so as to produce a coherent text.</S>
+    <S sid="174" ssid="42">Each participant saw three texts randomly chosen from the pool of 12 texts.</S>
+    <S sid="175" ssid="43">A random order of sentences was generated for every text the participants saw.</S>
+    <S sid="176" ssid="44">Sentences were presented verbatim, pronouns and connectives were retained in order to make ordering feasible.</S>
+    <S sid="177" ssid="45">Notice that this information is absent from the features the model takes into account.</S>
+    <S sid="178" ssid="46">The study was conducted remotely over the Internet using a variant of Barzilay et al.&#8217;s (2002) software.</S>
+    <S sid="179" ssid="47">Subjects first saw a set of instructions that explained the task, and had to fill in a short questionnaire including basic demographic information.</S>
+    <S sid="180" ssid="48">The experiment was completed by 137 volunteers (approximately 33 per text), all native speakers of English.</S>
+    <S sid="181" ssid="49">Subjects were recruited via postings to local between the model and each of the subjects for all features used in Experiment 1.</S>
+    <S sid="182" ssid="50">The average distance in the orderings produced by our subjects is .58.</S>
+    <S sid="183" ssid="51">The distance between the humans and the best features is .51 for NL and .55 for VDND.</S>
+    <S sid="184" ssid="52">An ANOVA yielded a significant effect of feature type (F(9,99) = 5.213; p &lt; 0.01).</S>
+    <S sid="185" ssid="53">Post-hoc Tukey tests revealed that VL, VT, VD, ND, AD, VLNL, and VTNL perform significantly worse than HH (a = 0.01), whereas NL and VDND are not significantly different from HH (a = 0.01).</S>
+    <S sid="186" ssid="54">This is in agreement with Experiment 1 and points to the importance of lexical and structural information for the ordering task.</S>
+    <S sid="187" ssid="55">Barzilay et al. (2002) collected a corpus of multiple orderings in order to study what makes an order cohesive.</S>
+    <S sid="188" ssid="56">Their goal was to improve the ordering strategy of MULTIGEN (McKeown et al., 1999) a multidocument summarization system that operates on news articles describing the same event.</S>
+    <S sid="189" ssid="57">MULTIGEN identifies text units that convey similar information across documents and clusters them into themes.</S>
+    <S sid="190" ssid="58">Each theme is next syntactically analysed into predicate argument structures; the structures that are repeated often enough are chosen to be included into the summary.</S>
+    <S sid="191" ssid="59">A language generation system outputs a sentence (per theme) from the selected predicate argument structures.</S>
+    <S sid="192" ssid="60">Barzilay et al. (2002) collected ten sets of articles each consisting of two to three articles reporting the same event and simulated MULTIGEN by manually selecting the sentences to be included in the final summary.</S>
+    <S sid="193" ssid="61">This way they ensured that orderings were not influenced by mistakes their system could have made.</S>
+    <S sid="194" ssid="62">Explicit references and connectives were removed from the sentences so as not to reveal clues about the sentence ordering.</S>
+    <S sid="195" ssid="63">Ten subjects provided orders for each summary which had an average length of 8.8.</S>
+    <S sid="196" ssid="64">We simulated the participants&#8217; task by using the model from Section 2.1 to produce an order for each candidate summary1.</S>
+    <S sid="197" ssid="65">We then compared the differences in the orderings generated by the model and participants using the best performing features from Experiment 2 (i.e., NL and VDND).</S>
+    <S sid="198" ssid="66">Note that the model was trained on the BLLIP corpus, whereas the sentences to be ordered were taken from news articles describing the same event.</S>
+    <S sid="199" ssid="67">Not only were the news articles unseen but also their syntactic structure was unfamiliar to the model.</S>
+    <S sid="200" ssid="68">The results are shown in table 5, again average pairwise i is reported.</S>
+    <S sid="201" ssid="69">We also give the naive baseline of choosing a random order (BR).</S>
+    <S sid="202" ssid="70">The average distance in the orderings produced by Barzilay et al.&#8217;s (2002) participants is .60.</S>
+    <S sid="203" ssid="71">The distance between the humans and NL is .48 whereas the average distance between VDND and the humans is .56.</S>
+    <S sid="204" ssid="72">An ANOVA yielded a significant effect of feature type (F(3,27) = 15.25; p &lt; 0.01).</S>
+    <S sid="205" ssid="73">Post-hoc Tukey tests showed that VDND was significantly better than BR, but NL wasn&#8217;t.</S>
+    <S sid="206" ssid="74">The difference between VDND and HH was not significant.</S>
+    <S sid="207" ssid="75">Although NL performed adequately in Experiments 1 and 2, it failed to outperform the baseline in the summarization task.</S>
+    <S sid="208" ssid="76">This may be due to the fact that entity-based coherence is not as important as temporal coherence for the news articles summaries.</S>
+    <S sid="209" ssid="77">Recall that the summaries describe events across documents.</S>
+    <S sid="210" ssid="78">This information is captured more adequately by VDND and not by NL that only keeps a record of the entities in the sentence.</S>
+  </SECTION>
+  <SECTION title="5 Discussion" number="5">
+    <S sid="211" ssid="1">In this paper we proposed a data intensive approach to text coherence where constraints on sentence ordering are learned from a corpus of domain-specific texts.</S>
+    <S sid="212" ssid="2">We experimented with different feature encodings and showed that lexical and syntactic information is important for the ordering task.</S>
+    <S sid="213" ssid="3">Our results indicate that the model can successfully generate orders for texts taken from the corpus on which it is trained.</S>
+    <S sid="214" ssid="4">The model also compares favorably with human performance on a single- and multiple document ordering task.</S>
+    <S sid="215" ssid="5">Our model operates on the surface level rather than the logical form and is therefore suitable for text-to-text generation systems; it acquires ordering constraints automatically, and can be easily ported to different domains and text genres.</S>
+    <S sid="216" ssid="6">The model is particularly relevant for multidocument summarization since it could provide an alternative to chronological ordering especially for documents where publication date information is unavailable or uninformative (e.g., all documents have the same date).</S>
+    <S sid="217" ssid="7">We proposed Kendall&#8217;s &#964; as an automated method for evaluating the generated orders.</S>
+    <S sid="218" ssid="8">There are a number of issues that must be addressed in future work.</S>
+    <S sid="219" ssid="9">So far our evaluation metric measures order similarities or dissimilarities.</S>
+    <S sid="220" ssid="10">This enables us to assess the importance of particular feature combinations automatically and to evaluate whether the model and the search algorithm generate potentially acceptable orders without having to run comprehension experiments each time.</S>
+    <S sid="221" ssid="11">Such experiments however are crucial for determining how coherent the generated texts are and whether they convey the same semantic content as the originally authored texts.</S>
+    <S sid="222" ssid="12">For multidocument summarization comparisons between our model and alternative ordering strategies are important if we want to pursue this approach further.</S>
+    <S sid="223" ssid="13">Several improvements can take place with respect to the model.</S>
+    <S sid="224" ssid="14">An obvious question is whether a trigram model performs better than the model presented here.</S>
+    <S sid="225" ssid="15">The greedy algorithm implements a search procedure with a beam of width one.</S>
+    <S sid="226" ssid="16">In the future we plan to experiment with larger widths (e.g., two or three) and also take into account features that express semantic similarities across documents either by relying on WordNet or on automatic clustering methods.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="6">
+    <S sid="227" ssid="1">The author was supported by EPSRC grant number R40036.</S>
+    <S sid="228" ssid="2">We are grateful to Regina Barzilay and Noemie Elhadad for making available their software and for providing valuable comments on this work.</S>
+    <S sid="229" ssid="3">Thanks also to Stephen Clark, Nikiforos Karamanis, Frank Keller, Alex Lascarides, Katja Markert, and Miles Osborne for helpful comments and suggestions.</S>
+  </SECTION>
+</PAPER>

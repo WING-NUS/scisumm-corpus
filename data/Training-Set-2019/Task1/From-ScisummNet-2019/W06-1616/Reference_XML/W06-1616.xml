@@ -1,0 +1,234 @@
+<PAPER>
+  <S sid="0">Incremental Integer Linear Programming For Non-Projective Dependency Parsing</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Integer Linear Programming has recently been used for decoding in a number of probabilistic models in order to enforce global constraints.</S>
+    <S sid="2" ssid="2">However, in certain applications, such as non-projective dependency parsing and machine translation, the complete formulation of the decoding problem as an integer linear program renders solving intractable.</S>
+    <S sid="3" ssid="3">We present an approach which solves the problem incrementally, thus we avoid creating intractable integer linear programs.</S>
+    <S sid="4" ssid="4">This approach is applied to Dutch dependency parsing and we show how the addition of linguistically motivated constraints can yield a significant improvement over stateof-the-art.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="5" ssid="1">Many inference algorithms require models to make strong assumptions of conditional independence between variables.</S>
+    <S sid="6" ssid="2">For example, the Viterbi algorithm used for decoding in conditional random fields requires the model to be Markovian.</S>
+    <S sid="7" ssid="3">Strong assumptions are also made in the case of McDonald et al.&#8217;s (2005b) non-projective dependency parsing model.</S>
+    <S sid="8" ssid="4">Here attachment decisions are made independently of one another'.</S>
+    <S sid="9" ssid="5">However, often such assumptions can not be justified.</S>
+    <S sid="10" ssid="6">For example in dependency parsing, if a subject has already been identified for a given verb, then the probability of attaching a second subject to the verb is zero.</S>
+    <S sid="11" ssid="7">Similarly, if we find that one coordination argument is a noun, then the other argu'If we ignore the constraint that dependency trees must be cycle-free (see sections 2 and 3 for details). ment cannot be a verb.</S>
+    <S sid="12" ssid="8">Thus decisions are often co-dependent.</S>
+    <S sid="13" ssid="9">Integer Linear Programming (ILP) has recently been applied to inference in sequential conditional random fields (Roth and Yih, 2004), this has allowed the use of truly global constraints during inference.</S>
+    <S sid="14" ssid="10">However, it is not possible to use this approach directly for a complex task like non-projective dependency parsing due to the exponential number of constraints required to prevent cycles occurring in the dependency graph.</S>
+    <S sid="15" ssid="11">To model all these constraints explicitly would result in an ILP formulation too large to solve efficiently (Williams, 2002).</S>
+    <S sid="16" ssid="12">A similar problem also occurs in an ILP formulation for machine translation which treats decoding as the Travelling Salesman Problem (Germann et al., 2001).</S>
+    <S sid="17" ssid="13">In this paper we present a method which extends the applicability of ILP to a more complex set of problems.</S>
+    <S sid="18" ssid="14">Instead of adding all the constraints we wish to capture to the formulation, we first solve the program with a fraction of the constraints.</S>
+    <S sid="19" ssid="15">The solution is then examined and, if required, additional constraints are added.</S>
+    <S sid="20" ssid="16">This procedure is repeated until all constraints are satisfied.</S>
+    <S sid="21" ssid="17">We apply this dependency parsing approach to Dutch due to the language&#8217;s non-projective nature, and take the parser of McDonald et al. (2005b) as a starting point for our model.</S>
+    <S sid="22" ssid="18">In the following section we introduce dependency parsing and review previous work.</S>
+    <S sid="23" ssid="19">In Section 3 we present our model and formulate it as an ILP problem with a set of linguistically motivated constraints.</S>
+    <S sid="24" ssid="20">We include details of an incremental algorithm used to solve this formulation.</S>
+    <S sid="25" ssid="21">Our experimental set-up is provided in Section 4 and is followed by results in Section 5 along with runtime experiments.</S>
+    <S sid="26" ssid="22">We finally discuss future research and potential improvements to our approach.</S>
+  </SECTION>
+  <SECTION title="2 Dependency Parsing" number="2">
+    <S sid="27" ssid="1">Dependency parsing is the task of attaching words to their arguments.</S>
+    <S sid="28" ssid="2">Figure 1 shows a dependency graph for the Dutch sentence &#8220;I&#8217;ll come at twelve and then you&#8217;ll get what you deserve&#8221; (taken from the Alpino Corpus (van der Beek et al., 2002)).</S>
+    <S sid="29" ssid="3">In this dependency graph the verb &#8220;kom&#8221; is attached to its subject &#8220;ik&#8221;.</S>
+    <S sid="30" ssid="4">&#8220;kom&#8221; is referred to as the head of the dependency and &#8220;ik&#8221; as its child.</S>
+    <S sid="31" ssid="5">In labelled dependency parsing edges between words are labelled with the relation captured.</S>
+    <S sid="32" ssid="6">In the case of the dependency between &#8220;kom&#8221; and &#8220;ik&#8221; the label would be &#8220;subject&#8221;.</S>
+    <S sid="33" ssid="7">In a dependency tree every token must be the child of exactly one other node, either another token or the dummy root node.</S>
+    <S sid="34" ssid="8">By definition, a dependency tree is free of cycles.</S>
+    <S sid="35" ssid="9">For example, it must not contain dependency chains such as &#8220;en&#8221; __+ &#8220;kom&#8221; __+ &#8220;ik&#8221; &#8212;* &#8220;en&#8221;.</S>
+    <S sid="36" ssid="10">For a more formal definition see previous work (Nivre et al., 2004).</S>
+    <S sid="37" ssid="11">An important distinction between dependency trees is whether they are projective or nonprojective.</S>
+    <S sid="38" ssid="12">Figure 1 is an example of a projective dependency tree, in such trees dependencies do not cross.</S>
+    <S sid="39" ssid="13">In Dutch and other flexible word order languages such as German and Czech we also encounter non-projective trees, in these cases the trees contain crossing dependencies.</S>
+    <S sid="40" ssid="14">Dependency parsing is useful for applications such as relation extraction (Culotta and Sorensen, 2004) and machine translation (Ding and Palmer, 2005).</S>
+    <S sid="41" ssid="15">Although less informative than lexicalised phrase structures, dependency structures still capture most of the predicate-argument information needed for applications.</S>
+    <S sid="42" ssid="16">It has the advantage of being more efficient to learn and parse.</S>
+    <S sid="43" ssid="17">McDonald et al. (2005a) introduce a dependency parsing framework which treats the task as searching for the projective tree that maximises the sum of local dependency scores.</S>
+    <S sid="44" ssid="18">This frameFigure 2: An incorrect partial dependency tree.</S>
+    <S sid="45" ssid="19">The verb &#8220;krijg&#8221; is incorrectly coordinated with the preposition &#8220;om&#8221;. work is efficient and has also been extended to non-projective trees (McDonald et al., 2005b).</S>
+    <S sid="46" ssid="20">It provides a discriminative online learning algorithm which when combined with a rich feature set reaches state-of-the-art performance across multiple languages.</S>
+    <S sid="47" ssid="21">However, within this framework one can only define features over single attachment decisions.</S>
+    <S sid="48" ssid="22">This leads to cases where basic linguistic constraints are not satisfied (e.g. verbs with two subjects or incompatible coordination arguments).</S>
+    <S sid="49" ssid="23">An example of this for Dutch is illustrated in Figure 2 which was produced by the parser of McDonald et al. (2005b).</S>
+    <S sid="50" ssid="24">Here the parse contains a coordination of incompatible word classes (a preposition and a verb).</S>
+    <S sid="51" ssid="25">Our approach is able to include additional constraints which forbid configurations such as those in Figure 2.</S>
+    <S sid="52" ssid="26">While McDonald and Pereira (2006) address the issue of local attachment decisions by defining scores over attachment pairs, our solution is more general.</S>
+    <S sid="53" ssid="27">Furthermore, it is complementary in the sense that we could formulate their model using ILP and then add constraints.</S>
+    <S sid="54" ssid="28">The method we present is not the only one that can take global constraints into account.</S>
+    <S sid="55" ssid="29">Deterministic dependency parsing (Nivre et al., 2004; Yamada and Matsumoto, 2003) can apply global constraints by conditioning attachment decisions on the intermediate parse built.</S>
+    <S sid="56" ssid="30">However, for efficiency a greedy search is used which may produce sub-optimal solutions.</S>
+    <S sid="57" ssid="31">This is not the case when using ILP.</S>
+  </SECTION>
+  <SECTION title="3 Model" number="3">
+    <S sid="58" ssid="1">Our underlying model is a modified labelled version2 of McDonald et al. (2005b): where x is a sentence, y is a set of labelled dependencies, f(i, j, l) is a multidimensional feature vector representation of the edge from token i to token j with label l and w the corresponding weight vector.</S>
+    <S sid="59" ssid="2">For example, a feature f101 in f could be: where t(i) is the word at token i and p(j) the partof-speech tag at token j. Decoding in this model amounts to finding the y for a given x that maximises s(x, y): while fulfilling the following constraints: T1 For every non-root token in x there exists exactly one head; the root token has no head.</S>
+    <S sid="60" ssid="3">T2 There are no cycles.</S>
+    <S sid="61" ssid="4">Thus far, the formulation follows McDonald et al. (2005b) and corresponds to the Maximum Spanning Tree (MST) problem.</S>
+    <S sid="62" ssid="5">In addition to T1 and T2, we include a set of linguistically motivated constraints: A1 Heads are not allowed to have more than one outgoing edge labelled l for all l in a set of labels U. C1 In a symmetric coordination there is exactly one argument to the right of the conjunction and at least one argument to the left.</S>
+    <S sid="63" ssid="6">C2 In an asymmetric coordination there are no arguments to the left of the conjunction and at least two arguments to the right.</S>
+    <S sid="64" ssid="7">C3 There must be at least one comma between subsequent arguments to the left of a symmetric coordination.</S>
+    <S sid="65" ssid="8">C4 Arguments of a coordination must have compatible word classes.</S>
+    <S sid="66" ssid="9">P1 Two dependencies must not cross if one of their labels is in a set of labels P. A1 covers constraints such as &#8220;there can only be one subject&#8221; if U contains &#8220;subject&#8221; (see Section 4.4 for more details of U).</S>
+    <S sid="67" ssid="10">C1 applies to configurations which contain conjunctions such as &#8220;en&#8221;,&#8220;of&#8221; or &#8220;maar&#8221; (&#8220;and&#8221;, &#8220;or&#8221; and &#8220;but&#8221;).</S>
+    <S sid="68" ssid="11">C2 will rule-out settings where a conjunction such as &#8220;zowel&#8221; (translates as &#8220;both&#8221;) having arguments to its left.</S>
+    <S sid="69" ssid="12">C3 forces coordination arguments to the left of a conjunction to have commas in between.</S>
+    <S sid="70" ssid="13">C4 avoids parses in which incompatible word classes are coordinated, such as nouns and verbs.</S>
+    <S sid="71" ssid="14">Finally, P1 allows selective projective parsing: we can, for instance, forbid the crossing of &#8220;Noun-Determiner&#8221; dependencies if we add the corresponding label type to P(see Section 4.4 for more details of P) .</S>
+    <S sid="72" ssid="15">If we extend P to contain all labels we forbid any type of crossing dependencies.</S>
+    <S sid="73" ssid="16">This corresponds to projective parsing.</S>
+    <S sid="74" ssid="17">McDonald et al. (2005b) use the Chu-LiuEdmonds (CLE) algorithm to solve the maximum spanning tree problem.</S>
+    <S sid="75" ssid="18">However, global constraints cannot be incorporated into the CLE algorithm (McDonald et al., 2005b).</S>
+    <S sid="76" ssid="19">We alleviate this problem by presenting an equivalent Integer Linear Programming formulation which allows us to incorporate global constraints naturally.</S>
+    <S sid="77" ssid="20">Before giving full details of our formulation we first introduce some of the concepts of linear and integer linear programming (for a more thorough introduction see Winston and Venkataramanan (2003)).</S>
+    <S sid="78" ssid="21">Linear Programming (LP) is a tool for solving optimisation problems in which the aim is to maximise (or minimise) a given linear function with respect to a set of linear constraints.</S>
+    <S sid="79" ssid="22">The function to be maximised (or minimised) is referred to as the objective function.</S>
+    <S sid="80" ssid="23">A number of decision variables are under our control which exert influence on the objective function.</S>
+    <S sid="81" ssid="24">Specifically, they have to be optimised in order to maximise (or minimise) the objective function.</S>
+    <S sid="82" ssid="25">Finally, a set of constraints restrict the values that the decision variables can take.</S>
+    <S sid="83" ssid="26">Integer Linear Programming is an extension of linear programming where all decision variables must take integer values.</S>
+    <S sid="84" ssid="27">There are several explicit formulations of the MST problem as an integer linear program in the literature (Williams, 2002).</S>
+    <S sid="85" ssid="28">They are based on the concept of eliminating subtours (cycles), cuts (disconnections) or requiring intervertex flows (paths).</S>
+    <S sid="86" ssid="29">However, in practice these formulations cause long solve times &#8212; as the first two methAlgorithm 1 Incremental Integer Linear Programming ods yield an exponential number of constraints.</S>
+    <S sid="87" ssid="30">Although the latter scales cubically, it produces non-fractional solutions in its relaxed version; this causes long runtimes for the branch and bound algorithm (Williams, 2002) commonly used in integer linear programming.</S>
+    <S sid="88" ssid="31">We found out experimentally that dependency parsing models of this form do not converge on a solution after multiple hours of solving, even for small sentences.</S>
+    <S sid="89" ssid="32">As a workaround for this problem we follow an incremental approach akin to the work of Warme (1998).</S>
+    <S sid="90" ssid="33">Instead of adding constraints which forbid all possible cycles in advance (this would result in an exponential number of constraints) we first solve the problem without any cycle constraints.</S>
+    <S sid="91" ssid="34">The solution is then examined for cycles, and if cycles are found we add constraints to forbid these cycles; the solver is then run again.</S>
+    <S sid="92" ssid="35">This process is repeated until no more violated constraints are found.</S>
+    <S sid="93" ssid="36">The same procedure is used for other types of constraints which are too expensive to add in advance (e.g. the constraints of P1).</S>
+    <S sid="94" ssid="37">Algorithm 1 outlines our approach.</S>
+    <S sid="95" ssid="38">For a sentence x, Bx is the set of constraints that we add in advance and Ix are the constraints we add incrementally.</S>
+    <S sid="96" ssid="39">Ox is the objective function and Vx is a set of variables including integer declarations. solve(C, O, V ) maximises the objective function O with respect to the set of constraints C and variables V . violated(y, I) inspects the proposed solution (y) and returns all constraints in I which are violated.</S>
+    <S sid="97" ssid="40">The number of iterations required in this approach is at most polynomial with respect to the number of variables (Gr&#168;otschel et al., 1981).</S>
+    <S sid="98" ssid="41">In practice, this technique converges quickly (less than 20 iterations in 99% of approximately 12,000 sentences), yielding average solve times of less than 0.5 seconds.</S>
+    <S sid="99" ssid="42">Our approach converges quickly due to the quality of the scoring function.</S>
+    <S sid="100" ssid="43">Its weights have been trained on cycle free data, thus it is more likely to guide the search to a cycle free solution.</S>
+    <S sid="101" ssid="44">In the following section we present the objective function Ox, variables Vx and linear constraints Bx and Ix needed for parsing x using Algorithm 1.</S>
+    <S sid="102" ssid="45">Vx contains a set of binary variables to represent labelled edges: where n is the number of tokens and the index 0 represents the root token. bestk(i, j) is the set of k labels with highest s(i, j, l). ei,j,l equals 1 if there is a edge (i.e., a dependency) with the label l between token i (head) and j (child), 0 otherwise. k depends on the type of constraints we want to add.</S>
+    <S sid="103" ssid="46">For the plain MST problem it is sufficient to set k = 1 and only take the best scoring label for each token pair.</S>
+    <S sid="104" ssid="47">However, if we want a constraint which forbids duplicate subjects we need to provide additional labels to fall back on.</S>
+    <S sid="105" ssid="48">Vx also contains a set of binary auxiliary variables: which represent the existence of a dependency between tokens i and j.</S>
+    <S sid="106" ssid="49">We connect these to the ei,j,l variables by the constraint: Given the above variables our objective function Ox can be represented as (using a suitable k): We first introduce a set of base constraints Bx which we add in advance.</S>
+    <S sid="107" ssid="50">Only One Head (T1) Every token has exactly one head: for non-root tokens j &gt; 0 in x.</S>
+    <S sid="108" ssid="51">An exception is made for the artificial root node: Label Uniqueness (A1) To enforce uniqueness of children with labels in U we augment our model with the constraint: for every token i in x and label l in U. Symmetric Coordination (C1) For each conjunction token i which forms a symmetric coordination we add: and Asymmetric Coordination (C2) For each conjunction token i which forms an asymmetric coordination we add: and</S>
+  </SECTION>
+  <SECTION title="3.1.4 Incremental Constraints" number="4">
+    <S sid="109" ssid="1">Now we present the set of constraints IX we add incrementally.</S>
+    <S sid="110" ssid="2">The constraints are chosen based on the two criteria: (1) adding them to the base constraints (those added in advance) would result in an extremely large program, and (2) it must be efficient to detect whether the constraint is violated in y.</S>
+    <S sid="111" ssid="3">No Cycles (T2) For every possible cycle c for the sentence x we have a constraint which forbids the case where all edges in c are active simultaneously: Comma Coordination (C3) For each symmetric conjunction token i which forms a symmetric coordination and each set of tokens A in x to the left of i with no comma between each pair of successive tokens we add: which forbids configurations where i has the argument tokens A.</S>
+    <S sid="112" ssid="4">Compatible Coordination Arguments (C4) For each conjunction token i and each set of tokens A in x with incompatible POS tags, we add a constraint to forbid configurations where i has the argument tokens A.</S>
+    <S sid="113" ssid="5">Selective Projective Parsing (P1) For each pair of triplets (i, j, l1) and (m, n, l2) we add the constraint: For training we use single-best MIRA (McDonald et al., 2005a).</S>
+    <S sid="114" ssid="6">This is an online algorithm that learns by parsing each sentence and comparing the result with a gold standard.</S>
+    <S sid="115" ssid="7">Training is complete after multiple passes through the whole corpus.</S>
+    <S sid="116" ssid="8">Thus we decode using the Chu-Liu-Edmonds (CLE) algorithm due to its speed advantage over ILP (see Section 5.2 for a detailed comparison of runtimes).</S>
+    <S sid="117" ssid="9">The fact that we decode differently during training (using CLE) and testing (using ILP) may degrade performance.</S>
+    <S sid="118" ssid="10">In the presence of additional constraints weights may be able to capture other aspects of the data.</S>
+  </SECTION>
+  <SECTION title="4 Experimental Set-up" number="5">
+    <S sid="119" ssid="1">Our experiments were designed to answer the following questions: Before we try to answer these questions we briefly describe our data, features used, settings for U and P in our parametric constraints, our working environment and our implementation.</S>
+    <S sid="120" ssid="2">We use the Alpino treebank (van der Beek et al., 2002), taken from the CoNLL shared task of multilingual dependency parsing3.</S>
+    <S sid="121" ssid="3">The CoNLL data differs slightly from the original Alpino treebank as the corpus has been part-of-speech tagged using a Memory-Based-Tagger (Daelemans et al., 1996).</S>
+    <S sid="122" ssid="4">It consists of 13,300 sentences with an average length of 14.6 tokens.</S>
+    <S sid="123" ssid="5">The data is non-projective, more specifically 5.4% of all dependencies are crossed by at least one other dependency.</S>
+    <S sid="124" ssid="6">It contains approximately 6000 sentences more than the Alpino corpus used by Malouf and van Noord (2004).</S>
+    <S sid="125" ssid="7">The training set was divided into a 10% development set (dev) while the remaining 90% is used as a training and cross-validation set (cross).</S>
+    <S sid="126" ssid="8">Feature sets, constraints and training parameters were selected through training on cross and optimising against dev.</S>
+    <S sid="127" ssid="9">Our final accuracy scores and runtime evaluations were acquired using a nine-fold crossvalidation on cross All our experiments were conducted on a Intel Xeon with 3.8 Ghz and 4Gb of RAM.</S>
+    <S sid="128" ssid="10">We used the open source Mixed Integer Programming library lp solve4 to solve the Integer Linear Programs.</S>
+    <S sid="129" ssid="11">Our code ran in Java and called the JNIwrapper around the lp solve library.</S>
+    <S sid="130" ssid="12">Our feature set was determined through experimentation with the development set.</S>
+    <S sid="131" ssid="13">The features are based upon the data provided within the Alpino treebank.</S>
+    <S sid="132" ssid="14">Along with POS tags the corpus contains several additional attributes such as gender, number and case.</S>
+    <S sid="133" ssid="15">Our best results on the development set were achieved using the feature set of McDonald et al. (2005a) and a set of features based on the additional attributes.</S>
+    <S sid="134" ssid="16">These features combine the attributes of the head with those of the child.</S>
+    <S sid="135" ssid="17">For example, if token i has the attributes a1 and a2, and token j has the attribute a3 then we created the features (a1 &#8743; a3) and (a2 &#8743; a3).</S>
+    <S sid="136" ssid="18">All the constraints presented in Section 3 were used in our model.</S>
+    <S sid="137" ssid="19">The set U of unique labels constraints contained su, obj1, obj2, sup, ld, vc, predc, predm, pc, pobj1, obcomp and body.</S>
+    <S sid="138" ssid="20">Here su stands for subject and obj1 for direct object (for full details see Moortgat et al. (2000)).</S>
+    <S sid="139" ssid="21">The set of projective labels P contained cnj, for coordination dependencies; and det, for determiner dependencies.</S>
+    <S sid="140" ssid="22">One exception was added for the coordination constraint: dependencies can cross when coordinated arguments are verbs.</S>
+    <S sid="141" ssid="23">One drawback of hard deterministic constraints is the undesirable effect noisy data can cause.</S>
+    <S sid="142" ssid="24">We see this most prominently with coordination argument compatibility.</S>
+    <S sid="143" ssid="25">Words ending in &#8220;en&#8221; are typically wrongly tagged and cause our coordination argument constraint to discard correct coordinations.</S>
+    <S sid="144" ssid="26">As a workaround we assigned words ending in &#8220;en&#8221; a wildcard POS tag which is compatible with all POS tags.</S>
+  </SECTION>
+  <SECTION title="5 Results" number="6">
+    <S sid="145" ssid="1">In this section we report our results.</S>
+    <S sid="146" ssid="2">We not only present our accuracy but also provide an empirical evaluation of the runtime behaviour of this approach and show how parsing can be accelerated using a simple approximation.</S>
+    <S sid="147" ssid="3">An important question to answer when using global constraints is: How much of a performance boost is gained when using global constraints?</S>
+    <S sid="148" ssid="4">We ran the system without any linguistic constraints as a baseline (bl) and compared it to a system with the additional constraints (cnstr).</S>
+    <S sid="149" ssid="5">To evaluate our systems we use the accuracy over labelled attachment decisions: where Nl is the number of tokens with correct head and label and Nt is the total number of tokens.</S>
+    <S sid="150" ssid="6">For completeness we also report the unlabelled accuracy: where Nu is the number of tokens with correct head. curacy using nine-fold cross-validation on cross for baseline (bl) and constraint-based (constr) system.</S>
+    <S sid="151" ssid="7">LC and UC are the percentages of sentences with 100% labelled and unlabelled accuracy, respectively.</S>
+    <S sid="152" ssid="8">Table 1 shows our results using nine-fold crossvalidation on the cross set.</S>
+    <S sid="153" ssid="9">The baseline system (no additional constraints) gives an unlabelled accuracy of 84.6% and labelled accuracy of 88.9%.</S>
+    <S sid="154" ssid="10">When we add our linguistic constraints the performance increases by 0.5% for both labelled and unlabelled accuracy.</S>
+    <S sid="155" ssid="11">This increase is significant (p &lt; 0.001) according to Dan Bikel&#8217;s parse comparison script and using the Sign test (p &lt; 0.001).</S>
+    <S sid="156" ssid="12">Now we give a little insight into how our results compare with the rest of the community.</S>
+    <S sid="157" ssid="13">The reported state-of-the-art parser of Malouf and van Noord (2004) achieves 84.4% labelled accuracy which is very close numerically to our baseline.</S>
+    <S sid="158" ssid="14">However, they use a subset of the CoNLL Alpino treebank with a higher average number of tokens per sentences and also evaluate control relations, thus results are not directly comparable.</S>
+    <S sid="159" ssid="15">We have also run our parser on the relatively small (approximately 400 sentences) CoNNL test data.</S>
+    <S sid="160" ssid="16">The best performing system (McDonald et al. 2006; note: this system is different to our baseline) achieves 79.2% labelled accuracy while our baseline system achieves 78.6% and our constrained version 79.8%.</S>
+    <S sid="161" ssid="17">However, a significant difference is only observed between our baseline and our constraintbased system.</S>
+    <S sid="162" ssid="18">Examining the errors produced using the dev set highlight two key reasons why we do not see a greater improvement using our constraint-based system.</S>
+    <S sid="163" ssid="19">Firstly, we cannot improve on coordinations that include words ending with &#8220;en&#8221; based on the workaround present in Section 4.4.</S>
+    <S sid="164" ssid="20">This problem can only be solved by improving POS taggers for Dutch or by performing POS tagging within the dependency parsing framework.</S>
+    <S sid="165" ssid="21">Secondly, our system suffers from poor next best solutions.</S>
+    <S sid="166" ssid="22">That is, if the best solution violates some constraints, then we find the next best solution is typically worse than the best solution with violated constraints.</S>
+    <S sid="167" ssid="23">This appears to be a consequence of inaccurate local score distributions (as opposed to inaccurate best local scores).</S>
+    <S sid="168" ssid="24">For example, suppose we attach two subjects, t1 and t2, to a verb, where t1 is the actual subject while t2 is meant to be labelled as object.</S>
+    <S sid="169" ssid="25">If we forbid this configuration (two subjects) and if the score of labelling t1 object is higher than that for t2 being labelled subject, then the next best solution will label t1 incorrectly as object and t2 incorrectly as subject.</S>
+    <S sid="170" ssid="26">This is often the case, and thus results in a drop of accuracy.</S>
+    <S sid="171" ssid="27">We now concentrate on the runtime of our method.</S>
+    <S sid="172" ssid="28">While we expect a longer runtime than using the Chu-Liu-Edmonds as in previous work (McDonald et al., 2005b), we are interested in how large the increase is.</S>
+    <S sid="173" ssid="29">Table 2 shows the average solve time (ST) for sentences with respect to the number of tokens in each sentence for our system with constraints (cnstr) and the Chu-Liu-Edmonds (CLE) algorithm.</S>
+    <S sid="174" ssid="30">All solve times do not include feature extraction as this is identical for all systems.</S>
+    <S sid="175" ssid="31">For cnstr we also show the number of sentences that could not be parsed after two minutes, the average number of iterations and the average duration of the first iteration.</S>
+    <S sid="176" ssid="32">The results show that parsing using our generic approach is still reasonably fast although significantly slower than using the Chu-Liu-Edmonds algorithm.</S>
+    <S sid="177" ssid="33">Also, only a small number of sentences take longer than two minutes to parse.</S>
+    <S sid="178" ssid="34">Thus, in practice we would not see a significant degradation in performance if we were to fall back on the CLE algorithm after two minutes of solving.</S>
+    <S sid="179" ssid="35">When we examine the average duration of the first iteration it appears that the majority of the solve time is spent within this iteration.</S>
+    <S sid="180" ssid="36">This could be used to justify using the CLE algorithm to find a initial solution as starting point for the ILP solver (see Section 6).</S>
+    <S sid="181" ssid="37">Despite the fact that our parser can parse all sentences in a reasonable amount of time, it is still significantly slower than the CLE algorithm.</S>
+    <S sid="182" ssid="38">While this is not crucial during decoding, it does make discriminative online training difficult as training requires several iterations of parsing the whole corpus. time (ST) for the cross dataset using varying q values and the Chu-Liu-Edmonds algorithm (CLE) Thus we investigate if it is possible to speed up our inference using a simple approximation.</S>
+    <S sid="183" ssid="39">For each token we now only consider the q variables in VX with the highest scoring edges.</S>
+    <S sid="184" ssid="40">For example, if we set q = 2 the set of variables for a token j will contain two variables, either both for the same head i but with different labels (variables ei,j,l1 and ei,j,l2) or two distinct heads i1 and i2 (variables ei1,j,l1 and ei2,j,l2) where labels l1 and l2 may be identical.</S>
+    <S sid="185" ssid="41">Table 3 shows the effect of different q values on solve time for the full corpus cross (roughly 12,000 sentences) and overall accuracy.</S>
+    <S sid="186" ssid="42">We see that solve time can be reduced by 80% while only losing a marginal amount of accuracy when we set q to 10.</S>
+    <S sid="187" ssid="43">However, we are unable to reach the 20 seconds solve time of the CLE algorithm.</S>
+    <S sid="188" ssid="44">Despite this, when we add the time for preprocessing and feature extraction, the CLE system parses a corpus in around 15 minutes whereas our system with q = 10 takes approximately 25 minutes'.</S>
+    <S sid="189" ssid="45">When we view the total runtime of each system we see our system is more competitive.</S>
+  </SECTION>
+  <SECTION title="6 Discussion" number="7">
+    <S sid="190" ssid="1">While we have presented significant improvements using additional constraints, one may won5Even when caching feature extraction during training McDonald et al. (2005a) still takes approximately 10 minutes to train. der whether the improvements are large enough to justify further research in this direction; especially since McDonald and Pereira (2006) present an approximate algorithm which also makes more global decisions.</S>
+    <S sid="191" ssid="2">However, we believe that our approach is complementary to their model.</S>
+    <S sid="192" ssid="3">We can model higher order features by using an extended set of variables and a modified objective function.</S>
+    <S sid="193" ssid="4">Although this is likely to increase runtime, it may still be fast enough for real world applications.</S>
+    <S sid="194" ssid="5">In addition, it will allow exact inference, even in the case of non-projective parsing.</S>
+    <S sid="195" ssid="6">Also, we argue that this approach has potential for interesting extensions and applications.</S>
+    <S sid="196" ssid="7">For example, during our runtime evaluations we find that a large fraction of solve time is spent in the first iteration of our incremental algorithm.</S>
+    <S sid="197" ssid="8">After the first iteration the solver uses its last state to efficiently search for solutions in the presence of new constraints.</S>
+    <S sid="198" ssid="9">Some solvers allow the specification of an initial solution as a starting point, thus it is expected that significant improvements in terms of speed can be made by using the CLE algorithm to provide an initial solution.</S>
+    <S sid="199" ssid="10">Our approach uses a generic algorithm to solve a complex task.</S>
+    <S sid="200" ssid="11">Thus other applications may benefit from it.</S>
+    <S sid="201" ssid="12">For instance, Germann et al. (2001) present an ILP formulation of the Machine Translation (MT) decoding task in order to conduct exact inference.</S>
+    <S sid="202" ssid="13">However, their model suffers from the same type of exponential blow-up we observe when we add all our cycle constraints in advance.</S>
+    <S sid="203" ssid="14">In fact, the constraints which cause the exponential explosion in their graphically formulation are of the same nature as our cycle constraints.</S>
+    <S sid="204" ssid="15">We hope that the incremental approach will allow exact MT decoding for longer sentences.</S>
+  </SECTION>
+  <SECTION title="7 Conclusion" number="8">
+    <S sid="205" ssid="1">In this paper we have presented a novel approach for inference using ILP.</S>
+    <S sid="206" ssid="2">While previous approaches which use ILP for decoding have solved each integer linear program in one run, we incrementally add constraints and solve the resulting program until no more constraints are violated.</S>
+    <S sid="207" ssid="3">This allows us to efficiently use ILP for dependency parsing and add constraints which provide a significant improvement over the current stateof-the-art parser (McDonald et al., 2005b) on the Dutch Alpino corpus (see bl row in Table 1).</S>
+    <S sid="208" ssid="4">Although slower than the baseline approach, our method can still parse large sentences (more than 50 tokens) in a reasonable amount of time (less than a minute).</S>
+    <S sid="209" ssid="5">We have shown that parsing time can be significantly reduced using a simple approximation which only marginally degrades performance.</S>
+    <S sid="210" ssid="6">Furthermore, we believe that the method has potential for further extensions and applications.</S>
+  </SECTION>
+  <SECTION title="Acknowledgements" number="9">
+    <S sid="211" ssid="1">Thanks to Ivan Meza-Ruiz, Ruken C&#184; ak&#305;c&#305;, Beata Kouchnir and Abhishek Arun for their contribution during the CoNLL shared task and to Mirella Lapata for helpful comments and suggestions.</S>
+  </SECTION>
+</PAPER>

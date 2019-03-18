@@ -1,0 +1,193 @@
+<PAPER>
+  <S sid="0">Online Large-Margin Training Of Dependency Parsers</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present an effective training algorithm for linearly-scored dependency parsers that implements online largemargin multi-class training (Crammer and Singer, 2003; Crammer et al., 2003) on top of efficient parsing techniques for dependency trees (Eisner, 1996).</S>
+    <S sid="2" ssid="2">The trained parsers achieve a competitive dependency accuracy for both English and Czech with no language specific enhancements.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="3" ssid="1">Research on training parsers from annotated data has for the most part focused on models and training algorithms for phrase structure parsing.</S>
+    <S sid="4" ssid="2">The best phrase-structure parsing models represent generatively the joint probability P(x, y) of sentence x having the structure y (Collins, 1999; Charniak, 2000).</S>
+    <S sid="5" ssid="3">Generative parsing models are very convenient because training consists of computing probability estimates from counts of parsing events in the training set.</S>
+    <S sid="6" ssid="4">However, generative models make complicated and poorly justified independence assumptions and estimations, so we might expect better performance from discriminatively trained models, as has been shown for other tasks like document classification (Joachims, 2002) and shallow parsing (Sha and Pereira, 2003).</S>
+    <S sid="7" ssid="5">Ratnaparkhi&#8217;s conditional maximum entropy model (Ratnaparkhi, 1999), trained to maximize conditional likelihood P(y|x) of the training data, performed nearly as well as generative models of the same vintage even though it scores parsing decisions in isolation and thus may suffer from the label bias problem (Lafferty et al., 2001).</S>
+    <S sid="8" ssid="6">Discriminatively trained parsers that score entire trees for a given sentence have only recently been investigated (Riezler et al., 2002; Clark and Curran, 2004; Collins and Roark, 2004; Taskar et al., 2004).</S>
+    <S sid="9" ssid="7">The most likely reason for this is that discriminative training requires repeatedly reparsing the training corpus with the current model to determine the parameter updates that will improve the training criterion.</S>
+    <S sid="10" ssid="8">The reparsing cost is already quite high for simple context-free models with O(n3) parsing complexity, but it becomes prohibitive for lexicalized grammars with O(n5) parsing complexity.</S>
+    <S sid="11" ssid="9">Dependency trees are an alternative syntactic representation with a long history (Hudson, 1984).</S>
+    <S sid="12" ssid="10">Dependency trees capture important aspects of functional relationships between words and have been shown to be useful in many applications including relation extraction (Culotta and Sorensen, 2004), paraphrase acquisition (Shinyama et al., 2002) and machine translation (Ding and Palmer, 2005).</S>
+    <S sid="13" ssid="11">Yet, they can be parsed in O(n3) time (Eisner, 1996).</S>
+    <S sid="14" ssid="12">Therefore, dependency parsing is a potential &#8220;sweet spot&#8221; that deserves investigation.</S>
+    <S sid="15" ssid="13">We focus here on projective dependency trees in which a word is the parent of all of its arguments, and dependencies are non-crossing with respect to word order (see Figure 1).</S>
+    <S sid="16" ssid="14">However, there are cases where crossing dependencies may occur, as is the case for Czech (Haji&#711;c, 1998).</S>
+    <S sid="17" ssid="15">Edges in a dependency tree may be typed (for instance to indicate grammatical function).</S>
+    <S sid="18" ssid="16">Though we focus on the simpler non-typed case, all algorithms are easily extendible to typed structures.</S>
+    <S sid="19" ssid="17">The following work on dependency parsing is most relevant to our research.</S>
+    <S sid="20" ssid="18">Eisner (1996) gave a generative model with a cubic parsing algorithm based on an edge factorization of trees.</S>
+    <S sid="21" ssid="19">Yamada and Matsumoto (2003) trained support vector machines (SVM) to make parsing decisions in a shift-reduce dependency parser.</S>
+    <S sid="22" ssid="20">As in Ratnaparkhi&#8217;s parser, the classifiers are trained on individual decisions rather than on the overall quality of the parse.</S>
+    <S sid="23" ssid="21">Nivre and Scholz (2004) developed a history-based learning model.</S>
+    <S sid="24" ssid="22">Their parser uses a hybrid bottom-up/topdown linear-time heuristic parser and the ability to label edges with semantic types.</S>
+    <S sid="25" ssid="23">The accuracy of their parser is lower than that of Yamada and Matsumoto (2003).</S>
+    <S sid="26" ssid="24">We present a new approach to training dependency parsers, based on the online large-margin learning algorithms of Crammer and Singer (2003) and Crammer et al. (2003).</S>
+    <S sid="27" ssid="25">Unlike the SVM parser of Yamada and Matsumoto (2003) and Ratnaparkhi&#8217;s parser, our parsers are trained to maximize the accuracy of the overall tree.</S>
+    <S sid="28" ssid="26">Our approach is related to those of Collins and Roark (2004) and Taskar et al. (2004) for phrase structure parsing.</S>
+    <S sid="29" ssid="27">Collins and Roark (2004) presented a linear parsing model trained with an averaged perceptron algorithm.</S>
+    <S sid="30" ssid="28">However, to use parse features with sufficient history, their parsing algorithm must prune heuristically most of the possible parses.</S>
+    <S sid="31" ssid="29">Taskar et al. (2004) formulate the parsing problem in the large-margin structured classification setting (Taskar et al., 2003), but are limited to parsing sentences of 15 words or less due to computation time.</S>
+    <S sid="32" ssid="30">Though these approaches represent good first steps towards discriminatively-trained parsers, they have not yet been able to display the benefits of discriminative training that have been seen in namedentity extraction and shallow parsing.</S>
+    <S sid="33" ssid="31">Besides simplicity, our method is efficient and accurate, as we demonstrate experimentally on English and Czech treebank data.</S>
+  </SECTION>
+  <SECTION title="2 System Description" number="2">
+    <S sid="34" ssid="1">In what follows, the generic sentence is denoted by x (possibly subscripted); the ith word of x is denoted by xi.</S>
+    <S sid="35" ssid="2">The generic dependency tree is denoted by y.</S>
+    <S sid="36" ssid="3">If y is a dependency tree for sentence x, we write (i, j) E y to indicate that there is a directed edge from word xi to word xj in the tree, that is, xi is the parent of xj.</S>
+    <S sid="37" ssid="4">T = {(xt, yt)}t_1 denotes the training data.</S>
+    <S sid="38" ssid="5">We follow the edge based factorization method of Eisner (1996) and define the score of a dependency tree as the sum of the score of all edges in the tree, where f(i, j) is a high-dimensional binary feature representation of the edge from xi to xj.</S>
+    <S sid="39" ssid="6">For example, in the dependency tree of Figure 1, the following feature would have a value of 1: In general, any real-valued feature may be used, but we use binary features for simplicity.</S>
+    <S sid="40" ssid="7">The feature weights in the weight vector w are the parameters that will be learned during training.</S>
+    <S sid="41" ssid="8">Our training algorithms are iterative.</S>
+    <S sid="42" ssid="9">We denote by w(i) the weight vector after the ith training iteration.</S>
+    <S sid="43" ssid="10">Finally we define dt(x) as the set of possible dependency trees for the input sentence x and bestk(x; w) as the set of k dependency trees in dt(x) that are given the highest scores by weight vector w, with ties resolved by an arbitrary but fixed rule.</S>
+    <S sid="44" ssid="11">Three basic questions must be answered for models of this form: how to find the dependency tree y with highest score for sentence x; how to learn an appropriate weight vector w from the training data; and finally, what feature representation f(i, j) should be used.</S>
+    <S sid="45" ssid="12">The following sections address each of these questions.</S>
+    <S sid="46" ssid="13">Given a feature representation for edges and a weight vector w, we seek the dependency tree or trees that maximize the score function, s(x, y).</S>
+    <S sid="47" ssid="14">The primary difficulty is that for a given sentence of length n there are exponentially many possible dependency trees.</S>
+    <S sid="48" ssid="15">Using a slightly modified version of a lexicalized CKY chart parsing algorithm, it is possible to generate and represent these sentences in a forest that is O(n5) in size and takes O(n5) time to create.</S>
+    <S sid="49" ssid="16">Eisner (1996) made the observation that if the head of each chart item is on the left or right periphery, then it is possible to parse in O(n3).</S>
+    <S sid="50" ssid="17">The idea is to parse the left and right dependents of a word independently and combine them at a later stage.</S>
+    <S sid="51" ssid="18">This removes the need for the additional head indices of the O(n5) algorithm and requires only two additional binary variables that specify the direction of the item (either gathering left dependents or gathering right dependents) and whether an item is complete (available to gather more dependents).</S>
+    <S sid="52" ssid="19">Figure 2 shows the algorithm schematically.</S>
+    <S sid="53" ssid="20">As with normal CKY parsing, larger elements are created bottom-up from pairs of smaller elements.</S>
+    <S sid="54" ssid="21">Eisner showed that his algorithm is sufficient for both searching the space of dependency parses and, with slight modification, finding the highest scoring tree y for a given sentence x under the edge factorization assumption.</S>
+    <S sid="55" ssid="22">Eisner and Satta (1999) give a cubic algorithm for lexicalized phrase structures.</S>
+    <S sid="56" ssid="23">However, it only works for a limited class of languages in which tree spines are regular.</S>
+    <S sid="57" ssid="24">Furthermore, there is a large grammar constant, which is typically in the thousands for treebank parsers.</S>
+    <S sid="58" ssid="25">Figure 3 gives pseudo-code for the generic online learning setting.</S>
+    <S sid="59" ssid="26">A single training instance is considered on each iteration, and parameters updated by applying an algorithm-specific update rule to the instance under consideration.</S>
+    <S sid="60" ssid="27">The algorithm in Figure 3 returns an averaged weight vector: an auxiliary weight vector v is maintained that accumulates Training data: T = {(xt, yt)}Tt&#65533;1 the values of w after each iteration, and the returned weight vector is the average of all the weight vectors throughout training.</S>
+    <S sid="61" ssid="28">Averaging has been shown to help reduce overfitting (Collins, 2002).</S>
+    <S sid="62" ssid="29">Crammer and Singer (2001) developed a natural method for large-margin multi-class classification, which was later extended by Taskar et al. (2003) to structured classification: where L(y, y') is a real-valued loss for the tree y' relative to the correct tree y.</S>
+    <S sid="63" ssid="30">We define the loss of a dependency tree as the number of words that have the incorrect parent.</S>
+    <S sid="64" ssid="31">Thus, the largest loss a dependency tree can have is the length of the sentence.</S>
+    <S sid="65" ssid="32">Informally, this update looks to create a margin between the correct dependency tree and each incorrect dependency tree at least as large as the loss of the incorrect tree.</S>
+    <S sid="66" ssid="33">The more errors a tree has, the farther away its score will be from the score of the correct tree.</S>
+    <S sid="67" ssid="34">In order to avoid a blow-up in the norm of the weight vector we minimize it subject to constraints that enforce the desired margin between the correct and incorrect trees1.</S>
+    <S sid="68" ssid="35">The Margin Infused Relaxed Algorithm (MIRA) (Crammer and Singer, 2003; Crammer et al., 2003) employs this optimization directly within the online framework.</S>
+    <S sid="69" ssid="36">On each update, MIRA attempts to keep the norm of the change to the parameter vector as small as possible, subject to correctly classifying the instance under consideration with a margin at least as large as the loss of the incorrect classifications.</S>
+    <S sid="70" ssid="37">This can be formalized by substituting the following update into line 4 of the generic online algorithm, This is a standard quadratic programming problem that can be easily solved using Hildreth&#8217;s algorithm (Censor and Zenios, 1997).</S>
+    <S sid="71" ssid="38">Crammer and Singer (2003) and Crammer et al. (2003) provide an analysis of both the online generalization error and convergence properties of MIRA.</S>
+    <S sid="72" ssid="39">In equation (1), s(x, y) is calculated with respect to the weight vector after optimization, w(Z+1).</S>
+    <S sid="73" ssid="40">To apply MIRA to dependency parsing, we can simply see parsing as a multi-class classification problem in which each dependency tree is one of many possible classes for a sentence.</S>
+    <S sid="74" ssid="41">However, that interpretation fails computationally because a general sentence has exponentially many possible dependency trees and thus exponentially many margin constraints.</S>
+    <S sid="75" ssid="42">To circumvent this problem we make the assumption that the constraints that matter for large margin optimization are those involving the incorrect trees y' with the highest scores s(x, y').</S>
+    <S sid="76" ssid="43">The resulting optimization made by MIRA (see Figure 3, line 4) would then be: reducing the number of constraints to the constant k. We tested various values of k on a development data set and found that small values of k are sufficient to achieve close to best performance, justifying our assumption.</S>
+    <S sid="77" ssid="44">In fact, as k grew we began to observe a slight degradation of performance, indicating some overfitting to the training data.</S>
+    <S sid="78" ssid="45">All the experiments presented here use k = 5.</S>
+    <S sid="79" ssid="46">The Eisner (1996) algorithm can be modified to find the k-best trees while only adding an additional O(k log k) factor to the runtime (Huang and Chiang, 2005).</S>
+    <S sid="80" ssid="47">A more common approach is to factor the structure of the output space to yield a polynomial set of local constraints (Taskar et al., 2003; Taskar et al., 2004).</S>
+    <S sid="81" ssid="48">One such factorization for dependency trees It is trivial to show that if these O(n2) constraints are satisfied, then so are those in (1).</S>
+    <S sid="82" ssid="49">We implemented this model, but found that the required training time was much larger than the k-best formulation and typically did not improve performance.</S>
+    <S sid="83" ssid="50">Furthermore, the k-best formulation is more flexible with respect to the loss function since it does not assume the loss function can be factored into a sum of terms for each dependency.</S>
+    <S sid="84" ssid="51">Finally, we need a suitable feature representation f(i, j) for each dependency.</S>
+    <S sid="85" ssid="52">The basic features in our model are outlined in Table 1a and b.</S>
+    <S sid="86" ssid="53">All features are conjoined with the direction of attachment as well as the distance between the two words being attached.</S>
+    <S sid="87" ssid="54">These features represent a system of backoff from very specific features over words and partof-speech tags to less sparse features over just partof-speech tags.</S>
+    <S sid="88" ssid="55">These features are added for both the entire words as well as the 5-gram prefix if the word is longer than 5 characters.</S>
+    <S sid="89" ssid="56">Using just features over the parent-child node pairs in the tree was not enough for high accuracy, because all attachment decisions were made outside of the context in which the words occurred.</S>
+    <S sid="90" ssid="57">To solve this problem, we added two other types of features, which can be seen in Table 1c.</S>
+    <S sid="91" ssid="58">Features of the first type look at words that occur between a child and its parent.</S>
+    <S sid="92" ssid="59">These features take the form of a POS trigram: the POS of the parent, of the child, and of a word in between, for all words linearly between the parent and the child.</S>
+    <S sid="93" ssid="60">This feature was particularly helpful for nouns identifying their parent, since node. p-pos: POS of parent node. c-pos: POS of child node. p-pos+1: POS to the right of parent in sentence. p-pos-1: POS to the left of parent. c-pos+1: POS to the right of child. c-pos-1: POS to the left of child. b-pos: POS of a word in between parent and child nodes. it would typically rule out situations when a noun attached to another noun with a verb in between, which is a very uncommon phenomenon.</S>
+    <S sid="94" ssid="61">The second type of feature provides the local context of the attachment, that is, the words before and after the parent-child pair.</S>
+    <S sid="95" ssid="62">This feature took the form of a POS 4-gram: The POS of the parent, child, word before/after parent and word before/after child.</S>
+    <S sid="96" ssid="63">The system also used back-off features to various trigrams where one of the local context POS tags was removed.</S>
+    <S sid="97" ssid="64">Adding these two features resulted in a large improvement in performance and brought the system to state-of-the-art accuracy.</S>
+    <S sid="98" ssid="65">Besides performance (see Section 3), the approach to dependency parsing we described has several other advantages.</S>
+    <S sid="99" ssid="66">The system is very general and contains no language specific enhancements.</S>
+    <S sid="100" ssid="67">In fact, the results we report for English and Czech use identical features, though are obviously trained on different data.</S>
+    <S sid="101" ssid="68">The online learning algorithms themselves are intuitive and easy to implement.</S>
+    <S sid="102" ssid="69">The efficient O(n3) parsing algorithm of Eisner allows the system to search the entire space of dependency trees while parsing thousands of sentences in a few minutes, which is crucial for discriminative training.</S>
+    <S sid="103" ssid="70">We compare the speed of our model to a standard lexicalized phrase structure parser in Section 3.1 and show a significant improvement in parsing times on the testing data.</S>
+    <S sid="104" ssid="71">The major limiting factor of the system is its restriction to features over single dependency attachments.</S>
+    <S sid="105" ssid="72">Often, when determining the next dependent for a word, it would be useful to know previous attachment decisions and incorporate these into the features.</S>
+    <S sid="106" ssid="73">It is fairly straightforward to modify the parsing algorithm to store previous attachments.</S>
+    <S sid="107" ssid="74">However, any modification would result in an asymptotic increase in parsing complexity.</S>
+  </SECTION>
+  <SECTION title="3 Experiments" number="3">
+    <S sid="108" ssid="1">We tested our methods experimentally on the English Penn Treebank (Marcus et al., 1993) and on the Czech Prague Dependency Treebank (Haji&#711;c, 1998).</S>
+    <S sid="109" ssid="2">All experiments were run on a dual 64-bit AMD Opteron 2.4GHz processor.</S>
+    <S sid="110" ssid="3">To create dependency structures from the Penn Treebank, we used the extraction rules of Yamada and Matsumoto (2003), which are an approximation to the lexicalization rules of Collins (1999).</S>
+    <S sid="111" ssid="4">We split the data into three parts: sections 02-21 for training, section 22 for development and section 23 for evaluation.</S>
+    <S sid="112" ssid="5">Currently the system has 6, 998, 447 features.</S>
+    <S sid="113" ssid="6">Each instance only uses a tiny fraction of these features making sparse vector calculations possible.</S>
+    <S sid="114" ssid="7">Our system assumes POS tags as input and uses the tagger of Ratnaparkhi (1996) to provide tags for the development and evaluation sets.</S>
+    <S sid="115" ssid="8">Table 2 shows the performance of the systems that were compared.</S>
+    <S sid="116" ssid="9">Y&amp;M2003 is the SVM-shiftreduce parsing model of Yamada and Matsumoto (2003), N&amp;S2004 is the memory-based learner of Nivre and Scholz (2004) and MIRA is the the system we have described.</S>
+    <S sid="117" ssid="10">We also implemented an averaged perceptron system (Collins, 2002) (another online learning algorithm) for comparison.</S>
+    <S sid="118" ssid="11">This table compares only pure dependency parsers that do identified their parent in the tree.</S>
+    <S sid="119" ssid="12">Root is the number of trees in which the root word was correctly identified.</S>
+    <S sid="120" ssid="13">For Czech this is f-measure since a sentence may have multiple roots.</S>
+    <S sid="121" ssid="14">Complete is the number of sentences for which the entire dependency tree was correct. not exploit phrase structure.</S>
+    <S sid="122" ssid="15">We ensured that the gold standard dependencies of all systems compared were identical.</S>
+    <S sid="123" ssid="16">Table 2 shows that the model described here performs as well or better than previous comparable systems, including that of Yamada and Matsumoto (2003).</S>
+    <S sid="124" ssid="17">Their method has the potential advantage that SVM batch training takes into account all of the constraints from all training instances in the optimization, whereas online training only considers constraints from one instance at a time.</S>
+    <S sid="125" ssid="18">However, they are fundamentally limited by their approximate search algorithm.</S>
+    <S sid="126" ssid="19">In contrast, our system searches the entire space of dependency trees and most likely benefits greatly from this.</S>
+    <S sid="127" ssid="20">This difference is amplified when looking at the percentage of trees that correctly identify the root word.</S>
+    <S sid="128" ssid="21">The models that search the entire space will not suffer from bad approximations made early in the search and thus are more likely to identify the correct root, whereas the approximate algorithms are prone to error propagation, which culminates with attachment decisions at the top of the tree.</S>
+    <S sid="129" ssid="22">When comparing the two online learning models, it can be seen that MIRA outperforms the averaged perceptron method.</S>
+    <S sid="130" ssid="23">This difference is statistically significant, p &lt; 0.005 (McNemar test on head selection accuracy).</S>
+    <S sid="131" ssid="24">In our Czech experiments, we used the dependency trees annotated in the Prague Treebank, and the predefined training, development and evaluation sections of this data.</S>
+    <S sid="132" ssid="25">The number of sentences in this data set is nearly twice that of the English treebank, leading to a very large number of features &#8212; 13, 450, 672.</S>
+    <S sid="133" ssid="26">But again, each instance uses just a handful of these features.</S>
+    <S sid="134" ssid="27">For POS tags we used the automatically generated tags in the data set.</S>
+    <S sid="135" ssid="28">Though we made no language specific model changes, we did need to make some data specific changes.</S>
+    <S sid="136" ssid="29">In particular, we used the method of Collins et al. (1999) to simplify part-of-speech tags since the rich tags used by Czech would have led to a large but rarely seen set of POS features.</S>
+    <S sid="137" ssid="30">The model based on MIRA also performs well on Czech, again slightly outperforming averaged perceptron.</S>
+    <S sid="138" ssid="31">Unfortunately, we do not know of any other parsing systems tested on the same data set.</S>
+    <S sid="139" ssid="32">The Czech parser of Collins et al. (1999) was run on a different data set and most other dependency parsers are evaluated using English.</S>
+    <S sid="140" ssid="33">Learning a model from the Czech training data is somewhat problematic since it contains some crossing dependencies which cannot be parsed by the Eisner algorithm.</S>
+    <S sid="141" ssid="34">One trick is to rearrange the words in the training set so that all trees are nested.</S>
+    <S sid="142" ssid="35">This at least allows the training algorithm to obtain reasonably low error on the training set.</S>
+    <S sid="143" ssid="36">We found that this did improve performance slightly to 83.6% accuracy.</S>
+    <S sid="144" ssid="37">It is well known that dependency trees extracted from lexicalized phrase structure parsers (Collins, 1999; Charniak, 2000) typically are more accurate than those produced by pure dependency parsers (Yamada and Matsumoto, 2003).</S>
+    <S sid="145" ssid="38">We compared our system to the Bikel re-implementation of the Collins parser (Bikel, 2004; Collins, 1999) trained with the same head rules of our system.</S>
+    <S sid="146" ssid="39">There are two ways to extract dependencies from lexicalized phrase structure.</S>
+    <S sid="147" ssid="40">The first is to use the automatically generated dependencies that are explicit in the lexicalization of the trees, we call this system Collinsauto.</S>
+    <S sid="148" ssid="41">The second is to take just the phrase structure output of the parser and run the automatic head rules over it to extract the dependencies, we call this system Collins-rules.</S>
+    <S sid="149" ssid="42">Table 3 shows the results comparing our system, MIRA-Normal, to the Collins parser for English.</S>
+    <S sid="150" ssid="43">All systems are implemented in Java and run on the same machine.</S>
+    <S sid="151" ssid="44">Interestingly, the dependencies that are automatically produced by the Collins parser are worse than those extracted statically using the head rules.</S>
+    <S sid="152" ssid="45">Arguably, this displays the artificialness of English dependency parsing using dependencies automatically extracted from treebank phrase-structure trees.</S>
+    <S sid="153" ssid="46">Our system falls in-between, better than the automatically generated dependency trees and worse than the head-rule extracted trees.</S>
+    <S sid="154" ssid="47">Since the dependencies returned from our system are better than those actually learnt by the Collins parser, one could argue that our model is actually learning to parse dependencies more accurately.</S>
+    <S sid="155" ssid="48">However, phrase structure parsers are built to maximize the accuracy of the phrase structure and use lexicalization as just an additional source of information.</S>
+    <S sid="156" ssid="49">Thus it is not too surprising that the dependencies output by the Collins parser are not as accurate as our system, which is trained and built to maximize accuracy on dependency trees.</S>
+    <S sid="157" ssid="50">In complexity and run-time, our system is a huge improvement over the Collins parser.</S>
+    <S sid="158" ssid="51">The final system in Table 3 takes the output of Collins-rules and adds a feature to MIRA-Normal that indicates for given edge, whether the Collins parser believed this dependency actually exists, we call this system MIRA-Collins.</S>
+    <S sid="159" ssid="52">This is a well known discriminative training trick &#8212; using the suggestions of a generative system to influence decisions.</S>
+    <S sid="160" ssid="53">This system can essentially be considered a corrector of the Collins parser and represents a significant improvement over it.</S>
+    <S sid="161" ssid="54">However, there is an added complexity with such a model as it requires the output of the O(n5) Collins parser.</S>
+    <S sid="162" ssid="55">One question that can be asked is how justifiable is the k-best MIRA approximation.</S>
+    <S sid="163" ssid="56">Table 4 indicates the accuracy on testing and the time it took to train models with k = 1, 2, 5, 10, 20 for the English data set.</S>
+    <S sid="164" ssid="57">Even though the parsing algorithm is proportional to O(k log k), empirically, the training times scale linearly with k. Peak performance is achieved very early with a slight degradation around k=20.</S>
+    <S sid="165" ssid="58">The most likely reason for this phenomenon is that the model is overfitting by ensuring that even unlikely trees are separated from the correct tree proportional to their loss.</S>
+  </SECTION>
+  <SECTION title="4 Summary" number="4">
+    <S sid="166" ssid="1">We described a successful new method for training dependency parsers.</S>
+    <S sid="167" ssid="2">We use simple linear parsing models trained with margin-sensitive online training algorithms, achieving state-of-the-art performance with relatively modest training times and no need for pruning heuristics.</S>
+    <S sid="168" ssid="3">We evaluated the system on both English and Czech data to display state-of-theart performance without any language specific enhancements.</S>
+    <S sid="169" ssid="4">Furthermore, the model can be augmented to include features over lexicalized phrase structure parsing decisions to increase dependency accuracy over those parsers.</S>
+    <S sid="170" ssid="5">We plan on extending our parser in two ways.</S>
+    <S sid="171" ssid="6">First, we would add labels to dependencies to represent grammatical roles.</S>
+    <S sid="172" ssid="7">Those labels are very important for using parser output in tasks like information extraction or machine translation.</S>
+    <S sid="173" ssid="8">Second, we are looking at model extensions to allow nonprojective dependencies, which occur in languages such as Czech, German and Dutch.</S>
+    <S sid="174" ssid="9">J. Eisner and G. Satta.</S>
+    <S sid="175" ssid="10">1999.</S>
+    <S sid="176" ssid="11">Efficient parsing for bilexical context-free grammars and head-automaton grammars.</S>
+    <S sid="177" ssid="12">In Proc.</S>
+    <S sid="178" ssid="13">ACL.</S>
+    <S sid="179" ssid="14">Acknowledgments: We thank Jan Haji&#711;c for answering queries on the Prague treebank, and Joakim Nivre for providing the Yamada and Matsumoto (2003) head rules for English that allowed for a direct comparison with our systems.</S>
+    <S sid="180" ssid="15">This work was supported by NSF ITR grants 0205456, 0205448, and 0428193.</S>
+  </SECTION>
+</PAPER>

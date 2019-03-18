@@ -1,0 +1,267 @@
+<PAPER>
+  <S sid="0">Parsing with Compositional Vector Grammars</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Natural language parsing has typically been done with small sets of discrete categories such as NP and VP, but this representation does not capture the full syntactic nor semantic richness of linguistic phrases, and attempts to improve on this by lexicalizing phrases or splitting categories only partly address the problem at the cost of huge feature spaces and sparseness.</S>
+    <S sid="2" ssid="2">Instead, we introduce a Compositional Vector Grammar (CVG), which combines PCFGs with a syntactically untied recursive neural network that learns syntactico-semantic, compositional vector representations.</S>
+    <S sid="3" ssid="3">The CVG improves the PCFG of the Stanford Parser by 3.8% to obtain an F1 score of 90.4%.</S>
+    <S sid="4" ssid="4">It is fast to train and implemented approximately as an efficient reranker it is about 20% faster than the current Stanford factored parser.</S>
+    <S sid="5" ssid="5">The CVG learns a soft notion of head words and improves performance on the types of ambiguities that require semantic information such as PP attachments.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="6" ssid="1">Syntactic parsing is a central task in natural language processing because of its importance in mediating between linguistic expression and meaning.</S>
+    <S sid="7" ssid="2">For example, much work has shown the usefulness of syntactic representations for subsequent tasks such as relation extraction, semantic role labeling (Gildea and Palmer, 2002) and paraphrase detection (Callison-Burch, 2008).</S>
+    <S sid="8" ssid="3">Syntactic descriptions standardly use coarse discrete categories such as NP for noun phrases or PP for prepositional phrases.</S>
+    <S sid="9" ssid="4">However, recent work has shown that parsing results can be greatly improved by defining more fine-grained syntactic gory,vector) representations at each node.</S>
+    <S sid="10" ssid="5">The vectors for nonterminals are computed via a new type of recursive neural network which is conditioned on syntactic categories from a PCFG. categories, which better capture phrases with similar behavior, whether through manual feature engineering (Klein and Manning, 2003a) or automatic learning (Petrov et al., 2006).</S>
+    <S sid="11" ssid="6">However, subdividing a category like NP into 30 or 60 subcategories can only provide a very limited representation of phrase meaning and semantic similarity.</S>
+    <S sid="12" ssid="7">Two strands of work therefore attempt to go further.</S>
+    <S sid="13" ssid="8">First, recent work in discriminative parsing has shown gains from careful engineering of features (Taskar et al., 2004; Finkel et al., 2008).</S>
+    <S sid="14" ssid="9">Features in such parsers can be seen as defining effective dimensions of similarity between categories.</S>
+    <S sid="15" ssid="10">Second, lexicalized parsers (Collins, 2003; Charniak, 2000) associate each category with a lexical item.</S>
+    <S sid="16" ssid="11">This gives a fine-grained notion of semantic similarity, which is useful for tackling problems like ambiguous attachment decisions.</S>
+    <S sid="17" ssid="12">However, this approach necessitates complex shrinkage estimation schemes to deal with the sparsity of observations of the lexicalized categories.</S>
+    <S sid="18" ssid="13">In many natural language systems, single words and n-grams are usefully described by their distributional similarities (Brown et al., 1992), among many others.</S>
+    <S sid="19" ssid="14">But, even with large corpora, many n-grams will never be seen during training, especially when n is large.</S>
+    <S sid="20" ssid="15">In these cases, one cannot simply use distributional similarities to represent unseen phrases.</S>
+    <S sid="21" ssid="16">In this work, we present a new solution to learn features and phrase representations even for very long, unseen n-grams.</S>
+    <S sid="22" ssid="17">We introduce a Compositional Vector Grammar Parser (CVG) for structure prediction.</S>
+    <S sid="23" ssid="18">Like the above work on parsing, the model addresses the problem of representing phrases and categories.</S>
+    <S sid="24" ssid="19">Unlike them, it jointly learns how to parse and how to represent phrases as both discrete categories and continuous vectors as illustrated in Fig.</S>
+    <S sid="25" ssid="20">1.</S>
+    <S sid="26" ssid="21">CVGs combine the advantages of standard probabilistic context free grammars (PCFG) with those of recursive neural networks (RNNs).</S>
+    <S sid="27" ssid="22">The former can capture the discrete categorization of phrases into NP or PP while the latter can capture fine-grained syntactic and compositional-semantic information on phrases and words.</S>
+    <S sid="28" ssid="23">This information can help in cases where syntactic ambiguity can only be resolved with semantic information, such as in the PP attachment of the two sentences: They ate udon with forks. vs.</S>
+    <S sid="29" ssid="24">They ate udon with chicken.</S>
+    <S sid="30" ssid="25">Previous RNN-based parsers used the same (tied) weights at all nodes to compute the vector representing a constituent (Socher et al., 2011b).</S>
+    <S sid="31" ssid="26">This requires the composition function to be extremely powerful, since it has to combine phrases with different syntactic head words, and it is hard to optimize since the parameters form a very deep neural network.</S>
+    <S sid="32" ssid="27">We generalize the fully tied RNN to one with syntactically untied weights.</S>
+    <S sid="33" ssid="28">The weights at each node are conditionally dependent on the categories of the child constituents.</S>
+    <S sid="34" ssid="29">This allows different composition functions when combining different types of phrases and is shown to result in a large improvement in parsing accuracy.</S>
+    <S sid="35" ssid="30">Our compositional distributed representation allows a CVG parser to make accurate parsing decisions and capture similarities between phrases and sentences.</S>
+    <S sid="36" ssid="31">Any PCFG-based parser can be improved with an RNN.</S>
+    <S sid="37" ssid="32">We use a simplified version of the Stanford Parser (Klein and Manning, 2003a) as the base PCFG and improve its accuracy from 86.56 to 90.44% labeled F1 on all sentences of the WSJ section 23.</S>
+    <S sid="38" ssid="33">The code of our parser is available at nlp.stanford.edu.</S>
+  </SECTION>
+  <SECTION title="2 Related Work" number="2">
+    <S sid="39" ssid="1">The CVG is inspired by two lines of research: Enriching PCFG parsers through more diverse sets of discrete states and recursive deep learning models that jointly learn classifiers and continuous feature representations for variable-sized inputs.</S>
+    <S sid="40" ssid="2">As mentioned in the introduction, there are several approaches to improving discrete representations for parsing.</S>
+    <S sid="41" ssid="3">Klein and Manning (2003a) use manual feature engineering, while Petrov et al. (2006) use a learning algorithm that splits and merges the syntactic categories in order to maximize likelihood on the treebank.</S>
+    <S sid="42" ssid="4">Their approach splits categories into several dozen subcategories.</S>
+    <S sid="43" ssid="5">Another approach is lexicalized parsers (Collins, 2003; Charniak, 2000) that describe each category with a lexical item, usually the head word.</S>
+    <S sid="44" ssid="6">More recently, Hall and Klein (2012) combine several such annotation schemes in a factored parser.</S>
+    <S sid="45" ssid="7">We extend the above ideas from discrete representations to richer continuous ones.</S>
+    <S sid="46" ssid="8">The CVG can be seen as factoring discrete and continuous parsing in one model.</S>
+    <S sid="47" ssid="9">Another different approach to the above generative models is to learn discriminative parsers using many well designed features (Taskar et al., 2004; Finkel et al., 2008).</S>
+    <S sid="48" ssid="10">We also borrow ideas from this line of research in that our parser combines the generative PCFG model with discriminatively learned RNNs.</S>
+    <S sid="49" ssid="11">Deep Learning and Recursive Deep Learning Early attempts at using neural networks to describe phrases include Elman (1991), who used recurrent neural networks to create representations of sentences from a simple toy grammar and to analyze the linguistic expressiveness of the resulting representations.</S>
+    <S sid="50" ssid="12">Words were represented as one-on vectors, which was feasible since the grammar only included a handful of words.</S>
+    <S sid="51" ssid="13">Collobert and Weston (2008) showed that neural networks can perform well on sequence labeling language processing tasks while also learning appropriate features.</S>
+    <S sid="52" ssid="14">However, their model is lacking in that it cannot represent the recursive structure inherent in natural language.</S>
+    <S sid="53" ssid="15">They partially circumvent this problem by using either independent window-based classifiers or a convolutional layer.</S>
+    <S sid="54" ssid="16">RNN-specific training was introduced by Goller and K&#168;uchler (1996) to learn distributed representations of given, structured objects such as logical terms.</S>
+    <S sid="55" ssid="17">In contrast, our model both predicts the structure and its representation.</S>
+    <S sid="56" ssid="18">Henderson (2003) was the first to show that neural networks can be successfully used for large scale parsing.</S>
+    <S sid="57" ssid="19">He introduced a left-corner parser to estimate the probabilities of parsing decisions conditioned on the parsing history.</S>
+    <S sid="58" ssid="20">The input to Henderson&#8217;s model consists of pairs of frequent words and their part-of-speech (POS) tags.</S>
+    <S sid="59" ssid="21">Both the original parsing system and its probabilistic interpretation (Titov and Henderson, 2007) learn features that represent the parsing history and do not provide a principled linguistic representation like our phrase representations.</S>
+    <S sid="60" ssid="22">Other related work includes (Henderson, 2004), who discriminatively trains a parser based on synchrony networks and (Titov and Henderson, 2006), who use an SVM to adapt a generative parser to different domains.</S>
+    <S sid="61" ssid="23">Costa et al. (2003) apply recursive neural networks to re-rank possible phrase attachments in an incremental parser.</S>
+    <S sid="62" ssid="24">Their work is the first to show that RNNs can capture enough information to make correct parsing decisions, but they only test on a subset of 2000 sentences.</S>
+    <S sid="63" ssid="25">Menchetti et al. (2005) use RNNs to re-rank different parses.</S>
+    <S sid="64" ssid="26">For their results on full sentence parsing, they rerank candidate trees created by the Collins parser (Collins, 2003).</S>
+    <S sid="65" ssid="27">Similar to their work, we use the idea of letting discrete categories reduce the search space during inference.</S>
+    <S sid="66" ssid="28">We compare to fully tied RNNs in which the same weights are used at every node.</S>
+    <S sid="67" ssid="29">Our syntactically untied RNNs outperform them by a significant margin.</S>
+    <S sid="68" ssid="30">The idea of untying has also been successfully used in deep learning applied to vision (Le et al., 2010).</S>
+    <S sid="69" ssid="31">This paper uses several ideas of (Socher et al., 2011b).</S>
+    <S sid="70" ssid="32">The main differences are (i) the dual representation of nodes as discrete categories and vectors, (ii) the combination with a PCFG, and (iii) the syntactic untying of weights based on child categories.</S>
+    <S sid="71" ssid="33">We directly compare models with fully tied and untied weights.</S>
+    <S sid="72" ssid="34">Another work that represents phrases with a dual discrete-continuous representation is (Kartsaklis et al., 2012).</S>
+  </SECTION>
+  <SECTION title="3 Compositional Vector Grammars" number="3">
+    <S sid="73" ssid="1">This section introduces Compositional Vector Grammars (CVGs), a model to jointly find syntactic structure and capture compositional semantic information.</S>
+    <S sid="74" ssid="2">CVGs build on two observations.</S>
+    <S sid="75" ssid="3">Firstly, that a lot of the structure and regularity in languages can be captured by well-designed syntactic patterns.</S>
+    <S sid="76" ssid="4">Hence, the CVG builds on top of a standard PCFG parser.</S>
+    <S sid="77" ssid="5">However, many parsing decisions show fine-grained semantic factors at work.</S>
+    <S sid="78" ssid="6">Therefore we combine syntactic and semantic information by giving the parser access to rich syntacticosemantic information in the form of distributional word vectors and compute compositional semantic vector representations for longer phrases (Costa et al., 2003; Menchetti et al., 2005; Socher et al., 2011b).</S>
+    <S sid="79" ssid="7">The CVG model merges ideas from both generative models that assume discrete syntactic categories and discriminative models that are trained using continuous vectors.</S>
+    <S sid="80" ssid="8">We will first briefly introduce single word vector representations and then describe the CVG objective function, tree scoring and inference.</S>
+    <S sid="81" ssid="9">In most systems that use a vector representation for words, such vectors are based on cooccurrence statistics of each word and its context (Turney and Pantel, 2010).</S>
+    <S sid="82" ssid="10">Another line of research to learn distributional word vectors is based on neural language models (Bengio et al., 2003) which jointly learn an embedding of words into an n-dimensional feature space and use these embeddings to predict how suitable a word is in its context.</S>
+    <S sid="83" ssid="11">These vector representations capture interesting linear relationships (up to some accuracy), such as king&#8722;man+woman &#8776; queen (Mikolov et al., 2013).</S>
+    <S sid="84" ssid="12">Collobert and Weston (2008) introduced a new model to compute such an embedding.</S>
+    <S sid="85" ssid="13">The idea is to construct a neural network that outputs high scores for windows that occur in a large unlabeled corpus and low scores for windows where one word is replaced by a random word.</S>
+    <S sid="86" ssid="14">When such a network is optimized via gradient ascent the derivatives backpropagate into the word embedding matrix X.</S>
+    <S sid="87" ssid="15">In order to predict correct scores the vectors in the matrix capture co-occurrence statistics.</S>
+    <S sid="88" ssid="16">For further details and evaluations of these embeddings, see (Turian et al., 2010; Huang et al., 2012).</S>
+    <S sid="89" ssid="17">The resulting X matrix is used as follows.</S>
+    <S sid="90" ssid="18">Assume we are given a sentence as an ordered list of m words.</S>
+    <S sid="91" ssid="19">Each word w has an index [w] = i into the columns of the embedding matrix.</S>
+    <S sid="92" ssid="20">This index is used to retrieve the word&#8217;s vector representation a,,, using a simple multiplication with a binary vector e, which is zero everywhere, except at the ith index.</S>
+    <S sid="93" ssid="21">So aw = Lei E Rn.</S>
+    <S sid="94" ssid="22">Henceforth, after mapping each word to its vector, we represent a sentence S as an ordered list of (word,vector) pairs: x = ((w1, aw1), ... , (wm, awm)).</S>
+    <S sid="95" ssid="23">Now that we have discrete and continuous representations for all words, we can continue with the approach for computing tree structures and vectors for nonterminal nodes.</S>
+    <S sid="96" ssid="24">The goal of supervised parsing is to learn a function g : X -+ Y, where X is the set of sentences and Y is the set of all possible labeled binary parse trees.</S>
+    <S sid="97" ssid="25">The set of all possible trees for a given sentence xi is defined as Y (xi) and the correct tree for a sentence is yi.</S>
+    <S sid="98" ssid="26">We first define a structured margin loss A(yi, &#710;y) for predicting a tree y&#710; for a given correct tree.</S>
+    <S sid="99" ssid="27">The loss increases the more incorrect the proposed parse tree is (Goodman, 1998).</S>
+    <S sid="100" ssid="28">The discrepancy between trees is measured by counting the number of nodes N(y) with an incorrect span (or label) in the proposed tree: We set &#954; = 0.1 in all experiments.</S>
+    <S sid="101" ssid="29">For a given set of training instances (xi, yi), we search for the function g&#952;, parameterized by &#952;, with the smallest expected loss on a new sentence.</S>
+    <S sid="102" ssid="30">It has the following form: where the tree is found by the Compositional Vector Grammar (CVG) introduced below and then scored via the function s. The higher the score of a tree the more confident the algorithm is that its structure is correct.</S>
+    <S sid="103" ssid="31">This max-margin, structureprediction objective (Taskar et al., 2004; Ratliff et al., 2007; Socher et al., 2011b) trains the CVG so that the highest scoring tree will be the correct tree: g&#952;(xi) = yi and its score will be larger up to a margin to other possible trees y&#710; E Y(xi): s(CVG(&#952;, xi, yi)) &gt;&#8212; s(CVG(&#952;, xi, &#710;y)) + A(yi, &#710;y).</S>
+    <S sid="104" ssid="32">This leads to the regularized risk function for m Intuitively, to minimize this objective, the score of the correct tree yi is increased and the score of the highest scoring incorrect tree y&#710; is decreased.</S>
+    <S sid="105" ssid="33">For ease of exposition, we first describe how to score an existing fully labeled tree with a standard RNN and then with a CVG.</S>
+    <S sid="106" ssid="34">The subsequent section will then describe a bottom-up beam search and its approximation for finding the optimal tree.</S>
+    <S sid="107" ssid="35">Assume, for now, we are given a labeled parse tree as shown in Fig.</S>
+    <S sid="108" ssid="36">2.</S>
+    <S sid="109" ssid="37">We define the word representations as (vector, POS) pairs: ((a, A), (b, B), (c, C)), where the vectors are defined as in Sec.</S>
+    <S sid="110" ssid="38">3.1 and the POS tags come from a PCFG.</S>
+    <S sid="111" ssid="39">The standard RNN essentially ignores all POS tags and syntactic categories and each nonterminal node is associated with the same neural network (i.e., the weights across nodes are fully tied).</S>
+    <S sid="112" ssid="40">We can represent the binary tree in Fig.</S>
+    <S sid="113" ssid="41">2 in the form of branching triplets (p -+ c1c2).</S>
+    <S sid="114" ssid="42">Each such triplet denotes that a parent node p has two children and each ck can be either a word vector or a non-terminal node in the tree.</S>
+    <S sid="115" ssid="43">For the example in Fig.</S>
+    <S sid="116" ssid="44">2, we would get the triples ((p1 -+ bc), (p2 -+ ap1)).</S>
+    <S sid="117" ssid="45">Note that in order to replicate the neural network and compute node representations in a bottom up fashion, the parent must have the same dimensionality as the children: p E Rn.</S>
+    <S sid="118" ssid="46">Given this tree structure, we can now compute activations for each node from the bottom up.</S>
+    <S sid="119" ssid="47">We begin by computing the activation for p1 using the children&#8217;s word vectors.</S>
+    <S sid="120" ssid="48">We first concatenate the children&#8217;s representations b, c E Rnx1 into a E R2nx1.</S>
+    <S sid="121" ssid="49">Then the composition function multiplies this vector by the parameter weights of the RNN W E Rnx2n and applies an element-wise nonlinearity function f = tanh to the output vector.</S>
+    <S sid="122" ssid="50">The resulting output p(1) is then given as input to compute p(2).</S>
+    <S sid="123" ssid="51">In order to compute a score of how plausible of a syntactic constituent a parent is the RNN uses a single-unit linear layer for all i: where v &#8712; Rn is a vector of parameters that need to be trained.</S>
+    <S sid="124" ssid="52">This score will be used to find the highest scoring tree.</S>
+    <S sid="125" ssid="53">For more details on how standard RNNs can be used for parsing, see Socher et al. (2011b).</S>
+    <S sid="126" ssid="54">The standard RNN requires a single composition function to capture all types of compositions: adjectives and nouns, verbs and nouns, adverbs and adjectives, etc.</S>
+    <S sid="127" ssid="55">Even though this function is a powerful one, we find a single neural network weight matrix cannot fully capture the richness of compositionality.</S>
+    <S sid="128" ssid="56">Several extensions are possible: A two-layered RNN would provide more expressive power, however, it is much harder to train because the resulting neural network becomes very deep and suffers from vanishing gradient problems.</S>
+    <S sid="129" ssid="57">Socher et al. (2012) proposed to give every single word a matrix and a vector.</S>
+    <S sid="130" ssid="58">The matrix is then applied to the sibling node&#8217;s vector during the composition.</S>
+    <S sid="131" ssid="59">While this results in a powerful composition function that essentially depends on the words being combined, the number of model parameters explodes and the composition functions do not capture the syntactic commonalities between similar POS tags or syntactic categories.</S>
+    <S sid="132" ssid="60">Based on the above considerations, we propose the Compositional Vector Grammar (CVG) that conditions the composition function at each node on discrete syntactic categories extracted from a Figure 3: Example of a syntactically untied RNN in which the function to compute a parent vector depends on the syntactic categories of its children which we assume are given for now.</S>
+    <S sid="133" ssid="61">PCFG.</S>
+    <S sid="134" ssid="62">Hence, CVGs combine discrete, syntactic rule probabilities and continuous vector compositions.</S>
+    <S sid="135" ssid="63">The idea is that the syntactic categories of the children determine what composition function to use for computing the vector of their parents.</S>
+    <S sid="136" ssid="64">While not perfect, a dedicated composition function for each rule RHS can well capture common composition processes such as adjective or adverb modification versus noun or clausal complementation.</S>
+    <S sid="137" ssid="65">For instance, it could learn that an NP should be similar to its head noun and little influenced by a determiner, whereas in an adjective modification both words considerably determine the meaning of a phrase.</S>
+    <S sid="138" ssid="66">The original RNN is parameterized by a single weight matrix W. In contrast, the CVG uses a syntactically untied RNN (SU-RNN) which has a set of such weights.</S>
+    <S sid="139" ssid="67">The size of this set depends on the number of sibling category combinations in the PCFG.</S>
+    <S sid="140" ssid="68">Fig.</S>
+    <S sid="141" ssid="69">3 shows an example SU-RNN that computes parent vectors with syntactically untied weights.</S>
+    <S sid="142" ssid="70">The CVG computes the first parent vector via the SU-RNN: where W(B,C) &#8712; Rn&#215;2n is now a matrix that depends on the categories of the two children.</S>
+    <S sid="143" ssid="71">In this bottom up procedure, the score for each node consists of summing two elements: First, a single linear unit that scores the parent vector and second, the log probability of the PCFG for the rule that combines these two children: where P(P1 -+ B C) comes from the PCFG.</S>
+    <S sid="144" ssid="72">This can be interpreted as the log probability of a discrete-continuous rule application with the following factorization: Note, however, that due to the continuous nature of the word vectors, the probability of such a CVG rule application is not comparable to probabilities provided by a PCFG since the latter sum to 1 for all children.</S>
+    <S sid="145" ssid="73">Assuming that node p1 has syntactic category P1, we compute the second parent vector via: The score of the last parent in this trigram is computed via: The above scores (Eq.</S>
+    <S sid="146" ssid="74">4) are used in the search for the correct tree for a sentence.</S>
+    <S sid="147" ssid="75">The goodness of a tree is measured in terms of its score and the CVG score of a complete tree is the sum of the scores at each node: &#65533; &#65533;pd&#65533; s(CVG(&#952;, x, &#710;y)) = s .</S>
+    <S sid="148" ssid="76">(6) d&#8712;N(&#710;y) The main objective function in Eq.</S>
+    <S sid="149" ssid="77">3 includes a maximization over all possible trees max&#710;y&#8712;Y (x).</S>
+    <S sid="150" ssid="78">Finding the global maximum, however, cannot be done efficiently for longer sentences nor can we use dynamic programming.</S>
+    <S sid="151" ssid="79">This is due to the fact that the vectors break the independence assumptions of the base PCFG.</S>
+    <S sid="152" ssid="80">A (category, vector) node representation is dependent on all the words in its span and hence to find the true global optimum, we would have to compute the scores for all binary trees.</S>
+    <S sid="153" ssid="81">For a sentence of length n, there are Catalan(n) many possible binary trees which is very large even for moderately long sentences.</S>
+    <S sid="154" ssid="82">One could use a bottom-up beam search, keeping a k-best list at every cell of the chart, possibly for each syntactic category.</S>
+    <S sid="155" ssid="83">This beam search inference procedure is still considerably slower than using only the simplified base PCFG, especially since it has a small state space (see next section for details).</S>
+    <S sid="156" ssid="84">Since each probability look-up is cheap but computing SU-RNN scores requires a matrix product, we would like to reduce the number of SU-RNN score computations to only those trees that require semantic information.</S>
+    <S sid="157" ssid="85">We note that labeled F1 of the Stanford PCFG parser on the test set is 86.17%.</S>
+    <S sid="158" ssid="86">However, if one used an oracle to select the best tree from the top 200 trees that it produces, one could get an F1 of 95.46%.</S>
+    <S sid="159" ssid="87">We use this knowledge to speed up inference via two bottom-up passes through the parsing chart.</S>
+    <S sid="160" ssid="88">During the first one, we use only the base PCFG to run CKY dynamic programming through the tree.</S>
+    <S sid="161" ssid="89">The k = 200-best parses at the top cell of the chart are calculated using the efficient algorithm of (Huang and Chiang, 2005).</S>
+    <S sid="162" ssid="90">Then, the second pass is a beam search with the full CVG model (including the more expensive matrix multiplications of the SU-RNN).</S>
+    <S sid="163" ssid="91">This beam search only considers phrases that appear in the top 200 parses.</S>
+    <S sid="164" ssid="92">This is similar to a re-ranking setup but with one main difference: the SU-RNN rule score computation at each node still only has access to its child vectors, not the whole tree or other global features.</S>
+    <S sid="165" ssid="93">This allows the second pass to be very fast.</S>
+    <S sid="166" ssid="94">We use this setup in our experiments below.</S>
+    <S sid="167" ssid="95">The full CVG model is trained in two stages.</S>
+    <S sid="168" ssid="96">First the base PCFG is trained and its top trees are cached and then used for training the SU-RNN conditioned on the PCFG.</S>
+    <S sid="169" ssid="97">The SU-RNN is trained using the objective in Eq.</S>
+    <S sid="170" ssid="98">3 and the scores as exemplified by Eq.</S>
+    <S sid="171" ssid="99">6.</S>
+    <S sid="172" ssid="100">For each sentence, we use the method described above to efficiently find an approximation for the optimal tree.</S>
+    <S sid="173" ssid="101">To minimize the objective we want to increase the scores of the correct tree&#8217;s constituents and decrease the score of those in the highest scoring incorrect tree.</S>
+    <S sid="174" ssid="102">Derivatives are computed via backpropagation through structure (BTS) (Goller and K&#168;uchler, 1996).</S>
+    <S sid="175" ssid="103">The derivative of tree i has to be taken with respect to all parameter matrices W (AB) that appear in it.</S>
+    <S sid="176" ssid="104">The main difference between backpropagation in standard RNNs and SURNNs is that the derivatives at each node only add to the overall derivative of the specific matrix at that node.</S>
+    <S sid="177" ssid="105">For more details on backpropagation through RNNs, see Socher et al. (2010) The objective function is not differentiable due to the hinge loss.</S>
+    <S sid="178" ssid="106">Therefore, we generalize gradient ascent via the subgradient method (Ratliff et al., 2007) which computes a gradient-like direction.</S>
+    <S sid="179" ssid="107">Let &#952; = (X, W(&#183;&#183;), v(&#183;&#183;)) E RM be a vector of all M model parameters, where we denote W(&#183;&#183;) as the set of matrices that appear in the training set.</S>
+    <S sid="180" ssid="108">The subgradient of Eq.</S>
+    <S sid="181" ssid="109">3 becomes: where &#710;ymax is the tree with the highest score.</S>
+    <S sid="182" ssid="110">To minimize the objective, we use the diagonal variant of AdaGrad (Duchi et al., 2011) with minibatches.</S>
+    <S sid="183" ssid="111">For our parameter updates, we first define gT E RM&#215;1 to be the subgradient at time step &#964; and Gt = Et T=1 gTgTT .</S>
+    <S sid="184" ssid="112">The parameter update at time step t then becomes: where &#945; is the learning rate.</S>
+    <S sid="185" ssid="113">Since we use the diagonal of Gt, we only have to store M values and the update becomes fast to compute: At time step t, the update for the i&#8217;th parameter &#952;t,i is: Hence, the learning rate is adapting differently for each parameter and rare parameters get larger updates than frequently occurring parameters.</S>
+    <S sid="186" ssid="114">This is helpful in our setting since some W matrices appear in only a few training trees.</S>
+    <S sid="187" ssid="115">This procedure found much better optima (by Pz3% labeled F1 on the dev set), and converged more quickly than L-BFGS which we used previously in RNN training (Socher et al., 2011a).</S>
+    <S sid="188" ssid="116">Training time is roughly 4 hours on a single machine.</S>
+    <S sid="189" ssid="117">In the absence of any knowledge on how to combine two categories, our prior for combining two vectors is to average them instead of performing a completely random projection.</S>
+    <S sid="190" ssid="118">Hence, we initialize the binary W matrices with: where we include the bias in the last column and the random variable is uniformly distributed: E &#8212; U[-0.001, 0.001].</S>
+    <S sid="191" ssid="119">The first block is multiplied by the left child and the second by the right child:</S>
+  </SECTION>
+  <SECTION title="4 Experiments" number="4">
+    <S sid="192" ssid="1">We evaluate the CVG in two ways: First, by a standard parsing evaluation on Penn Treebank WSJ and then by analyzing the model errors in detail.</S>
+    <S sid="193" ssid="2">We used the first 20 files of WSJ section 22 to cross-validate several model and optimization choices.</S>
+    <S sid="194" ssid="3">The base PCFG uses simplified categories of the Stanford PCFG Parser (Klein and Manning, 2003a).</S>
+    <S sid="195" ssid="4">We decreased the state splitting of the PCFG grammar (which helps both by making it less sparse and by reducing the number of parameters in the SU-RNN) by adding the following options to training: &#8216;-noRightRec dominatesV 0 -baseNP 0&#8217;.</S>
+    <S sid="196" ssid="5">This reduces the number of states from 15,276 to 12,061 states and 602 POS tags.</S>
+    <S sid="197" ssid="6">These include split categories, such as parent annotation categories like VP&#710;S.</S>
+    <S sid="198" ssid="7">Furthermore, we ignore all category splits for the SURNN weights, resulting in 66 unary and 882 binary child pairs.</S>
+    <S sid="199" ssid="8">Hence, the SU-RNN has 66+882 transformation matrices and scoring vectors.</S>
+    <S sid="200" ssid="9">Note that any PCFG, including latent annotation PCFGs (Matsuzaki et al., 2005) could be used.</S>
+    <S sid="201" ssid="10">However, since the vectors will capture lexical and semantic information, even simple base PCFGs can be substantially improved.</S>
+    <S sid="202" ssid="11">Since the computational complexity of PCFGs depends on the number of states, a base PCFG with fewer states is much faster.</S>
+    <S sid="203" ssid="12">Testing on the full WSJ section 22 dev set (1700 sentences) takes roughly 470 seconds with the simple base PCFG, 1320 seconds with our new CVG and 1600 seconds with the currently published Stanford factored parser.</S>
+    <S sid="204" ssid="13">Hence, increased performance comes also with a speed improvement of approximately 20%.</S>
+    <S sid="205" ssid="14">We fix the same regularization of &#955; = 10&#8722;4 for all parameters.</S>
+    <S sid="206" ssid="15">The minibatch size was set to 20.</S>
+    <S sid="207" ssid="16">We also cross-validated on AdaGrad&#8217;s learning rate which was eventually set to &#945; = 0.1 and word vector size.</S>
+    <S sid="208" ssid="17">The 25-dimensional vectors provided by Turian et al. (2010) provided the best performance and were faster than 50-,100- or 200dimensional ones.</S>
+    <S sid="209" ssid="18">We hypothesize that the larger word vector sizes, while capturing more semantic knowledge, result in too many SU-RNN matrix parameters to train and hence perform worse.</S>
+    <S sid="210" ssid="19">The dev set accuracy of the best model is 90.93% labeled F1 on all sentences.</S>
+    <S sid="211" ssid="20">This model resulted in 90.44% on the final test set (WSJ section 23).</S>
+    <S sid="212" ssid="21">Table 1 compares our results to the two Stanford parser variants (the unlexicalized PCFG (Klein and Manning, 2003a) and the factored parser (Klein and Manning, 2003b)) and other parsers that use richer state representations: the Berkeley parser (Petrov and Klein, 2007), Collins parser (Collins, 1997), SSN: a statistical neural network parser (Henderson, 2004), Factored PCFGs (Hall and Klein, 2012), CharniakSelfTrain: the self-training approach of McClosky et al. (2006), which bootstraps and parses additional large corpora multiple times, Charniak-RS: the state of the art self-trained and discriminatively re-ranked Charniak-Johnson parser combining (Charniak, 2000; McClosky et al., 2006; Charniak and Johnson, 2005).</S>
+    <S sid="213" ssid="22">See Kummerfeld et al. (2012) for more comparisons.</S>
+    <S sid="214" ssid="23">We compare also to a standard RNN &#8216;CVG (RNN)&#8217; and to the proposed CVG with SU-RNNs.</S>
+    <S sid="215" ssid="24">Analysis of Error Types.</S>
+    <S sid="216" ssid="25">Table 2 shows a detailed comparison of different errors.</S>
+    <S sid="217" ssid="26">We use the code provided by Kummerfeld et al. (2012) and compare to the previous version of the Stanford factored parser as well as to the Berkeley and Charniak-reranked-self-trained parsers (defined above).</S>
+    <S sid="218" ssid="27">See Kummerfeld et al. (2012) for details and comparisons to other parsers.</S>
+    <S sid="219" ssid="28">One of the largest sources of improved performance over the original Stanford factored parser is in the correct placement of PP phrases.</S>
+    <S sid="220" ssid="29">When measuring only the F1 of parse nodes that include at least one PP child, the CVG improves the Stanford parser by 6.2% to an F1 of 77.54%.</S>
+    <S sid="221" ssid="30">This is a 0.23 reduction in the average number of bracket errors per sentence.</S>
+    <S sid="222" ssid="31">The &#8216;Other&#8217; category includes VP, PRN and other attachments, appositives and internal structures of modifiers and QPs.</S>
+    <S sid="223" ssid="32">Analysis of Composition Matrices.</S>
+    <S sid="224" ssid="33">An analysis of the norms of the binary matrices reveals that the model learns a soft vectorized notion of head words: Head words are given larger weights and importance when computing the parent vector: For the matrices combining siblings with categories VP:PP, VP:NP and VP:PRT, the weights in the part of the matrix which is multiplied with the VP child vector dominates.</S>
+    <S sid="225" ssid="34">Similarly NPs dominate DTs.</S>
+    <S sid="226" ssid="35">Fig.</S>
+    <S sid="227" ssid="36">5 shows example matrices.</S>
+    <S sid="228" ssid="37">The two strong diagonals are due to the initialization described in Sec.</S>
+    <S sid="229" ssid="38">3.7.</S>
+    <S sid="230" ssid="39">Semantic Transfer for PP Attachments.</S>
+    <S sid="231" ssid="40">In this small model analysis, we use two pairs of sentences that the original Stanford parser and the CVG did not parse correctly after training on the WSJ.</S>
+    <S sid="232" ssid="41">We then continue to train both parsers on two similar sentences and then analyze if the parsers correctly transferred the knowledge.</S>
+    <S sid="233" ssid="42">The training sentences are He eats spaghetti with a fork. and She eats spaghetti with pork.</S>
+    <S sid="234" ssid="43">The very similar test sentences are He eats spaghetti with a spoon. and He eats spaghetti with meat.</S>
+    <S sid="235" ssid="44">Initially, both parsers incorrectly attach the PP to the verb in both test sentences.</S>
+    <S sid="236" ssid="45">After training, the CVG parses both correctly, while the factored Stanford parser incorrectly attaches both PPs to spaghetti.</S>
+    <S sid="237" ssid="46">The CVG&#8217;s ability to transfer the correct PP attachments is due to the semantic word vector similarity between the words in the sentences.</S>
+    <S sid="238" ssid="47">Fig.</S>
+    <S sid="239" ssid="48">4 shows the outputs of the two parsers. showing that head words dominate the composition.</S>
+    <S sid="240" ssid="49">The model learns to not give determiners much importance.</S>
+    <S sid="241" ssid="50">The two diagonals show clearly the two blocks that are multiplied with the left and right children, respectively.</S>
+  </SECTION>
+  <SECTION title="5 Conclusion" number="5">
+    <S sid="242" ssid="1">We introduced Compositional Vector Grammars (CVGs), a parsing model that combines the speed of small-state PCFGs with the semantic richness of neural word representations and compositional phrase vectors.</S>
+    <S sid="243" ssid="2">The compositional vectors are learned with a new syntactically untied recursive neural network.</S>
+    <S sid="244" ssid="3">This model is linguistically more plausible since it chooses different composition functions for a parent node based on the syntactic categories of its children.</S>
+    <S sid="245" ssid="4">The CVG obtains 90.44% labeled F1 on the full WSJ test set and is 20% faster than the previous Stanford parser.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="6">
+    <S sid="246" ssid="1">We thank Percy Liang for chats about the paper.</S>
+    <S sid="247" ssid="2">Richard is supported by a Microsoft Research PhD fellowship.</S>
+    <S sid="248" ssid="3">The authors gratefully acknowledge the support of the Defense Advanced Research Projects Agency (DARPA) Deep Exploration and Filtering of Text (DEFT) Program under Air Force Research Laboratory (AFRL) prime contract no.</S>
+    <S sid="249" ssid="4">FA8750-13-2-0040, and the DARPA Deep Learning program under contract number FA8650-10C-7020.</S>
+    <S sid="250" ssid="5">Any opinions, findings, and conclusions or recommendations expressed in this material are those of the authors and do not necessarily reflect the view of DARPA, AFRL, or the US government.</S>
+  </SECTION>
+</PAPER>

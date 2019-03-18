@@ -1,0 +1,209 @@
+<PAPER>
+  <S sid="0">An Efficient Algorithm for Easy-First Non-Directional Dependency Parsing</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present a novel deterministic dependency parsing algorithm that attempts to create the easiest arcs in the dependency structure first in a non-directional manner.</S>
+    <S sid="2" ssid="2">Traditional deterministic parsing algorithms are based on a shift-reduce framework: they traverse the sentence from left-to-right and, at each step, perform one of a possible set of actions, until a complete tree is built.</S>
+    <S sid="3" ssid="3">A drawback of this approach is that it is extremely local: while decisions can be based on complex structures on the left, they can look only at a few words to the right.</S>
+    <S sid="4" ssid="4">In contrast, our algorithm builds a dependency tree by iteratively selecting the best pair of neighbours to connect at each parsing step.</S>
+    <S sid="5" ssid="5">This allows incorporation of features from already built structures both to the left and to the right of the attachment point.</S>
+    <S sid="6" ssid="6">The parser learns both the attachment preferences and the order in which they should be performed.</S>
+    <S sid="7" ssid="7">The result is a determinbest-first, which is significantly more accurate than best-first transition based parsers, and nears the performance of globally optimized parsing models.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="8" ssid="1">Dependency parsing has been a topic of active research in natural language processing in the last several years.</S>
+    <S sid="9" ssid="2">An important part of this research effort are the CoNLL 2006 and 2007 shared tasks (Buchholz and Marsi, 2006; Nivre et al., 2007), which allowed for a comparison of many algorithms and approaches for this task on many languages.</S>
+    <S sid="10" ssid="3">Current dependency parsers can be categorized into three families: local-and-greedy transitionbased parsers (e.g., MALTPARSER (Nivre et al., 2006)), globally optimized graph-based parsers (e.g., MSTPARSER (McDonald et al., 2005)), and hybrid systems (e.g., (Sagae and Lavie, 2006b; Nivre and McDonald, 2008)), which combine the output of various parsers into a new and improved parse, and which are orthogonal to our approach.</S>
+    <S sid="11" ssid="4">Transition-based parsers scan the input from left to right, are fast (O(n)), and can make use of rich feature sets, which are based on all the previously derived structures.</S>
+    <S sid="12" ssid="5">However, all of their decisions are very local, and the strict left-to-right order implies that, while the feature set can use rich structural information from the left of the current attachment point, it is also very restricted in information to the right of the attachment point: traditionally, only the next two or three input tokens are available to the parser.</S>
+    <S sid="13" ssid="6">This limited look-ahead window leads to error propagation and worse performance on root and long distant dependencies relative to graphbased parsers (McDonald and Nivre, 2007).</S>
+    <S sid="14" ssid="7">Graph-based parsers, on the other hand, are globally optimized.</S>
+    <S sid="15" ssid="8">They perform an exhaustive search over all possible parse trees for a sentence, and find the highest scoring tree.</S>
+    <S sid="16" ssid="9">In order to make the search tractable, the feature set needs to be restricted to features over single edges (first-order models) or edges pairs (higher-order models, e.g.</S>
+    <S sid="17" ssid="10">(McDonald and Pereira, 2006; Carreras, 2007)).</S>
+    <S sid="18" ssid="11">There are several attempts at incorporating arbitrary tree-based features but these involve either solving an ILP problem (Riedel and Clarke, 2006) or using computationally intensive sampling-based methods (Nakagawa, 2007).</S>
+    <S sid="19" ssid="12">As a result, these models, while accurate, are slow (O(n3) for projective, first-order models, higher polynomials for higher-order models, and worse for richer tree-feature models).</S>
+    <S sid="20" ssid="13">We propose a new category of dependency parsing algorithms, inspired by (Shen et al., 2007): nondirectional easy-first parsing.</S>
+    <S sid="21" ssid="14">This is a greedy, deterministic parsing approach, which relaxes the leftto-right processing order of transition-based parsing algorithms.</S>
+    <S sid="22" ssid="15">By doing so, we allow the explicit incorporation of rich structural features derived from both sides of the attachment point, and implicitly take into account the entire previously derived structure of the whole sentence.</S>
+    <S sid="23" ssid="16">This extension allows the incorporation of much richer features than those available to transition- and especially to graph-based parsers, and greatly reduces the locality of transition-based algorithm decisions.</S>
+    <S sid="24" ssid="17">On the other hand, it is still a greedy, best-first algorithm leading to an efficient implementation.</S>
+    <S sid="25" ssid="18">We present a concrete O(nlogn) parsing algorithm, which significantly outperforms state-of-theart transition-based parsers, while closing the gap to graph-based parsers.</S>
+  </SECTION>
+  <SECTION title="2 Easy-first parsing" number="2">
+    <S sid="26" ssid="1">When humans comprehend a natural language sentence, they arguably do it in an incremental, left-toright manner.</S>
+    <S sid="27" ssid="2">However, when humans consciously annotate a sentence with syntactic structure, they hardly ever work in fixed left-to-right order.</S>
+    <S sid="28" ssid="3">Rather, they start by building several isolated constituents by making easy and local attachment decisions and only then combine these constituents into bigger constituents, jumping back-and-forth over the sentence and proceeding from easy to harder phenomena to analyze.</S>
+    <S sid="29" ssid="4">When getting to the harder decisions a lot of structure is already in place, and this structure can be used in deciding a correct attachment.</S>
+    <S sid="30" ssid="5">Our parser follows a similar kind of annotation process: starting from easy attachment decisions, and proceeding to harder and harder ones.</S>
+    <S sid="31" ssid="6">When making later decisions, the parser has access to the entire structure built in earlier stages.</S>
+    <S sid="32" ssid="7">During the training process, the parser learns its own notion of easy and hard, and learns to defer specific kinds of decisions until more structure is available.</S>
+  </SECTION>
+  <SECTION title="3 Parsing algorithm" number="3">
+    <S sid="33" ssid="1">Our (projective) parsing algorithm builds the parse tree bottom up, using two kinds of actions: ATTACHLEFT(i) and ATTACHRIGHT(i) .</S>
+    <S sid="34" ssid="2">These actions are applied to a list of partial structures p1, ... , pk, called pending, which is initialized with the n words of the sentence w1, ... , wn.</S>
+    <S sid="35" ssid="3">Each action connects the heads of two neighbouring structures, making one of them the parent of the other, and removing the daughter from the list of partial structures.</S>
+    <S sid="36" ssid="4">ATTACHLEFT(i) adds a dependency edge (pi, pi+1) and removes pi+1 from the list.</S>
+    <S sid="37" ssid="5">ATTACHRIGHT(i) adds a dependency edge (pi+1, pi) and removes pi from the list.</S>
+    <S sid="38" ssid="6">Each action shortens the list of partial structures by 1, and after n&#8722;1 such actions, the list contains the root of a connected projective tree over the sentence.</S>
+    <S sid="39" ssid="7">Figure 1 shows an example of parsing the sentence &#8220;a brown fox jumped with joy&#8221;.</S>
+    <S sid="40" ssid="8">The pseudocode of the algorithm is given in Algorithm 1.</S>
+    <S sid="41" ssid="9">At each step the algorithm chooses a specific action/location pair using a function score(ACTION(i)), which assign scores to action/location pairs based on the partially built structures headed by pi and pi+1, as well as neighbouring structures.</S>
+    <S sid="42" ssid="10">The score() function is learned from data.</S>
+    <S sid="43" ssid="11">This scoring function reflects not only the correctness of an attachment, but also the order in which attachments should be made.</S>
+    <S sid="44" ssid="12">For example, consider the attachments (brown,fox) and (joy,with) in Figure (1.1).</S>
+    <S sid="45" ssid="13">While both are correct, the scoring function prefers the (adjective,noun) attachment over the (prep,noun) attachment.</S>
+    <S sid="46" ssid="14">Moreover, the attachment (jumped,with), while correct, receives a negative score for the bare preposition &#8220;with&#8221; (Fig.</S>
+    <S sid="47" ssid="15">(1.1) - (1.4) ), and a high score once the verb has its subject and the PP &#8220;with joy&#8221; is built (Fig.</S>
+    <S sid="48" ssid="16">(1.5) ).</S>
+    <S sid="49" ssid="17">Ideally, we would like to score easy and reliable attachments higher than harder less likely attachments, thus performing attachments in order of confidence.</S>
+    <S sid="50" ssid="18">This strategy allows us both to limit the extent of error propagation, and to make use of richer contextual information in the later, harder attachments.</S>
+    <S sid="51" ssid="19">Unfortunately, this kind of ordering information is not directly encoded in the data.</S>
+    <S sid="52" ssid="20">We must, therefore, learn how to order the decisions.</S>
+    <S sid="53" ssid="21">We first describe the learning algorithm (Section 4) and a feature representation (Section 5) which enables us to learn an effective scoring function.</S>
+  </SECTION>
+  <SECTION title="4 Learning Algorithm" number="4">
+    <S sid="54" ssid="1">We use a linear model score(x) = w&#65533; &#183; O(x), where O(x) is a feature representation and w&#65533; is a weight vector.</S>
+    <S sid="55" ssid="2">We write Oact(i) to denote the feature representation extracted for action act at location i.</S>
+    <S sid="56" ssid="3">The model is trained using a variant of the structured perceptron (Collins, 2002), similar to the algorithm of (Shen et al., 2007; Shen and Joshi, 2008).</S>
+    <S sid="57" ssid="4">As usual, we use parameter averaging to prevent the perceptron from overfitting.</S>
+    <S sid="58" ssid="5">The training algorithm is initialized with a zero parameter vector w. The algorithm makes several passes over the data.</S>
+    <S sid="59" ssid="6">At each pass, we apply the training procedure given in Algorithm 2 to every sentence in the training set.</S>
+    <S sid="60" ssid="7">At training time, each sentence is parsed using the parsing algorithm and the current w. Whenever an invalid action is chosen by the parsing algorithm, it is not performed (line 6).</S>
+    <S sid="61" ssid="8">Instead, we update the parameter vector w&#65533; by decreasing the weights of the features associated with the invalid action, and increasing the weights for the currently highest scoring valid action.1 We then proceed to parse the sentence with the updated values.</S>
+    <S sid="62" ssid="9">The process repeats until a valid action is chosen.</S>
+    <S sid="63" ssid="10">Note that each single update does not guarantee that the next chosen action is valid, or even different than the previously selected action.</S>
+    <S sid="64" ssid="11">Yet, this is still an aggressive update procedure: we do not leave a sentence until our parameters vector parses it cor1We considered 3 variants of this scheme: (1) using the highest scoring valid action, (2) using the leftmost valid action, and (3) using a random valid action.</S>
+    <S sid="65" ssid="12">The 3 variants achieved nearly identical accuracy, while (1) converged somewhat faster than the other two. rectly, and we do not proceed from one partial parse to the next until w&#65533; predicts a correct location/action pair.</S>
+    <S sid="66" ssid="13">However, as the best ordering, and hence the best attachment point is not known to us, we do not perform a single aggressive update step.</S>
+    <S sid="67" ssid="14">Instead, our aggressive update is performed incrementally in a series of smaller steps, each pushing w&#65533; away from invalid attachments and toward valid ones.</S>
+    <S sid="68" ssid="15">This way we integrate the search of confident attachments into the learning process.</S>
+  </SECTION>
+  <SECTION title="3 return false 4 return true" number="5">
+    <S sid="69" ssid="1">The function isValid(act(i), gold, arcs) (line 4) is used to decide if the chosen action/location pair is valid.</S>
+    <S sid="70" ssid="2">It returns True if two conditions apply: (a) (pi, pj) is present in gold, (b) all edges (&#10065;, pj) in gold are also in arcs.</S>
+    <S sid="71" ssid="3">In words, the function verifies that the proposed edge is indeed present in the gold parse and that the suggested daughter already found all its own daughters.2</S>
+  </SECTION>
+  <SECTION title="5 Feature Representation" number="6">
+    <S sid="72" ssid="1">The feature representation for an action can take into account the original sentence, as well as the entire parse history: Oact(i) above is actually O(act(i), sentence, Arcs, pending).</S>
+    <S sid="73" ssid="2">We use binary valued features, and each feature is conjoined with the type of action.</S>
+    <S sid="74" ssid="3">When designing the feature representation, we keep in mind that our features should not only direct the parser toward desired actions and away from undesired actions, but also provide the parser with means of choosing between several desired actions.</S>
+    <S sid="75" ssid="4">We want the parser to be able to defer some desired actions until more structure is available and a more informed prediction can be made.</S>
+    <S sid="76" ssid="5">This desire is reflected in our choice of features: some of our features are designed to signal to the parser the presence of possibly &#8220;incomplete&#8221; structures, such as an incomplete phrase, a coordinator without conjuncts, and so on.</S>
+    <S sid="77" ssid="6">When considering an action ACTION(i), we limit ourselves to features of partial structures around the attachment point: pi&#8722;2, pi&#8722;1, pi, pi+1, pi+2, pi+s, that is the two structures which are to be attached by the action (pi and pi+1), and the two neighbouring structures on each side3.</S>
+    <S sid="78" ssid="7">While these features encode local context, it is local in terms of syntactic structure, and not purely in terms of sentence surface form.</S>
+    <S sid="79" ssid="8">This let us capture some, though not all, long-distance relations.</S>
+    <S sid="80" ssid="9">For a partial structure p, we use wp to refer to the head word form, tp to the head word POS tag, and lcp and rcp to the POS tags of the left-most and right-most child of p respectively.</S>
+    <S sid="81" ssid="10">All our prepositions (IN) and coordinators (CC) are lexicalized: for them, tp is in fact wptp.</S>
+    <S sid="82" ssid="11">We define structural, unigram, bigram and ppattachment features.</S>
+    <S sid="83" ssid="12">The structural features are: the length of the structures (lenp), whether the structure is a word (contains no children: ncp), and the surface distance between structure heads (Apipj).</S>
+    <S sid="84" ssid="13">The unigram and bigram features are adapted from the feature set for left-to-right Arc-Standard dependency parsing described in (Huang et al., 2009).</S>
+    <S sid="85" ssid="14">We extended that feature set to include the structure on both sides of the proposed attachment point.</S>
+    <S sid="86" ssid="15">In the case of unigram features, we added features that specify the POS of a word and its left-most and right-most children.</S>
+    <S sid="87" ssid="16">These features provide the nondirectional model with means to prefer some attachment points over others based on the types of structures already built.</S>
+    <S sid="88" ssid="17">In English, the left- and rightmost POS-tags are good indicators of constituency.</S>
+    <S sid="89" ssid="18">The pp-attachment features are similar to the bigram features, but fire only when one of the structures is headed by a preposition (IN).</S>
+    <S sid="90" ssid="19">These features are more lexicalized than the regular bigram features, and include also the word-form of the rightmost child of the PP (rcwp).</S>
+    <S sid="91" ssid="20">This should help the model learn lexicalized attachment preferences such as (hit, with-bat).</S>
+    <S sid="92" ssid="21">Figure 2 enumerate the feature templates we use.</S>
+  </SECTION>
+  <SECTION title="6 Computational Complexity and Efficient Implementation" number="7">
+    <S sid="93" ssid="1">The parsing algorithm (Algorithm 1) begins with n+1 disjoint structures (the words of the sentence + ROOT symbol), and terminates with one connected structure.</S>
+    <S sid="94" ssid="2">Each iteration of the main loop connects two structures and removes one of them, and so the loop repeats for exactly n times.</S>
+    <S sid="95" ssid="3">The argmax in line 5 selects the maximal scoring action/location pair.</S>
+    <S sid="96" ssid="4">At iteration i, there are n &#8722; i locations to choose from, and a naive computation of the argmax is O(n), resulting in an O(n2) algorithm.</S>
+    <S sid="97" ssid="5">Each performed action changes the partial structures and with it the extracted features and the computed scores.</S>
+    <S sid="98" ssid="6">However, these changes are limited to a fixed local context around the attachment point of the action.</S>
+    <S sid="99" ssid="7">Thus, we observe that the feature extraction and score calculation can be performed once for each action/location pair in a given sentence, and reused throughout all the iterations.</S>
+    <S sid="100" ssid="8">After each iteration we need to update the extracted features and calculated scores for only k locations, where k is a fixed number depending on the window size used in the feature extraction, and usually k &#171; n. Using this technique, we perform only (k + 1)n feature extractions and score calculations for each sentence, that is O(n) feature-extraction operations per sentence.</S>
+    <S sid="101" ssid="9">Given the scores for each location, the argmax can then be computed in O(logn) time using a heap, resulting in an O(nlogn) algorithm: n iterations, where the first iteration involves n feature extraction operations and n heap insertions, and each subsequent iteration involves k feature extractions and heap updates.</S>
+    <S sid="102" ssid="10">We note that the dominating factor in polynomialtime discriminative parsers, is by far the featureextraction and score calculation.</S>
+    <S sid="103" ssid="11">It makes sense to compare parser complexity in terms of these operations only.4 Table 1 compares the complexity of our 4Indeed, in our implementation we do not use a heap, and opt instead to find the argmax using a simple O(n) max operation.</S>
+    <S sid="104" ssid="12">This O(n2) algorithm is faster in practice than the heap based one, as both are dominated by the O(n) feature extraction, while the cost of the O(n) max calculationis negligible compared to the constants involved in heap maintenance.</S>
+    <S sid="105" ssid="13">In terms of feature extraction and score calculation operations, our algorithm has the same cost as traditional shift-reduce (MALT) parsers, and is an order of magnitude more efficient than graph-based (MST) parsers.</S>
+    <S sid="106" ssid="14">Beam-search decoding for left-toright parsers (Zhang and Clark, 2008) is also linear, but has an additional linear dependence on the beamsize.</S>
+    <S sid="107" ssid="15">The reported results in (Zhang and Clark, 2008) use a beam size of 64, compared to our constant of k = 6.</S>
+    <S sid="108" ssid="16">Our Python-based implementation5 (the perceptron is implemented in a C extension module) parses about 40 tagged sentences per second on an Intel based MacBook laptop.</S>
+  </SECTION>
+  <SECTION title="7 Experiments and Results" number="8">
+    <S sid="109" ssid="1">We evaluate the parser using the WSJ Treebank.</S>
+    <S sid="110" ssid="2">The trees were converted to dependency structures with the Penn2Malt conversion program,6 using the headfinding rules from (Yamada and Matsumoto, 2003).7 We use Sections 2-21 for training, Section 22 for development, and Section 23 as the final test set.</S>
+    <S sid="111" ssid="3">The text is automatically POS tagged using a trigram HMM based POS tagger prior to training and parsing.</S>
+    <S sid="112" ssid="4">Each section is tagged after training the tagger on all other sections.</S>
+    <S sid="113" ssid="5">The tagging accuracy of the tagger is 96.5 for the training set and 96.8 for the test set.</S>
+    <S sid="114" ssid="6">While better taggers exist, we believe that the simpler HMM tagger overfits less, and is more representative of the tagging performance on nonWSJ corpus texts.</S>
+    <S sid="115" ssid="7">Parsers We evaluate our parser against the transition-based MALT parser and the graph-based MST parser.</S>
+    <S sid="116" ssid="8">We use version 1.2 of MALT parser8, with the settings used for parsing English in the CoNLL 2007 shared task.</S>
+    <S sid="117" ssid="9">For the MST parser9, we use the default first-order, projective parser settings, which provide state-of-the-art results for English.</S>
+    <S sid="118" ssid="10">All parsers are trained and tested on the same data.</S>
+    <S sid="119" ssid="11">Our parser is trained for 20 iterations.</S>
+    <S sid="120" ssid="12">Evaluation Measures We evaluate the parsers using three common measures: (unlabeled) Accuracy: percentage of tokens which got assigned their correct parent.</S>
+    <S sid="121" ssid="13">Root: The percentage of sentences in which the ROOT attachment is correct.</S>
+    <S sid="122" ssid="14">Complete: the percentage of sentences in which all tokens were assigned their correct parent.</S>
+    <S sid="123" ssid="15">Unlike most previous work on English dependency parsing, we do not exclude punctuation marks from the evaluation.</S>
+    <S sid="124" ssid="16">Results are presented in Table 2.</S>
+    <S sid="125" ssid="17">Our nondirectional easy-first parser significantly outperforms the left-to-right greedy MALT parser in terms of accuracy and root prediction, and significantly outperforms both parsers in terms of exact match.</S>
+    <S sid="126" ssid="18">The globally optimized MST parser is better in rootprediction, and slightly better in terms of accuracy.</S>
+    <S sid="127" ssid="19">We evaluated the parsers also on the English dataset from the CoNLL 2007 shared task.</S>
+    <S sid="128" ssid="20">While this dataset is also derived from the WSJ Treebank, it differs from the previous dataset in two important aspects: it is much smaller in size, and it is created using a different conversion procedure, which is more linguistically adequate.</S>
+    <S sid="129" ssid="21">For these experiments, we use the dataset POS tags, and the same parameters as in the previous set of experiments: we train the nondirectional parser for 20 iterations, with the same feature set.</S>
+    <S sid="130" ssid="22">The CoNLL dataset contains some nonprojective constructions.</S>
+    <S sid="131" ssid="23">MALT and MST deal with non-projectivity.</S>
+    <S sid="132" ssid="24">For the non-directional parser, we projectivize the training set prior to training using the procedure described in (Carreras, 2007).</S>
+    <S sid="133" ssid="25">Results are presented in Table 3.</S>
+    <S sid="134" ssid="26">While all models suffer from the move to the smaller dataset and the more challenging annotation scheme, the overall story remains the same: the nondirectional parser is better than MALT but not as good as MST in terms of parent-accuracy and root prediction, and is better than both MALT and MST in terms of producing complete correct parses.</S>
+    <S sid="135" ssid="27">That the non-directional parser has lower accuracy but more exact matches than the MST parser can be explained by it being a deterministic parser, and hence still vulnerable to error propagation: once it erred once, it is likely to do so again, resulting in low accuracies for some sentences.</S>
+    <S sid="136" ssid="28">However, due to the easy-first policy, it manages to parse many sentences without a single error, which lead to higher exact-match scores.</S>
+    <S sid="137" ssid="29">The non-directional parser avoids error propagation by not making the initial error.</S>
+    <S sid="138" ssid="30">On average, the non-directional parser manages to assign correct heads to over 60% of the tokens before making its first error.</S>
+    <S sid="139" ssid="31">The MST parser would have ranked 5th in the shared task, and NONDIR would have ranked 7th.</S>
+    <S sid="140" ssid="32">The better ranking systems in the shared task are either higher-order global models, beam-search based systems, or ensemble-based systems, all of which are more complex and less efficient than the NONDIR parser.</S>
+    <S sid="141" ssid="33">Parse Diversity The parses produced by the nondirectional parser are different than the parses produced by the graph-based and left-to-right parsers.</S>
+    <S sid="142" ssid="34">To demonstrate this difference, we performed an Oracle experiment, in which we combine the output of several parsers by choosing, for each sentence, the parse with the highest score.</S>
+    <S sid="143" ssid="35">Results are presented in Table 4.</S>
+    <S sid="144" ssid="36">A non-oracle blending of MALT+MST+NONDIR using Sagae and Lavie&#8217;s (2006) simplest combination method assigning each component the same weight, yield an accuracy of 90.8 on the CoNLL 2007 English dataset, making it the highest scoring system among the participants.</S>
+    <S sid="145" ssid="37">When we investigate the POS category of mistaken instances, we see that for all parsers, nodes with structures of depth 2 and more which are assigned an incorrect head are predominantly PPs (headed by &#8217;IN&#8217;), followed by NPs (headed by &#8217;NN&#8217;).</S>
+    <S sid="146" ssid="38">All parsers have a hard time dealing with PP attachment, but MST parser is better at it than NONDIR, and both are better than MALT.</S>
+    <S sid="147" ssid="39">Looking further at the mistaken instances, we notice a tendency of the PP mistakes of the NONDIR parser to involve, before the PP, an NP embedded in a relative clause.</S>
+    <S sid="148" ssid="40">This reveals a limitation of our parser: recall that for an edge to be built, the child must first acquire all its own children.</S>
+    <S sid="149" ssid="41">This means that in case of relative clauses such as &#8220;I saw the boy [who ate the pizza] with my eyes&#8221;, the parser must decide if the PP &#8220;with my eyes&#8221; should be attached to &#8220;the pizza&#8221; or not before it is allowed to build parts of the outer NP (&#8220;the boy who... &#8221;).</S>
+    <S sid="150" ssid="42">In this case, the verb &#8220;saw&#8221; and the noun &#8220;boy&#8221; are both outside of the sight of the parser when deciding on the PP attachment, and it is forced to make a decision in ignorance, which, in many cases, leads to mistakes.</S>
+    <S sid="151" ssid="43">The globally optimized MST does not suffer as much from such cases.</S>
+    <S sid="152" ssid="44">We plan to address this deficiency in future work.</S>
+  </SECTION>
+  <SECTION title="8 Related Work" number="9">
+    <S sid="153" ssid="1">Deterministic shift-reduce parsers are restricted by a strict left-to-right processing order.</S>
+    <S sid="154" ssid="2">Such parsers can rely on rich syntactic information on the left, but not on the right, of the decision point.</S>
+    <S sid="155" ssid="3">They are forced to commit early, and suffer from error propagation.</S>
+    <S sid="156" ssid="4">Our non-directional parser addresses these deficiencies by discarding the strict left-to-right processing order, and attempting to make easier decisions before harder ones.</S>
+    <S sid="157" ssid="5">Other methods of dealing with these deficiencies were proposed over the years: Several Passes Yamada and Matsumoto&#8217;s (2003) pioneering work introduces a shift-reduce parser which makes several left-to-right passes over a sentence.</S>
+    <S sid="158" ssid="6">Each pass adds structure, which can then be used in subsequent passes.</S>
+    <S sid="159" ssid="7">Sagae and Lavie (2006b) extend this model to alternate between left-to-right and right-to-left passes.</S>
+    <S sid="160" ssid="8">This model is similar to ours, in that it attempts to defer harder decisions to later passes over the sentence, and allows late decisions to make use of rich syntactic information (built in earlier passes) on both sides of the decision point.</S>
+    <S sid="161" ssid="9">However, the model is not explicitly trained to optimize attachment ordering, has an O(n2) runtime complexity, and produces results which are inferior to current single-pass shift-reduce parsers.</S>
+    <S sid="162" ssid="10">Beam Search Several researchers dealt with the early-commitment and error propagation of deterministic parsers by extending the greedy decisions with various flavors of beam-search (Sagae and Lavie, 2006a; Zhang and Clark, 2008; Titov and Henderson, 2007).</S>
+    <S sid="163" ssid="11">This approach works well and produces highly competitive results.</S>
+    <S sid="164" ssid="12">Beam search can be incorporated into our parser as well.</S>
+    <S sid="165" ssid="13">We leave this investigation to future work.</S>
+    <S sid="166" ssid="14">Strict left-to-right ordering is also prevalent in sequence tagging.</S>
+    <S sid="167" ssid="15">Indeed, one major influence on our work is Shen et.al.&#8217;s bi-directional POS-tagging algorithm (Shen et al., 2007), which combines a perceptron learning procedure similar to our own with beam search to produce a state-of-the-art POStagger, which does not rely on left-to-right processing.</S>
+    <S sid="168" ssid="16">Shen and Joshi (2008) extends the bidirectional tagging algorithm to LTAG parsing, with good results.</S>
+    <S sid="169" ssid="17">We build on top of that work and present a concrete and efficient greedy non-directional dependency parsing algorithm.</S>
+    <S sid="170" ssid="18">Structure Restrictions Eisner and Smith (2005) propose to improve the efficiency of a globally optimized parser by posing hard constraints on the lengths of arcs it can produce.</S>
+    <S sid="171" ssid="19">Such constraints pose an explicit upper bound on parser accuracy.10 Our parsing model does not pose such restrictions.</S>
+    <S sid="172" ssid="20">Shorter edges are arguably easier to predict, and our parses builds them early in time.</S>
+    <S sid="173" ssid="21">However, it is also capable of producing long dependencies at later stages in the parsing process.</S>
+    <S sid="174" ssid="22">Indeed, the distribution of arc lengths produced by our parser is similar to those produced by the MALT and MST parsers.</S>
+  </SECTION>
+  <SECTION title="9 Discussion" number="10">
+    <S sid="175" ssid="1">We presented a non-directional deterministic dependency parsing algorithm, which is not restricted by the left-to-right parsing order of other deterministic parsers.</S>
+    <S sid="176" ssid="2">Instead, it works in an easy-first order.</S>
+    <S sid="177" ssid="3">This strategy allows using more context at each decision.</S>
+    <S sid="178" ssid="4">The parser learns both what and when to connect.</S>
+    <S sid="179" ssid="5">We show that this parsing algorithm significantly outperforms a left-to-right deterministic algorithm.</S>
+    <S sid="180" ssid="6">While it still lags behind globally optimized parsing algorithms in terms of accuracy and root prediction, it is much better in terms of exact match, and much faster.</S>
+    <S sid="181" ssid="7">As our parsing framework can easily and efficiently utilize more structural information than globally optimized parsers, we believe that with some enhancements and better features, it can outperform globally optimized algorithms, especially when more structural information is needed, such as for morphologically rich languages.</S>
+    <S sid="182" ssid="8">Moreover, we show that our parser produces different structures than those produced by both left-to-right and globally optimized parsers, making it a good candidate for inclusion in an ensemble system.</S>
+    <S sid="183" ssid="9">Indeed, a simple combination scheme of graph-based, left-to-right and non-directional parsers yields state-of-the-art results on English dependency parsing on the CoNLL 2007 dataset.</S>
+    <S sid="184" ssid="10">We hope that further work on this non-directional parsing framework will pave the way to better understanding of an interesting cognitive question: which kinds of parsing decisions are hard to make, and which linguistic constructs are hard to analyze?</S>
+  </SECTION>
+</PAPER>

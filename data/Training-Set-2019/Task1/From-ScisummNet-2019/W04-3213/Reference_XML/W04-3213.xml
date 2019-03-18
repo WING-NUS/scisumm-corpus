@@ -1,0 +1,238 @@
+<PAPER>
+  <S sid="0">Unsupervised Semantic Role Labeling</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present an unsupervised method for labelling the arguments of verbs with their semantic roles.</S>
+    <S sid="2" ssid="2">Our bootstrapping algorithm makes initial unambiguous role assignments, and then iteratively updates the probability model on which future assignments are based.</S>
+    <S sid="3" ssid="3">A novel aspect of our approach is the use of verb, slot, and noun class information as the basis for backing off in our probability model.</S>
+    <S sid="4" ssid="4">We achieve 50&#8211;65% reduction in the error rate over an informed baseline, indicating the potential of our approach for a task that has heretofore relied on large amounts of manually generated training data.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="5" ssid="1">Semantic annotation of text corpora is needed to support tasks such as information extraction and question-answering (e.g., Riloff and Schmelzenbach, 1998; Niu and Hirst, 2004).</S>
+    <S sid="6" ssid="2">In particular, labelling the semantic roles of the arguments of a verb (or any predicate), as in (1) and (2), provides crucial information about the relations among event participants.</S>
+    <S sid="7" ssid="3">Because of the importance of this task, a number of recent methods have been proposed for automatic semantic role labelling (e.g., Gildea and Jurafsky, 2002; Gildea and Palmer, 2002; Chen and Rambow, 2003; Fleischman et al., 2003; Hacioglu et al., 2003; Thompson et al., 2003).</S>
+    <S sid="8" ssid="4">These supervised methods are limited by their reliance on the manually roletagged corpora of FrameNet (Baker et al., 1998) or PropBank (Palmer et al., 2003) as training data, which are expensive to produce, are limited in size, and may not be representative.</S>
+    <S sid="9" ssid="5">We have developed a novel method of unsupervised semantic role labelling that avoids the need for expensive manual labelling of text, and enables the use of a large, representative corpus.</S>
+    <S sid="10" ssid="6">To achieve this, we take a &#8220;bootstrapping&#8221; approach (e.g., Hindle and Rooth, 1993; Yarowsky, 1995; Jones et al., 1999), which initially makes only the role assignments that are unambiguous according to a verb lexicon.</S>
+    <S sid="11" ssid="7">We then iteratively: create a probability model based on the currently annotated semantic roles, use this probability model to assign roles that are deemed to have sufficient evidence, and add the newly labelled arguments to our annotated set.</S>
+    <S sid="12" ssid="8">As we iterate, we gradually both grow the size of the annotated set, and relax the evidence thresholds for the probability model, until all arguments have been assigned roles.</S>
+    <S sid="13" ssid="9">To our knowledge, this is the first unsupervised semantic role labelling system applied to general semantic roles in a domain-general corpus.</S>
+    <S sid="14" ssid="10">In a similar vein of work, Riloff and colleagues (Riloff and Schmelzenbach, 1998; Jones et al., 1999) used bootstrapping to learn &#8220;case frames&#8221; for verbs, but their approach has been applied in very narrow topic domains with topic-specific roles.</S>
+    <S sid="15" ssid="11">In other work, Gildea (2002) has explored unsupervised methods to discover role-slot mappings for verbs, but not to apply this knowledge to label text with roles.</S>
+    <S sid="16" ssid="12">Our approach also differs from earlier work in its novel use of classes of information in backing off to less specific role probabilities (in contrast to using simple subsets of information, as in Gildea and Jurafsky, 2002).</S>
+    <S sid="17" ssid="13">If warranted, we base our decisions on the probability of a role given the verb, the syntactic slot (syntactic argument position), and the noun occurring in that slot.</S>
+    <S sid="18" ssid="14">For example, the assignment to the first argument of sentence (1) above may be based on Experiencer subject .</S>
+    <S sid="19" ssid="15">When backing off from this probability, we use statistics over more general classes of information, such as conditioning over the semantic class of the verb instead of the verb itself&#8212;for this example, psychological state verbs.</S>
+    <S sid="20" ssid="16">Our approach yields a very simple probability model which emphasizes classbased generalizations.</S>
+    <S sid="21" ssid="17">The first step in our algorithm is to use the verb lexicon to determine the argument slots and the roles available for them.</S>
+    <S sid="22" ssid="18">In Section 2, we discuss the lexicon we use, and our initial steps of syntactic frame matching and &#8220;unambiguous&#8221; role assignment.</S>
+    <S sid="23" ssid="19">This unambiguous data is leveraged by using those role assignments as the basis for the initial estimates for the probability model described in Section 3.</S>
+    <S sid="24" ssid="20">Section 4 presents the algorithm which brings these two components together, iteratively updating the probability estimates as more and more data is labelled.</S>
+    <S sid="25" ssid="21">In Section 5, we describe details of the materials and methods used for the experiments presented in Section 6.</S>
+    <S sid="26" ssid="22">Our results show a large improvement over an informed baseline.</S>
+    <S sid="27" ssid="23">This kind of unsupervised approach to role labelling is quite new, and we conclude with a discussion of limitations and on-going work in Section 7.</S>
+  </SECTION>
+  <SECTION title="2 Determining Slots and Role Sets" number="2">
+    <S sid="28" ssid="1">Previous work has divided the semantic role labelling task into the identification of the arguments to be labelled, and the tagging of each argument with a role (Gildea and Jurafsky, 2002; Fleischman et al., 2003).</S>
+    <S sid="29" ssid="2">Our algorithm addresses both these steps.</S>
+    <S sid="30" ssid="3">Also, the unsupervised nature of the approach highlights an intermediate step of determining the set of possible roles for each argument.</S>
+    <S sid="31" ssid="4">Because we need to constrain the role set as much as possible, and cannot draw on extensive training data, this latter step takes on greater significance in our work.</S>
+    <S sid="32" ssid="5">We first describe the lexicon that specifies the syntactic arguments and possible roles for the verbs, and then discuss our process of argument and role set identification.</S>
+    <S sid="33" ssid="6">In semantic role labelling, a lexicon is used which lists the possible roles for each syntactic argument of each predicate.</S>
+    <S sid="34" ssid="7">Supervised approaches to this task have thus far used the predicate lexicon of FrameNet, or the verb lexicon of PropBank, since each has an associated labelled corpus for training.</S>
+    <S sid="35" ssid="8">We instead make use of VerbNet (Kipper et al., 2000), a manually developed hierarchical verb lexicon based on the verb classification of Levin (1993).</S>
+    <S sid="36" ssid="9">For each of 191 verb classes, including around 3000 verbs in total, VerbNet specifies the syntactic frames along with the semantic role assigned to each slot of a frame.</S>
+    <S sid="37" ssid="10">Throughout the paper we use the term &#8220;frame&#8221; to refer to a syntactic frame&#8212;the set of syntactic arguments of a verb&#8212;possibly labelled with roles, as exemplified in the VerbNet entry in Table 1.</S>
+    <S sid="38" ssid="11">While FrameNet uses semantic roles specific to a particular situation (such as Speaker, Message, [admire, adore, appreciate, cherish, enjoy, ...] Addressee), and PropBank uses roles specific to a verb (such as Arg0, Arg1, Arg2), VerbNet uses an intermediate level of thematic roles (such as Agent, Theme, Recipient).</S>
+    <S sid="39" ssid="12">These general thematic roles are commonly assumed in linguistic theory, and have some advantages in terms of capturing commonalities of argument relations across a wide range of predicates.</S>
+    <S sid="40" ssid="13">It is worth noting that although there are fewer of these thematic roles than the more situation-specific roles of FrameNet, the role labelling task is not necessarily easier: there may be more data per role, but possibly less discriminating data, since each role applies to more general relations.</S>
+    <S sid="41" ssid="14">(Indeed, in comparing the use of FrameNet roles to general thematic roles, Gildea and Jurafsky (2002) found very little difference in performance.)</S>
+    <S sid="42" ssid="15">We devise a frame matching procedure that uses the verb lexicon to determine, for each instance of a verb, the argument slots and their possible thematic roles.</S>
+    <S sid="43" ssid="16">The potential argument slots are subject, object, indirect object, and PP-object, where the latter is specialized by the individual preposition.1 Given chunked sentences with our verbs, the frame matcher uses VerbNet both to restrict the list of candidate roles for each slot, and to eliminate some of the PP slots that are likely not arguments.</S>
+    <S sid="44" ssid="17">To initialize the candidate roles precisely, we only choose roles from frames in the verb&#8217;s lexical entry (cf.</S>
+    <S sid="45" ssid="18">Table 1) that are the best syntactic matches with the chunker output.</S>
+    <S sid="46" ssid="19">We align the slots of each frame with the chunked slots, and compute the portion %Frame of frame slots that can be mapped to a chunked slot, and the portion %Chunks of chunked slots that can be mapped to the frame.</S>
+    <S sid="47" ssid="20">The score for each frame is computed by %Frame %Chunks, and only frames having the highest score contribute candidate roles to the chunked slots.</S>
+    <S sid="48" ssid="21">An example scoring is shown in Table 2.</S>
+    <S sid="49" ssid="22">This frame matching step is very restrictive and greatly reduces potential role ambiguity.</S>
+    <S sid="50" ssid="23">Many syntactic slots receive only a single candidate role, providing the initial unambiguous data for our bootstrapping algorithm.</S>
+    <S sid="51" ssid="24">Some slots receive no candidate roles, which is an error for argument slots but which is correct for adjuncts.</S>
+    <S sid="52" ssid="25">The reduction of candidate roles in general is very helpful in lightening the load on the probability model, but note that it may also cause the correct role to be omitted.</S>
+    <S sid="53" ssid="26">In future work, we plan to explore other possible methods of selecting roles from the frames, such as choosing candidates from all frames, or setting a threshold value on the matching score.</S>
+  </SECTION>
+  <SECTION title="3 The Probability Model" number="3">
+    <S sid="54" ssid="1">Once slots are initialized as above, our algorithm uses an iteratively updated probability model for role labelling.</S>
+    <S sid="55" ssid="2">The probability model predicts the role for a slot given certain conditioning information.</S>
+    <S sid="56" ssid="3">We use a backoff approach with three levels of specificity of probabilities.</S>
+    <S sid="57" ssid="4">If a candidate role fails to meet the threshold of evidence (counts towards that probability) for a given level, we backoff to the next level.</S>
+    <S sid="58" ssid="5">For any given slot, we use the most specific level that reaches the evidence threshold for any of the candidates.</S>
+    <S sid="59" ssid="6">We only use information at a single level to compare candidates for a single slot.</S>
+    <S sid="60" ssid="7">We assume the probability of a role for a slot is independent of other slots; we do not ensure a consistent role assignment across an instance of a verb.</S>
+    <S sid="61" ssid="8">Our most specific probability uses the exact combination of verb, slot, and noun filling that slot, yielding .2 2We use only the head noun of potential arguments, not the full NP, in our probability model.</S>
+    <S sid="62" ssid="9">Our combination of slot plus head word provides similar information (head of argument and its syntactic relation to the verb) to that captured by the features of Gildea and Jurafsky (2002) or Thompson et al. (2003).</S>
+    <S sid="63" ssid="10">For our first backoff level, we introduce a novel way to generalize over the verb, slot, and noun information of .</S>
+    <S sid="64" ssid="11">Here we use a linear interpolation of three probabilities, each of which: (1) drops one source of conditioning information from the most specific probability, and (2) generalizes a second source of conditioning information to a class-based conditioning event.</S>
+    <S sid="65" ssid="12">Specifically, we use the following probability formula: where is slot class, is noun class, is verb class, and the individual probabilities are (currently) equally weighted (i.e., all &#8217;s have a value of ).</S>
+    <S sid="66" ssid="13">Note that all three component probabilities make use of the verb or its class information.</S>
+    <S sid="67" ssid="14">In , the noun component is dropped, and the slot is generalized to the appropriate slot class.</S>
+    <S sid="68" ssid="15">In , the slot component is dropped, and the noun is generalized to the appropriate noun class.</S>
+    <S sid="69" ssid="16">Although it may seem counterintuitive to drop the slot, this helps us capture generalizations over &#8220;alternations,&#8221; in which the same semantic argument may appear in different syntactic slots (as in The ice melted and The sun melted the ice).</S>
+    <S sid="70" ssid="17">In , again the noun component is dropped, but in this case the verb is generalized to the appropriate verb class.</S>
+    <S sid="71" ssid="18">Each type of class is described in the following subsection.</S>
+    <S sid="72" ssid="19">The last backoff level simply uses the probability of the role given the slot class, .</S>
+    <S sid="73" ssid="20">The backoff model is summarized in Figure 1.</S>
+    <S sid="74" ssid="21">We use maximum likelihood estimates (MLE) for each of the probability formulas.</S>
+    <S sid="75" ssid="22">For slots, true generalization to a class only occurs for the prepositional slots, all of which are mapped to a single PP slot class.</S>
+    <S sid="76" ssid="23">All other slots&#8212; subject, object, and indirect object&#8212;each form their own singleton slot class.</S>
+    <S sid="77" ssid="24">Thus, differs from by dropping the noun, and by treating all prepositional slots as the same slot.</S>
+    <S sid="78" ssid="25">This formula allows us to generalize over a slot regardless of the particular noun, and preposition if there is one, used in the instance.</S>
+    <S sid="79" ssid="26">Classes of nouns in the model are given by the WordNet hierarchy.</S>
+    <S sid="80" ssid="27">Determining the appropriate level of generalization for a noun is an open problem (e.g., Clark and Weir, 2002).</S>
+    <S sid="81" ssid="28">Currently, we use a cut through WordNet including all the top categories, except for the category &#8220;entity&#8221;; the latter, because of its generality, is replaced in the cut by its immediate children (Schulte im Walde, 2003).</S>
+    <S sid="82" ssid="29">Given a noun argument, all of its ancestors that appear in this cut are used as the class(es) for the noun.</S>
+    <S sid="83" ssid="30">(Credit for a noun is apportioned equally across multiple classes.)</S>
+    <S sid="84" ssid="31">Unknown words placed in a separate category.</S>
+    <S sid="85" ssid="32">This yields a noun classification system that is very coarse and that does not distinguish between senses, but which is simple and computationally feasible. thus captures consistent relations between a verb and a class of nouns, regardless of the slot in which the noun occurs.</S>
+    <S sid="86" ssid="33">Verb classes have been shown to be very important in capturing generalizations across verb behaviour in computational systems (e.g., Palmer, 2000; Merlo and Stevenson, 2001).</S>
+    <S sid="87" ssid="34">In semantic role labelling using VerbNet, they are particularly relevant since the classes are based on a commonality of role-labelled syntactic frames (Kipper et al., 2000).</S>
+    <S sid="88" ssid="35">The class of a verb in our model is its VerbNet class that is compatible with the current frame.</S>
+    <S sid="89" ssid="36">When multiple classes are compatible, we apportion the counts uniformly among them.</S>
+    <S sid="90" ssid="37">For probability , then, we generalize over all verbs in a class of the target verb, giving us much more extensive data over relevant role assignments to a particular slot.</S>
+  </SECTION>
+  <SECTION title="4 The Bootstrapping Algorithm" number="4">
+    <S sid="91" ssid="1">We have described the frame matcher that produces a set of slots with candidate role lists (some unambiguous), and our backoff probability model.</S>
+    <S sid="92" ssid="2">All that remains is to specify the parameters that guide the iterative use of the probability model to assign roles.</S>
+    <S sid="93" ssid="3">The evidence count for each of the conditional probabilities refers to the number of times we have observed the conjunction of its conditioning events.</S>
+    <S sid="94" ssid="4">For example, for , this is the number of times the particular combination of verb, slot, and noun have been observed.</S>
+    <S sid="95" ssid="5">For a probability to be used, its evidence count must reach a given threshold, .</S>
+    <S sid="96" ssid="6">The &#8220;goodness&#8221; of a role assignment is determined by taking the log of the ratio between the probabilities of the top two candidates for a slot (when the evidence of both meet ) (e.g., Hindle and Rooth, 1993).</S>
+    <S sid="97" ssid="7">A role is only assigned if the log likelihood ratio is defined and meets a threshold; in this case, the candidate role with highest probability is assigned to the slot.</S>
+    <S sid="98" ssid="8">(Note that in the current implementation, we do not allow re-labelling: an assigned label is fixed.)</S>
+    <S sid="99" ssid="9">In the algorithm, the log ratio threshold is initially set high and gradually reduced until it reaches 0.</S>
+    <S sid="100" ssid="10">In the case of remaining ties, we assign the role for which is highest.</S>
+    <S sid="101" ssid="11">Because our evidence count and log ratio restrictions may not be met even when we have a very good candidate for a slot, we reduce the evidence count threshold to the minimum value of 1 when the log ratio threshold reaches 1.3 By this point, we assume competitor candidates have been given sufficient opportunity to amass the relevant counts.</S>
+    <S sid="102" ssid="12">Algorithm 1 shows the bootstrapping algorithm.</S>
+    <S sid="103" ssid="13">Algorithm 1 Bootstrapping Algorithm 1: Perform Frame Matching to determine the slots to be labelled, along with their candidate lists of roles.</S>
+    <S sid="104" ssid="14">2: Let be the set of annotated slots; .</S>
+    <S sid="105" ssid="15">Let be the set of unannotated slots, initially all slots.</S>
+    <S sid="106" ssid="16">Let be the set of newly annotated slots; .</S>
+    <S sid="107" ssid="17">3: Add to each slot whose role assignment is unambiguous&#8212;whose candidate list has one element.</S>
+    <S sid="108" ssid="18">Set to and set to (where and remove/add elements of the second set from/to the first).</S>
+    <S sid="109" ssid="19">(Re)compute the probability model, using counts over the items in .</S>
+    <S sid="110" ssid="20">Add to all slots in for which: &#8211;at least two candidates meet the evidence count threshold for a given probability level (see Figure 1); and &#8211;the log ratio between the two highest probability candidates meets the log ratio threshold.</S>
+    <S sid="111" ssid="21">For each slot in , assign the highest probability role.</S>
+    <S sid="112" ssid="22">Set to and set to .</S>
+    <S sid="113" ssid="23">Decrement the log ratio threshold.</S>
+  </SECTION>
+  <SECTION title="5 Materials and Methods" number="5">
+    <S sid="114" ssid="1">For the initial set of experiments, we chose 54 target verbs from three top-level VerbNet classes: preparing-26.3, transfer mesg-37.1, and contribute13.2.</S>
+    <S sid="115" ssid="2">We looked for classes that contained a large number of medium to high frequency verbs displaying a variety of interesting properties, such as having ambiguous (or unambiguous) semantic roles given certain syntactic constructions, or having ambiguous semantic role assignments that could (or alternatively, could not) be distinguished by knowledge of verb class.</S>
+    <S sid="116" ssid="3">From the set of target verbs, we derived an extended verb set that comprises all of the original target verbs as well as any verb that shares a class with one of those target verbs.</S>
+    <S sid="117" ssid="4">This gives us a set of 1159 verbs to observe in total, and increases the likelihood that some verb class information is available for each of the possible classes of the target verbs.</S>
+    <S sid="118" ssid="5">Observing the entire extended set also provides more data for our probability estimators that do not use verb class information.</S>
+    <S sid="119" ssid="6">We have made several changes to the semantic roles as given by VerbNet.</S>
+    <S sid="120" ssid="7">First, selectional restrictions such as [+Animate] are removed since our coarse model of noun class does not allow us to reliably determine whether such restrictions are met.</S>
+    <S sid="121" ssid="8">Second, a few semantic distinctions that are made in VerbNet appeared to be too fine-grained to capture, so we map these to a more coarse-grained subset of the VerbNet roles.</S>
+    <S sid="122" ssid="9">For instance, the role Actor is merged with Agent, and Patient with Theme.</S>
+    <S sid="123" ssid="10">We are left with a set of 16 roles: Agent, Amount, Attribute, Beneficiary, Cause, Destination, Experiencer, Instrument, Location, Material, Predicate, Recipient, Source, Stimulus, Theme, Time.</S>
+    <S sid="124" ssid="11">Of these, 13 actually occur in our target verb classes.</S>
+    <S sid="125" ssid="12">Our corpus consists of a random selection of 20% of the sentences in the British National Corpus (BNC Reference Guide, 2000).</S>
+    <S sid="126" ssid="13">This corpus is processed by the chunker of Abney (1991), from whose output we can identify the probable head words of verb arguments with some degree of error.</S>
+    <S sid="127" ssid="14">For instance, distant subjects are often not found, and PPs identified as arguments are often adjuncts.</S>
+    <S sid="128" ssid="15">To reduce the number of adjuncts, we ignore dates and any PPs that are not known to (possibly) introduce an argument to one of the verbs in our extended set.</S>
+    <S sid="129" ssid="16">We extracted two sets of sentences: a validation set consisting of 5 random examples of each target verb, and a test set, consisting of 10 random examples of each target verb.</S>
+    <S sid="130" ssid="17">The data sets were chunked as above, and the role for each potential argument slot was labelled by two human annotators, choosing from the simplified role set allowed by each verb according to VerbNet.</S>
+    <S sid="131" ssid="18">A slot could also be labelled as an adjunct, or as &#8220;bad&#8221; (incorrectly chunked).</S>
+    <S sid="132" ssid="19">Agreement between the two annotators was high, yielding a kappa statistic of 0.83.</S>
+    <S sid="133" ssid="20">After performing the labelling task individually, the annotators reconciled their responses (in consultation with a third annotator) to yield a set of human judgements used for evaluation.</S>
+    <S sid="134" ssid="21">In our development experiments, we tried an evidence count threshold of either the mean or median over all counts of a particular conjunction of conditioning events.</S>
+    <S sid="135" ssid="22">(For example, for , this is the mean or median count across all combinations of verb, slot, and noun.)</S>
+    <S sid="136" ssid="23">The more lenient median setting worked slightly better on the validation set, and was retained for our test experiments.</S>
+    <S sid="137" ssid="24">We also experimented with initial starting values of 2, 3, and 8 for the log likelihood ratio threshold.</S>
+    <S sid="138" ssid="25">An initial setting of 8 showed an improvement in performance, as lower values enabled too many early role assignments, so we used the value of 8 in our test experiments.</S>
+    <S sid="139" ssid="26">In all experiments, a decrement of .5 was used to gradually reduce the log likelihood ratio threshold.</S>
+  </SECTION>
+  <SECTION title="6 Experimental Results" number="6">
+    <S sid="140" ssid="1">Of over 960K slots we extracted from the corpus, 120K occurred with one of 54 target verbs.</S>
+    <S sid="141" ssid="2">Of these, our validation data consisted of 278 slots, and our test data of 554 slots.</S>
+    <S sid="142" ssid="3">We focus on the analysis of test data; the pattern on the validation data was nearly identical in all respects.</S>
+    <S sid="143" ssid="4">The target slots fall into several categories, depending on the human judgements: argument slots, adjunct slots, and &#8220;bad&#8221; slots (chunking errors).</S>
+    <S sid="144" ssid="5">We report detailed analysis over the slots identified as arguments.</S>
+    <S sid="145" ssid="6">We also report overall accuracy if adjunct and &#8220;bad&#8221; slots are included in the slots to be labelled.</S>
+    <S sid="146" ssid="7">This comparison is similar to that made by Gildea and Jurafsky (2002) and others, either using arguments as delimited in the FrameNet corpus, or having to automatically locate argument boundaries.4 Furthermore, we report results over individual slot classes (subject, object, indirect object, and PP object), as well as over all slots.</S>
+    <S sid="147" ssid="8">We report results after the &#8220;unambiguous&#8221; data is assigned, and at the end of the algorithm, when no more slots can be labelled.</S>
+    <S sid="148" ssid="9">At either of these steps it is possible for some slots to have been assigned and some to remain unassigned.</S>
+    <S sid="149" ssid="10">Rather than performing a simple precision/recall analysis, we report a finer grained elaboration that gives a more precise picture of the results.</S>
+    <S sid="150" ssid="11">For the assigned slots, we report percent correct (of total, not of assigned) and percent incorrect.</S>
+    <S sid="151" ssid="12">For the unassigned slots, we report percent &#8220;possible&#8221; (i.e., slots whose candidate list contains the correct role) and percent &#8220;impossible&#8221; (i.e., slots whose candidate list does not contain the correct role&#8212;and which may in fact be empty).</S>
+    <S sid="152" ssid="13">All these percent figures are out of all argument slots (for the first set of results), and out of all slots (for the second set); see Table 3.</S>
+    <S sid="153" ssid="14">Correctness is determined by the human judgements on the chunked slots, as reported above.</S>
+    <S sid="154" ssid="15">Using our notion of slot class, we compare our results to a baseline that assigns all slots the role with the highest probability for that slot class, .</S>
+    <S sid="155" ssid="16">When using general thematic roles, this is a more informed baseline than , as used in other work.</S>
+    <S sid="156" ssid="17">We are using a very different verb lexicon, corpus, and human standard than in previous research.</S>
+    <S sid="157" ssid="18">The closest work is that of Gildea and Jurafsky (2002) which maps FrameNet roles to a set of 18 thematic roles very similar to our roles, and also operates on a subset of the BNC (albeit manually rather than randomly selected).</S>
+    <S sid="158" ssid="19">We mention the performance of their method where appropriate below.</S>
+    <S sid="159" ssid="20">However, our results are compared to human annotation of chunked data, while theirs (and other supervised results) are compared to manually annotated full sentences.</S>
+    <S sid="160" ssid="21">Our percentage correct values therefore do not take into account argument constituents that are simply missed by the chunker.</S>
+    <S sid="161" ssid="22">Table 3 summarizes our results.</S>
+    <S sid="162" ssid="23">In this section, we focus on argument slots as identified by our human judges (the first panel of results in the table).</S>
+    <S sid="163" ssid="24">There are a number of things to note.</S>
+    <S sid="164" ssid="25">First, our performance on these slots is very high, 90.1% correct at the end of the algorithm, with 7.0% incorrect, and delimited arguments, others train, as well as test, only on such arguments.</S>
+    <S sid="165" ssid="26">In our approach, all previously annotated slots are used in the iterative training of the probability model.</S>
+    <S sid="166" ssid="27">Thus, even when we report results on argument slots only, adjunct and &#8220;bad&#8221; slots may have induced errors in their labelling. only 2.9% left unassigned.</S>
+    <S sid="167" ssid="28">(The latter have null candidate lists.)</S>
+    <S sid="168" ssid="29">This is a 56% reduction in error rate over the baseline.</S>
+    <S sid="169" ssid="30">Second, we see that even after the initial unambiguous role assignment step, the algorithm achieves close to the baseline percent correct.</S>
+    <S sid="170" ssid="31">Furthermore, over 96% of the initially assigned roles are correct.</S>
+    <S sid="171" ssid="32">This means that much of the work in narrowing down the candidate lists is actually being preformed during frame matching.</S>
+    <S sid="172" ssid="33">It is noteworthy that such a simple method of choosing the initial candidates can be so useful, and it would seem that even supervised methods might benefit from employing such an explicit use of the lexicon to narrow down role candidates for a slot.</S>
+    <S sid="173" ssid="34">After unambiguous role assignment, about 21% of the test data remains unassigned (116 slots).</S>
+    <S sid="174" ssid="35">Of these 116 slots, 100 have a non-null candidate list.</S>
+    <S sid="175" ssid="36">These 100 are assigned by our iterative probability model, so we are especially interested in the results on them.</S>
+    <S sid="176" ssid="37">We find that 76 of these 100 are assigned correctly (accounting for the 13.7% increase to 90.1%), and 24 are assigned incorrectly, yielding a 76% accuracy for the probability model portion of our algorithm on identified argument slots.</S>
+    <S sid="177" ssid="38">Moreover, we also find that all specificity levels of the probability model (see Figure 1) are employed in making these decisions&#8212;about a third of the decisions are made by each level.</S>
+    <S sid="178" ssid="39">This indicates that while there is sufficient data in many cases to warrant using the exact probability formula , the class-based generalizations we propose prove to be very useful to the algorithm.</S>
+    <S sid="179" ssid="40">As a point of comparison, the supervised method of Gildea and Jurafsky (2002) achieved 82.1% accuracy on identified arguments using general thematic roles.</S>
+    <S sid="180" ssid="41">However, they had a larger and more varied target set, consisting of 1462 predicates from 67 FrameNet frames (classes), which makes their task harder than ours.</S>
+    <S sid="181" ssid="42">We are aware that our test set is small compared to supervised approaches, which have a large amount of labelled data available.</S>
+    <S sid="182" ssid="43">However, our almost identical results across the validation and test sets indicates consistent behaviour that may generalize to a larger test set, at least on similar classes of verbs.</S>
+    <S sid="183" ssid="44">When using general thematic roles with a small set of verb classes, the probability used for the baseline, , works very well for subjects and objects (which are primarily Agents and Themes, respectively, for our verbs).</S>
+    <S sid="184" ssid="45">Indeed, when we examine each of the slot classes individually, we find that, for subjects and objects, the percent correct achieved by the algorithm is indistinguishable from the baseline (both are around 93%, for both subjects and objects).</S>
+    <S sid="185" ssid="46">For PP objects, on the other hand, the baseline is only around 11% correct, while we achieve 78.5% correct, a 76% reduction in error rate.</S>
+    <S sid="186" ssid="47">Clearly, when more roles are available, even becomes a weak predictor.5 We could just assign the default role for subjects and objects when using general thematic roles, but we think this is too simplistic.</S>
+    <S sid="187" ssid="48">First, when we broaden our range of verb classes, subjects and objects will have more possible roles.</S>
+    <S sid="188" ssid="49">As we have seen with PPs, when more roles are available, the performance of a default role degrades.</S>
+    <S sid="189" ssid="50">Second, although we achieve the same correctness as the baseline, our algorithm does not simply assign the dominant role in these cases.</S>
+    <S sid="190" ssid="51">Some subjects are assigned Theme, while some objects are assigned Recipient or Source.</S>
+    <S sid="191" ssid="52">These roles would never be possible in these slots if a default assignment were followed.</S>
+    <S sid="192" ssid="53">We also consider our performance given frame matching and chunking errors, which can lead to adjuncts or even &#8220;bad&#8221; constituents being labelled.</S>
+    <S sid="193" ssid="54">Only arguments should be labelled, while nonarguments should remain unlabelled.</S>
+    <S sid="194" ssid="55">Of 98 slots judged to be adjuncts, 19 erroneously are given labels.</S>
+    <S sid="195" ssid="56">Including the adjunct slots, our percent correct goes from 90.1% to 88.7%.</S>
+    <S sid="196" ssid="57">Of the 20 &#8220;bad&#8221; slots, 12 were labelled.</S>
+    <S sid="197" ssid="58">Including these, correctness is reduced slightly further, to 87.2%, as shown in the second panel of results in Table 3.</S>
+    <S sid="198" ssid="59">The error rate reduction here of 65% is higher than on arguments only, because the baseline always labels (in error) adjuncts and &#8220;bad&#8221; slots.</S>
+    <S sid="199" ssid="60">(Gildea and Jurafsky (2002) achieved 63.6% accuracy when having to identify arguments for thematic roles, though note again that this is on a much larger and more general test set.</S>
+    <S sid="200" ssid="61">Also, although we take into account errors on identified chunks that are not arguments, we are are not counting chunker errors of missing arguments.)</S>
+    <S sid="201" ssid="62">As others have shown (Gildea and Palmer, 2002), semantic role labelling is more accurate with better preprocessing of the data.</S>
+    <S sid="202" ssid="63">However, we also think our algorithm may be extendable to deal with many of the adjunct cases we observed.</S>
+    <S sid="203" ssid="64">Often, adjuncts express time or location; while not argument roles, these do express generalizable semantic relations.</S>
+    <S sid="204" ssid="65">In future work, we plan to explore the notion of expanding our frame matching step to go beyond VerbNet by initializing potential adjuncts with appropriate roles.</S>
+  </SECTION>
+  <SECTION title="7 Conclusions and Future Work" number="7">
+    <S sid="205" ssid="1">Using an unsupervised algorithm for semantic role labelling, we have achieved 90% correct on identified arguments, well over an informed baseline of 77%, and have achieved 87% correct on all slots (64% baseline).</S>
+    <S sid="206" ssid="2">On PP objects, our conservative role assignment shows promise at leaving adjuncts unlabelled.</S>
+    <S sid="207" ssid="3">However, PP objects also have the lowest performance (of 78% correct on identified arguments, compared to 93% for subjects or objects).</S>
+    <S sid="208" ssid="4">More work is required on our frame matching approach to determine appropriate roles for PP objects given the specification in the lexicon, which (in the case of VerbNet) often over-constrains the allowable prepositions for a slot.</S>
+    <S sid="209" ssid="5">Although these results are promising, they are only a first step in demonstrating the potential of the approach.</S>
+    <S sid="210" ssid="6">We need to test more verbs, from a wider variety of verb classes (or even a different kind of predicate classification, such as FrameNet), to determine the generalizability of our findings.</S>
+    <S sid="211" ssid="7">Using FrameNet would also have the advantage of providing large amounts of labelled test data for our evaluation.</S>
+    <S sid="212" ssid="8">We also hope to integrate some processing of adjunct roles, rather than limiting ourselves to the specified arguments.</S>
+    <S sid="213" ssid="9">A unique aspect of our method is the probability model, which is novel in its generalizations over verb, slot, and noun classes for role labelling.</S>
+    <S sid="214" ssid="10">However, these have room for improvement&#8212;our noun classes are coarse, and prepositions clearly have the potential to be divided into more informative subclasses, such as spatial or time relations.</S>
+    <S sid="215" ssid="11">Our ongoing work is investigating better class models to make the backoff process even more effective.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="8">
+    <S sid="216" ssid="1">We gratefully acknowledge the support of NSERC of Canada.</S>
+    <S sid="217" ssid="2">We also thank Martha Palmer for providing us with the VerbNet data, Eric Joanis for help with the chunker, Vivian Tsang and Ryan North for helpful discussion, and two anonymous reviewers.</S>
+  </SECTION>
+</PAPER>

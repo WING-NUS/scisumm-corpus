@@ -1,0 +1,261 @@
+<PAPER>
+  <S sid="0">Joint Unsupervised Coreference Resolution with Markov Logic</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Machine learning approaches to coreference resolution are typically supervised, and require expensive labeled data.</S>
+    <S sid="2" ssid="2">Some unsupervised approaches have been proposed (e.g., Haghighi and Klein (2007)), but they are less accurate.</S>
+    <S sid="3" ssid="3">In this paper, we present the first unsupervised approach that is competitive with supervised ones.</S>
+    <S sid="4" ssid="4">This is made possible by performing joint inference across mentions, in contrast to the pairwise classification typically used in supervised methods, and by using Markov logic as a representation language, which enables us to easily express relations like apposition and predicate nominals.</S>
+    <S sid="5" ssid="5">On MUC and ACE datasets, our model outperforms Haghigi and Klein&#8217;s one using only a fraction of the training data, and often matches or exceeds the accuracy of state-of-the-art supervised models.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="6" ssid="1">The goal of coreference resolution is to identify mentions (typically noun phrases) that refer to the same entities.</S>
+    <S sid="7" ssid="2">This is a key subtask in many NLP applications, including information extraction, question answering, machine translation, and others.</S>
+    <S sid="8" ssid="3">Supervised learning approaches treat the problem as one of classification: for each pair of mentions, predict whether they corefer or not (e.g., McCallum &amp; Wellner (2005)).</S>
+    <S sid="9" ssid="4">While successful, these approaches require labeled training data, consisting of mention pairs and the correct decisions for them.</S>
+    <S sid="10" ssid="5">This limits their applicability.</S>
+    <S sid="11" ssid="6">Unsupervised approaches are attractive due to the availability of large quantities of unlabeled text.</S>
+    <S sid="12" ssid="7">However, unsupervised coreference resolution is much more difficult.</S>
+    <S sid="13" ssid="8">Haghighi and Klein&#8217;s (2007) model, the most sophisticated to date, still lags supervised ones by a substantial margin.</S>
+    <S sid="14" ssid="9">Extending it appears difficult, due to the limitations of its Dirichlet process-based representation.</S>
+    <S sid="15" ssid="10">The lack of label information in unsupervised coreference resolution can potentially be overcome by performing joint inference, which leverages the &#8220;easy&#8221; decisions to help make related &#8220;hard&#8221; ones.</S>
+    <S sid="16" ssid="11">Relations that have been exploited in supervised coreference resolution include transitivity (McCallum &amp; Wellner, 2005) and anaphoricity (Denis &amp; Baldridge, 2007).</S>
+    <S sid="17" ssid="12">However, there is little work to date on joint inference for unsupervised resolution.</S>
+    <S sid="18" ssid="13">We address this problem using Markov logic, a powerful and flexible language that combines probabilistic graphical models and first-order logic (Richardson &amp; Domingos, 2006).</S>
+    <S sid="19" ssid="14">Markov logic allows us to easily build models involving relations among mentions, like apposition and predicate nominals.</S>
+    <S sid="20" ssid="15">By extending the state-of-the-art algorithms for inference and learning, we developed the first general-purpose unsupervised learning algorithm for Markov logic, and applied it to unsupervised coreference resolution.</S>
+    <S sid="21" ssid="16">We test our approach on standard MUC and ACE datasets.</S>
+    <S sid="22" ssid="17">Our basic model, trained on a minimum of data, suffices to outperform Haghighi and Klein&#8217;s (2007) one.</S>
+    <S sid="23" ssid="18">Our full model, using apposition and other relations for joint inference, is often as accurate as the best supervised models, or more.</S>
+    <S sid="24" ssid="19">We begin by reviewing the necessary background on Markov logic.</S>
+    <S sid="25" ssid="20">We then describe our Markov logic network for joint unsupervised coreference resolution, and the learning and inference algorithms we used.</S>
+    <S sid="26" ssid="21">Finally, we present our experiments and results.</S>
+  </SECTION>
+  <SECTION title="2 Related Work" number="2">
+    <S sid="27" ssid="1">Most existing supervised learning approaches for coreference resolution are suboptimal since they resolve each mention pair independently, only imposing transitivity in postprocessing (Ng, 2005).</S>
+    <S sid="28" ssid="2">Moreover, many of them break up the resolution step into subtasks (e.g., first determine whether a mention is anaphoric, then classify whether it is coreferent with an antecedent), which further forsakes opportunities for joint inference that have been shown to be helpful (Poon &amp; Domingos, 2007).</S>
+    <S sid="29" ssid="3">Using graph partitioning, McCallum &amp; Wellner (2005) incorporated transitivity into pairwise classification and achieved the state-of-the-art result on the MUC-6 dataset, but their approach can only leverage one binary relation at a time, not arbitrary relations among mentions.</S>
+    <S sid="30" ssid="4">Denis &amp; Baldridge (2007) determined anaphoricity and pairwise classification jointly using integer programming, but they did not incorporate transitivity or other relations.</S>
+    <S sid="31" ssid="5">While potentially more appealing, unsupervised learning is very challenging, and unsupervised coreference resolution systems are still rare to this date.</S>
+    <S sid="32" ssid="6">Prior to our work, the best performance in unsupervised coreference resolution was achieved by Haghighi &amp; Klein (2007), using a nonparametric Bayesian model based on hierarchical Dirichlet processes.</S>
+    <S sid="33" ssid="7">At the heart of their system is a mixture model with a few linguistically motivated features such as head words, entity properties and salience.</S>
+    <S sid="34" ssid="8">Their approach is a major step forward in unsupervised coreference resolution, but extending it is challenging.</S>
+    <S sid="35" ssid="9">The main advantage of Dirichlet processes is that they are exchangeable, allowing parameters to be integrated out, but Haghighi and Klein forgo this when they introduce salience.</S>
+    <S sid="36" ssid="10">Their model thus requires Gibbs sampling over both assignments and parameters, which can be very expensive.</S>
+    <S sid="37" ssid="11">Haghighi and Klein circumvent this by making approximations that potentially hurt accuracy.</S>
+    <S sid="38" ssid="12">At the same time, the Dirichlet process prior favors skewed cluster sizes and a number of clusters that grows logarithmically with the number of data points, neither of which seems generally appropriate for coreference resolution.</S>
+    <S sid="39" ssid="13">Further, deterministic or strong non-deterministic dependencies cause Gibbs sampling to break down (Poon &amp; Domingos, 2006), making it difficult to leverage many linguistic regularities.</S>
+    <S sid="40" ssid="14">For example, apposition (as in &#8220;Bill Gates, the chairman of Microsoft&#8221;) suggests coreference, and thus the two mentions it relates should always be placed in the same cluster.</S>
+    <S sid="41" ssid="15">However, Gibbs sampling can only move one mention at a time from one cluster to another, and this is unlikely to happen, because it would require breaking the apposition rule.</S>
+    <S sid="42" ssid="16">Blocked sampling can alleviate this problem by sampling multiple mentions together, but it requires that the block size be predetermined to a small fixed number.</S>
+    <S sid="43" ssid="17">When we incorporate apposition and other regularities the blocks can become arbitrarily large, making this infeasible.</S>
+    <S sid="44" ssid="18">For example, suppose we also want to leverage predicate nominals (i.e., the subject and the predicating noun of a copular verb are likely coreferent).</S>
+    <S sid="45" ssid="19">Then a sentence like &#8220;He is Bill Gates, the chairman of Microsoft&#8221; requires a block of four mentions: &#8220;He&#8221;, &#8220;Bill Gates&#8221;, &#8220;the chairman of Microsoft&#8221;, and &#8220;Bill Gates, the chairman of Microsoft&#8221;.</S>
+    <S sid="46" ssid="20">Similar difficulties occur with other inference methods.</S>
+    <S sid="47" ssid="21">Thus, extending Haghighi and Klein&#8217;s model to include richer linguistic features is a challenging problem.</S>
+    <S sid="48" ssid="22">Our approach is instead based on Markov logic, a powerful representation for joint inference with uncertainty (Richardson &amp; Domingos, 2006).</S>
+    <S sid="49" ssid="23">Like Haghighi and Klein&#8217;s, our model is cluster-based rather than pairwise, and implicitly imposes transitivity.</S>
+    <S sid="50" ssid="24">We do not predetermine anaphoricity of a mention, but rather fuse it into the integrated resolution process.</S>
+    <S sid="51" ssid="25">As a result, our model is inherently joint among mentions and subtasks.</S>
+    <S sid="52" ssid="26">It shares several features with Haghighi &amp; Klein&#8217;s model, but removes or refines features where we believe it is appropriate to.</S>
+    <S sid="53" ssid="27">Most importantly, our model leverages apposition and predicate nominals, which Haghighi &amp; Klein did not use.</S>
+    <S sid="54" ssid="28">We show that this can be done very easily in our framework, and yet results in very substantial accuracy gains.</S>
+    <S sid="55" ssid="29">It is worth noticing that Markov logic is also well suited for joint inference in supervised systems (e.g., transitivity, which took McCallum &amp; Wellner (2005) nontrivial effort to incorporate, can be handled in Markov logic with the addition of a single formula (Poon &amp; Domingos, 2008)).</S>
+  </SECTION>
+  <SECTION title="3 Markov Logic" number="3">
+    <S sid="56" ssid="1">In many NLP applications, there exist rich relations among objects, and recent work in statistical relational learning (Getoor &amp; Taskar, 2007) and structured prediction (Bakir et al., 2007) has shown that leveraging these can greatly improve accuracy.</S>
+    <S sid="57" ssid="2">One of the most powerful representations for joint inference is Markov logic, a probabilistic extension of first-order logic (Richardson &amp; Domingos, 2006).</S>
+    <S sid="58" ssid="3">A Markov logic network (MLN) is a set of weighted first-order clauses.</S>
+    <S sid="59" ssid="4">Together with a set of constants, it defines a Markov network with one node per ground atom and one feature per ground clause.</S>
+    <S sid="60" ssid="5">The weight of a feature is the weight of the firstorder clause that originated it.</S>
+    <S sid="61" ssid="6">The probability of a state x in such a network is given by P(x) = (1/Z) exp (Ez wzfz(x)), where Z is a normalization constant, wz is the weight of the ith clause, fz = 1 if the ith clause is true, and fz = 0 otherwise.</S>
+    <S sid="62" ssid="7">Markov logic makes it possible to compactly specify probability distributions over complex relational domains.</S>
+    <S sid="63" ssid="8">Efficient inference can be performed using MC-SAT (Poon &amp; Domingos, 2006).</S>
+    <S sid="64" ssid="9">MC-SAT is a &#8220;slice sampling&#8221; Markov chain Monte Carlo algorithm.</S>
+    <S sid="65" ssid="10">Slice sampling introduces auxiliary variables u that decouple the original ones x, and alternately samples u conditioned on x and viceversa.</S>
+    <S sid="66" ssid="11">To sample from the slice (the set of states x consistent with the current u), MC-SAT calls SampleSAT (Wei et al., 2004), which uses a combination of satisfiability testing and simulated annealing.</S>
+    <S sid="67" ssid="12">The advantage of using a satisfiability solver (WalkSAT) is that it efficiently finds isolated modes in the distribution, and as a result the Markov chain mixes very rapidly.</S>
+    <S sid="68" ssid="13">The slice sampling scheme ensures that detailed balance is (approximately) preserved.</S>
+    <S sid="69" ssid="14">MC-SAT is orders of magnitude faster than previous MCMC algorithms like Gibbs sampling, making efficient sampling possible on a scale that was previAlgorithm 1 MC-SAT(clauses, weights, num samples) x(c) Satisfy(hard clauses) for i 1 to num samples do M 0 for all ck E clauses satisfied by x(z&#8722;1) do With probability 1 &#8212; e&#8722;lk add ck to M ously out of reach.</S>
+    <S sid="70" ssid="15">Algorithm 1 gives pseudo-code for MC-SAT.</S>
+    <S sid="71" ssid="16">At iteration i &#8212; 1, the factor 0k for clause ck is either elk if ck is satisfied in x(z&#8722;1), or 1 otherwise.</S>
+    <S sid="72" ssid="17">MC-SAT first samples the auxiliary variable uk uniformly from (0, 0k), then samples a new state uniformly from the set of states that satisfy 0k &gt; uk for all k (the slice).</S>
+    <S sid="73" ssid="18">Equivalently, for each k, with probability 1 &#8212; e&#8722;lk the next state must satisfy ck.</S>
+    <S sid="74" ssid="19">In general, we can factorize the probability distribution in any way that facilitates inference, sample the uk&#8217;s, and make sure that the next state is drawn uniformly from solutions that satisfy 0k &gt; uk for all factors.</S>
+    <S sid="75" ssid="20">MC-SAT, like most existing relational inference algorithms, grounds all predicates and clauses, thus requiring memory and time exponential in the predicate and clause arities.</S>
+    <S sid="76" ssid="21">We developed a general method for producing a &#8220;lazy&#8221; version of relational inference algorithms (Poon &amp; Domingos, 2008), which carries exactly the same inference steps as the original algorithm, but only maintains a small subset of &#8220;active&#8221; predicates/clauses, grounding more as needed.</S>
+    <S sid="77" ssid="22">We showed that Lazy-MC-SAT, the lazy version of MC-SAT, reduced memory and time by orders of magnitude in several domains.</S>
+    <S sid="78" ssid="23">We use Lazy-MC-SAT in this paper.</S>
+    <S sid="79" ssid="24">Supervised learning for Markov logic maximizes the conditional log-likelihood L(x, y) = log P(Y = yJX = x), where Y represents the non-evidence predicates, X the evidence predicates, and x, y their values in the training data.</S>
+    <S sid="80" ssid="25">For simplicity, from now on we omit X, whose values are fixed and always conditioned on.</S>
+    <S sid="81" ssid="26">The optimization problem is convex and a global optimum can be found using gradient descent, with the gradient being where ni is the number of true groundings of clause i.</S>
+    <S sid="82" ssid="27">The expected count can be approximated as where yk are samples generated by MC-SAT.</S>
+    <S sid="83" ssid="28">To combat overfitting, a Gaussian prior is imposed on all weights.</S>
+    <S sid="84" ssid="29">In practice, it is difficult to tune the learning rate for gradient descent, especially when the number of groundings varies widely among clauses.</S>
+    <S sid="85" ssid="30">Lowd &amp; Domingos (2007) used a preconditioned scaled conjugate gradient algorithm (PSCG) to address this problem.</S>
+    <S sid="86" ssid="31">This estimates the optimal step size in each step as where g is the gradient, d the conjugate update direction, and A a parameter that is automatically tuned to trade off second-order information with gradient descent.</S>
+    <S sid="87" ssid="32">H is the Hessian matrix, with the (i, j)th entry being The Hessian can be approximated with the same samples used for the gradient.</S>
+    <S sid="88" ssid="33">Its negative inverse diagonal is used as the preconditioner.1 The open-source Alchemy package (Kok et al., 2007) provides implementations of existing algorithms for Markov logic.</S>
+    <S sid="89" ssid="34">In Section 5, we develop the first general-purpose unsupervised learning algorithm for Markov logic by extending the existing algorithms to handle hidden predicates.2 1Lowd &amp; Domingos showed that &#945; can be computed more efficiently, without explicitly approximating or storing the Hessian.</S>
+    <S sid="90" ssid="35">Readers are referred to their paper for details.</S>
+    <S sid="91" ssid="36">2Alchemy includes a discriminative EM algorithm, but it assumes that only a few values are missing, and cannot handle completely hidden predicates.</S>
+    <S sid="92" ssid="37">Kok &amp; Domingos (2007) applied Markov logic to relational clustering, but they used hard EM.</S>
+  </SECTION>
+  <SECTION title="4 An MLN for Joint Unsupervised Coreference Resolution" number="4">
+    <S sid="93" ssid="1">In this section, we present our MLN for joint unsupervised coreference resolution.</S>
+    <S sid="94" ssid="2">Our model deviates from Haghighi &amp; Klein&#8217;s (2007) in several important ways.</S>
+    <S sid="95" ssid="3">First, our MLN does not model saliences for proper nouns or nominals, as their influence is marginal compared to other features; for pronoun salience, it uses a more intuitive and simpler definition based on distance, and incorporated it as a prior.</S>
+    <S sid="96" ssid="4">Another difference is in identifying heads.</S>
+    <S sid="97" ssid="5">For the ACE datasets, Haghighi and Klein used the gold heads; for the MUC-6 dataset, where labels are not available, they crudely picked the rightmost token in a mention.</S>
+    <S sid="98" ssid="6">We show that a better way is to determine the heads using head rules in a parser.</S>
+    <S sid="99" ssid="7">This improves resolution accuracy and is always applicable.</S>
+    <S sid="100" ssid="8">Crucially, our MLN leverages syntactic relations such as apposition and predicate nominals, which are not used by Haghighi and Klein.</S>
+    <S sid="101" ssid="9">In our approach, what it takes is just adding two formulas to the MLN.</S>
+    <S sid="102" ssid="10">As common in previous work, we assume that true mention boundaries are given.</S>
+    <S sid="103" ssid="11">We do not assume any other labeled information.</S>
+    <S sid="104" ssid="12">In particular, we do not assume gold name entity recognition (NER) labels, and unlike Haghighi &amp; Klein (2007), we do not assume gold mention types (for ACE datasets, they also used gold head words).</S>
+    <S sid="105" ssid="13">We determined the head of a mention either by taking its rightmost token, or by using the head rules in a parser.</S>
+    <S sid="106" ssid="14">We detected pronouns using a list.</S>
+    <S sid="107" ssid="15">The main query predicate is InClust(m, c!</S>
+    <S sid="108" ssid="16">), which is true iff mention m is in cluster c. The &#8220;t!&#8221; notation signifies that for each m, this predicate is true for a unique value of c. The main evidence predicate is Head(m, t!</S>
+    <S sid="109" ssid="17">), where m is a mention and t a token, and which is true iff t is the head of m. A key component in our MLN is a simple head mixture model, where the mixture component priors are represented by the unit clause InClust(+m, +c) and the head distribution is represented by the head prediction rule All free variables are implicitly universally quantified.</S>
+    <S sid="110" ssid="18">The &#8220;+&#8221; notation signifies that the MLN contains an instance of the rule, with a separate weight, for each value combination of the variables with a plus sign.</S>
+    <S sid="111" ssid="19">By convention, at each inference step we name each non-empty cluster after the earliest mention it contains.</S>
+    <S sid="112" ssid="20">This helps break the symmetry among mentions, which otherwise produces multiple optima and makes learning unnecessarily harder.</S>
+    <S sid="113" ssid="21">To encourage clustering, we impose an exponential prior on the number of non-empty clusters with weight &#8722;1.</S>
+    <S sid="114" ssid="22">The above model only clusters mentions with the same head, and does not work well for pronouns.</S>
+    <S sid="115" ssid="23">To address this, we introduce the predicate IsPrn(m), which is true iff the mention m is a pronoun, and adapt the head prediction rule as follows: This is always false when m is a pronoun, and thus applies only to non-pronouns.</S>
+    <S sid="116" ssid="24">Pronouns tend to resolve with mentions that are semantically compatible with them.</S>
+    <S sid="117" ssid="25">Thus we introduce predicates that represent entity type, number, and gender: Type(x, e!</S>
+    <S sid="118" ssid="26">), Number(x, n!</S>
+    <S sid="119" ssid="27">), Gender(x, g!</S>
+    <S sid="120" ssid="28">), where x can be either a cluster or mention, e E {Person,Organization,Location,Other}, n E {Singular,Plural} and g E {Male, Female, Neuter}.</S>
+    <S sid="121" ssid="29">Many of these are known for pronouns, and some can be inferred from simple linguistic cues (e.g., &#8220;Ms.</S>
+    <S sid="122" ssid="30">Galen&#8221; is a singular female person, while &#8220;XYZ Corp.&#8221; is an organization).3 Entity type assignment is represented by the unit clause Type(+x, +e) and similarly for number and gender.</S>
+    <S sid="123" ssid="31">A mention should agree with its cluster in entity type.</S>
+    <S sid="124" ssid="32">This is ensured by the hard rule (which has infinite weight and must be satisfied) InClust(m, c) ==&gt; (Type(m, e) &lt;---&gt; Type(c, e)) 3We used the following cues: Mr., Ms., Jr., Inc., Corp., corporation, company.</S>
+    <S sid="125" ssid="33">The proportions of known properties range from 14% to 26%.</S>
+    <S sid="126" ssid="34">There are similar hard rules for number and gender.</S>
+    <S sid="127" ssid="35">Different pronouns prefer different entity types, as represented by which only applies to pronouns, and whose weight is positive if pronoun t is likely to assume entity type e and negative otherwise.</S>
+    <S sid="128" ssid="36">There are similar rules for number and gender.</S>
+    <S sid="129" ssid="37">Aside from semantic compatibility, pronouns tend to resolve with nearby mentions.</S>
+    <S sid="130" ssid="38">To model this, we impose an exponential prior on the distance (number of mentions) between a pronoun and its antecedent, with weight &#8722;1.4 This is similar to Haghighi and Klein&#8217;s treatment of salience, but simpler.</S>
+    <S sid="131" ssid="39">Syntactic relations among mentions often suggest coreference.</S>
+    <S sid="132" ssid="40">Incorporating such relations into our MLN is straightforward.</S>
+    <S sid="133" ssid="41">We illustrate this with two examples: apposition and predicate nominals.</S>
+    <S sid="134" ssid="42">We introduce a predicate for apposition, Appo(x, y), where x, y are mentions, and which is true iff y is an appositive of x.</S>
+    <S sid="135" ssid="43">We then add the rule Appo(x, y) ==&gt; (InClust(x, c) &lt;---&gt; InClust(y, c)) which ensures that x, y are in the same cluster if y is an appositive of x.</S>
+    <S sid="136" ssid="44">Similarly, we introduce a predicate for predicate nominals, PredNom(x, y), and the corresponding rule.5 The weights of both rules can be learned from data with a positive prior mean.</S>
+    <S sid="137" ssid="45">For simplicity, in this paper we treat them as hard constraints.</S>
+    <S sid="138" ssid="46">We also consider a rule-based system that clusters non-pronouns by their heads, and attaches a pronoun to the cluster which has no known conflicting type, number, or gender, and contains the closest antecedent for the pronoun.</S>
+    <S sid="139" ssid="47">This system can be encoded in an MLN with just four rules.</S>
+    <S sid="140" ssid="48">Three of them are the ones for enforcing agreement in type, number, and gender between a cluster and its members, as defined in the base MLN.</S>
+    <S sid="141" ssid="49">The fourth rule is With a large but not infinite weight (e.g., 100), this rule has the effect of clustering non-pronouns by their heads, except when it violates the hard rules.</S>
+    <S sid="142" ssid="50">The MLN can also include the apposition and predicate-nominal rules.</S>
+    <S sid="143" ssid="51">As in the base MLN, we impose the same exponential prior on the number of non-empty clusters and that on the distance between a pronoun and its antecedent.</S>
+    <S sid="144" ssid="52">This simple MLN is remarkably competitive, as we will see in the experiment section.</S>
+  </SECTION>
+  <SECTION title="5 Learning and Inference" number="5">
+    <S sid="145" ssid="1">Unsupervised learning in Markov logic maximizes the conditional log-likelihood where Z are unknown predicates.</S>
+    <S sid="146" ssid="2">In our coreference resolution MLN, Y includes Head and known groundings of Type, Number and Gender, Z includes InClust and unknown groundings of Type, Number, Gender, and X includes IsPrn, Appo and PredNom.</S>
+    <S sid="147" ssid="3">(For simplicity, from now on we drop X from the formula.)</S>
+    <S sid="148" ssid="4">With Z, the optimization problem is no longer convex.</S>
+    <S sid="149" ssid="5">However, we can still find a local optimum using gradient descent, with the gradient being where ni is the number of true groundings of the ith clause.</S>
+    <S sid="150" ssid="6">We extended PSCG for unsupervised learning.</S>
+    <S sid="151" ssid="7">The gradient is the difference of two expectations, each of which can be approximated using samples generated by MC-SAT.</S>
+    <S sid="152" ssid="8">The (i, j)th entry of and the step size can be computed accordingly.</S>
+    <S sid="153" ssid="9">Since our problem is no longer convex, the negative diagonal Hessian may contain zero or negative entries, so we first took the absolute values of the diagonal and added 1, then used the inverse as the preconditioner.</S>
+    <S sid="154" ssid="10">We also adjusted A more conservatively than Lowd &amp; Domingos (2007).</S>
+    <S sid="155" ssid="11">Notice that when the objects form independent subsets (in our cases, mentions in each document), we can process them in parallel and then gather sufficient statistics for learning.</S>
+    <S sid="156" ssid="12">We developed an efficient parallelized implementation of our unsupervised learning algorithm using the message-passing interface (MPI).</S>
+    <S sid="157" ssid="13">Learning in MUC-6 took only one hour, and in ACE-2004 two and a half.</S>
+    <S sid="158" ssid="14">To reduce burn-in time, we initialized MC-SAT with the state returned by MaxWalkSAT (Kautz et al., 1997), rather than a random solution to the hard clauses.</S>
+    <S sid="159" ssid="15">In the existing implementation in Alchemy (Kok et al., 2007), SampleSAT flips only one atom in each step, which is inefficient for predicates with unique-value constraints (e.g., Head(m, c!)).</S>
+    <S sid="160" ssid="16">Such predicates can be viewed as multi-valued predicates (e.g., Head(m) with value ranging over all c&#8217;s) and are prevalent in NLP applications.</S>
+    <S sid="161" ssid="17">We adapted SampleSAT to flip two or more atoms in each step so that the unique-value constraints are automatically satisfied.</S>
+    <S sid="162" ssid="18">By default, MC-SAT treats each ground clause as a separate factor while determining the slice.</S>
+    <S sid="163" ssid="19">This can be very inefficient for highly correlated clauses.</S>
+    <S sid="164" ssid="20">For example, given a non-pronoun mention m currently in cluster c and with head t, among the mixture prior rules involving m InClust(m, c) is the only one that is satisfied, and among those head-prediction rules involving m, &#172;IsPrn(m)&#8743;InClust(m, c)&#8743;Head(m, t) is the only one that is satisfied; the factors for these rules multiply to = exp(wm, + wm,&#65533;,t), where wm,r is the weight for InClust(m, c), and wm,&#65533;,t is the weight for &#172;IsPrn(m) &#8743; InClust(m, c) &#8743; Head(m, t), since an unsatisfied rule contributes a factor of e0 = 1.</S>
+    <S sid="165" ssid="21">We extended MC-SAT to treat each set of mutually exclusive and exhaustive rules as a single factor.</S>
+    <S sid="166" ssid="22">E.g., for the above m, MC-SAT now samples u uniformly from (0, 0), and requires that in the next state 0' be no less than u. Equivalently, the new cluster and head for m should satisfy wm,c, + wm,c,,t, &gt; log(u).</S>
+    <S sid="167" ssid="23">We extended SampleSAT so that when it considers flipping any variable involved in such constraints (e.g., c or t above), it ensures that their new values still satisfy these constraints.</S>
+    <S sid="168" ssid="24">The final clustering is found using the MaxWalkSAT weighted satisfiability solver (Kautz et al., 1997), with the appropriate extensions.</S>
+    <S sid="169" ssid="25">We first ran a MaxWalkSAT pass with only finite-weight formulas, then ran another pass with all formulas.</S>
+    <S sid="170" ssid="26">We found that this significantly improved the quality of the results that MaxWalkSAT returned.</S>
+  </SECTION>
+  <SECTION title="6 Experiments" number="6">
+    <S sid="171" ssid="1">We implemented our method as an extension to the Alchemy system (Kok et al., 2007).</S>
+    <S sid="172" ssid="2">Since our learning uses sampling, all results are the average of five runs using different random seeds.</S>
+    <S sid="173" ssid="3">Our optimization problem is not convex, so initialization is important.</S>
+    <S sid="174" ssid="4">The core of our model (head mixture) tends to cluster non-pronouns with the same head.</S>
+    <S sid="175" ssid="5">Therefore, we initialized by setting all weights to zero, and running the same learning algorithm on the base MLN, while assuming that in the ground truth, nonpronouns are clustered by their heads.</S>
+    <S sid="176" ssid="6">(Effectively, the corresponding InClust atoms are assigned to appropriate values and are included in Y rather than Z during learning.)</S>
+    <S sid="177" ssid="7">We used 30 iterations of PSCG for learning.</S>
+    <S sid="178" ssid="8">(In preliminary experiments, additional iterations had little effect on coreference accuracy.)</S>
+    <S sid="179" ssid="9">We generated 100 samples using MC-SAT for each expectation approximation.6 We conducted experiments on MUC-6, ACE-2004, and ACE Phrase-2 (ACE-2).</S>
+    <S sid="180" ssid="10">We evaluated our systems using two commonly-used scoring programs: MUC (Vilain et al., 1995) and B3 (Amit &amp; Baldwin, 1998).</S>
+    <S sid="181" ssid="11">To gain more insight, we also report pairwise resolution scores and mean absolute error in the number of clusters.</S>
+    <S sid="182" ssid="12">The MUC-6 dataset consists of 30 documents for testing and 221 for training.</S>
+    <S sid="183" ssid="13">To evaluate the contribution of the major components in our model, we conducted five experiments, each differing from the previous one in a single aspect.</S>
+    <S sid="184" ssid="14">We emphasize that our approach is unsupervised, and thus the data only contains raw text plus true mention boundaries.</S>
+    <S sid="185" ssid="15">MLN-1 In this experiment, the base MLN was used, and the head was chosen crudely as the rightmost token in a mention.</S>
+    <S sid="186" ssid="16">Our system was run on each test document separately, using a minimum of training data (the document itself).</S>
+    <S sid="187" ssid="17">MLN-30 Our system was trained on all 30 test documents together.</S>
+    <S sid="188" ssid="18">This tests how much can be gained by pooling information.</S>
+    <S sid="189" ssid="19">MLN-H The heads were determined using the head rules in the Stanford parser (Klein &amp; Manning, 2003), plus simple heuristics to handle suffixes such as &#8220;Corp.&#8221; and &#8220;Inc.&#8221; MLN-HA The apposition rule was added.</S>
+    <S sid="190" ssid="20">MLN-HAN The predicate-nominal rule was added.</S>
+    <S sid="191" ssid="21">This is our full model.</S>
+    <S sid="192" ssid="22">We also compared with two rule-based MLNs: RULE chose the head crudely as the rightmost token in a mention, and did not include the apposition rule and predicate-nominal rule; RULE-HAN chose the head using the head rules in the Stanford parser, and included the apposition rule and predicate-nominal rule.</S>
+    <S sid="193" ssid="23">Past results on ACE were obtained on different releases of the datasets, e.g., Haghighi and Klein (2007) used the ACE-2004 training corpus, Ng (2005) and Denis and Baldridge (2007) used ACE Phrase-2, and Culotta et al. (2007) used the ACE2004 formal test set.</S>
+    <S sid="194" ssid="24">In this paper, we used the ACE-2004 training corpus and ACE Phrase-2 (ACE2) to enable direct comparisons with Haghighi &amp; Klein (2007), Ng (2005), and Denis and Baldridge (2007).</S>
+    <S sid="195" ssid="25">Due to license restrictions, we were not able to obtain the ACE-2004 formal test set and so cannot compare directly to Culotta et al. (2007).</S>
+    <S sid="196" ssid="26">The English version of the ACE-2004 training corpus contains two sections, BNEWS and NWIRE, with 220 and 128 documents, respectively.</S>
+    <S sid="197" ssid="27">ACE-2 contains a training set and a test set.</S>
+    <S sid="198" ssid="28">In our experiments, we only used the test set, which contains three sections, BNEWS, NWIRE, and NPAPER, with 51, 29, and 17 documents, respectively.</S>
+  </SECTION>
+  <SECTION title="6.3 Results" number="7">
+    <S sid="199" ssid="1">Table 1 compares our system with previous approaches on the MUC-6 dataset, in MUC scores.</S>
+    <S sid="200" ssid="2">Our approach greatly outperformed Haghighi &amp; Klein (2007), the state-of-the-art unsupervised system.</S>
+    <S sid="201" ssid="3">Our system, trained on individual documents, achieved an F1 score more than 7% higher than theirs trained on 60 documents, and still outperformed it trained on 381 documents.</S>
+    <S sid="202" ssid="4">Training on the 30 test documents together resulted in a significant gain.</S>
+    <S sid="203" ssid="5">(We also ran experiments using more documents, and the results were similar.)</S>
+    <S sid="204" ssid="6">Better head identification (MLN-H) led to a large improvement in accuracy, which is expected since for mentions with a right modifier, the rightmost tokens confuse rather than help coreference (e.g., &#8220;the chairman of Microsoft&#8221;).</S>
+    <S sid="205" ssid="7">Notice that with this improvement our system already outperforms a state-of-theart supervised system (McCallum &amp; Wellner, 2005).</S>
+    <S sid="206" ssid="8">Leveraging apposition resulted in another large improvement, and predicate nominals also helped.</S>
+    <S sid="207" ssid="9">Our full model scores about 9% higher than Haghighi &amp; Klein (2007), and about 6% higher than McCallum &amp; Wellner (2005).</S>
+    <S sid="208" ssid="10">To our knowledge, this is the best coreference accuracy reported on MUC-6 to date.7 The B3 scores of MLN-HAN on the MUC-6 dataset are 77.4 (precision), 67.6 (recall) and 72.2 (F1).</S>
+    <S sid="209" ssid="11">(The other systems did not report B3.)</S>
+    <S sid="210" ssid="12">Interestingly, the rule-based MLN (RULE) sufficed to outperform Haghighi &amp; Klein (2007), and by using better heads and the apposition and predicate-nominal rules (RULE-HAN), it outperformed McCallum &amp; Wellner (2005), the supervised system.</S>
+    <S sid="211" ssid="13">The MLNs with learning (MLN-30 and MLN-HAN), on the other hand, substantially outperformed the corresponding rule-based ones.</S>
+    <S sid="212" ssid="14">Table 2 compares our system to Haghighi &amp; Klein (2007) on the ACE-2004 training set in MUC scores.</S>
+    <S sid="213" ssid="15">Again, our system outperformed theirs by a large margin.</S>
+    <S sid="214" ssid="16">The B3 scores of MLN-HAN on the ACE2004 dataset are 71.6 (precision), 68.4 (recall) and 70.0 (F1) for BNEWS, and 75.7 (precision), 69.2 (recall) and 72.3 (F1) for NWIRE.</S>
+    <S sid="215" ssid="17">(Haghighi &amp; Klein (2007) did not report B3.)</S>
+    <S sid="216" ssid="18">Due to license restrictions, we could not compare directly to Culotta et al. (2007), who reported overall B3-F1 of 79.3 on the formal test set.</S>
+    <S sid="217" ssid="19">Tables 3 and 4 compare our system to two recent supervised systems, Ng (2005) and Denis &amp; Baldridge (2007).</S>
+    <S sid="218" ssid="20">Our approach significantly outperformed Ng (2005).</S>
+    <S sid="219" ssid="21">It tied with Denis &amp; Baldridge (2007) on NWIRE, and was somewhat less accurate on BNEWS and NPAPER.</S>
+    <S sid="220" ssid="22">Luo et al. (2004) pointed out that one can obtain a very high MUC score simply by lumping all mentions together.</S>
+    <S sid="221" ssid="23">B3 suffers less from this problem but is not perfect.</S>
+    <S sid="222" ssid="24">Thus we also report pairwise resolution scores (Table 5), the gold number of clusters, and our mean absolute error in the number of clusters (Table 6).</S>
+    <S sid="223" ssid="25">Systems that simply merge all mentions will have exceedingly low pairwise precision (far below 50%), and very large errors in the number of clusters.</S>
+    <S sid="224" ssid="26">Our system has fairly good pairwise precisions and small mean error in the number of clusters, which verifies that our results are sound.</S>
+    <S sid="225" ssid="27">Many of our system&#8217;s remaining errors involve nominals.</S>
+    <S sid="226" ssid="28">Additional features should be considered to distinguish mentions that have the same head but are different entities.</S>
+    <S sid="227" ssid="29">For pronouns, many remaining errors can be corrected using linguistic knowledge like binding theory and salience hierarchy.</S>
+    <S sid="228" ssid="30">Our heuristics for identifying appositives and predicate nominals also make many errors, which often can be fixed with additional name entity recognition capabilities (e.g., given &#8220;Mike Sullivan, VOA News&#8221;, it helps to know that the former is a person and the latter an organization).</S>
+    <S sid="229" ssid="31">The most challenging case involves phrases with different heads that are both proper nouns (e.g., &#8220;Mr.</S>
+    <S sid="230" ssid="32">Bush&#8221; and &#8220;the White House&#8221;).</S>
+    <S sid="231" ssid="33">Handling these cases requires domain knowledge and/or more powerful joint inference.</S>
+  </SECTION>
+  <SECTION title="7 Conclusion" number="8">
+    <S sid="232" ssid="1">This paper introduces the first unsupervised coreference resolution system that is as accurate as supervised systems.</S>
+    <S sid="233" ssid="2">It performs joint inference among mentions, using relations like apposition and predicate nominals.</S>
+    <S sid="234" ssid="3">It uses Markov logic as a representation language, which allows it to be easily extended to incorporate additional linguistic and world knowledge.</S>
+    <S sid="235" ssid="4">Future directions include incorporating additional knowledge, conducting joint entity detection and coreference resolution, and combining coreference resolution with other NLP tasks.</S>
+  </SECTION>
+  <SECTION title="8 Acknowledgements" number="9">
+    <S sid="236" ssid="1">We thank the anonymous reviewers for their comments.</S>
+    <S sid="237" ssid="2">This research was funded by DARPA contracts NBCHD030010/02-000225, FA8750-07-D-0185, and HR001107-C-0060, DARPA grant FA8750-05-2-0283, NSF grant IIS-0534881, and ONR grant N-00014-05-1-0313 and N00014-08-1-0670.</S>
+    <S sid="238" ssid="3">The views and conclusions contained in this document are those of the authors and should not be interpreted as necessarily representing the official policies, either expressed or implied, of DARPA, NSF, ONR, or the United States Government.</S>
+  </SECTION>
+</PAPER>

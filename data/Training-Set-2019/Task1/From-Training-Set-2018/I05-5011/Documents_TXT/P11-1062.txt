@@ -1,0 +1,900 @@
+Proceedings of the 49th Annual Meeting of the Association for Computational Linguistics, pages 610?619,
+Portland, Oregon, June 19-24, 2011. c?2011 Association for Computational Linguistics
+Global Learning of Typed Entailment Rules
+Jonathan Berant
+Tel Aviv University
+Tel Aviv, Israel
+jonatha6@post.tau.ac.il
+Ido Dagan
+Bar-Ilan University
+Ramat-Gan, Israel
+dagan@cs.biu.ac.il
+Jacob Goldberger
+Bar-Ilan University
+Ramat-Gan, Israel
+goldbej@eng.biu.ac.il
+Abstract
+Extensive knowledge bases of entailment rules
+between predicates are crucial for applied se-
+mantic inference. In this paper we propose an
+algorithm that utilizes transitivity constraints
+to learn a globally-optimal set of entailment
+rules for typed predicates. We model the task
+as a graph learning problem and suggest meth-
+ods that scale the algorithm to larger graphs.
+We apply the algorithm over a large data set
+of extracted predicate instances, from which a
+resource of typed entailment rules has been re-
+cently released (Schoenmackers et al, 2010).
+Our results show that using global transitiv-
+ity information substantially improves perfor-
+mance over this resource and several base-
+lines, and that our scaling methods allow us
+to increase the scope of global learning of
+entailment-rule graphs.
+1 Introduction
+Generic approaches for applied semantic infer-
+ence from text gained growing attention in recent
+years, particularly under the Textual Entailment
+(TE) framework (Dagan et al, 2009). TE is a
+generic paradigm for semantic inference, where the
+objective is to recognize whether a target meaning
+can be inferred from a given text. A crucial com-
+ponent of inference systems is extensive resources
+of entailment rules, also known as inference rules,
+i.e., rules that specify a directional inference rela-
+tion between fragments of text. One important type
+of rule is rules that specify entailment relations be-
+tween predicates and their arguments. For example,
+the rule ?X annex Y? X control Y? helps recognize
+that the text ?Japan annexed Okinawa? answers the
+question ?Which country controls Okinawa??. Thus,
+acquisition of such knowledge received considerable
+attention in the last decade (Lin and Pantel, 2001;
+Sekine, 2005; Szpektor and Dagan, 2009; Schoen-
+mackers et al, 2010).
+Most past work took a ?local learning? approach,
+learning each entailment rule independently of oth-
+ers. It is clear though, that there are global inter-
+actions between predicates. Notably, entailment is
+a transitive relation and so the rules A ? B and
+B ? C imply A? C.
+Recently, Berant et al (2010) proposed a global
+graph optimization procedure that uses Integer Lin-
+ear Programming (ILP) to find the best set of entail-
+ment rules under a transitivity constraint. Imposing
+this constraint raised two challenges. The first of
+ambiguity: transitivity does not always hold when
+predicates are ambiguous, e.g., X buy Y? X acquire
+Y and X acquire Y ? X learn Y, but X buy Y 9 X
+learn Y since these two rules correspond to two dif-
+ferent senses of acquire. The second challenge is
+scalability: ILP solvers do not scale well since ILP
+is an NP-complete problem. Berant et al circum-
+vented these issues by learning rules where one of
+the predicate?s arguments is instantiated (e.g., ?X re-
+duce nausea? X affect nausea?), which is useful for
+learning small graphs on-the-fly, given a target con-
+cept such as nausea. While rules may be effectively
+learned when needed, their scope is narrow and they
+are not useful as a generic knowledge resource.
+This paper aims to take global rule learning one
+step further. To this end, we adopt the represen-
+tation suggested by Schoenmackers et al (2010),
+who learned inference rules between typed predi-
+cates, i.e., predicates where the argument types (e.g.,
+city or drug) are specified. Schoenmackers et al uti-
+610
+lized typed predicates since they were dealing with
+noisy and ambiguous web text. Typing predicates
+helps disambiguation and filtering of noise, while
+still maintaining rules of wide-applicability. Their
+method employs a local learning approach, while the
+number of predicates in their data is too large to be
+handled directly by an ILP solver.
+In this paper we suggest applying global opti-
+mization learning to open domain typed entailment
+rules. To that end, we show how to construct a
+structure termed typed entailment graph, where the
+nodes are typed predicates and the edges represent
+entailment rules. We suggest scaling techniques that
+allow to optimally learn such graphs over a large
+set of typed predicates by first decomposing nodes
+into components and then applying incremental ILP
+(Riedel and Clarke, 2006). Using these techniques,
+the obtained algorithm is guaranteed to return an op-
+timal solution. We ran our algorithm over the data
+set of Schoenmackers et al and release a resource
+of 30,000 rules1 that achieves substantially higher
+recall without harming precision. To the best of our
+knowledge, this is the first resource of that scale
+to use global optimization for learning predicative
+entailment rules. Our evaluation shows that global
+transitivity improves the F1 score of rule learning by
+27% over several baselines and that our scaling tech-
+niques allow dealing with larger graphs, resulting in
+improved coverage.
+2 Background
+Most work on learning entailment rules between
+predicates considered each rule independently of
+others, using two sources of information: lexico-
+graphic resources and distributional similarity.
+Lexicographic resources are manually-prepared
+knowledge bases containing semantic information
+on predicates. A widely-used resource is WordNet
+(Fellbaum, 1998), where relations such as synonymy
+and hyponymy can be used to generate rules. Other
+resources include NomLex (Macleod et al, 1998;
+Szpektor and Dagan, 2009) and FrameNet (Baker
+and Lowe, 1998; Ben Aharon et al, 2010).
+Lexicographic resources are accurate but have
+1The resource can be downloaded from
+http://www.cs.tau.ac.il/j?onatha6/homepage files/resources
+/ACL2011Resource.zip
+low coverage. Distributional similarity algorithms
+use large corpora to learn broader resources by as-
+suming that semantically similar predicates appear
+with similar arguments. These algorithms usually
+represent a predicate with one or more vectors and
+use some function to compute argument similarity.
+Distributional similarity algorithms differ in their
+feature representation: Some use a binary repre-
+sentation: each predicate is represented by one fea-
+ture vector where each feature is a pair of argu-
+ments (Szpektor et al, 2004; Yates and Etzioni,
+2009). This representation performs well, but suf-
+fers when data is sparse. The binary-DIRT repre-
+sentation deals with sparsity by representing a pred-
+icate with a pair of vectors, one for each argument
+(Lin and Pantel, 2001). Last, a richer form of repre-
+sentation, termed unary, has been suggested where
+a different predicate is defined for each argument
+(Szpektor and Dagan, 2008). Different algorithms
+also differ in their similarity function. Some employ
+symmetric functions, geared towards paraphrasing
+(bi-directional entailment), while others choose di-
+rectional measures more suited for entailment (Bha-
+gat et al, 2007). In this paper, We employ several
+such functions, such as Lin (Lin and Pantel, 2001),
+and BInc (Szpektor and Dagan, 2008).
+Schoenmackers et al (2010) recently used dis-
+tributional similarity to learn rules between typed
+predicates, where the left-hand-side of the rule may
+contain more than a single predicate (horn clauses).
+In their work, they used Hearst-patterns (Hearst,
+1992) to extract a set of 29 million (argument, type)
+pairs from a large web crawl. Then, they employed
+several filtering methods to clean this set and au-
+tomatically produced a mapping of 1.1 million ar-
+guments into 156 types. Examples for (argument,
+type) pairs are (EXODUS, book), (CHINA, coun-
+try) and (ASTHMA, disease). Schoenmackers et
+al. then utilized the types, the mapped arguments
+and tuples from TextRunner (Banko et al, 2007)
+to generate 10,672 typed predicates (such as con-
+quer(country,city) and common in(disease,place)),
+and learn 30,000 rules between these predicates2. In
+this paper we will learn entailment rules over the
+same data set, which was generously provided by
+2The rules and the mapping of arguments into types can
+be downloaded from http://www.cs.washington.edu/research/
+sherlock-hornclauses/
+611
+Schoenmackers et al
+As mentioned above, Berant et al (2010) used
+global transitivity information to learn small entail-
+ment graphs. Transitivity was also used as an in-
+formation source in other fields of NLP: Taxonomy
+Induction (Snow et al, 2006), Co-reference Reso-
+lution (Finkel and Manning, 2008), Temporal Infor-
+mation Extraction (Ling and Weld, 2010), and Un-
+supervised Ontology Induction (Poon and Domin-
+gos, 2010). Our proposed algorithm applies to any
+sparse transitive relation, and so might be applicable
+in these fields as well.
+Last, we formulate our optimization problem as
+an Integer Linear Program (ILP). ILP is an optimiza-
+tion problem where a linear objective function over
+a set of integer variables is maximized under a set of
+linear constraints. Scaling ILP is challenging since
+it is an NP-complete problem. ILP has been exten-
+sively used in NLP lately (Clarke and Lapata, 2008;
+Martins et al, 2009; Do and Roth, 2010).
+3 Typed Entailment Graphs
+Given a set of typed predicates, entailment rules can
+only exist between predicates that share the same
+(unordered) pair of types (such as place and coun-
+try)3. Hence, every pair of types defines a graph
+that describes the entailment relations between pred-
+icates sharing those types (Figure 1). Next, we show
+how to represent entailment rules between typed
+predicates in a structure termed typed entailment
+graph, which will be the learning goal of our algo-
+rithm.
+A typed entailment graph is a directed graph
+where the nodes are typed predicates. A typed pred-
+icate is a triple p(t1, t2) representing a predicate in
+natural language. p is the lexical realization of the
+predicate and the types t1, t2 are variables repre-
+senting argument types. These are taken from a
+set of types T , where each type t ? T is a bag
+of natural language words or phrases. Examples
+for typed predicates are: conquer(country,city) and
+contain(product,material). An instance of a typed
+predicate is a triple p(a1, a2), where a1 ? t1 and
+a2 ? t2 are termed arguments. For example, be
+common in(ASTHMA,AUSTRALIA) is an instance of
+be common in(disease,place). For brevity, we refer
+3Otherwise, the rule would contain unbound variables.
+to typed entailment graphs and typed predicates as
+entailment graphs and predicates respectively.
+Edges in typed entailment graphs represent en-
+tailment rules: an edge (u, v) means that predicate
+u entails predicate v. If the type t1 is different
+from the type t2, mapping of arguments is straight-
+forward, as in the rule ?be find in(material,product)
+? contain(product,material)?. We term this a two-
+types entailment graph. When t1 and t2 are equal,
+mapping of arguments is ambiguous: we distin-
+guish direct-mapping edges where the first argu-
+ment on the left-hand-side (LHS) is mapped to
+the first argument on the right-hand-side (RHS),
+as in ?beat(team,team)
+d
+?? defeat(team,team)?, and
+reversed-mapping edges where the LHS first argu-
+ment is mapped to the RHS second argument, as
+in ?beat(team,team)
+r
+?? lose to(team,team)?. We
+term this a single-type entailment graph. Note
+that in single-type entailment graphs reversed-
+mapping loops are possible as in ?play(team,team)
+r
+?? play(team,team)?: if team A plays team B, then
+team B plays team A.
+Since entailment is a transitive relation, typed-
+entailment graphs are transitive: if the edges (u, v)
+and (v, w) are in the graph so is the edge (u,w).
+Note that in single-type entailment graphs one needs
+to consider whether mapping of edges is direct or re-
+versed: if mapping of both (u, v) and (v, w) is either
+direct or reversed, mapping of (u,w) is direct, oth-
+erwise it is reversed.
+Typing plays an important role in rule transitiv-
+ity: if predicates are ambiguous, transitivity does not
+necessarily hold. However, typing predicates helps
+disambiguate them and so the problem of ambiguity
+is greatly reduced.
+4 Learning Typed Entailment Graphs
+Our learning algorithm is composed of two steps:
+(1) Given a set of typed predicates and their in-
+stances extracted from a corpus, we train a (local)
+entailment classifier that estimates for every pair of
+predicates whether one entails the other. (2) Using
+the classifier scores we perform global optimization,
+i.e., learn the set of edges over the nodes that maxi-
+mizes the global score of the graph under transitivity
+and background-knowledge constraints.
+Section 4.1 describes the local classifier training
+612
+province of(place,country)
+be part of(place,country)
+annex(country,place)
+invade(country,place)
+be relate to(drug,drug)be derive from(drug,drug)
+be process from(drug,drug)
+be convert into(drug,drug)
+Figure 1: Top: A fragment of a two-types entailment
+graph. bottom: A fragment of a single-type entailment
+graph. Mapping of solid edges is direct and of dashed
+edges is reversed.
+procedure. Section 4.2 gives an ILP formulation for
+the optimization problem. Sections 4.3 and 4.4 pro-
+pose scaling techniques that exploit graph sparsity
+to optimally solve larger graphs.
+4.1 Training an entailment classifier
+Similar to the work of Berant et al (2010), we
+use ?distant supervision?. Given a lexicographic re-
+source (WordNet) and a set of predicates with their
+instances, we perform the following three steps (see
+Table 1):
+1) Training set generation We use WordNet to
+generate positive and negative examples, where each
+example is a pair of predicates. Let P be the
+set of input typed predicates. For every predicate
+p(t1, t2) ? P such that p is a single word, we extract
+from WordNet the set S of synonyms and direct hy-
+pernyms of p. For every p? ? S, if p?(t1, t2) ? P
+then p(t1, t2) ? p?(t1, t2) is taken as a positive ex-
+ample.
+Negative examples are generated in a similar
+manner, with direct co-hyponyms of p (sister nodes
+in WordNet) and hyponyms at distance 2 instead of
+synonyms and direct hypernyms. We also generate
+negative examples by randomly sampling pairs of
+typed predicates that share the same types.
+2) Feature representation Each example pair of
+predicates (p1, p2) is represented by a feature vec-
+tor, where each feature is a specific distributional
+Type example
+hyper. beat(team,team)? play(team,team)
+syno. reach(team,game)? arrive at(team,game)
+cohypo. invade(country,city) 9 bomb(country,city)
+hypo. defeat(city,city) 9 eliminate(city,city)
+random hold(place,event) 9 win(place,event)
+Table 1: Automatically generated training set examples.
+similarity score estimating whether p1 entails p2.
+We compute 11 distributional similarity scores for
+each pair of predicates based on the arguments ap-
+pearing in the extracted arguments. The first 6
+scores are computed by trying all combinations of
+the similarity functions Lin and BInc with the fea-
+ture representations unary, binary-DIRT and binary
+(see Section 2). The other 5 scores were provided
+by Schoenmackers et al (2010) and include SR
+(Schoenmackers et al, 2010), LIME (McCreath and
+Sharma, 1997), M-estimate (Dzeroski and Brakto,
+1992), the standard G-test and a simple implementa-
+tion of Cover (Weeds and Weir, 2003). Overall, the
+rationale behind this representation is that combin-
+ing various scores will yield a better classifier than
+each single measure.
+3) Training We train over an equal number of
+positive and negative examples, as classifiers tend to
+perform poorly on the minority class when trained
+on imbalanced data (Van Hulse et al, 2007; Nikulin,
+2008).
+4.2 ILP formulation
+Once the classifier is trained, we would like to learn
+all edges (entailment rules) of each typed entailment
+graph. Given a set of predicates V and an entail-
+ment score function f : V ? V ? R derived from
+the classifier, we want to find a graph G = (V,E)
+that respects transitivity and maximizes the sum of
+edge weights
+?
+(u,v)?E f(u, v). This problem is
+NP-hard by a reduction from the NP-hard Transitive
+Subgraph problem (Yannakakis, 1978). Thus, em-
+ploying ILP is an appealing approach for obtaining
+an optimal solution.
+For two-types entailment graphs the formulation
+is simple: The ILP variables are indicators Xuv de-
+noting whether an edge (u, v) is in the graph, with
+the following ILP:
+613
+G? = argmax
+?
+u6=v
+f(u, v) ?Xuv (1)
+s.t. ?u,v,w?V Xuv +Xvw ?Xuw ? 1 (2)
+?u,v?Ayes Xuv = 1 (3)
+?u,v?Ano Xuv = 0 (4)
+?u6=v Xuv ? {0, 1} (5)
+The objective in Eq. 1 is a sum over the weights
+of the eventual edges. The constraint in Eq. 2 states
+that edges must respect transitivity. The constraints
+in Eq. 3 and 4 state that for known node pairs, de-
+fined by Ayes and Ano, we have background knowl-
+edge indicating whether entailment holds or not. We
+elaborate on how Ayes and Ano were constructed in
+Section 5. For a graph with n nodes we get n(n?1)
+variables and n(n?1)(n?2) transitivity constraints.
+The simplest way to expand this formulation for
+single-type graphs is to duplicate each predicate
+node, with one node for each order of the types, and
+then the ILP is unchanged. However, this is inef-
+ficient as it results in an ILP with 2n(2n ? 1) vari-
+ables and 2n(2n?1)(2n?2) transitivity constraints.
+Since our main goal is to scale the use of ILP, we
+modify it a little. We denote a direct-mapping edge
+(u, v) by the indicator Xuv and a reversed-mapping
+edge (u, v) by Yuv. The functions fd and fr provide
+scores for direct and reversed mappings respectively.
+The objective in Eq. 1 and the constraint in Eq. 2 are
+replaced by (Eq. 3, 4 and 5 still exist and are carried
+over in a trivial manner):
+argmax
+?
+u6=v
+fd(u, v)Xuv +
+?
+u,v
+fr(u, v)Yuv (6)
+s.t. ?u,v,w?V Xuv +Xvw ?Xuw ? 1
+?u,v,w?V Xuv + Yvw ? Yuw ? 1
+?u,v,w?V Yuv +Xvw ? Yuw ? 1
+?u,v,w?V Yuv + Yvw ?Xuw ? 1
+The modified constraints capture the transitivity
+behavior of direct-mapping and reversed-mapping
+edges, as described in Section 3. This results in
+2n2 ? n variables and about 4n3 transitivity con-
+straints, cutting the ILP size in half.
+Next, we specify how to derive the function f
+from the trained classifier using a probabilistic for-
+mulation4. Following Snow et al (2006) and Be-
+rant et al (2010), we utilize a probabilistic entail-
+ment classifier that computes the posterior Puv =
+P (Xuv = 1|Fuv). We want to use Puv to derive the
+posterior P (G|F ), where F = ?u6=vFuv and Fuv is
+the feature vector for a node pair (u, v).
+Since the classifier was trained on a balanced
+training set, the prior over the two entailment
+classes is uniform and so by Bayes rule Puv ?
+P (Fuv|Xuv = 1). Using that and the exact same
+three independence assumptions described by Snow
+et al (2006) and Berant et al (2010) we can show
+that (for brevity, we omit the full derivation):
+G? = argmaxG logP (G|F ) = (7)
+argmax
+?
+u6=v
+(log
+Puv ? P (Xuv = 1)
+(1? Puv)P (Xuv = 0)
+)Xuv
+= argmax
+?
+u6=v
+(log
+Puv
+1? Puv
+)Xuv + log ? ? |E|
+where ? = P (Xuv=1)P (Xuv=0) is the prior odds ratio for
+an edge in the graph. Comparing Eq. 1 and 7 we
+see that f(u, v) = log Puv ?P (Xuv=1)(1?Puv)P (Xuv=0) . Note that f
+is composed of a likelihood component and an edge
+prior expressed by P (Xuv = 1), which we assume
+to be some constant. This constant is a parameter
+that affects graph sparsity and controls the trade-off
+between recall and precision.
+Next, we show how sparsity is exploited to scale
+the use of ILP solvers. We discuss two-types entail-
+ment graphs, but generalization is simple.
+4.3 Graph decomposition
+Though ILP solvers provide an optimal solution,
+they substantially restrict the size of graphs we can
+work with. The number of constraints is O(n3),
+and solving graphs of size > 50 is often not feasi-
+ble. To overcome this, we take advantage of graph
+sparsity: most predicates in language do not entail
+one another. Thus, it might be possible to decom-
+pose graphs into small components and solve each
+4We describe two-types graphs but extending to single-type
+graphs is straightforward.
+614
+Algorithm 1 Decomposed-ILP
+Input: A set V and a function f : V ? V ? R
+Output: An optimal set of directed edges E?
+1: E? = {(u, v) : f(u, v) > 0 ? f(v, u) > 0}
+2: V1, V2, ..., Vk ? connected components of
+G? = (V,E?)
+3: for i = 1 to k do
+4: Ei ? ApplyILPSolve(Vi,f)
+5: end for
+6: E? ?
+?k
+i=1Ei
+component separately. This is formalized in the next
+proposition.
+Proposition 1. If we can partition a set of nodes
+V into disjoint sets U,W such that for any cross-
+ing edge (u,w) between them (in either direction),
+f(u,w) < 0, then the optimal set of edgesEopt does
+not contain any crossing edge.
+Proof Assume by contradiction that Eopt con-
+tains a set of crossing edges Ecross. We can
+construct Enew = Eopt \ Ecross. Clearly?
+(u,v)?Enew f(u, v) >
+?
+(u,v)?Eopt f(u, v), as
+f(u, v) < 0 for any crossing edge.
+Next, we show that Enew does not violate tran-
+sitivity constraints. Assume it does, then the viola-
+tion is caused by omitting the edges in Ecross. Thus,
+there must be a node u ? U and w ? W (w.l.o.g)
+such that for some node v, (u, v) and (v, w) are in
+Enew, but (u,w) is not. However, this means either
+(u, v) or (v, w) is a crossing edge, which is impossi-
+ble since we omitted all crossing edges. Thus, Enew
+is a better solution than Eopt, contradiction.
+This proposition suggests a simple algorithm (see
+Algorithm 1): Add to the graph an undirected edge
+for any node pair with a positive score, then find the
+connected components, and apply an ILP solver over
+the nodes in each component. The edges returned
+by the solver provide an optimal (not approximate)
+solution to the optimization problem.
+The algorithm?s complexity is dominated by the
+ILP solver, as finding connected components takes
+O(V 2) time. Thus, efficiency depends on whether
+the graph is sparse enough to be decomposed into
+small components. Note that the edge prior plays an
+important role: low values make the graph sparser
+and easier to solve. In Section 5 we empirically test
+Algorithm 2 Incremental-ILP
+Input: A set V and a function f : V ? V ? R
+Output: An optimal set of directed edges E?
+1: ACT,VIO? ?
+2: repeat
+3: E? ? ApplyILPSolve(V,f,ACT)
+4: VIO? violated(V,E?)
+5: ACT? ACT ? VIO
+6: until |VIO| = 0
+how typed entailment graphs benefit from decompo-
+sition given different prior values.
+From a more general perspective, this algo-
+rithm can be applied to any problem of learning
+a sparse transitive binary relation. Such problems
+include Co-reference Resolution (Finkel and Man-
+ning, 2008) and Temporal Information Extraction
+(Ling and Weld, 2010). Last, the algorithm can be
+easily parallelized by solving each component on a
+different core.
+4.4 Incremental ILP
+Another solution for scaling ILP is to employ in-
+cremental ILP, which has been used in dependency
+parsing (Riedel and Clarke, 2006). The idea is
+that even if we omit the transitivity constraints, we
+still expect most transitivity constraints to be satis-
+fied, given a good local entailment classifier. Thus,
+it makes sense to avoid specifying the constraints
+ahead of time, but rather add them when they are
+violated. This is formalized in Algorithm 2.
+Line 1 initializes an active set of constraints and a
+violated set of constraints (ACT;VIO). Line 3 applies
+the ILP solver with the active constraints. Lines 4
+and 5 find the violated constraints and add them to
+the active constraints. The algorithm halts when no
+constraints are violated. The solution is clearly op-
+timal since we obtain a maximal solution for a less-
+constrained problem.
+A pre-condition for using incremental ILP is that
+computing the violated constraints (Line 4) is effi-
+cient, as it occurs in every iteration. We do that in
+a straightforward manner: For every node v, and
+edges (u, v) and (v, w), if (u,w) /? E? we add
+(u, v, w) to the violated constraints. This is cubic
+in worst-case but assuming the degree of nodes is
+bounded by a constant it is linear, and performs very
+615
+fast in practice.
+Combining Incremental-ILP and Decomposed-
+ILP is easy: We decompose any large graph into
+its components and apply Incremental ILP on each
+component. We applied this algorithm on our evalu-
+ation data set (Section 5) and found that it converges
+in at most 6 iterations and that the maximal num-
+ber of active constraints in large graphs drops from
+? 106 to ? 103 ? 104.
+5 Experimental Evaluation
+In this section we empirically answer the follow-
+ing questions: (1) Does transitivity improve rule
+learning over typed predicates? (Section 5.1) (2)
+Do Decomposed-ILP and Incremental-ILP improve
+scalability? (Section 5.2)
+5.1 Experiment 1
+A data set of 1 million TextRunner tuples (Banko
+et al, 2007), mapped to 10,672 distinct typed predi-
+cates over 156 types was provided by Schoenmack-
+ers et al (2010). Readers are referred to their pa-
+per for details on mapping of tuples to typed predi-
+cates. Since entailment only occurs between pred-
+icates that share the same types, we decomposed
+predicates by their types (e.g., all predicates with the
+types place and disease) into 2,303 typed entailment
+graphs. The largest graph contains 118 nodes and
+the total number of potential rules is 263,756.
+We generated a training set by applying the proce-
+dure described in Section 4.1, yielding 2,644 exam-
+ples. We used SVMperf (Joachims, 2005) to train a
+Gaussian kernel classifier and computed Puv by pro-
+jecting the classifier output score, Suv, with the sig-
+moid function: Puv = 11+exp(?Suv) . We tuned two
+SVM parameters using 5-fold cross validation and a
+development set of two typed entailment graphs.
+Next, we used our algorithm to learn rules. As
+mentioned in Section 4.2, we integrate background
+knowledge using the sets Ayes and Ano that contain
+predicate pairs for which we know whether entail-
+ment holds. Ayes was constructed with syntactic
+rules: We normalized each predicate by omitting the
+first word if it is a modal and turning passives to ac-
+tives. If two normalized predicates are equal they are
+synonymous and inserted into Ayes. Ano was con-
+structed from 3 sources (1) Predicates differing by a
+single pair of words that are WordNet antonyms (2)
+Predicates differing by a single word of negation (3)
+Predicates p(t1, t2) and p(t2, t1) where p is a transi-
+tive verb (e.g., beat) in VerbNet (Kipper-Schuler et
+al., 2000).
+We compared our algorithm (termed ILPscale) to
+the following baselines. First, to 10,000 rules re-
+leased by Schoenmackers et al (2010) (Sherlock),
+where the LHS contains a single predicate (Schoen-
+mackers et al released 30,000 rules but 20,000 of
+those have more than one predicate on the LHS,
+see Section 2), as we learn rules over the same data
+set. Second, to distributional similarity algorithms:
+(a) SR: the score used by Schoenmackers et al as
+part of the Sherlock system. (b) DIRT: (Lin and
+Pantel, 2001) a widely-used rule learning algorithm.
+(c) BInc: (Szpektor and Dagan, 2008) a directional
+rule learning algorithm. Third, we compared to the
+entailment classifier with no transitivity constraints
+(clsf ) to see if combining distributional similarity
+scores improves performance over single measures.
+Last, we added to all baselines background knowl-
+edge with Ayes and Ano (adding the subscript Xk to
+their name).
+To evaluate performance we manually annotated
+all edges in 10 typed entailment graphs - 7 two-
+types entailment graphs containing 14, 22, 30, 53,
+62, 86 and 118 nodes, and 3 single-type entailment
+graphs containing 7, 38 and 59 nodes. This annota-
+tion yielded 3,427 edges and 35,585 non-edges, re-
+sulting in an empirical edge density of 9%. We eval-
+uate the algorithms by comparing the set of edges
+learned by the algorithms to the gold standard edges.
+Figure 2 presents the precision-recall curve of the
+algorithms. The curve is formed by varying a score
+threshold in the baselines and varying the edge prior
+in ILPscale5. For figure clarity, we omit DIRT and
+SR, since BInc outperforms them.
+Table 2 shows micro-recall, precision and F1 at
+the point of maximal F1, and the Area Under the
+Curve (AUC) for recall in the range of 0-0.45 for all
+algorithms, given background knowledge (knowl-
+edge consistently improves performance by a few
+points for all algorithms). The table also shows re-
+sults for the rules from Sherlockk.
+5we stop raising the prior when run time over the graphs
+exceeds 2 hours. Often when the solver does not terminate in 2
+hours, it also does not terminate after 24 hours or more.
+616
+00 . 2
+0 . 4
+0 . 6
+0 . 8
+1
+0 0 . 1 0 . 2 0 . 3 0 . 4 0 . 5 0 . 6 0 . 7 0 . 8 0 . 9
+prec
+isio
+n
+recall
+BInc
+clsf
+BInc_k
+clsf_k
+ILP_scale
+Figure 2: Precision-recall curve for the algorithms.
+micro-average
+R (%) P (%) F1 (%) AUC
+ILPscale 43.4 42.2 42.8 0.22
+clsfk 30.8 37.5 33.8 0.17
+Sherlockk 20.6 43.3 27.9 N/A
+BInck 31.8 34.1 32.9 0.17
+SRk 38.4 23.2 28.9 0.14
+DIRTk 25.7 31.0 28.1 0.13
+Table 2: micro-average F1 and AUC for the algorithms.
+Results show that using global transitivity
+information substantially improves performance.
+ILPscale is better than all other algorithms by a large
+margin starting from recall .2, and improves AUC
+by 29% and the maximal F1 by 27%. Moreover,
+ILPscale doubles recall comparing to the rules from
+the Sherlock resource, while maintaining compara-
+ble precision.
+5.2 Experiment 2
+We want to test whether using our scaling tech-
+niques, Decomposed-ILP and Incremental-ILP, al-
+lows us to reach the optimal solution in graphs that
+otherwise we could not solve, and consequently in-
+crease the number of learned rules and the overall
+recall. To check that, we run ILPscale, with and with-
+out these scaling techniques (termed ILP?).
+We used the same data set as in Experiment 1
+and learned edges for all 2,303 entailment graphs
+in the data set. If the ILP solver was unable to
+hold the ILP in memory or took more than 2 hours
+log ? # unlearned # rules 4 Red.
+-1.75 9/0 6,242 / 7,466 20% 75%
+-1 9/1 16,790 / 19,396 16% 29%
+-0.6 9/3 26,330 / 29,732 13% 14%
+Table 3: Impact of scaling techinques (ILP?/ILPscale).
+for some graph, we did not attempt to learn its
+edges. We ran ILPscale and ILP? in three den-
+sity modes to examine the behavior of the algo-
+rithms for different graph densities: (a) log ? =
+?0.6: the configuration that achieved the best
+recall/precision/F1 of 43.4/42.2/42.8. (b) log ? =
+?1 with recall/precision/F1 of 31.8/55.3/40.4. (c)
+log ? = ?1.75: A high precision configuration with
+recall/precision/F1 of 0.15/0.75/0.23 6.
+In each run we counted the number of graphs that
+could not be learned and the number of rules learned
+by each algorithm. In addition, we looked at the
+20 largest graphs in our data (49-118 nodes) and
+measured the ratio r between the size of the largest
+component after applying Decomposed-ILP and the
+original size of the graph. We then computed the av-
+erage 1?r over the 20 graphs to examine how graph
+size drops due to decomposition.
+Table 3 shows the results. Column # unlearned
+and # rules describe the number of unlearned graphs
+and the number of learned rules. Column 4 shows
+relative increase in the number of rules learned and
+column Red. shows the average 1? r.
+ILPscale increases the number of graphs that we
+are able to learn: in our best configuration (log ? =
+?0.6) only 3 graphs could not be handled com-
+paring to 9 graphs when omitting our scaling tech-
+niques. Since the unlearned graphs are among the
+largest in the data set, this adds 3,500 additional
+rules. We compared the precision of rules learned
+only by ILPscale with that of the rules learned by
+both, by randomly sampling 100 rules from each and
+found precision to be comparable. Thus, the addi-
+tional rules learned translate into a 13% increase in
+relative recall without harming precision.
+Also note that as density increases, the number of
+rules learned grows and the effectiveness of decom-
+position decreases. This shows how Decomposed-
+ILP is especially useful for sparse graphs. We re-
+6Experiment was run on an Intel i5 CPU with 4GB RAM.
+617
+lease the 29,732 rules learned by the configuration
+log ? = ?0.6 as a resource.
+To sum up, our scaling techniques allow us to
+learn rules from graphs that standard ILP can not
+handle and thus considerably increase recall without
+harming precision.
+6 Conclusions and Future Work
+This paper proposes two contributions over two re-
+cent works: In the first, Berant et al (2010) pre-
+sented a global optimization procedure to learn en-
+tailment rules between predicates using transitivity,
+and applied this algorithm over small graphs where
+all predicates have one argument instantiated by a
+target concept. Consequently, the rules they learn
+are of limited applicability. In the second, Schoen-
+mackers et al learned rules of wider applicability by
+using typed predicates, but utilized a local approach.
+In this paper we developed an algorithm that uses
+global optimization to learn widely-applicable en-
+tailment rules between typed predicates (where both
+arguments are variables). This was achieved by
+appropriately defining entailment graphs for typed
+predicates, formulating an ILP representation for
+them, and introducing scaling techniques that in-
+clude graph decomposition and incremental ILP.
+Our algorithm is guaranteed to provide an optimal
+solution and we have shown empirically that it sub-
+stantially improves performance over Schoenmack-
+ers et al?s recent resource and over several baselines.
+In future work, we aim to scale the algorithm
+further and learn entailment rules between untyped
+predicates. This would require explicit modeling of
+predicate ambiguity and using approximation tech-
+niques when an optimal solution cannot be attained.
+Acknowledgments
+This work was performed with financial support
+from the Turing Center at The University of Wash-
+ington during a visit of the first author (NSF grant
+IIS-0803481). We deeply thank Oren Etzioni and
+Stefan Schoenmackers for providing us with the data
+sets for this paper and for numerous helpful discus-
+sions. We would also like to thank the anonymous
+reviewers for their useful comments. This work
+was developed under the collaboration of FBK-
+irst/University of Haifa and was partially supported
+by the Israel Science Foundation grant 1112/08. The
+first author is grateful to IBM for the award of an
+IBM Fellowship, and has carried out this research
+in partial fulllment of the requirements for the Ph.D.
+degree.
+References
+J. Fillmore Baker, C. F. and J. B. Lowe. 1998. The
+Berkeley framenet project. In Proc. of COLING-ACL.
+Michele Banko, Michael Cafarella, Stephen Soderland,
+Matt Broadhead, and Oren Etzioni. 2007. Open in-
+formation extraction from the web. In Proceedings of
+IJCAI.
+Roni Ben Aharon, Idan Szpektor, and Ido Dagan. 2010.
+Generating entailment rules from framenet. In Pro-
+ceedings of ACL.
+Jonathan Berant, Ido Dagan, and Jacob Goldberger.
+2010. Global learning of focused entailment graphs.
+In Proceedings of ACL.
+Rahul Bhagat, Patrick Pantel, and Eduard Hovy. 2007.
+LEDIR: An unsupervised algorithm for learning di-
+rectionality of inference rules. In Proceedings of
+EMNLP-CoNLL.
+James Clarke and Mirella Lapata. 2008. Global infer-
+ence for sentence compression: An integer linear pro-
+gramming approach. Journal of Artificial Intelligence
+Research, 31:273?381.
+Ido Dagan, Bill Dolan, Bernardo Magnini, and Dan Roth.
+2009. Recognizing textual entailment: Rational, eval-
+uation and approaches. Natural Language Engineer-
+ing, 15(4):1?17.
+Quang Do and Dan Roth. 2010. Constraints based
+taxonomic relation classification. In Proceedings of
+EMNLP.
+Saso Dzeroski and Ivan Brakto. 1992. Handling noise
+in inductive logic programming. In Proceedings of the
+International Workshop on Inductive Logic Program-
+ming.
+Christiane Fellbaum, editor. 1998. WordNet: An Elec-
+tronic Lexical Database (Language, Speech, and Com-
+munication). The MIT Press.
+Jenny Rose Finkel and Christopher D. Manning. 2008.
+Enforcing transitivity in coreference resolution. In
+Proceedings of ACL-08: HLT, Short Papers.
+Marti Hearst. 1992. Automatic acquisition of hyponyms
+from large text corpora. In Proceedings of COLING.
+Thorsten Joachims. 2005. A support vector method for
+multivariate performance measures. In Proceedings of
+ICML.
+Karin Kipper-Schuler, Hoa Trand Dang, and Martha
+Palmer. 2000. Class-based construction of verb lex-
+icon. In Proceedings of AAAI/IAAI.
+618
+Dekang Lin and Patrick Pantel. 2001. Discovery of infer-
+ence rules for question answering. Natural Language
+Engineering, 7(4):343?360.
+Xiao Ling and Daniel S. Weld. 2010. Temporal informa-
+tion extraction. In Proceedings of AAAI.
+Catherine Macleod, Ralph Grishman, Adam Meyers,
+Leslie Barrett, and Ruth Reeves. 1998. NOMLEX:
+A lexicon of nominalizations. In Proceedings of COL-
+ING.
+Andre Martins, Noah Smith, and Eric Xing. 2009. Con-
+cise integer linear programming formulations for de-
+pendency parsing. In Proceedings of ACL.
+Eric McCreath and Arun Sharma. 1997. ILP with noise
+and fixed example size: a bayesian approach. In Pro-
+ceedings of the Fifteenth international joint conference
+on artificial intelligence - Volume 2.
+Vladimir Nikulin. 2008. Classification of imbalanced
+data with random sets and mean-variance filtering.
+IJDWM, 4(2):63?78.
+Hoifung Poon and Pedro Domingos. 2010. Unsuper-
+vised ontology induction from text. In Proceedings of
+ACL.
+Sebastian Riedel and James Clarke. 2006. Incremental
+integer linear programming for non-projective depen-
+dency parsing. In Proceedings of EMNLP.
+Stefan Schoenmackers, Oren Etzioni Jesse Davis, and
+Daniel S. Weld. 2010. Learning first-order horn
+clauses from web text. In Proceedings of EMNLP.
+Satoshi Sekine. 2005. Automatic paraphrase discovery
+based on context and keywords between ne pairs. In
+Proceedings of IWP.
+Rion Snow, Daniel Jurafsky, and Andrew Y. Ng. 2006.
+Semantic taxonomy induction from heterogenous evi-
+dence. In Proceedings of ACL.
+Idan Szpektor and Ido Dagan. 2008. Learning entailment
+rules for unary templates. In Proceedings of COLING.
+Idan Szpektor and Ido Dagan. 2009. Augmenting
+wordnet-based inference with argument mapping. In
+Proceedings of TextInfer.
+Idan Szpektor, Hristo Tanev, Ido Dagan, and Bonaven-
+tura Coppola. 2004. Scaling web-based acquisition of
+entailment relations. In Proceedings of EMNLP.
+Jason Van Hulse, Taghi Khoshgoftaar, and Amri Napoli-
+tano. 2007. Experimental perspectives on learning
+from imbalanced data. In Proceedings of ICML.
+Julie Weeds and David Weir. 2003. A general frame-
+work for distributional similarity. In Proceedings of
+EMNLP.
+Mihalis Yannakakis. 1978. Node-and edge-deletion NP-
+complete problems. In STOC ?78: Proceedings of the
+tenth annual ACM symposium on Theory of comput-
+ing, pages 253?264, New York, NY, USA. ACM.
+Alexander Yates and Oren Etzioni. 2009. Unsupervised
+methods for determining object and relation synonyms
+on the web. Journal of Artificial Intelligence Research,
+34:255?296.
+619

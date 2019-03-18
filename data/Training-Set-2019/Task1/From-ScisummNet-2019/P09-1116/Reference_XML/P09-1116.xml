@@ -1,0 +1,254 @@
+<PAPER>
+  <S sid="0">Phrase Clustering for Discriminative Learning</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present a simple and scalable algorithm for clustering tens of millions of phrases and use the resulting clusters as features in discriminative classifiers.</S>
+    <S sid="2" ssid="2">To demonstrate the power and generality of this approach, we apply the method in two very different applications: named entity recognition and query classification.</S>
+    <S sid="3" ssid="3">Our results show that phrase clusters offer significant improvements over word clusters.</S>
+    <S sid="4" ssid="4">Our NER system achieves the best current result on the widely used CoNLL benchmark.</S>
+    <S sid="5" ssid="5">Our query classifier is on par with the best system in KDDCUP 2005 without resorting to labor intensive knowledge engineering efforts.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="6" ssid="1">Over the past decade, supervised learning algorithms have gained widespread acceptance in natural language processing (NLP).</S>
+    <S sid="7" ssid="2">They have become the workhorse in almost all sub-areas and components of NLP, including part-ofspeech tagging, chunking, named entity recognition and parsing.</S>
+    <S sid="8" ssid="3">To apply supervised learning to an NLP problem, one first represents the problem as a vector of features.</S>
+    <S sid="9" ssid="4">The learning algorithm then optimizes a regularized, convex objective function that is expressed in terms of these features.</S>
+    <S sid="10" ssid="5">The performance of such learning-based solutions thus crucially depends on the informativeness of the features.</S>
+    <S sid="11" ssid="6">The majority of the features in these supervised classifiers are predicated on lexical information, such as word identities.</S>
+    <S sid="12" ssid="7">The long-tailed distribution of natural language words implies that most of the word types will be either unseen or seen very few times in the labeled training data, even if the data set is a relatively large one (e.g., the Penn Treebank).</S>
+    <S sid="13" ssid="8">While the labeled data is generally very costly to obtain, there is a vast amount of unlabeled textual data freely available on the web.</S>
+    <S sid="14" ssid="9">One way to alleviate the sparsity problem is to adopt a two-stage strategy: first create word clusters with unlabeled data and then use the clusters as features in supervised training.</S>
+    <S sid="15" ssid="10">Under this approach, even if a word is not found in the training data, it may still fire cluster-based features as long as it shares cluster assignments with some words in the labeled data.</S>
+    <S sid="16" ssid="11">Since the clusters are obtained without any labeled data, they may not correspond directly to concepts that are useful for decision making in the problem domain.</S>
+    <S sid="17" ssid="12">However, the supervised learning algorithms can typically identify useful clusters and assign proper weights to them, effectively adapting the clusters to the domain.</S>
+    <S sid="18" ssid="13">This method has been shown to be quite successful in named entity recognition (Miller et al. 2004) and dependency parsing (Koo et al., 2008).</S>
+    <S sid="19" ssid="14">In this paper, we present a semi-supervised learning algorithm that goes a step further.</S>
+    <S sid="20" ssid="15">In addition to word-clusters, we also use phraseclusters as features.</S>
+    <S sid="21" ssid="16">Out of context, natural language words are often ambiguous.</S>
+    <S sid="22" ssid="17">Phrases are much less so because the words in a phrase provide contexts for one another.</S>
+    <S sid="23" ssid="18">Consider the phrase &#8220;Land of Odds&#8221;.</S>
+    <S sid="24" ssid="19">One would never have guessed that it is a company name based on the clusters containing Odds and Land.</S>
+    <S sid="25" ssid="20">With phrase-based clustering, &#8220;Land of Odds&#8221; is grouped with many names that are labeled as company names, which is a strong indication that it is a company name as well.</S>
+    <S sid="26" ssid="21">The disambiguation power of phrases is also evidenced by the improvements of phrase-based machine translation systems (Koehn et. al., 2003) over word-based ones.</S>
+    <S sid="27" ssid="22">Previous approaches, e.g., (Miller et al. 2004) and (Koo et al.</S>
+    <S sid="28" ssid="23">2008), have all used the Brown algorithm for clustering (Brown et al. 1992).</S>
+    <S sid="29" ssid="24">The main idea of the algorithm is to minimize the bigram language-model perplexity of a text corpus.</S>
+    <S sid="30" ssid="25">The algorithm is quadratic in the number of elements to be clustered.</S>
+    <S sid="31" ssid="26">It is able to cluster tens of thousands of words, but is not scalable enough to deal with tens of millions of phrases.</S>
+    <S sid="32" ssid="27">Uszkoreit and Brants (2008) proposed a distributed clustering algorithm with a similar objective function as the Brown algorithm.</S>
+    <S sid="33" ssid="28">It substantially increases the number of elements that can be clustered.</S>
+    <S sid="34" ssid="29">However, since it still needs to load the current clustering of all elements into each of the workers in the distributed system, the memory requirement becomes a bottleneck.</S>
+    <S sid="35" ssid="30">We present a distributed version of a much simpler K-Means clustering that allows us to cluster tens of millions of elements.</S>
+    <S sid="36" ssid="31">We demonstrate the advantages of phrase-based clusters over word-based ones with experimental results from two distinct application domains: named entity recognition and query classification.</S>
+    <S sid="37" ssid="32">Our named entity recognition system achieves an F1-score of 90.90 on the CoNLL 2003 English data set, which is about 1 point higher than the previous best result.</S>
+    <S sid="38" ssid="33">Our query classifier reaches the same level of performance as the KDDCUP 2005 winning systems, which were built with a great deal of knowledge engineering.</S>
+  </SECTION>
+  <SECTION title="2 Distributed K-Means clustering" number="2">
+    <S sid="39" ssid="1">K-Means clustering (MacQueen 1967) is one of the simplest and most well-known clustering algorithms.</S>
+    <S sid="40" ssid="2">Given a set of elements represented as feature vectors and a number, k, of desired clusters, the K-Means algorithm consists of the following steps: i.</S>
+    <S sid="41" ssid="3">Select k elements as the initial centroids for k clusters. ii.</S>
+    <S sid="42" ssid="4">Assign each element to the cluster with the closest centroid according to a distance (or similarity) function. iii.</S>
+    <S sid="43" ssid="5">Recompute each cluster&#8217;s centroid by averaging the vectors of its elements iv.</S>
+    <S sid="44" ssid="6">Repeat Steps ii and iii until convergence Before describing our parallel implementation of the K-Means algorithm, we first describe the phrases to be clusters and how their feature vectors are constructed.</S>
+    <S sid="45" ssid="7">To obtain a list of phrases to be clustered, we followed the approach in (Lin et al., 2008) by collecting 20 million unique queries from an anonymized query log that are found in a 700 billion token web corpus with a minimum frequency count of 100.</S>
+    <S sid="46" ssid="8">Note that many of these queries are not phrases in the linguistic sense. language, english spanish language, learn foreign language, free english learning, language study english, spanish immersion course, how to speak french, spanish learning games, .....</S>
+    <S sid="47" ssid="9">However, this does not seem to cause any real problem because non-linguistic phrases may form their own clusters.</S>
+    <S sid="48" ssid="10">For example, one cluster contains {&#8220;Cory does&#8221;, &#8220;Ben saw&#8221;, &#8220;I can&#8217;t lose&#8221;, .....}.</S>
+    <S sid="49" ssid="11">To reduce the memory requirement for storing a large number of phrases, we used Bloom Filter (Bloom 1970) to decide whether a sequence of tokens is a phrase.</S>
+    <S sid="50" ssid="12">The Bloom filter allows a small percentage of false positives to pass through.</S>
+    <S sid="51" ssid="13">We did not remove them with post processing since our notion of phrases is quite loose to begin with.</S>
+    <S sid="52" ssid="14">Distributional word clustering is based on the assumption that words that appear in similar contexts tend to have similar meanings.</S>
+    <S sid="53" ssid="15">The same assumption holds for phrases as well.</S>
+    <S sid="54" ssid="16">Following previous approaches to distributional clustering of words, we represent the contexts of a phrase as a feature vector.</S>
+    <S sid="55" ssid="17">There are many possible definitions for what constitutes the contexts.</S>
+    <S sid="56" ssid="18">In the literature, contexts have been defined as subject and object relations involving the word (Hindle, 1990), as the documents containing the word (Deerwester et al, 1990), or as search engine snippets for the word as a query (Sahami and Heilman, 2006).</S>
+    <S sid="57" ssid="19">We define the contexts of a phrase to be small, fixed-sized windows centered on occurrences of the phrase in a large corpus.</S>
+    <S sid="58" ssid="20">The features are the words (tokens) in the window.</S>
+    <S sid="59" ssid="21">The context feature vector of a phrase is constructed by first aggregating the frequency counts of the words in the context windows of different instances of the phrase.</S>
+    <S sid="60" ssid="22">The frequency counts are then converted into point-wise mutual information (PMI) values: where phr is a phrase and f is a feature of phr.</S>
+    <S sid="61" ssid="23">PMI effectively discounts the prior probability of the features and measures how much beyond random a feature tends to occur in a phrase&#8217;s context window.</S>
+    <S sid="62" ssid="24">Given two feature vectors, we compute the similarity between two vectors as the cosine function of the angle between the vectors.</S>
+    <S sid="63" ssid="25">Note that even though a phrase phr can have multiple tokens, its feature f is always a single-word token.</S>
+    <S sid="64" ssid="26">We impose an upper limit on the number of instances of each phrase when constructing its feature vector.</S>
+    <S sid="65" ssid="27">The idea is that if we have already seen 300K instances of a phrase, we should have already collected enough data for the phrase.</S>
+    <S sid="66" ssid="28">More data for the same phrase will not necessarily tell us anything more about it.</S>
+    <S sid="67" ssid="29">There are two benefits for such an upper limit.</S>
+    <S sid="68" ssid="30">First, it drastically reduces the computational cost.</S>
+    <S sid="69" ssid="31">Second, it reduces the variance in the sizes of the feature vectors of the phrases.</S>
+    <S sid="70" ssid="32">K-Means is an embarrassingly parallelizable algorithm.</S>
+    <S sid="71" ssid="33">Since the centroids of clusters are assumed to be constant within each iteration, the assignment of elements to clusters (Step ii) can be done totally independently.</S>
+    <S sid="72" ssid="34">The algorithm fits nicely into the MapReduce paradigm for parallel programming (Dean and Ghemawat, 2004).</S>
+    <S sid="73" ssid="35">The most straightforward MapReduce implementation of K-Means would be to have mappers perform Step ii and reducers perform Step iii.</S>
+    <S sid="74" ssid="36">The keys of intermediate pairs are cluster ids and the values are feature vectors of elements assigned to the corresponding cluster.</S>
+    <S sid="75" ssid="37">When the number of elements to be clustered is very large, sorting the intermediate pairs in the shuffling stage can be costly.</S>
+    <S sid="76" ssid="38">Furthermore, when summing up a large number of features vectors, numerical underflow becomes a potential problem.</S>
+    <S sid="77" ssid="39">A more efficient and numerically more stable method is to compute, for each input partition, the partial vector sums of the elements belonging to each cluster.</S>
+    <S sid="78" ssid="40">When the whole partition is done, the mapper emits the cluster ids as keys and the partial vector sums as values.</S>
+    <S sid="79" ssid="41">The reducers then aggregate the partial sums to compute the centroids.</S>
+    <S sid="80" ssid="42">In a na&#239;ve implementation of Step ii of K-Means, one would compute the similarities between a feature vector and all the centroids in order to find the closest one.</S>
+    <S sid="81" ssid="43">The kd-tree algorithm (Bentley 1980) aims at speeding up nearest neighbor search.</S>
+    <S sid="82" ssid="44">However, it only works when the vectors are low-dimensional, which is not the case here.</S>
+    <S sid="83" ssid="45">Fortunately, the high-dimensional and sparse nature of our feature vectors can also be exploited.</S>
+    <S sid="84" ssid="46">Since the cosine measure of two unit length vectors is simply their dot product, when searching for the closest centroid to an element, we only care about features in the centroids that are in common with the element.</S>
+    <S sid="85" ssid="47">We therefore create an inverted index that maps a feature to the list of centroids having that feature.</S>
+    <S sid="86" ssid="48">Given an input feature vector, we can iterate through all of its components and compute its dot product with all the centroids at the same time.</S>
+    <S sid="87" ssid="49">In our experiments, we use either 1 or 3 as the size of the context windows.</S>
+    <S sid="88" ssid="50">Window size has an interesting effect on the types of clusters.</S>
+    <S sid="89" ssid="51">With larger windows, the clusters tend to be more topical, whereas smaller windows result in categorical clusters.</S>
+    <S sid="90" ssid="52">For example, Table 1 contains the cluster that the phrase &#8220;English lessons&#8221; belongs to.</S>
+    <S sid="91" ssid="53">With 3word context windows, the cluster is about language learning and translation.</S>
+    <S sid="92" ssid="54">With 1-word context windows, the cluster contains different types of lessons.</S>
+    <S sid="93" ssid="55">The ability to produce both kinds of clusters turns out to be very useful.</S>
+    <S sid="94" ssid="56">In different applications we need different types of clusters.</S>
+    <S sid="95" ssid="57">For example, in the named entity recognition task, categorical clusters are more successful, whereas in query categorization, the topical clusters are much more beneficial.</S>
+    <S sid="96" ssid="58">The Brown algorithm uses essentially the same information as our 1-word window clusters.</S>
+    <S sid="97" ssid="59">We therefore expect it to produce mostly categorical clusters.</S>
+    <S sid="98" ssid="60">Although K-Means is generally described as a hard clustering algorithm (each element belongs to at most one cluster), it can produce soft clustering simply by assigning an element to all clusters whose similarity to the element is greater than a threshold.</S>
+    <S sid="99" ssid="61">For natural language words and phrases, the soft cluster assignments often reveal different senses of a word.</S>
+    <S sid="100" ssid="62">For example, the word Whistler may refer to a town in British Columbia, Canada, which is also a ski resort, or to a painter.</S>
+    <S sid="101" ssid="63">These meanings are reflected in the top clusters assignments for Whistler in Table 2 (window size = 3).</S>
+    <S sid="102" ssid="64">We experimented with two corpora (Table 3).</S>
+    <S sid="103" ssid="65">One contains web documents with 700 billion tokens.</S>
+    <S sid="104" ssid="66">The second consists of various news texts from LDC: English Gigaword, the Tipster corpus and Reuters RCV1.</S>
+    <S sid="105" ssid="67">The last column lists the numbers of phrases we used when running the clustering with that corpus.</S>
+    <S sid="106" ssid="68">Even though our cloud computing infrastructure made phrase clustering possible, there is no question that it is still very time consuming.</S>
+    <S sid="107" ssid="69">To create 3000 clusters among 20 million phrases using 3-word windows, each KMeans iteration takes about 20 minutes on 1000 CPUs.</S>
+    <S sid="108" ssid="70">Without using the indexing technique in Section 2.4, each iteration takes about 4 times as long.</S>
+    <S sid="109" ssid="71">In all our experiments, we set the maximum number of iterations to be 50.</S>
+  </SECTION>
+  <SECTION title="3 Named Entity Recognition" number="3">
+    <S sid="110" ssid="1">Named entity recognition (NER) is one of the first steps in many applications of information extraction, information retrieval, question answering and other applications of NLP.</S>
+    <S sid="111" ssid="2">Conditional Random Fields (CRF) (Lafferty et. al.</S>
+    <S sid="112" ssid="3">2001) is one of the most competitive NER algorithms.</S>
+    <S sid="113" ssid="4">We employed a linear chain CRF with L2 regularization as the baseline algorithm to which we added phrase cluster features.</S>
+    <S sid="114" ssid="5">The CoNLL 2003 Shared Task (Tjong Kim Sang and Meulder 2003) offered a standard experimental platform for NER.</S>
+    <S sid="115" ssid="6">The CoNLL data set consists of news articles from Reuters1.</S>
+    <S sid="116" ssid="7">The training set has 203,621 tokens and the development and test set have 51,362 and 46,435 tokens, respectively.</S>
+    <S sid="117" ssid="8">We adopted the same evaluation criteria as the CoNLL 2003 Shared Task.</S>
+    <S sid="118" ssid="9">To make the clusters more relevant to this domain, we adopted the following strategy: The features in our baseline CRF classifier are a subset of the conventional features.</S>
+    <S sid="119" ssid="10">They are defined with the following templates: Here, s denotes a position in the input sequence; ys is a label that indicates whether the token at position s is a named entity as well as its type; wu is the word at position u; sfx3 is a word&#8217;s threeletter suffix; &lt;SPL&#231;= 8 are indicators of different word types: wtp1 is true when a word is punctuation; wtp2 indicates whether a word is in lower case, upper case, or all-caps; wtp3 is true when a token is a number; wtp4 is true when a token is a hyphenated word with different capitalization before and after the hyphen.</S>
+    <S sid="120" ssid="11">NER systems often have global features to capture discourse-level regularities (Chieu and Ng 2003).</S>
+    <S sid="121" ssid="12">For example, documents often have a full mention of an entity at the beginning and then refer to the entity in partial or abbreviated forms.</S>
+    <S sid="122" ssid="13">To help in recognizing the shorter versions of the entities, we maintain a history of unigram word features.</S>
+    <S sid="123" ssid="14">If a token is encountered again, the word unigram features of the previous instances are added as features for the current instance as well.</S>
+    <S sid="124" ssid="15">We have a total of 48 feature templates.</S>
+    <S sid="125" ssid="16">In comparison, there are 79 templates in (Suzuki and Isozaki, 2008).</S>
+    <S sid="126" ssid="17">Part-of-speech tags were used in the topranked systems in CoNLL 2003, as well as in many follow up studies that used the data set (Ando and Zhang 2005; Suzuki and Isozaki 2008).</S>
+    <S sid="127" ssid="18">Our system does not need this information to achieve its peak performance.</S>
+    <S sid="128" ssid="19">An important advantage of not needing a POS tagger as a preprocessor is that the system is much easier to adapt to other languages, since training a tagger often requires a larger amount of more extensively annotated data than the training data for NER.</S>
+    <S sid="129" ssid="20">We used hard clustering with 1-word context windows for NER.</S>
+    <S sid="130" ssid="21">For each input token sequence, we identify all sequences of tokens that are found in the phrase clusters.</S>
+    <S sid="131" ssid="22">The phrases are allowed to overlap with or be nested in one another.</S>
+    <S sid="132" ssid="23">If a phrase belonging to cluster c is found at positions b to e (inclusive), we add the following features to the CRF classifier: where B (before), A (after), S (start), M (middle), and E (end) denote a position in the input sequence relative to the phrase belonging to cluster c. We treat the cluster membership as binary.</S>
+    <S sid="133" ssid="24">The similarity between an element and its cluster centroid is ignored.</S>
+    <S sid="134" ssid="25">For example, suppose the input sentence is &#8220;... guitar legend Jimi Hendrix was ...&#8221; and &#8220;Jimi Hendrix&#8221; belongs to cluster 183.</S>
+    <S sid="135" ssid="26">Figure 1 shows the attributes at different input positions.</S>
+    <S sid="136" ssid="27">The cluster features are the cross product of the unigram/bigram labels and the attributes.</S>
+    <S sid="137" ssid="28">The phrasal cluster features not only help in resolving the ambiguities of words within a phrase, the B and A features also allow words adjacent to a phrase to consider longer contexts than a single word.</S>
+    <S sid="138" ssid="29">Although one may argue longer n-grams can also capture this information, the sparseness of n-grams means that long ngram features are rarely useful in practice.</S>
+    <S sid="139" ssid="30">We can easily use multiple clusterings in feature extraction.</S>
+    <S sid="140" ssid="31">This allows us to side-step the matter of choosing the optimal value k in the KMeans clustering algorithm.</S>
+    <S sid="141" ssid="32">Even though the phrases include single token words, we create word clusters with the same clustering algorithm as well.</S>
+    <S sid="142" ssid="33">The reason is that the phrase list, which comes from query logs, does not necessarily contain all the single token words in the documents.</S>
+    <S sid="143" ssid="34">Furthermore, due to tokenization differences between the query logs and the documents, we systematically missed some words, such as hyphenated words.</S>
+    <S sid="144" ssid="35">When creating the word clusters, we do not rely on a predefined list.</S>
+    <S sid="145" ssid="36">Instead, any word above a minimum frequency threshold is included.</S>
+    <S sid="146" ssid="37">In their dependency parser with cluster-based features, Koo et al. (2008) found it helpful to restrict lexicalized features to only relatively frequent words.</S>
+    <S sid="147" ssid="38">We did not observe a similar phenomenon with our CRF.</S>
+    <S sid="148" ssid="39">We include all words as features and rely on the regularized CRF to select from them.</S>
+    <S sid="149" ssid="40">Table 4 summarizes the evaluation results for our NER system and compares it with the two best results on the data set in the literature, as well the top-3 systems in CoNLL 2003.</S>
+    <S sid="150" ssid="41">In this table, W and P refer to word and phrase clusters created with the web corpus.</S>
+    <S sid="151" ssid="42">The superscripts are the numbers of clusters.</S>
+    <S sid="152" ssid="43">LDC refers to the clusters created with the smaller LDC corpus and +pos indicates the use of part-of-speech tags as features.</S>
+    <S sid="153" ssid="44">The performance of our baseline system is rather mediocre because it has far fewer feature functions than the more competitive systems.</S>
+    <S sid="154" ssid="45">The Top CoNLL 2003 systems all employed gazetteers or other types of specialized resources (e.g., lists of words that tend to co-occur with certain named entity types) in addition to part-ofspeech tags.</S>
+    <S sid="155" ssid="46">Introducing the word clusters immediately brings the performance up to a very competitive level.</S>
+    <S sid="156" ssid="47">Phrasal clusters obtained from the LDC corpus give the same level of improvement as word clusters from the web corpus that is 20 times larger.</S>
+    <S sid="157" ssid="48">The best F-score of 90.90, which is about 1 point higher than the previous best result, is obtained with a combination of clusters.</S>
+    <S sid="158" ssid="49">Adding POS tags to this configuration caused a small drop in F1.</S>
+  </SECTION>
+  <SECTION title="4 Query Classification" number="4">
+    <S sid="159" ssid="1">We now look at the use of phrasal clusters in a very different application: query classification.</S>
+    <S sid="160" ssid="2">The goal of query classification is to determine to which ones of a predefined set of classes a query belongs.</S>
+    <S sid="161" ssid="3">Compared with documents, queries are much shorter and their categories are much more ambiguous.</S>
+    <S sid="162" ssid="4">The task in the KDDCUP 2005 competition2 is to classify 800,000 internet user search queries into 67 predefined topical categories.</S>
+    <S sid="163" ssid="5">The training set consists of 111 example queries, each of which belongs to up to 5 of the 67 categories.</S>
+    <S sid="164" ssid="6">Table 5 shows three example queries and their classes.</S>
+    <S sid="165" ssid="7">Three independent human labelers classified 800 queries that were randomly selected from the Here, &#8216;tagged as&#8217; refer to systems outputs and &#8216;labeled as&#8217; refer to human judgments.</S>
+    <S sid="166" ssid="8">The subscript i ranges over all the query classes.</S>
+    <S sid="167" ssid="9">Table 6 shows the scores of each of the three human labelers when each of them is evaluated against the other two.</S>
+    <S sid="168" ssid="10">It can be seen that the consistency among the labelers is quite low, indicating that the query classification task is very difficult even for humans.</S>
+    <S sid="169" ssid="11">To maximize the little information we have about the query classes, we treat the words in query class names as additional example queries.</S>
+    <S sid="170" ssid="12">For example, we added three queries: living, tools, and hardware to the class Living\Tools &amp; Hardware.</S>
+    <S sid="171" ssid="13">Since the query classes are not mutually exclusive, we treat the query classification task as 67 binary classification problems.</S>
+    <S sid="172" ssid="14">For each query class, we train a logistic regression classifier (Vapnik 1999) with L2 regularization. complete set of 800,000.</S>
+    <S sid="173" ssid="15">The participating systems were evaluated by their average F-scores (F1) and average precision (P) over these three sets of answer keys for the 800 selected queries.</S>
+    <S sid="174" ssid="16">Given an input x, represented as a vector of m features: (x1, x2, , xm), a logistic regression classifier with parameter vector &#157; _(w1, w2, , wm) computes the posterior probability of the output y, which is either 1 or -1, as We tag a query as belonging to a class if the probability of the class is among the highest 5 and is greater than 0.5.</S>
+    <S sid="175" ssid="17">The baseline system uses only the words in the queries as features (the bag-of-words representation), treating the query classification problem as a typical text categorization problem.</S>
+    <S sid="176" ssid="18">We found the prior distribution of the query classes to be extremely important.</S>
+    <S sid="177" ssid="19">In fact, a system that always returns the top-5 most frequent classes has an F1 score of 26.55, which would have outperformed 2/3 of the 37 systems in the KDDCUP and ranked 13th.</S>
+    <S sid="178" ssid="20">We made a small modification to the objective function for logistic regression to take into account the prior distribution and to use 50% as a uniform decision boundary for all the classes.</S>
+    <S sid="179" ssid="21">Normally, training a logistic regression classifier amounts to solving: where n is the number of training examples and &#227; is the regularization constant.</S>
+    <S sid="180" ssid="22">In this formula, 1/n can be viewed as the weight of an example in the training corpus.</S>
+    <S sid="181" ssid="23">When training the classifier for a class with p positive examples out of a total of n examples, we change the objective function to: With this modification, the total weight of the positive and negative examples become equal.</S>
+    <S sid="182" ssid="24">Since topical information is much more relevant to query classification than categorical information, we use clusters created with 3-word context windows.</S>
+    <S sid="183" ssid="25">Moreover, we use soft clustering instead of hard clustering.</S>
+    <S sid="184" ssid="26">A phrase belongs to a cluster if the cluster&#8217;s centroid is among the top-50 most similar centroids to the phrase (by cosine similarity), and the similarity is greater than 0.04.</S>
+    <S sid="185" ssid="27">Given a query, we first retrieve all its phrases (allowing overlap) and the clusters they belong to.</S>
+    <S sid="186" ssid="28">For each of these clusters, we sum the cluster&#8217;s similarity to all the phrases in the query and select the top-N as features for the logistic regression classifier (N=150 in our experiments).</S>
+    <S sid="187" ssid="29">When we extract features from multiple clusterings, the selection of the top-N clusters is done separately for each clustering.</S>
+    <S sid="188" ssid="30">Once a cluster is selected, its similarity values are ignored.</S>
+    <S sid="189" ssid="31">Using the numerical feature values in our experiments always led to worse results.</S>
+    <S sid="190" ssid="32">We suspect that such features make the optimization of the objective function much more difficult.</S>
+    <S sid="191" ssid="33">Table 7 contains the evaluation results of various configurations of our system.</S>
+    <S sid="192" ssid="34">Here, bow indicates the use of bag-of-words features; WN refers to word clusters of size N; and PN refers to phrase clusters of size N. All the clusters are soft clusters created with the web corpus using 3word context windows.</S>
+    <S sid="193" ssid="35">The bag-of-words features alone have dismal performance.</S>
+    <S sid="194" ssid="36">This is obviously due to the extreme paucity of training examples.</S>
+    <S sid="195" ssid="37">In fact, only 12% of the words in the 800 test queries are found in the training examples.</S>
+    <S sid="196" ssid="38">Using word clusters as features resulted in a big increase in F-score.</S>
+    <S sid="197" ssid="39">The phrasal cluster features offer another big improvement.</S>
+    <S sid="198" ssid="40">The best result is achieved with multiple phrasal clusterings.</S>
+    <S sid="199" ssid="41">Figure 2 compares the performance of our system (the dark bar at 2) with the top tercile systems in KDDCUP 2005.</S>
+    <S sid="200" ssid="42">The best two systems in the competition (Shen et al., 2005) and (Vogel et al., 2005) resorted to knowledge engineering techniques to bridge the gap between the small set of examples and the new queries.</S>
+    <S sid="201" ssid="43">They manually constructed a mapping from the query classes to hierarchical directories such as Google Directory3 or Open Directory Project4.</S>
+    <S sid="202" ssid="44">They then sent training and testing queries to internet search engines to retrieve the top pages in these directories.</S>
+    <S sid="203" ssid="45">The positions of the result pages in the directory hierarchies as well as the words in the pages are used to classify the queries.</S>
+    <S sid="204" ssid="46">With phrasal clusters, we can achieve top-level performance without manually constructed resources, or having to rely on internet search results.</S>
+  </SECTION>
+  <SECTION title="5 Discussion and Related Work" number="5">
+    <S sid="205" ssid="1">In earlier work on semi-supervised learning, e.g., (Blum and Mitchell 1998), the classifiers learned from unlabeled data were used directly.</S>
+    <S sid="206" ssid="2">Recent research shows that it is better to use whatever is learned from the unlabeled data as features in a discriminative classifier.</S>
+    <S sid="207" ssid="3">This approach is taken by (Miller et. al.</S>
+    <S sid="208" ssid="4">2004), (Wong and Ng 2007), (Suzuki and Isozaki 2008), and (Koo et. al., 2008), as well as this paper.</S>
+    <S sid="209" ssid="5">Wong and Ng (2007) and Suzuki and Isozaki (2008) are similar in that they run a baseline discriminative classifier on unlabeled data to generate pseudo examples, which are then used to train a different type of classifier for the same problem.</S>
+    <S sid="210" ssid="6">Wong and Ng (2007) made the assumption that each proper named belongs to one class (they observed that this is true about 85% of the time for English).</S>
+    <S sid="211" ssid="7">Suzuki and Isozaki (2008), on the other hand, used the automatically labeled corpus to train HMMs.</S>
+    <S sid="212" ssid="8">Ando and Zhang (2005) defined an objective function that combines the original problem on the labeled data with a set of auxiliary problems on unlabeled data.</S>
+    <S sid="213" ssid="9">The definition of an auxiliary problem can be quite flexible as long as it can be automatically labeled and shares some structural properties with the original problem.</S>
+    <S sid="214" ssid="10">The combined objective function is then alternatingly optimized with the labeled and unlabeled data.</S>
+    <S sid="215" ssid="11">This training regime puts pressure on the discriminative learner to exploit the structures uncovered from the unlabeled data.</S>
+    <S sid="216" ssid="12">In the two-stage cluster-based approaches such as ours, clustering is mostly decoupled from the supervised learning problem.</S>
+    <S sid="217" ssid="13">However, one can rely on a discriminative classifier to establish the connection by assigning proper weights to the cluster features.</S>
+    <S sid="218" ssid="14">One advantage of the two-stage approach is that the same clusterings may be used for different problems or different components of the same system.</S>
+    <S sid="219" ssid="15">Another advantage is that it can be applied to a wider range of domains and problems.</S>
+    <S sid="220" ssid="16">Although the method in (Suzuki and Isozaki 2008) is quite general, it is hard to see how it can be applied to the query classification problem.</S>
+    <S sid="221" ssid="17">Compared with Brown clustering, our algorithm for distributional clustering with distributed K-Means offers several benefits: (1) it is more scalable and parallelizable; (2) it has the ability to generate topical as well as categorical clusters for use in different applications; (3) it can create soft clustering as well as hard ones.</S>
+    <S sid="222" ssid="18">There are two main scenarios that motivate semi-supervised learning.</S>
+    <S sid="223" ssid="19">One is to leverage a large amount of unsupervised data to train an adequate classifier with a small amount of labeled data.</S>
+    <S sid="224" ssid="20">Another is to further boost the performance of a supervised classifier that is already trained with a large amount of supervised data.</S>
+    <S sid="225" ssid="21">The named entity problem in Section 3 and the query classification problem in Section 4 exemplify the two scenarios.</S>
+    <S sid="226" ssid="22">One nagging issue with K-Means clustering is how to set k. We show that this question may not need to be answered because we can use clusterings with different k&#8217;s at the same time and let the discriminative classifier cherry-pick the clusters at different granularities according to the supervised data.</S>
+    <S sid="227" ssid="23">This technique has also been used with Brown clustering (Miller et. al.</S>
+    <S sid="228" ssid="24">2004, Koo, et. al.</S>
+    <S sid="229" ssid="25">2008).</S>
+    <S sid="230" ssid="26">However, they require clusters to be strictly hierarchical, whereas we do not.</S>
+  </SECTION>
+  <SECTION title="6 Conclusions" number="6">
+    <S sid="231" ssid="1">We presented a simple and scalable algorithm to cluster tens of millions of phrases and we used the resulting clusters as features in discriminative classifiers.</S>
+    <S sid="232" ssid="2">We demonstrated the power and generality of this approach on two very different applications: named entity recognition and query classification.</S>
+    <S sid="233" ssid="3">Our system achieved the best current result on the CoNLL NER data set.</S>
+    <S sid="234" ssid="4">Our query categorization system is on par with the best system in KDDCUP 2005, which, unlike ours, involved a great deal of knowledge engineering effort.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="7">
+    <S sid="235" ssid="1">The authors wish to thank the anonymous reviewers for their comments.</S>
+  </SECTION>
+</PAPER>

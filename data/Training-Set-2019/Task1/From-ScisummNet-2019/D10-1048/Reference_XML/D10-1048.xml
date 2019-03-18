@@ -1,0 +1,227 @@
+<PAPER>
+  <S sid="0">A Multi-Pass Sieve for Coreference Resolution</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Most coreference resolution models determine if two mentions are coreferent using a single function over a set of constraints or features.</S>
+    <S sid="2" ssid="2">This approach can lead to incorrect decisions as lower precision features often overwhelm the smaller number of high precision ones.</S>
+    <S sid="3" ssid="3">To overcome this problem, we propose a simple coreference architecture based on a sieve that applies tiers of deterministic coreference models one at a time from highest to lowest precision.</S>
+    <S sid="4" ssid="4">Each tier builds on the previous tier&#8217;s entity cluster output.</S>
+    <S sid="5" ssid="5">Further, our model propagates global information by sharing attributes (e.g., gender and number) across mentions in the same cluster.</S>
+    <S sid="6" ssid="6">This cautious sieve guarantees that stronger features are given precedence over weaker ones and that each decision is made using all of the information available at the time.</S>
+    <S sid="7" ssid="7">The framework is highly modular: new coreference modules can be plugged in without any change to the other modules.</S>
+    <S sid="8" ssid="8">In spite of its simplicity, our approach outperforms many state-of-the-art supervised and unsupervised models on several standard corpora.</S>
+    <S sid="9" ssid="9">This suggests that sievebased approaches could be applied to other NLP tasks.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="10" ssid="1">Recent work on coreference resolution has shown that a rich feature space that models lexical, syntactic, semantic, and discourse phenomena is crucial to successfully address the task (Bengston and Roth, 2008; Haghighi and Klein, 2009; Haghighi and Klein, 2010).</S>
+    <S sid="11" ssid="2">When such a rich representation is available, even a simple deterministic model can achieve state-of-the-art performance (Haghighi and Klein, 2009).</S>
+    <S sid="12" ssid="3">By and large most approaches decide if two mentions are coreferent using a single function over all these features and information local to the two mentions.1 This is problematic for two reasons: (1) lower precision features may overwhelm the smaller number of high precision ones, and (2) local information is often insufficient to make an informed decision.</S>
+    <S sid="13" ssid="4">Consider this example: The second attack occurred after some rocket firings aimed, apparently, toward [the israelis], apparently in retaliation.</S>
+    <S sid="14" ssid="5">[we]&#8217;re checking our facts on that one.</S>
+    <S sid="15" ssid="6">... the president, quoted by ari fleischer, his spokesman, is saying he&#8217;s concerned the strike will undermine efforts by palestinian authorities to bring an end to terrorist attacks and does not contribute to the security of [israel].</S>
+    <S sid="16" ssid="7">Most state-of-the-art models will incorrectly link we to the israelis because of their proximity and compatibility of attributes (both we and the israelis are plural).</S>
+    <S sid="17" ssid="8">In contrast, a more cautious approach is to first cluster the israelis with israel because the demonymy relation is highly precise.</S>
+    <S sid="18" ssid="9">This initial clustering step will assign the correct animacy attribute (inanimate) to the corresponding geo-political entity, which will prevent the incorrect merging with the mention we (animate) in later steps.</S>
+    <S sid="19" ssid="10">We propose an unsupervised sieve-like approach to coreference resolution that addresses these is1As we will discuss below, some approaches use an additional component to infer the overall best mention clusters for a document, but this is still based on confidence scores assigned using local information. sues.</S>
+    <S sid="20" ssid="11">The approach applies tiers of coreference models one at a time from highest to lowest precision.</S>
+    <S sid="21" ssid="12">Each tier builds on the entity clusters constructed by previous models in the sieve, guaranteeing that stronger features are given precedence over weaker ones.</S>
+    <S sid="22" ssid="13">Furthermore, each model&#8217;s decisions are richly informed by sharing attributes across the mentions clustered in earlier tiers.</S>
+    <S sid="23" ssid="14">This ensures that each decision uses all of the information available at the time.</S>
+    <S sid="24" ssid="15">We implemented all components in our approach using only deterministic models.</S>
+    <S sid="25" ssid="16">All our components are unsupervised, in the sense that they do not require training on gold coreference links.</S>
+    <S sid="26" ssid="17">The contributions of this work are the following: &#8226; We show that a simple scaffolding framework that deploys strong features through tiers of models performs significantly better than a single-pass model.</S>
+    <S sid="27" ssid="18">Additionally, we propose several simple, yet powerful, new features.</S>
+  </SECTION>
+  <SECTION title="2 Related Work" number="2">
+    <S sid="28" ssid="1">This work builds upon the recent observation that strong features outweigh complex models for coreference resolution, in both supervised and unsupervised learning setups (Bengston and Roth, 2008; Haghighi and Klein, 2009).</S>
+    <S sid="29" ssid="2">Our work reinforces this observation, and extends it by proposing a novel architecture that: (a) allows easy deployment of such features, and (b) infuses global information that can be readily exploited by these features or constraints.</S>
+    <S sid="30" ssid="3">Most coreference resolution approaches perform the task by aggregating local decisions about pairs of mentions (Bengston and Roth, 2008; Finkel and Manning, 2008; Haghighi and Klein, 2009; Stoyanov, 2010).</S>
+    <S sid="31" ssid="4">Two recent works that diverge from this pattern are Culotta et al. (2007) and Poon and Domingos (2008).</S>
+    <S sid="32" ssid="5">They perform coreference resolution jointly for all mentions in a document, using first-order probabilistic models in either supervised or unsupervised settings.</S>
+    <S sid="33" ssid="6">Haghighi and Klein (2010) propose a generative approach that models entity clusters explicitly using a mostly-unsupervised generative model.</S>
+    <S sid="34" ssid="7">As previously mentioned, our work is not constrained by first-order or Bayesian formalisms in how it uses cluster information.</S>
+    <S sid="35" ssid="8">Additionally, the deterministic models in our tiered model are significantly simpler, yet perform generally better than the complex inference models proposed in these works.</S>
+    <S sid="36" ssid="9">From a high level perspective, this work falls under the theory of shaping, defined as a &#8220;method of successive approximations&#8221; for learning (Skinner, 1938).</S>
+    <S sid="37" ssid="10">This theory is known by different names in many NLP applications: Brown et al. (1993) used simple models as &#8220;stepping stones&#8221; for more complex word alignment models; Collins (1999) used &#8220;cautious&#8221; decision list learning for named entity classification; Spitkovsky et al.</S>
+    <S sid="38" ssid="11">(2010) used &#8220;baby steps&#8221; for unsupervised dependency parsing, etc.</S>
+    <S sid="39" ssid="12">To the best of our knowledge, we are the first to apply this theory to coreference resolution.</S>
+  </SECTION>
+  <SECTION title="3 Description of the Task" number="3">
+    <S sid="40" ssid="1">Intra-document coreference resolution clusters together textual mentions within a single document based on the underlying referent entity.</S>
+    <S sid="41" ssid="2">Mentions are usually noun phrases (NPs) headed by nominal or pronominal terminals.</S>
+    <S sid="42" ssid="3">To facilitate comparison with most of the recent previous work, we report results using gold mention boundaries.</S>
+    <S sid="43" ssid="4">However, our approach does not make any assumptions about the underlying mentions, so it is trivial to adapt it to predicted mention boundaries (e.g., see Haghighi and Klein (2010) for a simple mention detection model).</S>
+    <S sid="44" ssid="5">We used the following corpora for development and evaluation: We used the first corpus (ACE2004-ROTH-DEV) for development.</S>
+    <S sid="45" ssid="6">The other corpora are reserved for testing.</S>
+    <S sid="46" ssid="7">We parse all documents using the Stanford parser (Klein and Manning, 2003).</S>
+    <S sid="47" ssid="8">The syntactic information is used to identify the mention head words and to define the ordering of mentions in a given sentence (detailed in the next section).</S>
+    <S sid="48" ssid="9">For a fair comparison with previous work, we do not use gold named entity labels or mention types but, instead, take the labels provided by the Stanford named entity recognizer (NER) (Finkel et al., 2005).</S>
+    <S sid="49" ssid="10">We use three evaluation metrics widely used in the literature: (a) pairwise F1 (Ghosh, 2003) &#8211; computed over mention pairs in the same entity cluster; (b) MUC (Vilain et al., 1995) &#8211; which measures how many predicted clusters need to be merged to cover the gold clusters; and (c) B3 (Amit and Baldwin, 1998) &#8211; which uses the intersection between predicted and gold clusters for a given mention to mark correct mentions and the sizes of the the predicted and gold clusters as denominators for precision and recall, respectively.</S>
+    <S sid="50" ssid="11">We refer the interested reader to (X. Luo, 2005; Finkel and Manning, 2008) for an analysis of these metrics.</S>
+  </SECTION>
+  <SECTION title="4 Description of the Multi-Pass Sieve" number="4">
+    <S sid="51" ssid="1">Our sieve framework is implemented as a succession of independent coreference models.</S>
+    <S sid="52" ssid="2">We first describe how each model selects candidate mentions, and then describe the models themselves.</S>
+    <S sid="53" ssid="3">Given a mention mi, each model may either decline to propose a solution (in the hope that one of the subsequent models will solve it) or deterministically select a single best antecedent from a list of previous mentions m1, ..., mi&#8722;1.</S>
+    <S sid="54" ssid="4">We sort candidate antecedents using syntactic information provided by the Stanford parser, as follows: Same Sentence &#8211; Candidates in the same sentence are sorted using left-to-right breadth-first traversal of syntactic trees (Hobbs, 1977).</S>
+    <S sid="55" ssid="5">Figure 1 shows an example of candidate ordering based on this traversal.</S>
+    <S sid="56" ssid="6">The left-to-right ordering favors subjects, which tend to appear closer to the beginning of the sentence and are more probable antecedents.</S>
+    <S sid="57" ssid="7">The breadthfirst traversal promotes syntactic salience by ranking higher noun phrases that are closer to the top of the parse tree (Haghighi and Klein, 2009).</S>
+    <S sid="58" ssid="8">If the sentence containing the anaphoric mention contains multiple clauses, we repeat the above heuristic separately in each S* constituent, starting with the one containing the mention.</S>
+    <S sid="59" ssid="9">Previous Sentence &#8211; For all nominal mentions we sort candidates in the previous sentences using rightto-left breadth-first traversal.</S>
+    <S sid="60" ssid="10">This guarantees syntactic salience and also favors document proximity.</S>
+    <S sid="61" ssid="11">For pronominal mentions, we sort candidates in previous sentences using left-to-right traversal in order to favor subjects.</S>
+    <S sid="62" ssid="12">Subjects are more probable antecedents for pronouns (Kertz et al., 2006).</S>
+    <S sid="63" ssid="13">For example, this ordering favors the correct candidate (pepsi) for the mention they: [pepsi] says it expects to double [quaker]&#8217;s snack food growth rate. after a month-long courtship, [they] agreed to buy quaker oats...</S>
+    <S sid="64" ssid="14">In a significant departure from previous work, each model in our framework gets (possibly incomplete) clustering information for each mention from the earlier coreference models in the multi-pass system.</S>
+    <S sid="65" ssid="15">In other words, each mention mi may already be assigned to a cluster Cj containing a set of mentions: Cj = {mj1, ... , mj&#65533;}; mi E Cj.</S>
+    <S sid="66" ssid="16">Unassigned mentions are unique members of their own cluster.</S>
+    <S sid="67" ssid="17">We use this information in several ways: Attribute sharing &#8211; Pronominal coreference resolution (discussed later in this section) is severely affected by missing attributes (which introduce precision errors because incorrect antecedents are selected due to missing information) and incorrect attributes (which introduce recall errors because correct links are not generated due to attribute mismatch between mention and antecedent).</S>
+    <S sid="68" ssid="18">To address this issue, we perform a union of all mention attributes (e.g., number, gender, animacy) in a given cluster and share the result with all cluster mentions.</S>
+    <S sid="69" ssid="19">If attributes from different mentions contradict each other we maintain all variants.</S>
+    <S sid="70" ssid="20">For example, our naive number detection assigns singular to the mention a group of students and plural to five students.</S>
+    <S sid="71" ssid="21">When these mentions end up in the same cluster, the resulting number attributes becomes the set {singular, plural}.</S>
+    <S sid="72" ssid="22">Thus this cluster can later be merged with both singular and plural pronouns.</S>
+    <S sid="73" ssid="23">Mention selection &#8211; Traditionally, a coreference model attempts to resolve every mention in the text, which increases the likelihood of errors.</S>
+    <S sid="74" ssid="24">Instead, in each of our models, we exploit the cluster information received from the previous stages by resolving only mentions that are currently first in textual order in their cluster.</S>
+    <S sid="75" ssid="25">For example, given the following ordered list of mentions, {mi, m2, m3, m4, m5, m6}, where the superscript indicates cluster id, our model will attempt to resolve only m2 and m4.</S>
+    <S sid="76" ssid="26">These two are the only mentions that have potential antecedents and are currently marked as the first mentions in their clusters.</S>
+    <S sid="77" ssid="27">The intuition behind this heuristic is two-fold.</S>
+    <S sid="78" ssid="28">First, early cluster mentions are usually better defined than subsequent ones, which are likely to have fewer modifiers or are pronouns (Fox, 1993).</S>
+    <S sid="79" ssid="29">Several of our models use this modifier information.</S>
+    <S sid="80" ssid="30">Second, by definition, first mentions appear closer to the beginning of the document, hence there are fewer antecedent candidates to select from, and fewer opportunities to make a mistake.</S>
+    <S sid="81" ssid="31">Search Pruning &#8211; Finally, we prune the search space using discourse salience.</S>
+    <S sid="82" ssid="32">We disable coreference for first cluster mentions that: (a) are or start with indefinite pronouns (e.g., some, other), or (b) start with indefinite articles (e.g., a, an).</S>
+    <S sid="83" ssid="33">One exception to this rule is the model deployed in the first pass; it only links mentions if their entire extents match exactly.</S>
+    <S sid="84" ssid="34">This model is triggered for all nominal mentions regardless of discourse salience, because it is possible that indefinite mentions are repeated in a document when concepts are discussed but not instantiated, e.g., a sports bar below: We now describe the coreference models implemented in the sieve.</S>
+    <S sid="85" ssid="35">For clarity, we summarize them in Table 1 and show the cumulative performance as they are added to the sieve in Table 2.</S>
+    <S sid="86" ssid="36">This model links two mentions only if they contain exactly the same extent text, including modifiers and determiners, e.g., the Shahab 3 ground-ground missile.</S>
+    <S sid="87" ssid="37">As expected, this model is extremely precise, with a pairwise precision over 96%.</S>
+    <S sid="88" ssid="38">This model links two mentions if any of the conditions below are satisfied: Appositive &#8211; the two nominal mentions are in an appositive construction, e.g., [Israel&#8217;s Deputy Defense Minister], [Ephraim Sneh] , said ... We use the same syntactic rules to detect appositions as Haghighi and Klein (2009).</S>
+    <S sid="89" ssid="39">Predicate nominative &#8211; the two mentions (nominal or pronominal) are in a copulative subject-object relation, e.g., [The New York-based College Board] is [a nonprofit organization that administers the SATs and promotes higher education] (Poon and Domingos, 2008).</S>
+    <S sid="90" ssid="40">Role appositive &#8211; the candidate antecedent is headed by a noun and appears as a modifier in an NP whose head is the current mention, e.g., [[actress] Rebecca Schaeffer].</S>
+    <S sid="91" ssid="41">This feature is inspired by Haghighi and Klein (2009), who triggered it only if the mention is labeled as a person by the NER.</S>
+    <S sid="92" ssid="42">We constrain this heuristic more in our work: we allow this feature to match only if: (a) the mention is labeled as a person, (b) the antecedent is animate (we detail animacy detection in Pass 7), and (c) the antecedent&#8217;s gender is not neutral.</S>
+    <S sid="93" ssid="43">Relative pronoun &#8211; the mention is a relative pronoun that modifies the head of the antecedent NP, e.g., [the finance street [which] has already formed in the Waitan district].</S>
+    <S sid="94" ssid="44">Acronym &#8211; both mentions are tagged as NNP and one of them is an acronym of the other, e.g., [Agence France Presse] ... [AFP].</S>
+    <S sid="95" ssid="45">We use a simple acronym detection algorithm, which marks a mention as an acronym of another if its text equals the sequence of upper case characters in the other mention.</S>
+    <S sid="96" ssid="46">We will adopt better solutions for acronym detection in future work (Schwartz, 2003).</S>
+    <S sid="97" ssid="47">Demonym &#8211; one of the mentions is a demonym of the other, e.g., [Israel] ... [Israeli].</S>
+    <S sid="98" ssid="48">For demonym detection we use a static list of countries and their gentilic forms from Wikipedia.3 All the above features are extremely precise.</S>
+    <S sid="99" ssid="49">As shown in Table 2 the pairwise precision of the sieve after adding these features is over 95% and recall increases 5 points.</S>
+    <S sid="100" ssid="50">Linking a mention to an antecedent based on the naive matching of their head words generates a lot of spurious links because it completely ignores possibly incompatible modifiers (Elsner and Charniak, 2010).</S>
+    <S sid="101" ssid="51">For example, Yale University and Harvard University have similar head words, but they are obviously different entities.</S>
+    <S sid="102" ssid="52">To address this issue, this pass implements several features that must all be matched in order to yield a link: Cluster head match &#8211; the mention head word matches any head word in the antecedent cluster.</S>
+    <S sid="103" ssid="53">Note that this feature is actually more relaxed than naive head matching between mention and antecedent candidate because it is satisfied when the mention&#8217;s head matches the head of any entity in the candidate&#8217;s cluster.</S>
+    <S sid="104" ssid="54">We constrain this feature by enforcing a conjunction with the features below.</S>
+    <S sid="105" ssid="55">Word inclusion &#8211; all the non-stop4 words in the mention cluster are included in the set of non-stop words in the cluster of the antecedent candidate.</S>
+    <S sid="106" ssid="56">This heuristic exploits the property of discourse that it is uncommon to introduce novel information in later mentions (Fox, 1993).</S>
+    <S sid="107" ssid="57">Typically, mentions of the same entity become shorter and less informative as the narrative progresses.</S>
+    <S sid="108" ssid="58">For example, the two mentions in ... intervene in the [Florida Supreme Court]&#8217;s move ... does look like very dramatic change made by [the Florida court] point to the same entity, but the two mentions in the text below belong to different clusters: The pilot had confirmed ... he had turned onto [the correct runway] but pilots behind him say he turned onto [the wrong runway].</S>
+    <S sid="109" ssid="59">Compatible modifiers only &#8211; the mention&#8217;s modifiers are all included in the modifiers of the antecedent candidate.</S>
+    <S sid="110" ssid="60">This feature models the same discourse property as the previous feature, but it focuses on the two individual mentions to be linked, rather than their entire clusters.</S>
+    <S sid="111" ssid="61">For this feature we only use modifiers that are nouns or adjectives.</S>
+    <S sid="112" ssid="62">Not i-within-i &#8211; the two mentions are not in an iwithin-i construct, i.e., one cannot be a child NP in the other&#8217;s NP constituent (Haghighi and Klein, 2009).</S>
+    <S sid="113" ssid="63">This pass continues to maintain high precision (91% pairwise) while improving recall significantly (over 6 points pairwise and almost 8 points MUC).</S>
+    <S sid="114" ssid="64">Passes 4 and 5 are different relaxations of the feature conjunction introduced in Pass 3, i.e., Pass 4 removes the compatible modifiers only feature, while Pass 5 removes the word inclusion constraint.</S>
+    <S sid="115" ssid="65">All in all, these two passes yield an improvement of 1.7 pairwise F1 points, due to recall improvements.</S>
+    <S sid="116" ssid="66">Table 2 shows that the word inclusion feature is more precise than compatible modifiers only, but the latter has better recall.</S>
+    <S sid="117" ssid="67">This pass relaxes the cluster head match heuristic by allowing the mention head to match any word in the cluster of the candidate antecedent.</S>
+    <S sid="118" ssid="68">For example, this heuristic matches the mention Sanders to a cluster containing the mentions {Sauls, the judge, Circuit Judge N. Sanders Sauls}.</S>
+    <S sid="119" ssid="69">To maintain high precision, this pass requires that both mention and antecedent be labeled as named entities and the types coincide.</S>
+    <S sid="120" ssid="70">Furthermore, this pass implements a conjunction of the above features with word inclusion and not i-within-i.</S>
+    <S sid="121" ssid="71">This pass yields less than 1 point improvement in most metrics.</S>
+    <S sid="122" ssid="72">With one exception (Pass 2), all the previous coreference models focus on nominal coreference resolution.</S>
+    <S sid="123" ssid="73">However, it would be incorrect to say that our framework ignores pronominal coreference in the first six passes.</S>
+    <S sid="124" ssid="74">In fact, the previous models prepare the stage for pronominal coreference by constructing precise clusters with shared mention attributes.</S>
+    <S sid="125" ssid="75">These are crucial factors for pronominal coreference.</S>
+    <S sid="126" ssid="76">Like previous work, we implement pronominal coreference resolution by enforcing agreement constraints between the coreferent mentions.</S>
+    <S sid="127" ssid="77">We use the following attributes for these constraints: Number &#8211; we assign number attributes based on: (a) a static list for pronouns; (b) NER labels: mentions marked as a named entity are considered singular with the exception of organizations, which can be both singular or plural; (c) part of speech tags: NN*S tags are plural and all other NN* tags are singular; and (d) a static dictionary from (Bergsma and Lin, 2006).</S>
+    <S sid="128" ssid="78">Gender &#8211; we assign gender attributes from static lexicons from (Bergsma and Lin, 2006; Ji and Lin, 2009).</S>
+    <S sid="129" ssid="79">Person &#8211; we assign person attributes only to pronouns.</S>
+    <S sid="130" ssid="80">However, we do not enforce this constraint when linking two pronouns if one appears within quotes.</S>
+    <S sid="131" ssid="81">This is a simple heuristic for speaker detection, e.g., I and she point to the same person in &#8220;[I] voted my conscience,&#8221; [she] said.</S>
+    <S sid="132" ssid="82">Animacy &#8211; we set animacy attributes using: (a) a static list for pronouns; (b) NER labels, e.g., PERSON is animate whereas LOCATION is not; and (c) a dictionary boostrapped from the web (Ji and Lin, 2009).</S>
+    <S sid="133" ssid="83">NER label &#8211; from the Stanford NER.</S>
+    <S sid="134" ssid="84">If we cannot detect a value, we set attributes to unknown and treat them as wildcards, i.e., they can match any other value.</S>
+    <S sid="135" ssid="85">This final model raises the pairwise recall of our system almost 22 percentage points, with only an 8 point drop in pairwise precision.</S>
+    <S sid="136" ssid="86">Table 2 shows that similar behavior is measured for all other metrics.</S>
+    <S sid="137" ssid="87">After all passes have run, we take the transitive closure of the generated clusters as the system output.</S>
+  </SECTION>
+  <SECTION title="5 Experimental Results" number="5">
+    <S sid="138" ssid="1">We present the results of our approach and other relevant prior work in Table 3.</S>
+    <S sid="139" ssid="2">We include in the table all recent systems that report results under the same conditions as our experimental setup (i.e., using gold mentions) and use the same corpora.</S>
+    <S sid="140" ssid="3">We exclude from this analysis two notable works that report results only on a version of the task that includes finding mentions (Haghighi and Klein, 2010; Stoyanov, 2010).</S>
+    <S sid="141" ssid="4">The Haghighi and Klein (2009) numbers have two variants: with semantics (+S) and without (&#8722;S).</S>
+    <S sid="142" ssid="5">To measure the contribution of our multi-pass system, we also present results from a single-pass variant of our system that uses all applicable features from the multi-pass system (marked as &#8220;single pass&#8221; in the table).</S>
+    <S sid="143" ssid="6">Our sieve model outperforms all systems on two out of the four evaluation corpora (ACE2004ROTH-DEV and ACE2004-NWIRE), on all metrics.</S>
+    <S sid="144" ssid="7">On the corpora where our model is not best, it ranks a close second.</S>
+    <S sid="145" ssid="8">For example, in ACE2004CULOTTA-TEST our system has a B3 F1 score only .4 points lower than Bengston and Roth (2008) and it outperforms all unsupervised approaches.</S>
+    <S sid="146" ssid="9">In MUC6-TEST, our sieve&#8217;s B3 F1 score is 1.8 points lower than Haghighi and Klein (2009) +S, but it outperforms a supervised system that used gold named entity labels.</S>
+    <S sid="147" ssid="10">Finally, the multi-pass architecture always beats the equivalent single-pass system with its contribution ranging between 1 and 4 F1 points depending on the corpus and evaluation metric.</S>
+    <S sid="148" ssid="11">Our approach has the highest precision on all corpora, regardless of evaluation metric.</S>
+    <S sid="149" ssid="12">We believe this is particularly useful for large-scale NLP applications that use coreference resolution components, e.g., question answering or information extraction.</S>
+    <S sid="150" ssid="13">These applications can generally function without coreference information so it is beneficial to provide such information only when it is highly precise.</S>
+  </SECTION>
+  <SECTION title="6 Discussion" number="6">
+    <S sid="151" ssid="1">The sieve model outperforms all other systems on at least two test sets, even though most of the other models are significantly richer.</S>
+    <S sid="152" ssid="2">Amongst the comparisons, several are supervised (Bengston and Roth, 2008; Finkel and Manning, 2008; Culotta et al., 2007).</S>
+    <S sid="153" ssid="3">The system of Haghighi and Klein (2009) +S uses a lexicon of semantically-compatible noun pairs acquired transductively, i.e., with knowledge of the mentions in the test set.</S>
+    <S sid="154" ssid="4">Our system does not rely on labeled corpora for training (like supervised approaches) nor access to corpora during testing (like Haghighi and Klein (2009)).</S>
+    <S sid="155" ssid="5">The system that is closest to ours is Haghighi and Klein (2009) &#8722;S.</S>
+    <S sid="156" ssid="6">Like us, they use a rich set of features and deterministic decisions.</S>
+    <S sid="157" ssid="7">However, theirs is a single-pass model with a smaller feature set (no cluster-level, acronym, demonym, or animacy information).</S>
+    <S sid="158" ssid="8">Table 3 shows that on the two corpora where results for this system are available, we outperform it considerably on all metrics.</S>
+    <S sid="159" ssid="9">To understand if the difference is due to the multi-pass architecture or the richer feature set we compared (Haghighi and Klein, 2009) &#8722;S against both our multi-pass system and its single-pass variant.</S>
+    <S sid="160" ssid="10">The comparison indicates that both these contributions help: our single-pass system outperforms Haghighi and Klein (2009) consistently, and the multi-pass architecture further improves the performance of our single-pass system between 1 and 4 F1 points, depending on the corpus and evaluation metric.</S>
+    <S sid="161" ssid="11">Recent unsupervised coreference work from Haghighi and Klein (2009) included a novel semantic component that matched related head words (e.g., AOL is a company) learned from select wikipedia articles.</S>
+    <S sid="162" ssid="12">They first identified articles relevant to the entity mentions in the test set, and then bootstrapped from known syntactic patterns for apposition and predicate-nominatives in order to learn a database of related head pairs.</S>
+    <S sid="163" ssid="13">They show impressive gains by using these learned pairs in coreference decisions.</S>
+    <S sid="164" ssid="14">This type of learning using test set mentions is often described as transductive.</S>
+    <S sid="165" ssid="15">Our work instead focuses on an approach that does not require access to the dataset beforehand.</S>
+    <S sid="166" ssid="16">We thus did not include a similar semantic component in our system, given that running a bootstrapping learner whenever a new data set is encountered is not practical and, ultimately, reduces the usability of this NLP component.</S>
+    <S sid="167" ssid="17">However, our results show that our sieve algorithm with minimal semantic information still performs as well as the Haghighi and Klein (2009) system with semantics.</S>
+    <S sid="168" ssid="18">The sieve architecture offers benefits beyond improved accuracy.</S>
+    <S sid="169" ssid="19">Its modular design provides a flexibility for features that is not available in most supervised or unsupervised systems.</S>
+    <S sid="170" ssid="20">The sieve allows new features to be seamlessly inserted without affecting (or even understanding) the other components.</S>
+    <S sid="171" ssid="21">For instance, once a new high precision feature (or group of features) is inserted as its own stage, it will benefit later stages with more precise clusters, but it will not interfere with their particular algorithmic decisions.</S>
+    <S sid="172" ssid="22">This flexibility is in sharp contrast to supervised classifiers that require their models to be retrained on labeled data, and unsupervised systems that do not offer a clear insertion point for new features.</S>
+    <S sid="173" ssid="23">It can be difficult to fully understand how a system makes a single decision, but the sieve allows for flexible usage with minimal effort.</S>
+    <S sid="174" ssid="24">Table 4 shows the number of incorrect pair-wise links generated by our system on the MUC6-TEST corpus.</S>
+    <S sid="175" ssid="25">The table indicates that most of our errors are for nominal mentions.</S>
+    <S sid="176" ssid="26">For example, the combined (precision plus recall) number of errors for proper or common noun mentions is three times larger than the number of errors made for pronominal mentions.</S>
+    <S sid="177" ssid="27">The table also highlights that most of our errors are recall errors.</S>
+    <S sid="178" ssid="28">There are eight times more recall errors than precision errors in our output.</S>
+    <S sid="179" ssid="29">This is a consequence of our decision to prioritize highly precise features in the sieve.</S>
+    <S sid="180" ssid="30">The above analysis illustrates that our next effort should focus on improving recall.</S>
+    <S sid="181" ssid="31">In order to understand the limitations of our current system, we randomly selected 60 recall errors (20 for each mention type) and investigated their causes.</S>
+    <S sid="182" ssid="32">Not surprisingly, the causes are unique to each type.</S>
+    <S sid="183" ssid="33">For proper nouns, 50% of recall errors are due to mention lengthening, mentions that are longer than their earlier mentions.</S>
+    <S sid="184" ssid="34">For example, Washingtonbased USAir appears after USAir in the text, so our head matching components skip it because their high precision depends on disallowing new modifiers as the discourse proceeds.</S>
+    <S sid="185" ssid="35">When the mentions were reversed (as is the usual case), they match.</S>
+    <S sid="186" ssid="36">The common noun recall errors are very different from proper nouns: 17 of the 20 random examples can be classified as semantic knowledge.</S>
+    <S sid="187" ssid="37">These errors are roughly evenly split between recognizing categories of names (e.g., Gitano is an organization name hence it should match the nominal antecedent the company), and understanding hypernym relations like settlements and agreements.</S>
+    <S sid="188" ssid="38">Pronoun errors come in two forms.</S>
+    <S sid="189" ssid="39">Roughly 40% of these errors are attribute mismatches involving sometimes ambiguous uses of gender and number (e.g., she with Pat Carney).</S>
+    <S sid="190" ssid="40">Another 40% are not semantic or attribute-based, but rather simply arise due to the order in which we check potential antecedents.</S>
+    <S sid="191" ssid="41">In all these situations, the correct links are missed because the system chooses a closer (incorrect) antecedent.</S>
+    <S sid="192" ssid="42">These four highlighted errors (lengthening, semantics, attributes, ordering) add up to 77% of all recall errors in the selected set.</S>
+    <S sid="193" ssid="43">In general, each error type is particular to a specific mention type.</S>
+    <S sid="194" ssid="44">This suggests that recall improvements can be made by focusing on one mention type without aversely affecting the others.</S>
+    <S sid="195" ssid="45">Our sieve-based approach to coreference uniquely allows for such new models to be seamlessly inserted.</S>
+  </SECTION>
+  <SECTION title="7 Conclusion" number="7">
+    <S sid="196" ssid="1">We presented a simple deterministic approach to coreference resolution that incorporates documentlevel information, which is typically exploited only by more complex, joint learning models.</S>
+    <S sid="197" ssid="2">Our sieve architecture applies a battery of deterministic coreference models one at a time from highest to lowest precision, where each model builds on the previous model&#8217;s cluster output.</S>
+    <S sid="198" ssid="3">Despite its simplicity, our approach outperforms or performs comparably to the state of the art on several corpora.</S>
+    <S sid="199" ssid="4">An additional benefit of the sieve framework is its modularity: new features or models can be inserted in the system with limited understanding of the other features already deployed.</S>
+    <S sid="200" ssid="5">Our code is publicly released5 and can be used both as a stand-alone coreference system and as a platform for the development of future systems.</S>
+    <S sid="201" ssid="6">The strong performance of our system suggests the use of sieves in other NLP tasks for which a variety of very high-precision features can be designed and non-local features can be shared; likely candidates include relation and event extraction, template slot filling, and author name deduplication.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="8">
+    <S sid="202" ssid="1">We gratefully acknowledge the support of the Defense Advanced Research Projects Agency (DARPA) Machine Reading Program under Air Force Research Laboratory (AFRL) prime contract no.</S>
+    <S sid="203" ssid="2">FA8750-09-C-0181.</S>
+    <S sid="204" ssid="3">Any opinions, findings, and conclusion or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the view of DARPA, AFRL, or the US government.</S>
+    <S sid="205" ssid="4">Many thanks to Jenny Finkel for writing a reimplementation of much of Haghighi and Klein (2009), which served as the starting point for the work reported here.</S>
+    <S sid="206" ssid="5">We also thank Nicholas Rizzolo and Dan Roth for helping us replicate their experimental setup, and Heng Ji and Dekang Lin for providing their gender lexicon.</S>
+  </SECTION>
+</PAPER>

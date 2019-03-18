@@ -1,0 +1,354 @@
+<PAPER>
+	<ABSTRACT>
+		<S sid ="1" ssid = "1">We present a Bayesian approach to word alignment inference in IBM Models 1 and 2.</S>
+		<S sid ="2" ssid = "2">In the original approach, word translation probabilities (i.e., model parameters) are estimated using the expectation-maximization (EM) algorithm.</S>
+		<S sid ="3" ssid = "3">In the proposed approach, they are random variables with a prior and are integrated out during inference.</S>
+		<S sid ="4" ssid = "4">We use Gibbs sampling to infer the word alignment posteriors.</S>
+		<S sid ="5" ssid = "5">The inferred word alignments are compared against EM and variational Bayes (VB) inference in terms of their end-to-end translation performance on several language pairs and types of corpora up to 15 million sentence pairs.</S>
+		<S sid ="6" ssid = "6">We show that Bayesian inference outperforms both EM and VB in the majority of test cases.</S>
+		<S sid ="7" ssid = "7">Further analysis reveals that the proposed method effectively addresses the high-fertility rare word problem in EM and unaligned rare word problem in VB, achieves higher agreement and vocabulary coverage rates than both, and leads to smaller phrase tables.</S>
+		<S sid ="8" ssid = "8">Index Terms—Bayesian methods, Gibbs sampling, statistical machine translation (SMT), word alignment.</S>
+	</ABSTRACT>
+	<SECTION title="INTRODUCTION" number = "1">
+			<S sid ="9" ssid = "9">ORD alignment is a crucial early step in the training pipeline of most statistical machine translation (SMT) systems [1].</S>
+			<S sid ="10" ssid = "10">Whether the employed models are phrase-based or tree-based, they use the estimated word alignments for constraining the set of candidates in phrase or grammar rule extraction [2]–[4].</S>
+			<S sid ="11" ssid = "11">As such, the coverage and the accuracy of the learned phrase/rule translation models are strongly correlated with those of the word alignment.</S>
+			<S sid ="12" ssid = "12">Given a sentence-aligned parallel corpus, the goal of the word alignment is to identify the mapping between the source and target words in parallel sentences.</S>
+			<S sid ="13" ssid = "13">Since word alignment information is usually not available during corpus generation and human annotation is costly, the task of word alignment is considered as an unsupervised learning problem.</S>
+			<S sid ="14" ssid = "14">Manuscript received June 04, 2012; revised November 05, 2012; accepted January 02, 2013.</S>
+			<S sid ="15" ssid = "15">Date of publication February 01, 2013; date of current version February 25, 2013.</S>
+			<S sid ="16" ssid = "16">The work of M. Saraclar was supported by a TÜBAGEBİP award.</S>
+			<S sid ="17" ssid = "17">The associate editor coordinating the review of this manuscript and approving it for publication was Dr. Gokhan Tur.</S>
+			<S sid ="18" ssid = "18">C. Mermer is with TÜBİTAK BİLGEM, Kocaeli 41470, Turkey, and also with the Department of Electrical and Electronics Engineering, Boğaziçi University, Istanbul 34342, Turkey (email: coskun.mermer@tubitak.gov.tr).</S>
+			<S sid ="19" ssid = "19">M. Saraçlar is with the Department of Electrical and Electronics Engineering, Boğaziçi University, Istanbul 34342, Turkey (email: murat.saraclar@boun.edu.tr).</S>
+			<S sid ="20" ssid = "20">R. Sarikaya is with Microsoft, Redmond, WA 98052 USA (email: ruhi.sarikaya@microsoft.com).</S>
+			<S sid ="21" ssid = "21">Color versions of one or more of the figures in this paper are available online at http://ieeexplore.ieee.org.</S>
+			<S sid ="22" ssid = "22">Digital Object Identifier 10.1109/TASL.2013.2244087 State-of-the-art word alignment models, such as IBM Models [5], hidden Markov model (HMM) [6], and the jointly-trained symmetric HMM [7], contain a large number of parameters (such as word translation, transition, and fertility probabilities) that need be estimated in addition to the desired alignment variables.</S>
+			<S sid ="23" ssid = "23">The common method of inference in such models is expectation-maximization (EM) [8] or an approximation to EM when exact EM is intractable.</S>
+			<S sid ="24" ssid = "24">The EM algorithm finds the value of parameters that maximizes the likelihood of the observed variables.</S>
+			<S sid ="25" ssid = "25">However, with many parameters to be estimated without any prior, EM tends to explain the training data by overfitting the parameters.</S>
+			<S sid ="26" ssid = "26">A well-documented example of overfitting in EM-estimated word alignments is the case of rare words, where some rare words act as “garbage collectors” aligning to excessively many words on the other side of the sentence pair [9]–[11].</S>
+			<S sid ="27" ssid = "27">Moreover, EM is generally prone to getting stuck in a local maximum of the likelihood.</S>
+			<S sid ="28" ssid = "28">Finally, EM is based on the assumption that there is one fixed value of parameters that explains the data, i.e., EM gives a point estimate.</S>
+			<S sid ="29" ssid = "29">We propose1 a Bayesian approach in which we utilize a prior distribution on the parameters.</S>
+			<S sid ="30" ssid = "30">The alignment probabilities are inferred by integrating over all possible parameter values.</S>
+			<S sid ="31" ssid = "31">We treat the word translation probabilities as multinomial-distributed random variables with a sparse Dirichlet prior.</S>
+			<S sid ="32" ssid = "32">Inference is performed via Gibbs sampling, which samples the posterior alignment distribution.</S>
+			<S sid ="33" ssid = "33">We compare the EM and Bayesian alignments on the case of IBM Models 1 and 2.</S>
+			<S sid ="34" ssid = "34">The inferred alignments are evaluated in terms of end-to-end translation performance on various language pairs and corpora.</S>
+			<S sid ="35" ssid = "35">The remainder of this paper is organized as follows: The related literature is reviewed in Section II.</S>
+			<S sid ="36" ssid = "36">The proposed model and the inference algorithm are presented in Section III.</S>
+			<S sid ="37" ssid = "37">The experiments are described and their results are presented in Section IV.</S>
+			<S sid ="38" ssid = "38">A detailed analysis of the results and various aspects of the proposed method are provided in Section V, followed by the conclusions in Section VI.</S>
+			<S sid ="39" ssid = "39">II.</S>
+			<S sid ="40" ssid = "40">RELATED WORK Problems with the standard EM estimation of IBM Model 1 were pointed out by Moore [11].</S>
+			<S sid ="41" ssid = "41">A number of heuristic changes to the estimation procedure, such as smoothing the parameter estimates, were shown to reduce the alignment error rate, but the effects on translation performance were not reported.</S>
+			<S sid ="42" ssid = "42">Zhao and Xing [13] address the data sparsity issue using symmetric Dirichlet priors in parameter estimation and they use variational EM to find the maximum a posteriori (MAP) solution.</S>
+			<S sid ="43" ssid = "43">Vaswani 1Part of this work was presented at a conference [12].</S>
+			<S sid ="44" ssid = "44">15587916/$31.00 © 2013 IEEE et al. [14] encourage sparsity in the translation model by placing an prior on the parameters and then optimize for the MAP objective.</S>
+			<S sid ="45" ssid = "45">Zhao and Gildea [15] use sampling in their proposed fertility extensions to IBM Model 1 and HMM, but they do not place any prior on the parameters.</S>
+			<S sid ="46" ssid = "46">Their inference method is stochastic EM (also known as Monte Carlo EM), a maximum-likelihood technique in which sampling is used to approximate the expected counts in the E-step.</S>
+			<S sid ="47" ssid = "47">Even though they report substantial reductions in the alignment error rate, the translation performance measured in BLEU does not improve.</S>
+			<S sid ="48" ssid = "48">Bayesian modeling and inference have recently been applied to several unsupervised learning problems in natural language processing such as part-of-speech tagging [16], [17], word segmentation [18], [19], grammar extraction [20] and finite-state transducer training [21] as well as other tasks in SMT such as synchronous grammar induction [22] and learning phrase alignments directly [23].</S>
+			<S sid ="49" ssid = "49">Word alignment learning problem was addressed jointly with segmentation learning by Xu et al. [24], Nguyen et al. [25], and Chung and Gildea [26].</S>
+			<S sid ="50" ssid = "50">As in this paper, they treat word translation probabilities as random variables (with an associated prior distribution).</S>
+			<S sid ="51" ssid = "51">Both [24] and [25] place nonparametric priors (also known as cache models) on the parameters.</S>
+			<S sid ="52" ssid = "52">Similar to our work, this enables integration over the prior distribution.</S>
+			<S sid ="53" ssid = "53">In [24], a Dirichlet Process prior is placed on IBM Model 1 word translation probabilities.</S>
+			<S sid ="54" ssid = "54">In [25], a PitmanYor Process prior is placed on word translation probabilities in a proposed bag-of-words translation model that is similar to IBM Model 1.</S>
+			<S sid ="55" ssid = "55">Both studies utilize Gibbs sampling for inference.</S>
+			<S sid ="56" ssid = "56">However,.</S>
+			<S sid ="57" ssid = "57">alignment distributions are not sampled from the true posteriors but instead are updated either by running GIZA++ [24] or using a “local-best” maximization search [25].</S>
+			<S sid ="58" ssid = "58">On the other hand, a sparse Dirichlet prior on the multinomial parameters is used in [26] to prevent overfitting.</S>
+			<S sid ="59" ssid = "59">Bayesian word alignment with Dirichlet priors was also investigated in a recent study using variational Bayes (VB) [27].</S>
+			<S sid ="60" ssid = "60">VB is a Bayesian inference method which is sometimes preferred over Gibbs sampling due to its relatively lower computational cost and scalability.</S>
+			<S sid ="61" ssid = "61">However, VB inference approximates the model by assuming independence between the hidden variables and the parameters.</S>
+			<S sid ="62" ssid = "62">To evaluate the effect of this approximation, we also present and analyze the experimental results obtained using VB (Sections IV-C and V-A).</S>
+			<S sid ="63" ssid = "63">This paper extends the initial work in [12] in several aspects: 1) Extension to inference in Bayesian IBM Model 2, 2) complete derivation of the Gibbs sampler for both Models 1 and 2, 3) performance comparison with VB, 4) improved performance for both baseline and proposed systems via alignment combination, 5) reporting the average and standard deviation over 10 MERT runs for each BLEU score, 6) experimental results on two to three orders of magnitude larger training sets, 7) results with morphologically-segmented corpora, 8) several new metrics, including AER, for intrinsic and extrinsic evaluation of alignments obtained using different methods, 9) analysis of the effect of sampling settings, and 10) convergence behavior of both EM and Gibbs sampling.</S>
+			<S sid ="64" ssid = "64">III.</S>
+			<S sid ="65" ssid = "65">BAYESIAN INFERENCE OF WORD ALIGNMENTS We first recap the IBM Model 1 presented in [5] and establish the notation used in this paper.</S>
+			<S sid ="66" ssid = "66">Given a parallel corpus of sentence pairs, let denote the -th sentence in , and let denote the -th ( -th) word among a total of words in 2.</S>
+			<S sid ="67" ssid = "67">We also hypothesize an imaginary “null” word to account for any unaligned words in . Also let and denote the size of the respective vocabularies.</S>
+			<S sid ="68" ssid = "68">We associate with each a hidden alignment variable whose value ranges over [0, ].</S>
+			<S sid ="69" ssid = "69">The set of alignments for a sentence (corpus) is denoted by . The model parameters consist of a table of word translation probabilities such that . Since is conditioned on , we refer to as the “source” word (sentence) and as the “target” word (sentence)3.</S>
+			<S sid ="70" ssid = "70">The conditional distribution of the Model 1 variables given parameters is expressed by the following generative model: (1) (2)The two unknowns and are estimated using the EM al gorithm, which finds the value of that maximizes the likelihood of the observed variables and according to the model.</S>
+			<S sid ="71" ssid = "71">Once the value of is known, the probability of any alignment becomes straightforward to compute.</S>
+			<S sid ="72" ssid = "72">In the following derivation of our proposed model, we treat the unknown as a random variable.</S>
+			<S sid ="73" ssid = "73">Following the Bayesian approach, we assume a prior distribution on and infer the distribution of by integrating over all values of . A. Canonical Representation of Model 1 We first convert the token-based expression in (2) into a type- based one as (with now a random variable): (3) (4) where in (3) the count variable denotes the number of times the source word type is aligned to the target word type in the sentence pair , and in (4) . This formulation exposes two properties of IBM Model 1 that facilitates the derivation of a Bayesian inference algorithm.</S>
+			<S sid ="74" ssid = "74">First, the parametrization on is in the canonical form of an 2Keeping in mind that , , , (and introduced later) are defined with respect to the -th sentence, we drop the subscript for notational simplicity.</S>
+			<S sid ="75" ssid = "75">3Historically, the source and target designations were based on the translation task, when the word alignment direction was dictated by the “noisy channel model” to be the inverse of the translation direction.</S>
+			<S sid ="76" ssid = "76">Today almost all SMT systems using IBM models train alignments in both directions, decoupling the alignment direction from that of translation and nullifying the justification of the early nomenclature.</S>
+			<S sid ="77" ssid = "77">exponential family distribution (as the inner-product of parameters and sufficient statistics ), which implies the existence of a conjugate prior that simplifies calculation of the posterior.</S>
+			<S sid ="78" ssid = "78">Second, the distribution in (4) depends on the variables , and only through a set of count variables . In other words, the order of words within a sentence has no effect on the likelihood, which is called exchangeability or a “bag of words” model.</S>
+			<S sid ="79" ssid = "79">This results in simplification of the terms when deriving the Gibbs sampler.</S>
+			<S sid ="80" ssid = "80">B. Prior on Word Translation Probabilities For each source word type , by definition form the parameters of a multinomial distribution that governs the distribution of the target words aligned to . Hence, the conditional distribution of the -th target word ina sentence pair is defined by: Since the conjugate prior of multinomial is the Dirichlet distribution, we choose: where . Overall, are the hyperparameters of the model.</S>
+			<S sid ="81" ssid = "81">The mathematical expression for the prior is provided in (13) in the Appendix.</S>
+			<S sid ="82" ssid = "82">We can encode our prior expectations for into the model by suitably setting the values of . For example, we generally expect the translation probability distribution of a given source word type to be concentrated on one or a few target word types.</S>
+			<S sid ="83" ssid = "83">Setting allocates more prior weight to such sparse distributions.</S>
+			<S sid ="84" ssid = "84">C. Inference by Gibbs Sampling To infer the posterior distribution of the alignments , we use Gibbs sampling [28], a stochastic inference technique that produces random samples that converge in distribution to the desired posterior.</S>
+			<S sid ="85" ssid = "85">In general, for a set of random variables , a Gibbs sampler iteratively updates the variables one at a time by sampling its value from the distribution , where the superscript denotes the exclusion of the variable being sampled.</S>
+			<S sid ="86" ssid = "86">Before applying Gibbs sampling to our model in (4), since we are only after , we integrate out the unknown using: (5) The remaining set of variables is , of which only is unknown.</S>
+			<S sid ="87" ssid = "87">Starting from (5), the Gibbs sampling formula is found as (the derivation steps are outlined in the Appendix): TABLE I ALIGNMENT INFERENCE ALGORITHM FOR BAYESIAN IBM MODEL 1 USING GIBBS SAMPLING the current alignment link between and . We can also observe the effect of the prior, where the hyperparameters act as pseudo-counts added to . Table I describes the complete inference algorithm.</S>
+			<S sid ="88" ssid = "88">In Step 1, can be initialized arbitrarily.</S>
+			<S sid ="89" ssid = "89">However, informed initializations, e.g., EM-estimated alignments, can be used for faster convergence.</S>
+			<S sid ="90" ssid = "90">Once the Gibbs sampler is deemed to have converged after burn-in iterations, we collect samples of to estimate the underlying distribution . To reduce correlation between these samples, a lag of iterations is introduced in-between.</S>
+			<S sid ="91" ssid = "91">Thus the algorithm is run for a total of iterations.</S>
+			<S sid ="92" ssid = "92">The phrase/rule extraction step requires as its input the most probable alignment , which is also called the Viterbi alignment.</S>
+			<S sid ="93" ssid = "93">Since is a vector with a large number of elements, we make the assumption that the most frequent value for the vector can be approximated by the vector consisting of the most frequent values for each element . Hence, we select for each its most frequent value in the.</S>
+			<S sid ="94" ssid = "94">collected samples as the Viterbi alignment.</S>
+			<S sid ="95" ssid = "95">D. Extension to IBM Model 2 IBM Model 1 assumes that all alignments are equally probable, i.e., . In IBM Model 2 [5], the alignment probability distribution for a given target word at position depends on the quadruple . This dependency is parametrized by a distortion parameter for each quadruple such that (7) Note that Model 1 is a special case of Model 2 in which the parameters are fixed at . Different variants of Model 2 have been proposed to reduce the number of parameters, e.g., by dropping dependence on ( [10]) or using relative distortion ( where [6], also called “diagonal-oriented Model 2” [29]).</S>
+			<S sid ="96" ssid = "96">In the following, we used the latter parametrization; the derivation for inference in the other variants would be similar.</S>
+			<S sid ="97" ssid = "97">Bayesian inference in Model 2 can be derived in an analogous manner to Model 1.</S>
+			<S sid ="98" ssid = "98">Treating the set of distortion parameters, denoted by , as a new random variable, equations (2) and (4) can be adapted to Model 2 as: (6) Here, denotes the number of times the source word type is aligned to the target word type in , not counting (8) (9) where in (9) the count variable stores the number of times a particular relative distortion occurs in . Since form the parameters of a multinomial distribution on (see (7)), we choose a Dirichlet prior on : where are the distortion hyperparameters.</S>
+			<S sid ="99" ssid = "99">Integrating out the parameters and results in the following Gibbs sampling formula for Bayesian IBM Model 2: (10) where . A complete derivation is presented in the Appendix.</S>
+			<S sid ="100" ssid = "100">To infer the alignments under Model 2, the only change needed in Table I is the use of (10) instead of (6) in step 6.</S>
+			<S sid ="101" ssid = "101">IV.</S>
+			<S sid ="102" ssid = "102">EXPERIMENTAL RESULTS A. Setup We evaluated the performance of the Bayesian word alignment via bidirectional translation experiments.</S>
+			<S sid ="103" ssid = "103">We performed the initial experiments and analyses on small data, then tested the best performing baseline and proposed methods on large data.</S>
+			<S sid ="104" ssid = "104">Furthermore, we performed some of the side investigations and compute-intensive experiments such as those concerning the alignment combination schemes, morphological segmentation, convergence and the effect of sampling settings only on the smallest of the datasets (Turkish English).</S>
+			<S sid ="105" ssid = "105">For Turkish English experiments, we used the travel domain BTEC dataset [30] from the annual IWSLT evaluations [31] for training, the CSTAR 2003 test set for tuning, and the IWSLT 2004 test set for testing.</S>
+			<S sid ="106" ssid = "106">For Arabic English , we used LDC2004T18 (news from years 20012004) for training, subsets of the AFP portion of LDC2004T17 (news from year 1998) for tuning and testing, and the AFP and Xinhua subsets of the respective Gigaword corpora (LDC2007T07 and LDC2007T40) for additional LM training.</S>
+			<S sid ="107" ssid = "107">We filtered out sentence pairs where either side contains more than 70 words for Arabic English.</S>
+			<S sid ="108" ssid = "108">All language models are 4-gram in the travel domain experiments and 5-gram in the news domain experiments with modified KneserNey smoothing [32] and interpolation.</S>
+			<S sid ="109" ssid = "109">Table II shows the statistics of the data sets used in the small-data experiments.</S>
+			<S sid ="110" ssid = "110">For each language pair, we obtained maximum-likelihood word alignments using the EM implementation of GIZA++ [10] and Bayesian alignments using the publicly available Gibbs sampling (GS) implementation [33].</S>
+			<S sid ="111" ssid = "111">As sampling settings (Section III-C), we used ; ; and for and 8000 for . We chose identical symmetric Dirichlet priors for all source words with to obtain a sparse Dirichlet prior.</S>
+			<S sid ="112" ssid = "112">After alignments were obtained in both translation directions, standard phrase-based SMT systems were trained in both directions using Moses [34], SRILM [35], and TABLE II CORPUS STATISTICS FOR EACH LANGUAGE PAIR IN THE SMALL-DATA EXPERIMENTS.</S>
+			<S sid ="113" ssid = "113">T: TURKISH, E: ENGLISH, A: ARABIC ZMERT [36] tools.</S>
+			<S sid ="114" ssid = "114">The translations were evaluated using the single-reference BLEU [37] metric.</S>
+			<S sid ="115" ssid = "115">Alignments in both directions were symmetrized using the default heuristic in Moses (“grow-diag-final-and”).</S>
+			<S sid ="116" ssid = "116">To account for the random variability in minimum error-rate training (MERT) [38], we report the mean and standard deviation of 10 MERT runs for each evaluation.</S>
+			<S sid ="117" ssid = "117">We also investigated alignment combination, both within and across alignment methods, to obtain the best possible performance.</S>
+			<S sid ="118" ssid = "118">For this purpose, we obtained three alignment samples from each inference method while trying to capture as much diversity as possible.</S>
+			<S sid ="119" ssid = "119">For EM, we obtained alignments after 5,20, and 80 iterations (denoted by EM-5, EM-20, and EM-80, re spectively).</S>
+			<S sid ="120" ssid = "120">For GS, we ran three separate chains, two initialized with the EM alignments (denoted by GS-5 and GS-80, respectively), and to provide even more diversity, a third initialized based on co-occurrence (denoted by GS-N): Each target word was initially aligned to the source candidate that it co-occurred with the most number of times in the entire parallel corpus.</S>
+			<S sid ="121" ssid = "121">B. Performance Comparison of EM and GS Fig.</S>
+			<S sid ="122" ssid = "122">1 compares the BLEU scores of SMT systems trained with individual EM- and GS-inferred alignments.</S>
+			<S sid ="123" ssid = "123">In all cases, using GS alignments that are initialized with the alignments from EM leads to higher BLEU scores on average than using the EM alignments directly.</S>
+			<S sid ="124" ssid = "124">In Section V-A, we investigate the intrinsic differences between the EM- and GS-inferred alignments that lead to the improved translation performance.</S>
+			<S sid ="125" ssid = "125">Alignment combination across methods (heterogeneous combination) has been previously shown [39], [40] to improve the translation performance over individual alignments.</S>
+			<S sid ="126" ssid = "126">Moreover, alignment combination within a method (homogeneous combination) can also cope with random variation (in GS) or overfit- ting (in EM).</S>
+			<S sid ="127" ssid = "127">We implemented alignment combination by concatenating the individual sets of alignments, meanwhile replicating the training corpus, and training the SMT system otherwise the same way.</S>
+			<S sid ="128" ssid = "128">We experimented with various alignment combination schemes and found that combining the EM alignments from 5, 20, and 80 iterations is in general better than the individual alignments, with a similar conclusion for combining the three GS alignments described in Section IV-A.</S>
+			<S sid ="129" ssid = "129">Further combination of these two combinations for a total of six alignments sometimes improved the performance even more.</S>
+			<S sid ="130" ssid = "130">So we present the results in this section using these three combination Fig.</S>
+			<S sid ="131" ssid = "131">1.</S>
+			<S sid ="132" ssid = "132">Translation performance of word alignments obtained by expectation- maximization (EM), Gibbs sampling initialized with EM (GS) and variational Bayes (VB): EM, GS, VB.</S>
+			<S sid ="133" ssid = "133">Fig.</S>
+			<S sid ="134" ssid = "134">2.</S>
+			<S sid ="135" ssid = "135">Translation performance of EM, Gibbs sampling, and variational Bayes after applying alignment combination within and across methods: EM(Co), GS(Co), EM(Co)+GS(Co), VB(Co), and EM(Co)+VB(Co).</S>
+			<S sid ="136" ssid = "136">The same BLEU scale is used as in Fig.</S>
+			<S sid ="137" ssid = "137">1.</S>
+			<S sid ="138" ssid = "138">schemes (denoted by EM(Co), GS(Co), and EM(Co)+GS(Co), respectively, in Fig.</S>
+			<S sid ="139" ssid = "139">2).</S>
+			<S sid ="140" ssid = "140">We observe from Fig.</S>
+			<S sid ="141" ssid = "141">2 that GS(Co) outperforms EM(Co) on average, both by itself and in combination with EM(Co), in most cases by a significant margin.</S>
+			<S sid ="142" ssid = "142">However, which scheme (GS(Co) or EM(Co)+GS(Co)) is the best seems to depend on the language pair and/or dataset.</S>
+			<S sid ="143" ssid = "143">C. Comparison with Variational Bayes Using the publicly available software [41], we experimented with variational Bayes (VB) inference using similar alignment combination schemes: combination of three VB-inferred alignments after 5, 20, and 80 Model 1 iterations; and further combination of it with the three EM-inferred alignments above (denoted by VB(Co) and EM(Co)+VB(Co), respectively).</S>
+			<S sid ="144" ssid = "144">The translation performance of the individual VB alignments in Fig.</S>
+			<S sid ="145" ssid = "145">1 shows that, compared to EM, VB achieves higher Fig.</S>
+			<S sid ="146" ssid = "146">3.</S>
+			<S sid ="147" ssid = "147">Results for the morphologically-segmented TurkishEnglish corpus.</S>
+			<S sid ="148" ssid = "148">All BLEU scores are computed at the word level.</S>
+			<S sid ="149" ssid = "149">BLEU scores in but lower scores in . On the other hand, GS outperforms VB in all cases but one in Fig.</S>
+			<S sid ="150" ssid = "150">1.</S>
+			<S sid ="151" ssid = "151">As for the performance after alignment combination, Fig.</S>
+			<S sid ="152" ssid = "152">2 shows that, for all translation directions GS(Co) leads to higher average BLEU scores compared to VB(Co), both with and without further combination with EM(Co).</S>
+			<S sid ="153" ssid = "153">The performance of VB(Co) relative to EM(Co) is similar to the case for individual alignments (better in , worse in ).</S>
+			<S sid ="154" ssid = "154">However, EM(Co)+VB(Co) outperforms or performs as good as EM in all cases, demonstrating that Bayesian word alignment can be beneficial even with a fast, yet approximate inference method.</S>
+			<S sid ="155" ssid = "155">To explain the particularly low performance of VB in Arabic English, we inspected the alignments inferred by EM, GS, and VB.</S>
+			<S sid ="156" ssid = "156">We found that while VB with sparse Dirichlet prior avoids excessive alignment fertilities, it leaves many rare source words unaligned.</S>
+			<S sid ="157" ssid = "157">For example, the percentage of unaligned source singletons for EM-5, GS-5, and VB5 in the English Arabic (Arabic English) alignments are 27%, 16%, and 69% (44%, 34%, and 71%), respectively.</S>
+			<S sid ="158" ssid = "158">We believe the higher rate of unaligned singletons can lead to poorer training set coverage and lower translation performance (Section V-A).</S>
+			<S sid ="159" ssid = "159">D. Experiments With Morphologically Segmented Corpus Morphological preprocessing is a common practice in modern SMT systems dealing with morphologically unmatched language pairs.</S>
+			<S sid ="160" ssid = "160">Thus, as a side investigation, we also experimented with morphological segmentation in the corpus to see its effect on the performance of our proposed method (morphological segmentation is also applied in the large-data experiments presented in Section IV-E).</S>
+			<S sid ="161" ssid = "161">We used the morphological analyzer by Oflazer [42] to segment the Turkish words into lexical morphemes.</S>
+			<S sid ="162" ssid = "162">As a result, the vocabulary size decreased to 5.6k (from 18k, cf.</S>
+			<S sid ="163" ssid = "163">Table II), with 2.4k of them singletons.</S>
+			<S sid ="164" ssid = "164">The out-of-vocabulary rate in the Turkish tuning and test sets decreased from 5.2% and 6.1% to 0.9% and 0.8%, respectively.</S>
+			<S sid ="165" ssid = "165">The BLEU scores were still computed at the word level in the case of English Turkish translation by joining the morphemes in the output.</S>
+			<S sid ="166" ssid = "166">The results in Fig.</S>
+			<S sid ="167" ssid = "167">3 show that the advantage of GS over EM still holds in the morphologically-segmented condition in both translation directions, both individually and with combination.</S>
+			<S sid ="168" ssid = "168">In addition, comparing the BLEU scores with those in Figs.</S>
+			<S sid ="169" ssid = "169">1 TABLE III CORPUS STATISTICS FOR EACH LANGUAGE PAIR IN THE LARGE-DATA EXPERIMENTS.</S>
+			<S sid ="170" ssid = "170">A: ARABIC, E: ENGLISH, C: CZECH, G: GERMAN and 2 confirms the previous studies that applying morphological segmentation improves the translation performance significantly, especially in the morphologically poorer direction (i.e., Turkish English).</S>
+			<S sid ="171" ssid = "171">E. Experiments on Larger Datasets The scalability of the alignment inference methods was also tested on publicly available large datasets (Table III).</S>
+			<S sid ="172" ssid = "172">We used the 8-million sentence MultiUN corpus [43] for Arabic English translation experiments.</S>
+			<S sid ="173" ssid = "173">As is common in most state-of-the-art systems for this language pair, we performed morphological segmentation on the Arabic side for the best performance (we used the MADA+TOKAN tool [44]).</S>
+			<S sid ="174" ssid = "174">Note that after morphological segmentation, Arabic no longer exhibits the vocabulary characteristics of a morpho- logically-rich language (Table III).</S>
+			<S sid ="175" ssid = "175">We set aside the last 100k sentences of the corpus and randomly extracted the tuning and test sets from this subset.</S>
+			<S sid ="176" ssid = "176">The English side of the parallel corpus was used for language model training.We used the WMT 2012 [45] datasets for Czech Eng lish and German English translation experiments.</S>
+			<S sid ="177" ssid = "177">The training data consisted of the Europarl, news commentary, and the 15-million sentence CzEng 1.0 [46] corpora while the training data consisted of only the Europarl and news commentary corpora.</S>
+			<S sid ="178" ssid = "178">WMT 2011 and 2012 news testsets were used for tuning and testing, respectively.</S>
+			<S sid ="179" ssid = "179">The WMT 2012 monolingual news corpora covering years 2007–2011 were used for language model training.</S>
+			<S sid ="180" ssid = "180">In all large-data experiments, sentences longer than 70 words were excluded from translation model training.</S>
+			<S sid ="181" ssid = "181">Gibbs sampling settings of (B, M, L)=(1000, 100, 1) were used.</S>
+			<S sid ="182" ssid = "182">All language models were 4-gram.</S>
+			<S sid ="183" ssid = "183">To obtain the best possible baseline, we also utilized techniques that we had previously observed to improve performance on similar corpora, such as lattice sampling [47] and search in random directions [48] during MERT and minimum Bayes risk decoding [49].</S>
+			<S sid ="184" ssid = "184">All other experimental settings (e.g., 10 MERT runs etc.) were identical to the small-data experiments (Section IV-A).To conform with the majority of previous research and evalu ations in these language pairs, we trained SMT systems in both directions for the WMT 2012 language pairs and in the Arabic English direction for the MultiUN task.</S>
+			<S sid ="185" ssid = "185">For the two largest datasets ( and ), we also experimented with 1-million sentence versions for faster development experiments and to provide an intermediate data size setting.</S>
+			<S sid ="186" ssid = "186">The results are presented in Figs.</S>
+			<S sid ="187" ssid = "187">4–6.</S>
+			<S sid ="188" ssid = "188">For translation to English, Gibbs sampling improves over EM for all five corpora, the Fig.</S>
+			<S sid ="189" ssid = "189">4.</S>
+			<S sid ="190" ssid = "190">Arabic English BLEU and TER scores of various alignment methods: EM(Co), GS(Co), EM(Co)+GS(Co), and VB(Co).</S>
+			<S sid ="191" ssid = "191">Fig.</S>
+			<S sid ="192" ssid = "192">5.</S>
+			<S sid ="193" ssid = "193">Czech English BLEU scores of various alignment methods: EM(Co), GS(Co), EM(Co)+GS(Co), and VB(Co).</S>
+			<S sid ="194" ssid = "194">Fig.</S>
+			<S sid ="195" ssid = "195">6.</S>
+			<S sid ="196" ssid = "196">German English BLEU scores of various alignment methods: EM(Co), GS(Co), EM(Co)+GS(Co), and VB(Co).</S>
+			<S sid ="197" ssid = "197">largest improvement achieved by GS(Co)+EM(Co) in (0.5 to 0.7 BLEU mean difference) and by GS(Co) in and (0.3 to 0.5 BLUE mean difference).</S>
+			<S sid ="198" ssid = "198">However, for translation from English ( and ), we do not observe a consistent improvement over EM.</S>
+			<S sid ="199" ssid = "199">For the 1-million sentence task, we also report the translation error rates (TERs) [50] (bottom row of Fig.</S>
+			<S sid ="200" ssid = "200">4).</S>
+			<S sid ="201" ssid = "201">Except for the comparison between GS(Co) and EM(Co)+GS(Co) in the 1M-sentence setting, in all possible pairwise comparisons between the alignment methods in both corpus settings, Fig.</S>
+			<S sid ="202" ssid = "202">7.</S>
+			<S sid ="203" ssid = "203">Arabic English BLEU scores of various alignment combination schemes in the 1M-sentence translation task.</S>
+			<S sid ="204" ssid = "204">TABLE IV BLEU SCORES OF IBM MODEL 2 ALIGNMENT INFERENCE METHODS ON THE 1M-SENTENCE ARABIC ENGLISH TRANSLATION the method with the higher mean BLEU score also has the lower mean TER score4.</S>
+			<S sid ="205" ssid = "205">In addition, we compared the performance of some of the many possible alignment combination schemes (Fig.</S>
+			<S sid ="206" ssid = "206">7).</S>
+			<S sid ="207" ssid = "207">Not surprisingly, combination with EM(Co) helps both GS(Co) and VB(Co), and the relative ranking of the latter two does not change after combination with EM(Co).</S>
+			<S sid ="208" ssid = "208">Furthermore, combination of GS(Co)+VB(Co) improves the performance slightly over EM(Co)+GS(Co).</S>
+			<S sid ="209" ssid = "209">F. Bayesian Model 2 Results We tested the IBM Model 2 Gibbs sampling algorithm on the 1M-sentence subset of the ArabicEnglish MultiUN corpus.</S>
+			<S sid ="210" ssid = "210">Unlike the case of translation parameters , there is no clear language- and domain-independent knowledge of how the distortion parameters (the distribution of ) should look like.</S>
+			<S sid ="211" ssid = "211">Therefore, we assumed that all distortion distributions are a priori equally probable, which corresponds to setting the distortion hyperparameters for all . We also collapsed the counts for distortions larger in magnitude than 5, resulting in 11 total distortion count variables , as done in [7].</S>
+			<S sid ="212" ssid = "212">We compared the translation performance of the EM- and GS-inferred Model 2 alignments.</S>
+			<S sid ="213" ssid = "213">Both methods are initialized with the same EM-5 alignments (i.e., 5 iterations of Model 1 EM).</S>
+			<S sid ="214" ssid = "214">Model 2 EM is run for 5 iterations.</S>
+			<S sid ="215" ssid = "215">Model 2 GS is estimated with , and . The results are shown in Table IV.</S>
+			<S sid ="216" ssid = "216">Bayesian inference improves the mean BLUE score by 0.2 BLEU.</S>
+			<S sid ="217" ssid = "217">Further improvement could be possible by alignment combination within and across methods, as done in Section IV-B.</S>
+			<S sid ="218" ssid = "218">V. ANALYSIS AND DISCUSSION A. Analysis of Inferred Alignments In order to explain the BLEU score improvements achieved by the Bayesian alignment approach and to characterize the dif 4BLEU was used as the error metric for optimization in MERT.</S>
+			<S sid ="219" ssid = "219">Fig.</S>
+			<S sid ="220" ssid = "220">8.</S>
+			<S sid ="221" ssid = "221">Distribution of alignment fertilities for source language tokens.</S>
+			<S sid ="222" ssid = "222">ferences between the alignments obtained by various methods, we analyzed the alignments in Fig.</S>
+			<S sid ="223" ssid = "223">1 using several intrinsic and extrinsic evaluation metrics.</S>
+			<S sid ="224" ssid = "224">As representative alignments from each method, we selected EM-5, VB5, and GS-5.</S>
+			<S sid ="225" ssid = "225">1) Fertility Distributions: Fertility of a source word is defined as the number of target words aligned to it.</S>
+			<S sid ="226" ssid = "226">In general, we expect the fertility values close to the word token ratio between the languages to be the most frequent and high fertility values to be rare.</S>
+			<S sid ="227" ssid = "227">Fig.</S>
+			<S sid ="228" ssid = "228">8 shows the fertility distributions in alignments obtained from different methods.</S>
+			<S sid ="229" ssid = "229">We can observe the “garbage collecting” effect in the long tails of the EM-estimated alignments.</S>
+			<S sid ="230" ssid = "230">For example, in EnglishArabic Model 1 alignment using EM, 1.2% of the English source tokens are aligned with nine or more Arabic target words, corresponding to 22.3k total occurrences or about 0.4 occurrence per sentence.</S>
+			<S sid ="231" ssid = "231">In all alignment tasks, both Bayesian methods result in fewer high-fertility alignments compared to EM.</S>
+			<S sid ="232" ssid = "232">Among Bayesian inference techniques, GS is more effective than VB in avoiding high fertilities.</S>
+			<S sid ="233" ssid = "233">2) Alignment Dictionary Size: Reducing the number of unique alignment pairs has been proposed as an objective for word alignment [51], [52]: it was observed during manual alignment experiments that humans try to find the alignment with the most compact “alignment dictionary” (a vocabulary of unique source-target word pairs) as possible.</S>
+			<S sid ="234" ssid = "234">Fig.</S>
+			<S sid ="235" ssid = "235">9(a) shows that both GS and VB explain the training data using a significantly smaller alignment-pair vocabulary compared to EM.</S>
+			<S sid ="236" ssid = "236">3) Singleton Fertilities: The average alignment fertility of source singletons was proposed as an intrinsic evaluation metric in [40].</S>
+			<S sid ="237" ssid = "237">We expect lower values to correlate with better alignments.</S>
+			<S sid ="238" ssid = "238">However, a value of zero could be achieved by leaving all singletons unaligned, which is clearly not desirable.</S>
+			<S sid ="239" ssid = "239">Therefore, we refine the definition of this metric to calculate the average over aligned singletons only.</S>
+			<S sid ="240" ssid = "240">The minimum value thus attainable is one.</S>
+			<S sid ="241" ssid = "241">Fig.</S>
+			<S sid ="242" ssid = "242">9(b) shows that both Bayesian methods significantly reduce singleton fertilities.</S>
+			<S sid ="243" ssid = "243">The average fertility of aligned singletons by itself is not sufficient to accurately assess an alignment since unaligned singletons are not represented.</S>
+			<S sid ="244" ssid = "244">Hence, we also report the percentage of unaligned singletons in Fig.</S>
+			<S sid ="245" ssid = "245">9(c).</S>
+			<S sid ="246" ssid = "246">GS has the lowest unaligned singleton rate among Model 1 inference methods.</S>
+			<S sid ="247" ssid = "247">An interesting Fig.</S>
+			<S sid ="248" ssid = "248">9.</S>
+			<S sid ="249" ssid = "249">Intrinsic and extrinsic evaluation of alignments in the small data experiments.</S>
+			<S sid ="250" ssid = "250">(a) Alignment dictionary size normalized by the average of source and target vocabulary sizes.</S>
+			<S sid ="251" ssid = "251">(b) Average alignment fertility of aligned singletons.</S>
+			<S sid ="252" ssid = "252">(c) Percentage of unaligned singletons.</S>
+			<S sid ="253" ssid = "253">(d) Number of symmetric alignments normalized by the average of source and target tokens.</S>
+			<S sid ="254" ssid = "254">(e) Percentage of training set vocabulary covered by single-word phrases in the phrase table.</S>
+			<S sid ="255" ssid = "255">(f) Decode-time rate of input words that are in the training vocabulary but without a translation in the phrase table.</S>
+			<S sid ="256" ssid = "256">(g) Phrase table size normalized by the average of source and target tokens.</S>
+			<S sid ="257" ssid = "257">observation is that, while EM-estimated alignments suffer from rare words being assigned high fertilities (Fig.</S>
+			<S sid ="258" ssid = "258">9(b)), VB suffers from a high percentage of the rare words (e.g., about 70% of singletons in ) being left unaligned, resulting in lower translation performance (Section IV-C).</S>
+			<S sid ="259" ssid = "259">Our analysis agrees with the findings of Guzman et al. [53] that unaligned words in an alignment results in lower-quality phrase tables.</S>
+			<S sid ="260" ssid = "260">4) Alignment Points in Agreement: Since the IBM alignment models are one(source)-to-many(target), switching the source and target languages usually result in a different set of alignment links (or points in an alignment matrix).</S>
+			<S sid ="261" ssid = "261">The intersection of the two sets consists of high-precision alignment points where both alignment models agree [7].</S>
+			<S sid ="262" ssid = "262">Since the number of alignment points in each direction is constant (equal to the number of target words), increasing precision at the expense of recall by predicting fewer alignment points is not applicable in these models.</S>
+			<S sid ="263" ssid = "263">Therefore higher agreement rate implies not only higher precision but higher recall as well.</S>
+			<S sid ="264" ssid = "264">Fig.</S>
+			<S sid ="265" ssid = "265">9(d) shows that GS has the highest alignment agreement rate among the alignment methods for both language pairs.</S>
+			<S sid ="266" ssid = "266">5) Training Set Vocabulary Coverage by Phrase Table: We can also evaluate the inferred alignments extrinsically, e.g., by evaluating the SMT systems trained using those alignments.</S>
+			<S sid ="267" ssid = "267">A desirable feature in a SMT system is to have as high vocabulary coverage as possible.</S>
+			<S sid ="268" ssid = "268">This metric is highly sensitive to the performance of an alignment algorithm on infrequent words since they represent the majority of the vocabulary of a corpus (see Table II).</S>
+			<S sid ="269" ssid = "269">Fig.</S>
+			<S sid ="270" ssid = "270">9(e) shows that alignment by GS leads to the best vocabulary coverage in all four alignment tasks.</S>
+			<S sid ="271" ssid = "271">Note that word types that appear in the phrase table only as part of larger phrase(s) are excluded from this metric, since such words are practically out-of-vocabulary (OOV) except only in those specific contexts.</S>
+			<S sid ="272" ssid = "272">TABLE V ALIGNMENT ERROR RATE (%) OF THE UNIDIRECTIONAL AND SYMMETRIZED CZECHENGLISH ALIGNMENTS Poor training set vocabulary coverage results in some non-OOV words being treated by the system as OOV, either dropping them from the output or leaving them untranslated.</S>
+			<S sid ="273" ssid = "273">Such pseudo-OOV words further degrade the translation performance in addition to the OOV words.</S>
+			<S sid ="274" ssid = "274">Fig.</S>
+			<S sid ="275" ssid = "275">9(f) shows that GS alignments lead to the lowest rate of pseudo-OOV words.</S>
+			<S sid ="276" ssid = "276">6) Phrase Table Size: In most machine translation applications, having a small model size is valuable, e.g., to reduce the memory requirement or the start-up/access time.</S>
+			<S sid ="277" ssid = "277">Alignment methods can affect the induced phrase table sizes.</S>
+			<S sid ="278" ssid = "278">Fig.</S>
+			<S sid ="279" ssid = "279">9(g) compares the number of phrase pairs in the SMT systems trained by different alignment methods.</S>
+			<S sid ="280" ssid = "280">In the task, where model size is of more concern compared to the smaller task, GS results in significantly smaller phrase tables.</S>
+			<S sid ="281" ssid = "281">This result is particularly remarkable since it means that a system using GS-inferred alignments achieves more vocabulary coverage (Section V-A-5) and higher BLEU scores (Section IV-B) with a smaller model size.</S>
+			<S sid ="282" ssid = "282">Thanks to a larger intersection during alignment symmetrization (Fig.</S>
+			<S sid ="283" ssid = "283">9(d)), GS-based phrase tables contain a higher number of single-word phrase pairs (Fig.</S>
+			<S sid ="284" ssid = "284">9(e)).</S>
+			<S sid ="285" ssid = "285">Moreover, fewer unaligned words after symmetrization lead to fewer poor-quality long phrase pairs [53].</S>
+			<S sid ="286" ssid = "286">7) Alignment Error Rate: Table V shows the alignment error rates (AERs) [10] obtained in the alignment tasks Fig.</S>
+			<S sid ="287" ssid = "287">10.</S>
+			<S sid ="288" ssid = "288">BLEU scores obtained by different sampling settings (Section III-C).</S>
+			<S sid ="289" ssid = "289">Averages and standard deviations are over 8 separate Gibbs chains.</S>
+			<S sid ="290" ssid = "290">(a) and .</S>
+			<S sid ="291" ssid = "291">(b) .</S>
+			<S sid ="292" ssid = "292">(a) Changing B; (b) changing M and L. using a publicly available 515-sentence manually-aligned reference set [54].</S>
+			<S sid ="293" ssid = "293">The Bayesian methods achieve better AERs than EM in both alignment directions (denoted by “EC” and “CE”).</S>
+			<S sid ="294" ssid = "294">Contrary to the ranking of the methods according to BLEU (Fig.</S>
+			<S sid ="295" ssid = "295">5), VB achieves the best AER, which also holds true after symmetrization (denoted by “Sym.”).</S>
+			<S sid ="296" ssid = "296">Furthermore, the symmetrized GS-5 alignment has the worst AER in the 1M-sentence experiment.</S>
+			<S sid ="297" ssid = "297">These discrepancies support earlier findings by several others that AER is generally not a good predictor of BLEU performance [55].</S>
+			<S sid ="298" ssid = "298">As a final remark, in Table V EM-5 enjoys a larger amount of reduction in AER via symmetrization compared to GS-5, which suggests the possibility that the default alignment symmetrization heuristic in Moses (“grow-diag-final-and”) has been fine-tuned for the default EM-based alignments, and thus other symmetrization/phrase extraction methods might work better for the GS- and VB-based alignments.</S>
+			<S sid ="299" ssid = "299">For example, Bayesian alignment inference could be complemented with a probabilistic model of phrase extraction, e.g. [23], which is left as a future work.</S>
+			<S sid ="300" ssid = "300">B. Effect of Sampling Settings We investigated the effect of changing the sampling settings , , and (Section III-C) on GS-N alignments.</S>
+			<S sid ="301" ssid = "301">To account for the variability due to the randomness of the sampling process, we present in Fig.</S>
+			<S sid ="302" ssid = "302">10 the mean and the standard deviation of BLEU scores over eight separate chains with different random seeds.</S>
+			<S sid ="303" ssid = "303">At each B value shown, eight separate SMT systems were trained.</S>
+			<S sid ="304" ssid = "304">These eight runs each comprise a separate MERT run, thus error bars in Fig.</S>
+			<S sid ="305" ssid = "305">10 also include the variation due to MERT.</S>
+			<S sid ="306" ssid = "306">Fig.</S>
+			<S sid ="307" ssid = "307">10(a) shows the effect of changing with and . In this experiment, the sampler converges after roughly a few thousand iterations.</S>
+			<S sid ="308" ssid = "308">Comparing the BLEU scores in Fig.</S>
+			<S sid ="309" ssid = "309">10(a) to those of the three EM-initialized samplers in Fig.</S>
+			<S sid ="310" ssid = "310">1, where , for the same language pair suggests that running more iterations of Gibbs sampling can compensate for poor initializations, or equivalently, initializing with EM alignments can provide a head start in the convergence of the Gibbs chain.</S>
+			<S sid ="311" ssid = "311">Fig.</S>
+			<S sid ="312" ssid = "312">10(b) compares the effect of different readout schemes.</S>
+			<S sid ="313" ssid = "313">The settings of both (1000,1) and (100,10) collect samples over the same 1000-sample interval.</S>
+			<S sid ="314" ssid = "314">We can deduce from Fig.</S>
+			<S sid ="315" ssid = "315">11.</S>
+			<S sid ="316" ssid = "316">BLEU scores of alignments estimated at different iterations.</S>
+			<S sid ="317" ssid = "317">Left: EM, middle: samples from the Gibbs chain, right: GS viterbi estimates with , . A separate SMT system is trained at each shown data point on the plots.</S>
+			<S sid ="318" ssid = "318">Note the difference in x-axis scales.</S>
+			<S sid ="319" ssid = "319">their comparison in Fig.</S>
+			<S sid ="320" ssid = "320">10(b) that including or discarding the intermediate samples does not make a significant difference.</S>
+			<S sid ="321" ssid = "321">On the other hand, comparing the settings (100,1) and (1000,1) confirms our intuition that increasing the number of samples leads to more reliable (smaller variance) estimates of the Viterbi alignments.</S>
+			<S sid ="322" ssid = "322">C. Convergence and Variance Between Iterations Fig.</S>
+			<S sid ="323" ssid = "323">11 compares the change in BLEU scores as iterations progress during both EM and GS.</S>
+			<S sid ="324" ssid = "324">Each dot in the graphs correspond to a separate SMT system trained and optimized from the alignment estimated at that iteration.</S>
+			<S sid ="325" ssid = "325">In the figure, there are two main sources of BLEU score variation between the iterations: updated alignments at each iteration and randomness due to MERT.Comparing the BLEU scores of sample and Viterbi align ments obtained by GS, we observe smaller variance and higher average BLEU scores using Viterbi alignments.</S>
+			<S sid ="326" ssid = "326">Compared to EM, GS achieves higher average BLEU scores, albeit with a larger amount of variation between iterations due to the random nature of sampling.</S>
+			<S sid ="327" ssid = "327">To reduce the variation, a larger value of (Section V-B) and/or a combination of alignments at different iterations can be used.</S>
+			<S sid ="328" ssid = "328">D. Computational Complexity The computational complexity of the Gibbs sampling algorithm in Table I is linear in the number of sentences and roughly quadratic in the average number of words per sentence.</S>
+			<S sid ="329" ssid = "329">Running Gibbs sampling (Model 1) on the largest of our datasets, the 15.4M-sentence CzechEnglish corpus, takes on average 33 seconds per iteration (steps 3–7 in Table I) using 24 threads on a 3.47GHz Intel Xeon X5690.5 In the case of Model 2, the average time per Gibbs sampling iteration increases to 48 seconds.</S>
+			<S sid ="330" ssid = "330">For comparison, a Model 1 EM iteration on the same hardware 5Our multi-threaded implementation is actually an approximation of Gibbs sampling, where the counts and are not updated until the end of an iteration.</S>
+			<S sid ="331" ssid = "331">Similar approximations have been done in scaling Gibbs sampling to large datasets using multiple parallel processors, e.g., in [56].</S>
+			<S sid ="332" ssid = "332">All large-data experiments reported in Sections IV-E and IV-F have been performed using this multi-threaded implementation.</S>
+			<S sid ="333" ssid = "333">and number of threads using MGIZA [57] takes 326 seconds on average (excluding pre-processing and initializations)6.</S>
+			<S sid ="334" ssid = "334">VI.</S>
+			<S sid ="335" ssid = "335">CONCLUSION Similarly, from Section III-D: (14) We developed a Gibbs sampling-based word alignment inference method for Bayesian IBM Models 1 and 2 and showed that it compares favorably to EM estimation in terms of translation BLEU scores.</S>
+			<S sid ="336" ssid = "336">We observe the largest improvement when data is sparse, e.g., in the cases of smaller corpora and/or more morphological complexity.</S>
+			<S sid ="337" ssid = "337">The proposed method successfully overcomes the well-known “garbage collection” problem of rare words in EM-estimated current models and learns a compact, sparse word translation distribution with more training vocabulary coverage.</S>
+			<S sid ="338" ssid = "338">We also found Gibbs sampling to perform better than variational Bayes inference, which leaves a substantially high portion of source singletons unaligned.</S>
+			<S sid ="339" ssid = "339">Additionally, we utilized alignment combination techniques to further improve the performance and robustness.</S>
+			<S sid ="340" ssid = "340">Future research avenues include estimation of the hyperparameters from data/auxiliary sources and utilization of the proposed algorithm in either initialization or inference of more advanced alignment models.</S>
+			<S sid ="341" ssid = "341">APPENDIX DERIVATION OF THE GIBBS SAMPLING FORMULA In this section, we describe the derivation of the Gibbs sampler for IBM Model 2 given in (10).</S>
+			<S sid ="342" ssid = "342">Since IBM Model 1 is a special case of Model 2 where is fixed (Section III-D), the derivation of the sampler for Model 1 given in (6) would follow exactly the same steps, except that there would be no prior and the related terms.</S>
+			<S sid ="343" ssid = "343">A. The Dirichlet Priors We choose a simple prior for the parameters where each has an independent7 Dirichlet prior with hyperparameters (Section III-B): We further define the priors for the translation and distortion parameters to be independent so that . B. The Complete Distribution Since we are only interested in inferring , we integrate out the unknowns and in (9) using (13) and (14): (15) (16) (17) As a result of choosing conjugate priors, the integrands with respect to and in (17) can be recognized to be in the same form as the priors (i.e., Dirichlet distributions) with new sets of Since the integral of a probability distribution is equal to 1, we obtain the closed-form expression: (18) where and (11) (12) C. Gibbs Sampler Derivation Given the complete distribution in (18), the Gibbs sampling formula (Section III-C) can be derived as: Hence, the complete prior for is given by: (19) (13) 6In the case of Model 2, for which multi-threading is not implemented in MGIZA, an EM iteration took 1960 seconds on average.</S>
+			<S sid ="344" ssid = "344">7While the prior knowledge about could have been possibly expressed as a more refined, correlated distribution; we show that a simple, independent prior is also successful in biasing the parameters away from flat distributions.</S>
+			<S sid ="345" ssid = "345">(20) (21) (22) (23) (24) (25) (26) where (20) follows since is independent of , in (21) we used (18), in (23) we used (12) and grouped similar factors, in (25) each fraction is simplified using the property of the gamma function , and in (26) the proportionality comes from the omission of the last term in (25), which is constant for all values of .</S>
+	</SECTION>
+	<SECTION title="ACKNOWLEDGMENT">
+			<S sid ="346" ssid = "346">The authors would like to thank Kemal Oflazer for providing the Turkish morphological analyzer, and anonymous reviewers for their comments to improve the paper.</S>
+	</SECTION>
+</PAPER>

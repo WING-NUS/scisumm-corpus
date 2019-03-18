@@ -1,0 +1,397 @@
+<PAPER>
+  <S sid="0">Global Thresholding And Multiple-Pass Parsing</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present a variation on classic beam thresholding techniques that is up to an order of magnitude faster than the traditional method, at the same performance level.</S>
+    <S sid="2" ssid="2">We also present a new thresholding technique, global thresholding, which, combined with the new beam thresholding, gives an additional factor of two improvement, and a novel technique, multiple pass parsing, that can be combined with the others to yield yet another 50% improvement.</S>
+    <S sid="3" ssid="3">We use a new search algorithm to simultaneously optimize the thresholding parameters of the various algorithms.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="4" ssid="1">In this paper, we examine thresholding techniques for statistical parsers.</S>
+    <S sid="5" ssid="2">While there exist theoretically efficient (0(n3)) algorithms for parsing Probabilistic Context-Free Grammars (PCFGs) and related formalisms, practical parsing algorithms usually make use of pruning techniques, such as beam thresholding, for increased speed.</S>
+    <S sid="6" ssid="3">We introduce two novel thresholding techniques, global thresholding and multiple-pass parsing, and one significant variation on traditional beam thresholding.</S>
+    <S sid="7" ssid="4">We examine the value of these techniques when used separately, and when combined.</S>
+    <S sid="8" ssid="5">In order to examine the combined techniques, we also introduce an algorithm for optimizing the settings comments on earlier drafts, and the anonymous reviewers for their extensive comments. of multiple thresholds.</S>
+    <S sid="9" ssid="6">When all three thresholding methods are used together, they yield very significant speedups over traditional beam thresholding, while achieving the same level of performance.</S>
+    <S sid="10" ssid="7">We apply our techniques to CKY chart parsing, one of the most commonly used parsing methods in natural language processing.</S>
+    <S sid="11" ssid="8">In a CKY chart parser, a two-dimensional matrix of cells, the chart, is filled in.</S>
+    <S sid="12" ssid="9">Each cell in the chart corresponds to a span of the sentence, and each cell of the chart contains the nonterminals that could generate that span.</S>
+    <S sid="13" ssid="10">Cells covering shorter spans are filled in first, so we also refer to this kind of parser as a bottom-up chart parser.</S>
+    <S sid="14" ssid="11">The parser fills in a cell in the chart by examining the nonterminals in lower, shorter cells, and combining these nonterminals according to the rules of the grammar.</S>
+    <S sid="15" ssid="12">The more nonterminals there are in the shorter cells, the more combinations of nonterminals the parser must consider.</S>
+    <S sid="16" ssid="13">In some grammars, such as PCFGs, probabilities are associated with the grammar rules.</S>
+    <S sid="17" ssid="14">This introduces problems, since in many PCFGs, almost any combination of nonterminals is possible, perhaps with some low probability.</S>
+    <S sid="18" ssid="15">The large number of possibilities can greatly slow parsing.</S>
+    <S sid="19" ssid="16">On the other hand, the probabilities also introduce new opportunities.</S>
+    <S sid="20" ssid="17">For instance, if in a particular cell in the chart there is some nonterminal that generates the span with high probability, and another that generates that span with low probability, then we can remove the less likely nonterminal from the cell.</S>
+    <S sid="21" ssid="18">The less likely nonterminal will probably not be part of either the correct parse or the tree returned by the parser, so removing it will do little harm.</S>
+    <S sid="22" ssid="19">This technique is called beam thresholding.</S>
+    <S sid="23" ssid="20">If we use a loose beam threshold, removing only those nonterminals that are much less probable than the best nonterminal in a cell, our parser will run only slightly faster than with no thresholding, while performance measures such as precision and recall will remain virtually unchanged.</S>
+    <S sid="24" ssid="21">On the other hand, if we use a tight threshold, removing nonterminals that are almost as probable as the best nonterminal in a cell, then we can get a considerable speedup, but at a considerable cost.</S>
+    <S sid="25" ssid="22">Figure 1 shows the tradeoff between accuracy and time.</S>
+    <S sid="26" ssid="23">In this paper, we will consider three different kinds of thresholding.</S>
+    <S sid="27" ssid="24">The first of these is a variation on traditional beam search.</S>
+    <S sid="28" ssid="25">In traditional beam search, only the probability of a nonterminal generating the terminals of the cell's span is used.</S>
+    <S sid="29" ssid="26">We have found that a minor variation, introduced in Section 2, in which we also consider the prior probability that each nonterminal is part of the correct parse, can lead to nearly an order of magnitude improvement.</S>
+    <S sid="30" ssid="27">The problem with beam search is that it only compares nonterminals to other nonterminals in the same cell.</S>
+    <S sid="31" ssid="28">Consider the case in which a particular cell contains only bad nonterminals, all of roughly equal probability.</S>
+    <S sid="32" ssid="29">We can't threshold out these nodes, because even though they are all bad, none is much worse than the best.</S>
+    <S sid="33" ssid="30">Thus, what we want is a thresholding technique that uses some global information for thresholding, rather than just using information in a single cell.</S>
+    <S sid="34" ssid="31">The second kind of thresholding we consider is a novel technique, global thresholding, described in Section 3.</S>
+    <S sid="35" ssid="32">Global thresholding makes use of the observation that for a nonterminal to be part of the correct parse, it must be part of a sequence of reasonably probable nonterminals covering the whole sentence.</S>
+    <S sid="36" ssid="33">The last technique we consider, multiple-pass parsing, is introduced in Section 4.</S>
+    <S sid="37" ssid="34">The basic idea is that we can use information from parsing with one grammar to speed parsing with another.</S>
+    <S sid="38" ssid="35">We run two passes, the first of which is fast and simple, eliminating from consideration many unlikely potential constituents.</S>
+    <S sid="39" ssid="36">The second pass is more complicated and slower, but also more accurate.</S>
+    <S sid="40" ssid="37">Because we have already eliminated many nodes in our first pass, the second pass can run much faster, and, despite the fact that we have to run two passes, the added savings in the second pass can easily outweigh the cost of the first one.</S>
+    <S sid="41" ssid="38">Experimental comparisons of these techniques show that they lead to considerable speedups over traditional thresholding, when used separately.</S>
+    <S sid="42" ssid="39">We also wished to combine the thresholding techniques; this is relatively difficult, since searching for the optimal thresholding parameters in a multi-dimensional space is potentially very time consuming.</S>
+    <S sid="43" ssid="40">We .designed a variant on a gradient descent search algorithm to find the optimal parameters.</S>
+    <S sid="44" ssid="41">Using all three thresholding methods together, and the parameter search algorithm, we achieved our best results, running an estimated 30 times faster than traditional beam search, at the same performance level.</S>
+  </SECTION>
+  <SECTION title="2 Beam Thresholding" number="2">
+    <S sid="45" ssid="1">The first, and simplest, technique we will examine is beam thresholding.</S>
+    <S sid="46" ssid="2">While this technique is used as part of many search algorithms, beam thresholding with PCFGs is most similar to beam thresholding as used in speech recognition.</S>
+    <S sid="47" ssid="3">Beam thresholding is often used in statistical parsers, such as that of Collins (1996).</S>
+    <S sid="48" ssid="4">Consider a nonterminal X in a cell covering the span of terminals ti...tk.</S>
+    <S sid="49" ssid="5">We will refer to this as node INT-?(,. since it corresponds to a potential node in the final parse tree.</S>
+    <S sid="50" ssid="6">Recall that in beam thresholding, we compare nodes Nik and Nrk covering the same span.</S>
+    <S sid="51" ssid="7">If one node is much more likely than the other, then it is unlikely that the less probable node will be part of the correct parse, and we can remove it from the chart, saving time later.</S>
+    <S sid="52" ssid="8">There is a subtlety about what it means for a node Nxk to be more likely than some other node.</S>
+    <S sid="53" ssid="9">Ac2, cording to folk wisdom, the best way to measure the likelihood of a node NiCk is to use the probability that the nonterminal X generates the span ti.-tk called the inside probability.</S>
+    <S sid="54" ssid="10">Formally, we write this as P(X ti...tk), and denote it by (nk ).</S>
+    <S sid="55" ssid="11">However, this does not give information about the probability of the node in the context of the full parse tree.</S>
+    <S sid="56" ssid="12">For instance, two nodes, one an NP and the other a FRAU (fragment), may have equal inside probabilities, but since there are far more NPs than there are FRAU clauses, the NP node is more likely overall.</S>
+    <S sid="57" ssid="13">Therefore, we must consider more information than just the inside probability.</S>
+    <S sid="58" ssid="14">The outside probability of a node Nfk is the probability of that node given the surrounding terminals of the sentence, i.e.</S>
+    <S sid="59" ssid="15">P(S _k+1.&#8226;&#8226;tn); which we denote by a(Nick).</S>
+    <S sid="60" ssid="16">Ideally, we would multiply the inside probability by the outside probability, and normalize.</S>
+    <S sid="61" ssid="17">This product would give us the overall probability that the node is part of the correct parse.</S>
+    <S sid="62" ssid="18">Unfortunately, there is no good way to quickly compute the outside probability of a node during bottom-up chart parsing (although it can be efficiently computed afterwards).</S>
+    <S sid="63" ssid="19">Thus, we instead multiply the inside probability simply by the prior probability of the nonterminal type, P(X), which is an approximation to the outside probability.</S>
+    <S sid="64" ssid="20">Our final thresholding measure is P(X)x)3(Nfk).</S>
+    <S sid="65" ssid="21">In Section 7.4, we will show experiments comparing insideprobability beam thresholding to beam thresholding using the inside probability times the prior.</S>
+    <S sid="66" ssid="22">Using the prior can lead to a speedup of up to a factor of 10, at the same performance level.</S>
+    <S sid="67" ssid="23">To the best of our knowledge, using the prior probability in beam thresholding is new, although not particularly insightful on our part.</S>
+    <S sid="68" ssid="24">Collins (personal communication) independently observed the usefulness of this modification, and Caraballo and Charniak (1996) used a related technique in a best-first parser.</S>
+    <S sid="69" ssid="25">We think that the main reason this technique was not used sooner is that beam thresholding for PCFGs is derived from beam thresholding in speech recognition using Hidden Markov Models (HMMs).</S>
+    <S sid="70" ssid="26">In an HMM, the forward probability of a given state corresponds to the probability of reaching that state from the start state.</S>
+    <S sid="71" ssid="27">The probability of eventually reaching the final state from any state is always 1.</S>
+    <S sid="72" ssid="28">Thus, the forward probability is all that is needed.</S>
+    <S sid="73" ssid="29">The same is true in some top down probabilistic parsing algorithms, such as stochastic versions of Earley's algorithm (Stolcke, 1993).</S>
+    <S sid="74" ssid="30">However, in a bottom-up algorithm, we need the extra factor that indicates the probability of getting from the start symbol to the nonterminal in question, which we approximate by the prior probability.</S>
+    <S sid="75" ssid="31">As we noted, this can be very different for different nonterminals.</S>
+  </SECTION>
+  <SECTION title="3 Global Thresholding" number="3">
+    <S sid="76" ssid="1">As mentioned earlier, the problem with beam thresholding is that it can only threshold out the worst nodes of a cell.</S>
+    <S sid="77" ssid="2">It cannot threshold out an entire cell, even if there are no good nodes in it.</S>
+    <S sid="78" ssid="3">To remedy this problem, we introduce a novel thresholding technique, global thresholding.</S>
+    <S sid="79" ssid="4">The key insight of global thresholding is due to Rayner and Carter (1996).</S>
+    <S sid="80" ssid="5">Rayner et al. noticed that a particular node cannot be part of the correct parse if there are no nodes in adjacent cells.</S>
+    <S sid="81" ssid="6">In fact, it must be part of a sequence of nodes stretching from the start of the string to the end.</S>
+    <S sid="82" ssid="7">In a probabilistic framework where almost every node will have some (possibly very small) probability, we can rephrase this requirement as being that the node must be part of a reasonably probable sequence.</S>
+    <S sid="83" ssid="8">Figure 2 shows an example of this insight.</S>
+    <S sid="84" ssid="9">Nodes A, B, and C will not be thresholded out, because each is part of a sequence from the beginning to the end of the chart.</S>
+    <S sid="85" ssid="10">On the other hand, nodes X, Y, and Z will be thresholded out, because none is part of such a sequence.</S>
+    <S sid="86" ssid="11">Rayner et al. used this insight for a hierarchical, non-recursive grammar, and only used their technique to prune after the first level of the grammar.</S>
+    <S sid="87" ssid="12">They computed a score for each sequence as the minimum of the scores of each node in the sequence, and computed a score for each node in the sequence as the minimum of three scores: one based on statistics about nodes to the left, one based on nodes to the right, and one based on unigram statistics.</S>
+    <S sid="88" ssid="13">We wanted to extend the work of Rayner et al. to general PCFGs, including those that were recursive.</S>
+    <S sid="89" ssid="14">Our approach therefore differs from theirs in many ways.</S>
+    <S sid="90" ssid="15">Rayner et al. ignore the inside probabilities of nodes; while this may work after processing only the first level of a grammar, when the inside probabilities will be relatively homogeneous, it could cause problems after other levels, when the inside probability of a node will give important information about its usefulness.</S>
+    <S sid="91" ssid="16">On the other hand, because long nodes will tend to have low inside probabilities, taking the minimum of all scores strongly favors sequences of short nodes.</S>
+    <S sid="92" ssid="17">Furthermore, their algorithm requires time 0(n3) to run just once.</S>
+    <S sid="93" ssid="18">This is acceptable if the algorithm is run only after the first level, but running it more often would lead to an overall run time of 0(0).</S>
+    <S sid="94" ssid="19">Finally, we hoped to find an algorithm that was somewhat less heuristic in nature.</S>
+    <S sid="95" ssid="20">Our global thresholding technique thresholds out node N if the ratio between the most probable sequence of nodes including node N and the overall most probable sequence of nodes is less than some threshold, T. Formally, denoting sequences of nodes by L, we threshold node N if Now, the hard part is determining P(L), the probability of a node sequence.</S>
+    <S sid="96" ssid="21">Unfortunately, there is no way to do this efficiently as part of the intermediate computation of a bottom-up chart parser.'</S>
+    <S sid="97" ssid="22">We will approximate P(L) as follows: 'Some other parsing techniques, such as stochastic versions of Earley parsers (Stolcke, 1993), efficiently compute related probabilities, but we won't explore these parsers here.</S>
+    <S sid="98" ssid="23">We confess that our real interest is in more complicated grammars, such as those that use head words.</S>
+    <S sid="99" ssid="24">Grammars such as these can best be parsed bottom up.</S>
+    <S sid="100" ssid="25">That is, we assume independence between the elements of a sequence.</S>
+    <S sid="101" ssid="26">The probability of node L, = Nx is just its prior probability times its inside 3,k probability, as before.</S>
+    <S sid="102" ssid="27">The most important difference between global thresholding and beam thresholding is that global thresholding is global: any node in the chart can help prune out any other node.</S>
+    <S sid="103" ssid="28">In stark contrast, beam thresholding only compares nodes to other nodes covering the same span.</S>
+    <S sid="104" ssid="29">Beam thresholding typically allows tighter thresholds since there are fewer approximations, but does not benefit from global information.</S>
+    <S sid="105" ssid="30">Global thresholding is performed in a bottom-up chart parser immediately after each length is completed.</S>
+    <S sid="106" ssid="31">It thus runs n times during the course of parsing a sentence of length n. We use the simple dynamic programming algorithm in Figure 3.</S>
+    <S sid="107" ssid="32">There are 0(n2) nodes in the chart, and each node is examined exactly three times, so the run time of this algorithm is 0(n2).</S>
+    <S sid="108" ssid="33">The first section of the algorithm works forwards, computing, for each i, f [i], which contains the score of the best sequence covering terminals ti...ti-i Thus f[n+1] contains the score of the best sequence covering the whole sentence, maxi, P(L).</S>
+    <S sid="109" ssid="34">The algorithm works analogously to the Viterbi algorithm for HMMs.</S>
+    <S sid="110" ssid="35">The second section is analogous, but works backwards, computing b[i], which contains the score of the best sequence covering terminals ti.-tn&#8226; Once we have computed the preceding arrays, computing maxi,liveL P(L) is straightforward.</S>
+    <S sid="111" ssid="36">We simply want the score of the best sequence covering the nodes to the left of N, f[Nstart], times the score of the node itself, times the score of the best sequence of nodes fromN isetnargt+Niength to the end, which is just b[Nstart + N th].</S>
+    <S sid="112" ssid="37">Using this expression, we can threshold each node quickly.</S>
+    <S sid="113" ssid="38">Since this algorithm is run n times during the course of parsing, and requires time 0(n2) each time it runs, the algorithm requires time 0(n3) overall.</S>
+    <S sid="114" ssid="39">Experiments will show that the time it saves easily outweighs the time it uses.</S>
+  </SECTION>
+  <SECTION title="4 Multiple-Pass Parsing" number="4">
+    <S sid="115" ssid="1">In this section, we discuss a novel thresholding technique, multiple-pass parsing.</S>
+    <S sid="116" ssid="2">We show that multiple-pass parsing techniques can yield large speedups.</S>
+    <S sid="117" ssid="3">Multiple-pass parsing is a variation on a new technique in speech recognition, multiple-pass speech recognition (Zavaliagkos et al., 1994), which we introduce first.</S>
+    <S sid="118" ssid="4">In an idealized multiple-pass speech recognizer, we first run a simple pass, computing the forward and backward probabilities.</S>
+    <S sid="119" ssid="5">This first pass runs relatively quickly.</S>
+    <S sid="120" ssid="6">We can use information from this simple, fast first pass to eliminate most states, and then run a more complicated, slower second pass that does not examine states that were deemed unlikely by the first pass.</S>
+    <S sid="121" ssid="7">The extra time of running two passes is more than made up for by the time saved in the second pass.</S>
+    <S sid="122" ssid="8">The mathematics of multiple-pass recognition is fairly simple.</S>
+    <S sid="123" ssid="9">In the first simple pass, we record the forward probabilities, oi(S1), and backward probabilities, /3(51), of each state i at each time t. Now, a(s: xo(sn gives the overall probability of being in state i at time t given the acoustics.</S>
+    <S sid="124" ssid="10">Our second pass will use an HMM whose states are analogous to the first pass HMM's states.</S>
+    <S sid="125" ssid="11">If a first pass state at some time is unlikely, then the analogous second pass state is probably also unlikely, so we can threshold it out.</S>
+    <S sid="126" ssid="12">There are a few complications to multiple-pass recognition.</S>
+    <S sid="127" ssid="13">First, storing all the forward and backward probabilities can be expensive.</S>
+    <S sid="128" ssid="14">Second, the second pass is more complicated than the first, typically meaning that it has more states.</S>
+    <S sid="129" ssid="15">So the mapping between states in the first pass and states in the second pass may be non-trivial.</S>
+    <S sid="130" ssid="16">To solve both these problems, only states at word transitions are saved.</S>
+    <S sid="131" ssid="17">That is, from pass to pass, only information about where words are likely to start and end is used for thresholding.</S>
+    <S sid="132" ssid="18">We can use an analogous algorithm for multiple-pass parsing.</S>
+    <S sid="133" ssid="19">In particular, we can use two grammars, one fast and simple and the other slower, more complicated, and more accurate.</S>
+    <S sid="134" ssid="20">Rather than using the forward and backward probabilities of speech recognition, we use the analogous inside and outside probabilities, /3(NA) and a(NA) respectively.</S>
+    <S sid="135" ssid="21">Rememthat ' s the probability that NA is in the correct parse (given, as always, the model and the string).</S>
+    <S sid="136" ssid="22">Thus, we run our first pass, computing this expression for each node.</S>
+    <S sid="137" ssid="23">We can then eliminate from consideration in our later passes all nodes for which the probability of being in the correct parse was too small in the first pass.</S>
+    <S sid="138" ssid="24">Of course, for our second pass to be more accurate, it will probably be more complicated, typically containing an increased number of nonterminals and productions.</S>
+    <S sid="139" ssid="25">Thus, we create a mapping function for length := 2 to n for start := I to n &#8212; length + I such that P L R add P to Chart[length][start]; from each first pass nonterminal to a set of second pass nonterminals, and threshold out those second pass nonterminals that map from low-scoring first pass nonterminals.</S>
+    <S sid="140" ssid="26">We call this mapping function the descendants function.2 There are many possible examples of first and second pass combinations.</S>
+    <S sid="141" ssid="27">For instance, the first pass could use regular nonterminals, such as NP and VP and the second pass could use nonterminals augmented with head-word information.</S>
+    <S sid="142" ssid="28">The descendants function then appends the possible head words to the first pass nonterminals to get the second pass ones.</S>
+    <S sid="143" ssid="29">Even though the correspondence between forward/backward and inside/outside probabilities is very close, there are important differences between speech-recognition HMMs and natural-language processing PCFGs.</S>
+    <S sid="144" ssid="30">In particular, we have found that it is more important to threshold productions than nonterminals.</S>
+    <S sid="145" ssid="31">That is, rather than just noticing that a particular nonterminal VP spanning the words &amp;quot;killed the rabbit&amp;quot; is very likely, we also note that the production VP -4 V NP (and the relevant spans) is likely.</S>
+    <S sid="146" ssid="32">Both the first and second pass parsing algorithms are simple variations on CKY parsing.</S>
+    <S sid="147" ssid="33">In the first pass, we now keep track of each production instance associated with a node, i.e.</S>
+    <S sid="148" ssid="34">A N no , computing the inside and outside probabilities of each.</S>
+    <S sid="149" ssid="35">The second pass requires more changes.</S>
+    <S sid="150" ssid="36">Let us denote the descendants of nonterminal X by X1...Xx.</S>
+    <S sid="151" ssid="37">In the second pass, for each production 21n this paper, we will assume that each second pass nonterminal can descend from at most one first pass nonterminal in each cell.</S>
+    <S sid="152" ssid="38">The grammars used here have this property.</S>
+    <S sid="153" ssid="39">If this assumption is violated, multiple-pass parsing is still possible, but some of the algorithms need to be changed. of the form N &#8212;&gt; NIA NI+1,1 in the first pass that wasn't thresholded out by multi-pass thresholding, beam thresholding, etc., we consider every descendant production instance, that is, all those of the form NP Ni; NkZ;1,i , for appropriate values of p, q, r. This algorithm is given in Figure 4, which uses a current pass matrix Chart to keep track of nonterminals in the current pass, and a previous pass matrix, Prey Chart to keep track of nonterminals in the previous pass.</S>
+    <S sid="154" ssid="40">We use one additional optimization, keeping track of the descendants of each nonterminal in each cell in PrevChart which are in the corresponding cell of Chart.</S>
+    <S sid="155" ssid="41">We tried multiple-pass thresholding in two different ways.</S>
+    <S sid="156" ssid="42">In the first technique we tried, productioninstance thresholding, we remove from consideration in the second pass the descendants of all production instances whose combined inside-outside probability falls below a threshold.</S>
+    <S sid="157" ssid="43">In the second technique, node thresholding, we remove from consideration the descendants of all nodes whose inside-outside probability falls below a threshold.</S>
+    <S sid="158" ssid="44">In our pilot experiments, we found that in some cases one technique works slightly better, and in some cases the other does.</S>
+    <S sid="159" ssid="45">We therefore ran our experiments using both thresholds together.</S>
+    <S sid="160" ssid="46">One nice feature of multiple-pass parsing is that under special circumstances, it is an admissible search technique, meaning that we are guaranteed to find the best solution with it.</S>
+    <S sid="161" ssid="47">In particular, if we parse using no thresholding, and our grammars have the property that for every non-zero probability parse in the second pass, there is an analogous non-zero probability parse in the first pass, then multiple-pass search is admissible.</S>
+    <S sid="162" ssid="48">Under these circumstances, no non-zero probability parse will be thresholded out, but many zero probability parses may be removed from consideration.</S>
+    <S sid="163" ssid="49">While we will almost always wish to parse using thresholds, it is nice to know that multiple-pass parsing can be seen as an approximation to an admissible technique, where the degree of approximation is controlled by the thresholding parameter.</S>
+  </SECTION>
+  <SECTION title="5 Multiple Parameter Optimization" number="5">
+    <S sid="164" ssid="1">The use of any one of these techniques does not exclude the use of the others.</S>
+    <S sid="165" ssid="2">There is no reason that we cannot use beam thresholding, global thresholding, and multiple-pass parsing all at the same time.</S>
+    <S sid="166" ssid="3">In general, it wouldn't make sense to use a technique such as multiple-pass parsing without other thresholding techniques; our first pass would be overwhelmingly slow without some sort of thresholding.</S>
+    <S sid="167" ssid="4">There are, however, some practical considerations.</S>
+    <S sid="168" ssid="5">To optimize a single threshold, we could simply sweep our parameters over a one dimensional range, and pick the best speed versus performance tradeoff.</S>
+    <S sid="169" ssid="6">In combining multiple techniques, we need to find optimal combinations of thresholding parameters.</S>
+    <S sid="170" ssid="7">Rather than having to examine 10 values in a single dimensional space, we might have to examine 100 combinations in a two dimensional space.</S>
+    <S sid="171" ssid="8">Later, we show experiments with up to six thresholds.</S>
+    <S sid="172" ssid="9">Since we don't have time to parse with one million parameter combinations, we need a better search algorithm.</S>
+    <S sid="173" ssid="10">Ideally, we would like to be able to pick a performance level (in terms of either entropy or precision and recall) and find the best set of thresholds for achieving that performance level as quickly as possible.</S>
+    <S sid="174" ssid="11">If this is our goal, then a normal gradient descent technique won't work, since we can't use such a technique to optimize one function of a set of variables (time as a function of thresholds) while holding another one constant (performance) .3 We wanted a metric of performance which would be sensitive to changes in threshold values.</S>
+    <S sid="175" ssid="12">In particular, our ideal metric would be strictly increasing as our thresholds loosened, so that every loosening of threshold values would produce a measurable increase in performance.</S>
+    <S sid="176" ssid="13">The closer we get to this ideal, the fewer sentences we need to test during parameter optimization.</S>
+    <S sid="177" ssid="14">We tried an experiment in which we ran beam thresholding with a tight threshold, and then a loose threshold, on all sentences of section 0 of length &lt; 40.</S>
+    <S sid="178" ssid="15">For this experiment only, we discarded those sentences which could not be parsed with the specified setting of the threshold, rather than retrying with looser thresholds.</S>
+    <S sid="179" ssid="16">We then computed for each of six metrics how often the metric decreased, stayed the same, or increased for each sentence between the two runs.</S>
+    <S sid="180" ssid="17">Ideally, as we loosened the -threshold, every sentence should improve on every metric, but in practice, that wasn't the case.</S>
+    <S sid="181" ssid="18">As can be seen, the inside score was by far the most nearly strictly increasing metric.</S>
+    <S sid="182" ssid="19">Therefore, we should use the inside probability as our metric of performance; however inside probabilities can become very close to zero, so instead we measure entropy, the negative logarithm of the inside probability.</S>
+    <S sid="183" ssid="20">Metric decrease same increase We implemented a variation on a steepest descent search technique.</S>
+    <S sid="184" ssid="21">We denote the entropy of the sentence after thresholding by ET.</S>
+    <S sid="185" ssid="22">Our search engine is given a target performance level ET to search for, 3We could use gradient descent to minimize a weighted sum of time and performance, but we wouldn't know at the beginning what performance we would have at the end.</S>
+    <S sid="186" ssid="23">If our goal is to have the best performance we can while running in real time, or to achieve a minimum acceptable performance level with as little time as necessary, then a simple gradient descent function wouldn't work as well as our algorithm.</S>
+    <S sid="187" ssid="24">Also, for this algorithm (although not for most experiments), our measurement of time was the total number of productions searched, rather than cpu time; we wanted the greater accuracy of measuring productions. and then tries to find the best combination of parameters that works at approximately this level of performance.</S>
+    <S sid="188" ssid="25">At each point, it finds the threshold to change that gives the most &amp;quot;bang for the buck.&amp;quot; It then changes this parameter in the correct direction to move towards ET (and possibly overshoot it).</S>
+    <S sid="189" ssid="26">A simplified version of the algorithm is given in Figure 5.</S>
+    <S sid="190" ssid="27">Figure 6 shows graphically how the algorithm works.</S>
+    <S sid="191" ssid="28">There are two cases.</S>
+    <S sid="192" ssid="29">In the first case, if we are currently above the goal entropy, then we loosen our thresholds, leading to slower speed and lower entropy.</S>
+    <S sid="193" ssid="30">We then wish to get as much entropy reduction as possible per time increase; that is, we want the steepest slope possible.</S>
+    <S sid="194" ssid="31">On the other hand, if we are trying to increase our entropy, we want as much time decrease as possible per entropy increase; that is, we want the flattest slope possible.</S>
+    <S sid="195" ssid="32">Because of this difference, we need to compute different ratios depending on which side of the goal we are on.</S>
+    <S sid="196" ssid="33">There are several subtleties when thresholds are set very tightly.</S>
+    <S sid="197" ssid="34">When we fail to parse a sentence because the thresholds are too tight, we retry the parse with lower thresholds.</S>
+    <S sid="198" ssid="35">This can lead to conditions that are the opposite of what we expect; for instance, loosening thresholds may lead to faster parsing, because we don't need to parse the sentence, fail, and then retry with looser thresholds.</S>
+    <S sid="199" ssid="36">The full algorithm contains additional checks that our thresholding change had the effect we expected (either increased time for decreased entropy or vice versa).</S>
+    <S sid="200" ssid="37">If we get either a change in the wrong direction, or a change that makes everything worse, then we retry with the inverse change, hoping that that will have the intended effect.</S>
+    <S sid="201" ssid="38">If we get a change that makes both time and entropy better, then we make that change regardless of the ratio.</S>
+    <S sid="202" ssid="39">Also, we need to do checks that the denominator when computing Ratio isn't too small.</S>
+    <S sid="203" ssid="40">If it is very small, then our estimate may be unreliable, and we don't consider changing this parameter.</S>
+    <S sid="204" ssid="41">Finally, the actual algorithm we used also contained a simple &amp;quot;annealing schedule&amp;quot;, in which we slowly decreased the factor by which we changed thresholds.</S>
+    <S sid="205" ssid="42">That is, we actually run the algorithm multiple times to termination, first changing thresholds by a factor of 16.</S>
+    <S sid="206" ssid="43">After a loop is reached at this factor, we lower the factor to 4, then 2. then 1.414, then 1.15.</S>
+    <S sid="207" ssid="44">Note that this algorithm is fairly domain independent.</S>
+    <S sid="208" ssid="45">It can be used for almost any statistical parsing formalism that uses thresholds, or even for speech recognition.</S>
+  </SECTION>
+  <SECTION title="6 Comparison to Previous Work" number="6">
+    <S sid="209" ssid="1">Beam thresholding is a common approach.</S>
+    <S sid="210" ssid="2">While we don't know of other systems that have used exactly our techniques, our techniques are certainly similar to those of others.</S>
+    <S sid="211" ssid="3">For instance, Collins (1996) uses a form of beam thresholding that differs from ours only in that it doesn't use the prior probability of nonterminals as a factor, and Caraballo and Charniak (1996) use a version with the prior, but with other factors as well.</S>
+    <S sid="212" ssid="4">Much of the previous related work on thresholding is in the similar area of priority functions for agenda-based parsers.</S>
+    <S sid="213" ssid="5">These parsers try to do &amp;quot;best first&amp;quot; parsing, with some function akin to a thresholding function determining what is best.</S>
+    <S sid="214" ssid="6">The best comparison of these functions is due to Caraballo and Charniak (1996; 1997), who tried various prioritization methods.</S>
+    <S sid="215" ssid="7">Several of their techniques are similar to our beam thresholding technique, and one of their techniques, not yet published (Caraballo and Charniak, 1997), would probably work better.</S>
+    <S sid="216" ssid="8">The only technique that Caraballo and Charniak (1996) give that took into account the scores of other nodes in the priority function, the &amp;quot;prefix model,&amp;quot; required 0(n5) time to compute, compared to our 0(n3) system.</S>
+    <S sid="217" ssid="9">On the other hand, all nodes in the agenda parser were compared to all other nodes, so in some sense all the priority functions were global.</S>
+    <S sid="218" ssid="10">Note that agenda-based PCFG parsers in general require more than 0(n3) run time, because, when better derivations are discovered, they may be forced to propagate improvements to productions that they have previously considered.</S>
+    <S sid="219" ssid="11">For instance, if an agenda-based system first computes the probability for a production S &#8212;&gt; NP VP, and then later computes some better probability for the NP, it must update the probability for the S as well.</S>
+    <S sid="220" ssid="12">This could propagate through much of the chart.</S>
+    <S sid="221" ssid="13">To remedy this, Caraballo et al. only propagated probabilities that caused a large enough change (Caraballo and Charniak, 1997).</S>
+    <S sid="222" ssid="14">Also, the question of when an agenda-based system should stop is a little discussed issue, and difficult since there is no obvious stopping criterion.</S>
+    <S sid="223" ssid="15">Because of these issues, we chose not to implement an agenda-based system for comparison.</S>
+    <S sid="224" ssid="16">As mentioned earlier, Rayner and Carter (1996) describe a system that is the inspiration for global thresholding.</S>
+    <S sid="225" ssid="17">Because of the limitation of their system to non-recursive grammars, and the other differences discussed in Section 3, global thresholding represents a significant improvement.</S>
+    <S sid="226" ssid="18">Collins (1996) uses two thresholding techniques.</S>
+    <S sid="227" ssid="19">The first of these is essentially beam thresholding for each rule P R if nonterminal L in left cell if nonterminal R in right cell add P to parent cell; Algorithm One for each nonterminal L in left cell for each&#8226;nonterminal R in right cell for each rule P L R add P to parent cell; without a prior.</S>
+    <S sid="228" ssid="20">In the second technique, there is a constant probability threshold.</S>
+    <S sid="229" ssid="21">Any nodes with a probability below this threshold are pruned.</S>
+    <S sid="230" ssid="22">If the parse fails, parsing is restarted with the constant lowered.</S>
+    <S sid="231" ssid="23">We attempted to duplicate this technique, but achieved only negligible performance improvements.</S>
+    <S sid="232" ssid="24">Collins (personal communication) reports a 38% speedup when this technique is combined with loose beam thresholding, compared to loose beam thresholding alone.</S>
+    <S sid="233" ssid="25">Perhaps our lack of success is due to differences between our grammars, which are fairly different formalisms.</S>
+    <S sid="234" ssid="26">When Collins began using a formalism somewhat closer to ours, he needed to change his beam thresholding to take into account the prior, so this is not unlikely.</S>
+    <S sid="235" ssid="27">Hwa (personal communication) using a model similar to PCFGs, Stochastic Lexicalized Tree Insertion Grammars, also was not able to obtain a speedup using this technique.</S>
+    <S sid="236" ssid="28">There is previous work in the speech recognition community on automatically optimizing some parameters (Schwartz et al., 1992).</S>
+    <S sid="237" ssid="29">However, this previous work differed significantly from ours both in the techniques used, and in the parameters optimized.</S>
+    <S sid="238" ssid="30">In particular, previous work focused on optimizing weights for various components, such as the language model component.</S>
+    <S sid="239" ssid="31">In contrast, we optimize thresholding parameters.</S>
+    <S sid="240" ssid="32">Previous techniques could not be used or easily adapted to thresholding parameters.</S>
+  </SECTION>
+  <SECTION title="7 Experiments" number="7">
+    <S sid="241" ssid="1">The inner loop of the CKY algorithm, which determines for every pair of cells what nodes must be added to the parent, can be written in several different ways.</S>
+    <S sid="242" ssid="2">Which way this is done interacts with thresholding techniques.</S>
+    <S sid="243" ssid="3">There are two possibilities, as shown in Figure 7.</S>
+    <S sid="244" ssid="4">We used the second technique, since the first technique gets no speedup from most thresholding systems.</S>
+    <S sid="245" ssid="5">All experiments were trained on sections 2-18 of the Penn Treebank, version II.</S>
+    <S sid="246" ssid="6">A few were tested, where noted, on the first 200 sentences of section 00 of length at most 40 words.</S>
+    <S sid="247" ssid="7">In one experiment, we used the first 15 of length at most 40, and in the remainder of our experiments, we used those sentences in the first 1001 of length at most 40.</S>
+    <S sid="248" ssid="8">Our parameter optimization algorithm always used the first 31 sentences of length at most 40 words from section 19.</S>
+    <S sid="249" ssid="9">We ran some experiments on more sentences, but there were three sentences in this larger test set that could not be parsed with beam thresholding, even with loose settings of the threshold; we therefore chose to report the smaller test set, since it is difficult to compare techniques which did not parse exactly the same sentences.</S>
+    <S sid="250" ssid="10">We needed several grammars for our experiments so that we could test the multiple-pass parsing algorithm.</S>
+    <S sid="251" ssid="11">The grammar rules, and their associated probabilities, were determined by reading them off of the training section of the treebank, in a manner very similar to that used by Charniak (1996).</S>
+    <S sid="252" ssid="12">The main grammar we chose was essentially of the following form: That is, our grammar was binary branching except that we also allowed unary branching productions.</S>
+    <S sid="253" ssid="13">There were never more than five subscripted symbols for any nonterminal, although there could be fewer than five if there were fewer than five symbols remaining on the right hand side.</S>
+    <S sid="254" ssid="14">Thus, our grammar was a kind of 6-gram model on symbols in the grammar.4 Figure 8 shows an example of how we converted trees to binary branching with our grammar.</S>
+    <S sid="255" ssid="15">We refer to this grammar as the 6-gram grammar.</S>
+    <S sid="256" ssid="16">The terminals of the grammar were the part-of-speech symbols in the treebank.</S>
+    <S sid="257" ssid="17">Any experiments that don't mention which grammar we used were run with the 6-gram grammar.</S>
+    <S sid="258" ssid="18">For a simple grammar, we wanted something that would be very fast.</S>
+    <S sid="259" ssid="19">The fastest grammar we can think of we call the terminal grammar, because it has one nonterminal for each terminal symbol in the alphabet.</S>
+    <S sid="260" ssid="20">The nonterminal symbol indicates the first terminal in its span.</S>
+    <S sid="261" ssid="21">The parses are binary branching in the same way that the 6-gram grammar parses are.</S>
+    <S sid="262" ssid="22">Figure 9 shows how to convert a parse tree to the terminal grammar.</S>
+    <S sid="263" ssid="23">Since there is only one nonterminal possible for each cell of the chart, parsing is quick for this grammar.</S>
+    <S sid="264" ssid="24">For technical and practical reasons, we actually wanted a marginally more complicated grammar, which included the &amp;quot;prime&amp;quot; symbol of the 6-gram grammar, indicating that a cell is part of the same constituent as its parent.</S>
+    <S sid="265" ssid="25">Therefore, we doubled the size of the grammar so that there would be both primed and non-primed versions of each terminal; we call this the terminalprime grammar, and also show how to convert to it in Figure 9.</S>
+    <S sid="266" ssid="26">This is the grammar we actually used as the first pass in our multiple-pass parsing experiments.</S>
+    <S sid="267" ssid="27">The goal of a good thresholding algorithm is to trade off correctness for increased speed.</S>
+    <S sid="268" ssid="28">We must thus measure both correctness and speed, and there are some subtleties to measuring each.</S>
+    <S sid="269" ssid="29">First, the traditional way of measuring correctness is with metrics such as precision and recall.</S>
+    <S sid="270" ssid="30">Unfortunately, there are two problems with these measures.</S>
+    <S sid="271" ssid="31">First, they are two numbers, neither useful without the other.</S>
+    <S sid="272" ssid="32">Second, they are subject to considerable noise.</S>
+    <S sid="273" ssid="33">In pilot experiments, we found that as we changed our thresholding values monotonically, precision and recall changed non-monotonically (see Figure 11).</S>
+    <S sid="274" ssid="34">We attribute this to the fact that we must choose a single parse from our parse forest, and, as we tighten a thresholding parameter, we may threshold out either good or bad parses.</S>
+    <S sid="275" ssid="35">Furthermore, rather than just changing precision or recall by a small amount, a single thresholded item may completely change the shape of the resulting tree.</S>
+    <S sid="276" ssid="36">Thus, precision and recall are only smooth with very large sets of test data.</S>
+    <S sid="277" ssid="37">However, because of the large number of experiments we wished to run, using a large set of test data was not feasible.</S>
+    <S sid="278" ssid="38">Thus, we looked for a surrogate measure, and decided to use the total inside probability of all parses, which, with no thresholding, is just the probability of the sentence given the model.</S>
+    <S sid="279" ssid="39">If we denote the total inside probability with no thresholding by I and the total inside probability with thresholding by IT, then IL is the probability that we did not threshold out the correct parse, given the model.</S>
+    <S sid="280" ssid="40">Thus, maximizing IT should maximize correctness.</S>
+    <S sid="281" ssid="41">Since probabilities can become very small, we instead minimize entropies, the negative logarithm of the probabilities.</S>
+    <S sid="282" ssid="42">Figure 11 shows that with a large data set, entropy correlates well with precision and recall, and that with smaller sets, it is much smoother.</S>
+    <S sid="283" ssid="43">Entropy is smoother because it is a function of many more variables: in one experiment, there were about 16000 constituents which contributed to precision and recall measurements, versus 151 million productions potentially contributing to entropy.</S>
+    <S sid="284" ssid="44">Thus, we choose entropy as our measure of correctness for most experiments.</S>
+    <S sid="285" ssid="45">When we did measure precision and recall, we used the metric as defined by Collins (1996).</S>
+    <S sid="286" ssid="46">Note that the fact that entropy changes smoothly and monotonically is critical for the performance of the multiple parameter optimization algorithm.</S>
+    <S sid="287" ssid="47">Furthermore, we may have to run quite a few iterations of that algorithm to get convergence, so the fact that entropy is smooth for relatively small numbers of sentences is a large help.</S>
+    <S sid="288" ssid="48">Thus, the discovery that entropy is a good surrogate for precision and recall is non-trivial.</S>
+    <S sid="289" ssid="49">The same kinds of observations could be extended to speech recognition to optimize multiple thresholds there (the typical modern speech system has quite a few thresholds), a topic for future research.</S>
+    <S sid="290" ssid="50">Note that for some sentences, with too tight thresholding, the parser will fail to find any parse at all.</S>
+    <S sid="291" ssid="51">We dealt with these cases by restarting the parser with all thresholds lowered by a factor of 5, it,ffating this loosening until a parse could be found.</S>
+    <S sid="292" ssid="52">This is why for some tight thresholds, the parser may be slower than with looser thresholds: the sentence has to be parsed twice, once with tight thresholds, and once with loose ones.</S>
+    <S sid="293" ssid="53">Next, we needed to choose a measure of time.</S>
+    <S sid="294" ssid="54">There are two obvious measures: amount of work done by the parser, and elapsed time.</S>
+    <S sid="295" ssid="55">If we measure amount of work done by the parser in terms of the number of productions with non-zero probability examined by the parser, wehave a fairly implementation-independent, machine-independent measure of speed.</S>
+    <S sid="296" ssid="56">On the other hand, because we used many different thresholding algorithms, some with a fair amount of overhead, this measure seems inappropriate.</S>
+    <S sid="297" ssid="57">Multiple-pass parsing requires use of the outside algorithm; global thresholding uses its own dynamic programming algorithm; and even beam thresholding has some per-node overhead.</S>
+    <S sid="298" ssid="58">Thus, we will give most measurements in terms of elapsed time, not including loading the grammar and other 0(1) overhead.</S>
+    <S sid="299" ssid="59">We did want to verify that elapsed time was a reasonable measure, so we did a beam thresholding experiment to make sure that elapsed time and number of productions examined were well correlated, using 200 sentences and an exponential sweep of the thresholding parameter.</S>
+    <S sid="300" ssid="60">The results, shown in Figure 10, clearly indicate that time is a good proxy for productions examined.</S>
+    <S sid="301" ssid="61">Our first goal was to show that entropy is a good surrogate for precision and recall.</S>
+    <S sid="302" ssid="62">We thus tried two experiments: one with a relatively large test set of 200 sentences, and one with a relatively small test set of 15 sentences.</S>
+    <S sid="303" ssid="63">Presumably, the 200 sentence test set should be much less noisy, and fairly indicative of performance.</S>
+    <S sid="304" ssid="64">We graphed both precision and recall, and entropy, versus time, as we swept the thresholding parameter over a sequence of values.</S>
+    <S sid="305" ssid="65">The results are in Figure 11.</S>
+    <S sid="306" ssid="66">As can be seen, entropy is significantly smoother than precision and recall for both size test corpora.</S>
+    <S sid="307" ssid="67">Our second goal was to check that the prior probability is indeed helpful.</S>
+    <S sid="308" ssid="68">We ran two experiments, one with the prior and one without.</S>
+    <S sid="309" ssid="69">Since the experiments without the prior were much worse than those with it, all other beam thresholding experiments included the prior.</S>
+    <S sid="310" ssid="70">The results, shown in Figure 12, indicate that the prior is a critical component.</S>
+    <S sid="311" ssid="71">This experiment was run on 200 sentences of test data.</S>
+    <S sid="312" ssid="72">Notice that as the time increases, the data tends to approach an asymptote, as shown in the left hand graph of Figure 12.</S>
+    <S sid="313" ssid="73">In order to make these small asymptotic changes more clear, we wished to expand the scale towards the asymptote.</S>
+    <S sid="314" ssid="74">The right hand graph was plotted with this expanded scale, based on log(entropy &#8212; asymptote), a slight variation on a normal log scale.</S>
+    <S sid="315" ssid="75">We use this scale in all the remaining entropy graphs.</S>
+    <S sid="316" ssid="76">A normal logarithmic scale is used for the time axis.</S>
+    <S sid="317" ssid="77">The fact that the time axis is logarithmic is especially useful for determining how much more efficient one algorithm is than another at a given performance level.</S>
+    <S sid="318" ssid="78">If one picks a performance level on the vertical axis, then the distance between the two curves at that level represents the ratio between their speeds.</S>
+    <S sid="319" ssid="79">There is roughly a factor of 8 to 10 difference between using the prior and not using it at all graphed performance levels, with a slow trend towards smaller differences as the thresholds are loosened.</S>
+    <S sid="320" ssid="80">We tried experiments comparing global thresholding to beam thresholding.</S>
+    <S sid="321" ssid="81">Figure 13 shows the results of this experiment, and later experiments.</S>
+    <S sid="322" ssid="82">In the best case, global thresholding works twice as well as beam thresholding, in the sense that to achieve the same level of performance requires only half as much time, although smaller improvements were more typical.</S>
+    <S sid="323" ssid="83">We have found that, in general, global thresholding works better on simpler grammars.</S>
+    <S sid="324" ssid="84">In some complicated grammars we explored in other work, there were systematic, strong correlations between nodes, which violated the independence approximation used in global thresholding.</S>
+    <S sid="325" ssid="85">This prevented us from using global thresholding with these grammars.</S>
+    <S sid="326" ssid="86">In the future, we may modify global thresholding to model some of these correlations.</S>
+    <S sid="327" ssid="87">While global thresholding works better than beam thresholding in general, each has its own strengths.</S>
+    <S sid="328" ssid="88">Global thresholding can threshold across cells, but because of the approximations used, the thresholds must generally be looser.</S>
+    <S sid="329" ssid="89">Beam thresholding can only threshold within a cell, but can do so fairly tightly.</S>
+    <S sid="330" ssid="90">Combining the two offers the potential to get the advantages of both.</S>
+    <S sid="331" ssid="91">We ran a series of experiments using the thresholding optimization algorithm of Section 5.</S>
+    <S sid="332" ssid="92">Figure 13 gives the results.</S>
+    <S sid="333" ssid="93">The combination of beam and global thresholding together is clearly better than either alone, in some cases running 40% faster than global thresholding alone, while achieving the same performance level.</S>
+    <S sid="334" ssid="94">The combination generally runs twice as fast as beam thresholding alone, although up to a factor of three.</S>
+    <S sid="335" ssid="95">Multiple-pass parsing improves even further on our experiments combining beam and global thresholding.</S>
+    <S sid="336" ssid="96">Note that we used both beam and global thresholding for both the first and second pass in these experiments.</S>
+    <S sid="337" ssid="97">The first pass grammar was the very simple terminal-prime grammar, and the second pass grammar was the usual 6-gram grammar.</S>
+    <S sid="338" ssid="98">We evaluated multiple-pass parsing slightly differently from the other thresholding techniques.</S>
+    <S sid="339" ssid="99">In the experiments conducted here, our first and second pass grammars were very different from each other.</S>
+    <S sid="340" ssid="100">For a given parse to be returned, it must be in the intersection of both grammars, and reasonably likely according to both.</S>
+    <S sid="341" ssid="101">Since the first and second pass grammars capture different information, parses which are likely according to both are especially good.</S>
+    <S sid="342" ssid="102">The entropy of a sentence measures its likelihood according to the second pass, but ignores the fact that the returned parse must also be likely according to the first pass.</S>
+    <S sid="343" ssid="103">Thus, entropy, our measure in the previous experiments, which measures only likelihood according to the final pass, is not necessarily the right measure to use.</S>
+    <S sid="344" ssid="104">We therefore give precision and recall results in this section.</S>
+    <S sid="345" ssid="105">We still optimized our thresholding parameters using the same 31 sentence held out corpus, and minimizing entropy versus number of productions, as before.</S>
+    <S sid="346" ssid="106">We should note that when we used a first pass grammar that captured a strict subset of the information in the second pass grammar, we have found that entropy is a very good measure of performance.</S>
+    <S sid="347" ssid="107">As in our earlier experiments, it tends to be well correlated with precision and recall but less subject to noise.</S>
+    <S sid="348" ssid="108">It is only because of the grammar mismatch that we have changed the evaluation.</S>
+    <S sid="349" ssid="109">Figure 14 shows precision and recall curves for single pass versus multiple pass experiments.</S>
+    <S sid="350" ssid="110">As in the entropy curves, we can determine the performance ratio by looking across horizontally.</S>
+    <S sid="351" ssid="111">For instance, the multi-pass recognizer achieves a 74% recall level using 2500 seconds, while the best single pass algorithm requires about 4500 seconds to reach that level.</S>
+    <S sid="352" ssid="112">Due to the noise resulting from precision and recall measurements, it is hard to exactly quantify the advantage from multiple pass parsing, but it is generally about 50%.</S>
+  </SECTION>
+  <SECTION title="8 Applications and Conclusions" number="8">
+    <S sid="353" ssid="1">In this paper, we only considered applying multiplepass and global thresholding techniques to parsing probabilistic context-free grammars.</S>
+    <S sid="354" ssid="2">However, just about any probabilistic grammar formalism for which inside and outside probabilities can be computed can benefit from these techniques.</S>
+    <S sid="355" ssid="3">For instance, Probabilistic Link Grammars (Lafferty, Sleator, and Temperley, 1992) could benefit from our algorithms.</S>
+    <S sid="356" ssid="4">We have however had trouble using global thresholding with grammars that strongly violated the independence assumptions of global thresholding.</S>
+    <S sid="357" ssid="5">One especially interesting possibility is to apply multiple-pass techniques to formalisms that require &gt;&gt; 0(n3) parsing time, such as Stochastic Bracketing Transduction Grammar (SBTG) (Wu, 1996) and Stochastic Tree Adjoining Grammars (STAG) (Resnik, 1992; Schabes, 1992).</S>
+    <S sid="358" ssid="6">SBTG is a contextfree-like formalism designed for translation from one language to another; it uses a four dimensional chart to index spans in both the source and target language simultaneously.</S>
+    <S sid="359" ssid="7">It would be interesting to try speeding up an SBTG parser by running an 0(n3) first pass on the source language alone, and using this to prune parsing of the full SBTG.</S>
+    <S sid="360" ssid="8">The STAG formalism is a mildly context-sensitive formalism, requiring 0 (n6 ) time to parse.</S>
+    <S sid="361" ssid="9">Most STAG productions in practical grammars are actually context-free.</S>
+    <S sid="362" ssid="10">The traditional way to speed up STAG parsing is to use the context-free subset of an STAG to form a Stochastic Tree Insertion Grammar (STIG) (Schabes and Waters, 1994), an 0 (n3 ) formalism, but this method has problems, because the STIG undergenerates since it is missing some elementary trees.</S>
+    <S sid="363" ssid="11">A different approach would be to use multiple-pass parsing.</S>
+    <S sid="364" ssid="12">We could first find a contextfree covering grammar for the STAG, and use this as a first pass, and then use the full STAG for the second pass.</S>
+    <S sid="365" ssid="13">The grammars described here are fairly simple, presented for purposes of explication.</S>
+    <S sid="366" ssid="14">In other work in preparation, in which we have used a significantly more complicated grammar, which we call the Probabilistic Feature Grammar (PFG), the improvements from multiple-pass parsing are even more dramatic: single pass experiments are simply too slow to run at all.</S>
+    <S sid="367" ssid="15">We have also found the automatic thresholding parameter optimization algorithm to be very useful.</S>
+    <S sid="368" ssid="16">Before writing the parameter optimization algorithm, we developed the PFG grammar and the multiple-pass parsing technique and ran a series of experiments using hand optimized parameters.</S>
+    <S sid="369" ssid="17">We recently ran the optimization algorithm and reran the experiments, achieving a factor of two speedup with no performance loss.</S>
+    <S sid="370" ssid="18">While we had not spent a great deal of time hand optimizing these parameters, we are very encouraged by the optimization algorithm's practical utility.</S>
+    <S sid="371" ssid="19">This paper introduces four new techniques: beam thresholding with priors, global thresholding, multiple-pass parsing, and automatic search for thresholding parameters.</S>
+    <S sid="372" ssid="20">Beam thresholding with priors can lead to almost an order of magnitude improvement over beam thresholding without priors.</S>
+    <S sid="373" ssid="21">Global thresholding can be up to three times as efficient as the new beam thresholding technique, although the typical improvement is closer to 50%.</S>
+    <S sid="374" ssid="22">When global thresholding and beam thresholding are combined, they are usually two to three times as fast as beam thresholding alone.</S>
+    <S sid="375" ssid="23">Multiple-pass parsing can lead to up to an additional 50% improvement with the grammars in this paper.</S>
+    <S sid="376" ssid="24">We expect the parameter optimization algorithm to be broadly useful.</S>
+  </SECTION>
+</PAPER>

@@ -1,0 +1,205 @@
+<PAPER>
+  <S sid="0">Syntax-Based Alignment Of Multiple Translations: Extracting Paraphrases And Generating New Sentences</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We describe a syntax-based algorithm that automatically builds Finite State Automata (word lattices) from semantically equivalent translation sets.</S>
+    <S sid="2" ssid="2">These FSAs are good representations of paraphrases.</S>
+    <S sid="3" ssid="3">They can be used to extract lexical and syntactic paraphrase pairs and to generate new, unseen sentences that express the same meaning as the sentences in the input sets.</S>
+    <S sid="4" ssid="4">Our FSAs can also predict the correctness of alternative semantic renderings, which may be used to evaluate the quality of translations.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="5" ssid="1">In the past, paraphrases have come under the scrutiny of many research communities.</S>
+    <S sid="6" ssid="2">Information retrieval researchers have used paraphrasing techniques for query reformulation in order to increase the recall of information retrieval engines (Sparck Jones and Tait, 1984).</S>
+    <S sid="7" ssid="3">Natural language generation researchers have used paraphrasing to increase the expressive power of generation systems (Iordanskaja et al., 1991; Lenke, 1994; Stede, 1999).</S>
+    <S sid="8" ssid="4">And researchers in multi-document text summarization (Barzilay et al., 1999), information extraction (Shinyama et al., 2002), and question answering (Lin and Pantel, 2001; Hermjakob et al., 2002) have focused on identifying and exploiting paraphrases in the context of recognizing redundancies, alternative formulations of the same meaning, and improving the performance of question answering systems.</S>
+    <S sid="9" ssid="5">In previous work (Barzilay and McKeown, 2001; Lin and Pantel, 2001; Shinyama et al., 2002), paraphrases are represented as sets or pairs of semantically equivalent words, phrases, and patterns.</S>
+    <S sid="10" ssid="6">Although this is adequate in the context of some applications, it is clearly too weak from a generative perspective.</S>
+    <S sid="11" ssid="7">Assume, for example, that we know that text pairs (stock market rose, stock market gained) and (stock market rose, stock prices rose) have the same meaning.</S>
+    <S sid="12" ssid="8">If we memorized only these two pairs, it would be impossible to infer that, in fact, consistent with our intuition, any of the following sets of phrases are also semantically equivalent: {stock market rose, stock market gained, stock prices rose, stock prices gained } and {stock market, stock prices } in the context of rose or gained; {market rose }, {market gained }, {prices rose } and {prices gained } in the context of stock; and so on.</S>
+    <S sid="13" ssid="9">In this paper, we propose solutions for two problems: the problem ofparaphrase representation and the problem of paraphrase induction.</S>
+    <S sid="14" ssid="10">We propose a new, finite-statebased representation of paraphrases that enables one to encode compactly large numbers of paraphrases.</S>
+    <S sid="15" ssid="11">We also propose algorithms that automatically derive such representations from inputs that are now routinely released in conjunction with large scale machine translation evaluations (DARPA, 2002): multiple English translations of many foreign language texts.</S>
+    <S sid="16" ssid="12">For instance, when given as input the 11 semantically equivalent English translations in Figure 1, our algorithm automatically induces the FSA in Figure 2, which represents compactly 49 distinct renderings of the same semantic meaning.</S>
+    <S sid="17" ssid="13">Our FSAs capture both lexical paraphrases, such as {fighting, battle}, {died, were killed} and structural paraphrases such as {last week&#8217;s fighting, the battle of last week}.</S>
+    <S sid="18" ssid="14">The contexts in which these are correct paraphrases are also conveniently captured in the representation.</S>
+    <S sid="19" ssid="15">In previous work, Langkilde and Knight (1998) used word lattices for language generation, but their method involved hand-crafted rules.</S>
+    <S sid="20" ssid="16">Bangalore et al. (2001) and Barzilay and Lee (2002) both applied the technique of multi-sequence alignment (MSA) to align parallel corpora and produced similar FSAs.</S>
+    <S sid="21" ssid="17">For their purposes, they mainly need to ensure the correctness of consensus among different translations, so that different constituent orderings in input sentences do not pose a serious problem.</S>
+    <S sid="22" ssid="18">In contrast, we want to ensure the correctness of all paths represented by the FSAs, and direct application of MSA in the presence of different constituent orderings can be problematic.</S>
+    <S sid="23" ssid="19">For example, when given as input the same sentences in Figure 1, one instantiation of the MSA algorithm produces the FSA in Figure 3, which contains many &#8220;bad&#8221; paths such as the battle of last week&#8217;s fighting took at least 12 people lost their people died in the fighting last week&#8217;s fighting (See Section 4.2.2 for a more quantitative analysis.).</S>
+    <S sid="24" ssid="20">It&#8217;s still possible to use MSA if, for example, the input is pre-clustered to have the same constituent ordering (Barzilay and Lee (2003)).</S>
+    <S sid="25" ssid="21">But we chose to approach this problem from another direction.</S>
+    <S sid="26" ssid="22">As a result, we propose a new syntax-based algorithm to produce FSAs.</S>
+    <S sid="27" ssid="23">In this paper, we first introduce the multiple translation corpus that we use in our experiments (see Section 2).</S>
+    <S sid="28" ssid="24">We then present the algorithms that we developed to induce finite-state paraphrase representations from such data (see Section 3).</S>
+    <S sid="29" ssid="25">An important part of the paper is dedicated to evaluating the quality of the finite-state representations that we derive (see Section 4).</S>
+    <S sid="30" ssid="26">Since our representations encode thousands and sometimes millions of equivalent verbalizations of the same meaning, we use both manual and automatic evaluation techniques.</S>
+    <S sid="31" ssid="27">Some of the automatic evaluations we perform are novel as well.</S>
+  </SECTION>
+  <SECTION title="2 Data" number="2">
+    <S sid="32" ssid="1">The data we use in this work is the LDC-available Multiple-Translation Chinese (MTC) Corpus1 developed for machine translation evaluation, which contains 105 news stories (993 sentences) from three sources of journalistic Mandarin Chinese text.</S>
+    <S sid="33" ssid="2">These stories were independently translated into English by 11 translation agencies.</S>
+    <S sid="34" ssid="3">Each sentence group, which consists of 11 semantically equivalent translations, is a rich source for learning lexical and structural paraphrases.</S>
+    <S sid="35" ssid="4">In our experiments, we use 899 of the sentence groups &#8212; the sentence groups with sentences longer than 45 words were dropped.</S>
+  </SECTION>
+  <SECTION title="3 A Syntax-Based Alignment Algorithm" number="3">
+    <S sid="36" ssid="1">Our syntax-based alignment algorithm, whose pseudocode is shown in Figure 4, works in three steps.</S>
+    <S sid="37" ssid="2">In the first step (lines 1-5 in Figure 4), we parse every sentence in a sentence group and merge all resulting parse trees into a parse forest.</S>
+    <S sid="38" ssid="3">In the second step (line 6), we extract an FSA from the parse forest and then we compact it further using a limited form of bottom-up alignment, which we call squeezing (line 7).</S>
+    <S sid="39" ssid="4">In what follows, we describe each step in turn.</S>
+    <S sid="40" ssid="5">Top-down merging.</S>
+    <S sid="41" ssid="6">Given a sentence group, we pass each of the 11 sentences to Charniak&#8217;s (2000) parser to get 11 parse trees.</S>
+    <S sid="42" ssid="7">The first step in the algorithm is to merge these parse trees into one parse-forest-like structure using a top-down process.</S>
+    <S sid="43" ssid="8">Let&#8217;s consider a simple case in which the parse forest contains one single tree, Tree 1 in Figure 5, and we are adding Tree 2 to it.</S>
+    <S sid="44" ssid="9">Since the two trees correspond to sentences that have the same meaning and since both trees expand an S node into an NP and a V P, it is reasonable to assume that NP1 is a paraphrase of NP2 and V P1 is a paraphrase of V P2.</S>
+    <S sid="45" ssid="10">We merge NP1 with NP2 and V P1 with V P2 and continue the merging process on each of the subtrees recursively, until we either reach the leaves of the trees or the two nodes that we examine are expanded using different syntactic rules.</S>
+    <S sid="46" ssid="11">When we apply this process to the trees in Figure 5, the NP nodes are merged all the way down to the leaves, and we get &#8220;12&#8221; as a paraphrase of &#8220;twelve&#8221; and &#8220;people&#8221; as a paraphrase of &#8220;persons&#8221;; in contrast, the two VPs are expanded in different ways, so no merging is done beyond this level, and we are left with the information that &#8220;were killed&#8221; is a paraphrase of &#8220;died&#8221;.</S>
+    <S sid="47" ssid="12">We repeat this top-down merging procedure with each of the 11 parse trees in a sentence group.</S>
+    <S sid="48" ssid="13">So far, only constituents with same syntactic type are treated as paraphrases.</S>
+    <S sid="49" ssid="14">However, later we shall see that we can match word spans whose syntactic types differ.</S>
+    <S sid="50" ssid="15">Keyword checking.</S>
+    <S sid="51" ssid="16">The matching process described above appears quite strict &#8211; the expansions must match exactly for two nodes to be merged.</S>
+    <S sid="52" ssid="17">But consider the following parse trees: 1.</S>
+    <S sid="53" ssid="18">(S (NP1 people)(VP1 were killed in this battle)) 2.</S>
+    <S sid="54" ssid="19">(S (NP2 this battle)(VP2 killed people)) If we applied the algorithm described above, we would mistakenly align NP1 with NP2 and V P1 with V P2 &#8212; the algorithm described so far makes no use of lexical information.</S>
+    <S sid="55" ssid="20">To prevent such erroneous alignments, we also implement a simple keyword checking procedure.</S>
+    <S sid="56" ssid="21">We note that since the word &#8220;battle&#8221; appears in both V P1 and NP2, this can serve as an evidence against the merging of (NP1, NP2) and (V P1, V P2).</S>
+    <S sid="57" ssid="22">A similar argument can be constructed for the word &#8220;people&#8221;.</S>
+    <S sid="58" ssid="23">So in this example we actually have double evidence against merging; in general, one such clue suffices to stop the merging.</S>
+    <S sid="59" ssid="24">Our keyword checking procedure acts as a filter.</S>
+    <S sid="60" ssid="25">A list of keywords is maintained for each node in a syntactic tree.</S>
+    <S sid="61" ssid="26">This list contains all the nouns, verbs, and adjectives that are spanned by a syntactic node.</S>
+    <S sid="62" ssid="27">Before merging two nodes, we check to see whether the keyword lists associated with them share words with other nodes.</S>
+    <S sid="63" ssid="28">That is, supposed we just merged nodes A and B, and they are expanded with the same syntactic rule into A1A2...An and B1B2...Bn respectively; before we merge each Ai with Bi, we check for each Bi if its keyword list shares common words with any Aj (j =&#65533; i).</S>
+    <S sid="64" ssid="29">If they do not, we continue the top-down merging process; otherwise we stop.</S>
+    <S sid="65" ssid="30">In our current implementation, a pair of synonyms can not stop an otherwise legitimate merging, but it&#8217;s possible to extend our keyword checking process with the help of lexical resources such as WordNet in future work.</S>
+    <S sid="66" ssid="31">Mapping Parse Forests into Finite State Automata.</S>
+    <S sid="67" ssid="32">The process of mapping Parse Forests into Finite State Automata is simple.</S>
+    <S sid="68" ssid="33">We simply traverse the parse forest top-down and create alternative paths for every merged node.</S>
+    <S sid="69" ssid="34">For example, the parse forest in Figure 5 is mapped into the FSA shown at the bottom of the same figure.</S>
+    <S sid="70" ssid="35">In the FSA, there is a word associated with each edge.</S>
+    <S sid="71" ssid="36">Different paths between any two nodes are assumed to be paraphrases of each other.</S>
+    <S sid="72" ssid="37">Each path that starts from the BEGIN node and ends at the END node corresponds to either an original input sentence or a paraphrase sentence.</S>
+    <S sid="73" ssid="38">Squeezing.</S>
+    <S sid="74" ssid="39">Since we adopted a very strict matching criterion in top-down merging, a small difference in the syntactic structure of two trees prevents some legitimate mergings from taking place.</S>
+    <S sid="75" ssid="40">This behavior is also exacerbated by errors in syntactic parsing.</S>
+    <S sid="76" ssid="41">Hence, for instance, three edges labeled detroit at the leftmost of the top FSA in Figure 6 were kept apart.</S>
+    <S sid="77" ssid="42">To compensate for this effect, our algorithm implements an additional step, which we call squeezing.</S>
+    <S sid="78" ssid="43">If two different edges that go into (or out of) the same node in an FSA are labeled with the same word, the nodes on the other end of the edges are merged.</S>
+    <S sid="79" ssid="44">We apply this operation exhaustively over the FSAs produced by the top-down merging procedure.</S>
+    <S sid="80" ssid="45">Figure 6 illustrates the effect of this operation: the FSA at the top of this figure is compressed into the more compact FSA shown at the bottom of it.</S>
+    <S sid="81" ssid="46">Note that in addition to reducing the redundant edges, this also gives us paraphrases not available in the FSA before squeezing (e.g.</S>
+    <S sid="82" ssid="47">{reduced to rubble, blasted to ground}).</S>
+    <S sid="83" ssid="48">Therefore, the squeezing operation, which implements a limited form of lexically driven alignment similar to that exploited by MSA algorithms, leads to FSAs that have a larger number of paths The evaluation for our finite state representations and algorithm requires careful examination.</S>
+    <S sid="84" ssid="49">Obviously, what counts as a good result largely depends on the application one has in mind.</S>
+    <S sid="85" ssid="50">If we are extracting paraphrases for question-reformulation, it doesn&#8217;t really matter if we output a few syntactically incorrect paraphrases, as long as we produce a large number of semantically correct ones.</S>
+    <S sid="86" ssid="51">If we want to use the FSA for MT evaluation (for example, comparing a sentence to be evaluated with the possible paths in FSA), we would want all paths to be relatively good (which we will focus on in this paper), while in some other applications, we may only care about the quality of the best path (not addressed in this paper).</S>
+    <S sid="87" ssid="52">Section 4.1 concentrates on evaluating the paraphrase pairs that can be extracted from the FSAs built by our system, while Section 4.2 is dedicated to evaluating the FSAs directly.</S>
+    <S sid="88" ssid="53">By construction, different paths between any two nodes in the FSA representations that we derive are paraphrases (in the context in which the nodes occur).</S>
+    <S sid="89" ssid="54">To evaluate our algorithm, we extract paraphrases from our FSAs and ask human judges to evaluate their correctness.</S>
+    <S sid="90" ssid="55">We compare the paraphrases we collect with paraphrases that are derivable from the same corpus using a cotraining-based paraphrase extraction algorithm (Barzilay and McKeown, 2001).</S>
+    <S sid="91" ssid="56">To the best of our knowledge, this is the most relevant work to compare against since it aims at extracting paraphrase pairs from parallel corpus.</S>
+    <S sid="92" ssid="57">Unlike our syntax-based algorithm which treats a sentence as a tree structure and uses this hierarchical structural information to guide the merging process, their algorithm treats a sentence as a sequence of phrases with surrounding contexts (no hierarchical structure involved) and cotrains classifiers to detect paraphrases and contexts for paraphrases.</S>
+    <S sid="93" ssid="58">It would be interesting to compare the results from two algorithms so different from each other.</S>
+    <S sid="94" ssid="59">For the purpose of this experiment, we randomly selected 300 paraphrase pairs (Ssyn) from the FSAs produced by our system.</S>
+    <S sid="95" ssid="60">Since the co-training-based algorithm of Barzilay and McKeown (2001) takes parallel corpus as input, we created out of the MTC corpus 55 &#215; 993 sentence pairs (Each equivalent translation set of cardinality 11 was mapped into (2) equivalent translation pairs.).</S>
+    <S sid="96" ssid="61">Regina Barzilay kindly provided us the list of paraphrases extracted by their algorithm from this parallel corpus, from which we randomly selected another set of 300 paraphrases (Scotr). phrases produced by the syntax-based alignment (Ssyn) and co-training-based (Scotr) algorithms.</S>
+    <S sid="97" ssid="62">The resulting 600 paraphrase pairs were mixed and presented in random order to four human judges.</S>
+    <S sid="98" ssid="63">Each judge was asked to assess the correctness of 150 paraphrase pairs (75 pairs from each system) based on the context, i.e., the sentence group, from which the paraphrase pair was extracted.</S>
+    <S sid="99" ssid="64">Judges were given three choices: &#8220;Correct&#8221;, for perfect paraphrases, &#8220;Partially correct&#8221;, for paraphrases in which there is only a partial overlap between the meaning of two paraphrases (e.g. while {saving set, aid package} is a correct paraphrase pair in the given context, {set, aide package} is considered partially correct), and &#8220;Incorrect&#8221;.</S>
+    <S sid="100" ssid="65">The results of the evaluation are presented in Table 1.</S>
+    <S sid="101" ssid="66">Although the four evaluators were judging four different sets, each clearly rated a higher percentage of the outputs produced by the syntax-based alignment algorithm as &#8220;Correct&#8221;.</S>
+    <S sid="102" ssid="67">We should note that there are parameters specific to the co-training algorithm that we did not tune to work for this particular corpus.</S>
+    <S sid="103" ssid="68">In addition, the cotraining algorithm recovered more paraphrase pairs: the syntax-based algorithm extracted 8666 pairs in total with 1051 of them extracted at least twice (i.e. more or less reliable), while the numbers for the co-training algorithm is 2934 out of a total of 16993 pairs.</S>
+    <S sid="104" ssid="69">This means we are not comparing the accuracy on the same recall level.</S>
+    <S sid="105" ssid="70">Aside from evaluating the correctness of the paraphrases, we are also interested in the degree of overlap between the paraphrase pairs discovered by the two algorithms so different from each other.</S>
+    <S sid="106" ssid="71">We find that out of the 1051 paraphrase pairs that were extracted from more than one sentence group by the syntax-based algorithm, 62.3% were also extracted by the co-training algorithm; and out of the 2934 paraphrase pairs from the results of co-training algorithm, 33.4% were also extracted by the syntax-based algorithm.</S>
+    <S sid="107" ssid="72">This shows that in spite of the very different cues the two different algorithms rely on, they do discover a lot of common pairs.</S>
+    <S sid="108" ssid="73">In order to (roughly) estimate the recall (of lexical synonyms) of our algorithm, we use the synonymy relation in WordNet to extract all the synonym pairs present in our corpus.</S>
+    <S sid="109" ssid="74">This extraction process yields the list of all WordNet-consistent synonym pairs that are present in our data.</S>
+    <S sid="110" ssid="75">(Note that some of the pairs identified as synonyms by WordNet, like &#8220;follow/be&#8221;, are not really synonyms in the contexts defined in our data set, which may lead to artificial deflation of our recall estimate.)</S>
+    <S sid="111" ssid="76">Once we have the list of WordNet-consistent paraphrases, we can check how many of them are recovered by our method.</S>
+    <S sid="112" ssid="77">Table 2 gives the percentage of pairs recovered for each range of average sentence length (ASL) in the group.</S>
+    <S sid="113" ssid="78">Not surprisingly, we get higher recall with shorter sentences, since long sentences tend to differ in their syntactic structures fairly high up in the parse trees, which leads to fewer mergings at the lexical level.</S>
+    <S sid="114" ssid="79">The recall on the task of extracting lexical synonyms, as defined by WordNet, is not high.</S>
+    <S sid="115" ssid="80">But after all, this is not what our algorithm has been designed for.</S>
+    <S sid="116" ssid="81">It&#8217;s worth noticing that the syntax-based algorithm also picks up many paraphrases that are not identified as synonyms in WordNet.</S>
+    <S sid="117" ssid="82">Out of 3217 lexical paraphrases that are learned by our system, only 493 (15.3%) are WordNet synonyms, which suggests that paraphrasing is a much richer and looser relation than synonymy.</S>
+    <S sid="118" ssid="83">However, the WordNetbased recall figures suggest that WordNet can be used as an additional source of information to be exploited by our algorithm.</S>
+    <S sid="119" ssid="84">We noted before that apart from being a natural representation of paraphrases, the FSAs that we build have their own merit and deserve to be evaluated directly.</S>
+    <S sid="120" ssid="85">Since our FSAs contain large numbers of paths, we design automatic evaluation metrics to assess their qualities.</S>
+    <S sid="121" ssid="86">If we take our claims seriously, each path in our FSAs that connects the start and end nodes should correspond to a well-formed sentence.</S>
+    <S sid="122" ssid="87">We are interested in both quantity (how many sentences our automata are able to produce) and quality (how good these sentences are).</S>
+    <S sid="123" ssid="88">To answer the first question, we simply count the number of paths produced by our FSAs.</S>
+    <S sid="124" ssid="89">Table 3 gives the statistics on the number of paths produced by our FSAs, reported by the average length of sentences in the input sentence groups.</S>
+    <S sid="125" ssid="90">For example, the sentence groups that have between 10 and 20 words produce, on average, automata that can yield 4468 alternative, semantically equivalent formulations.</S>
+    <S sid="126" ssid="91">Note that if we always get the same degree of merging per word across all sentence groups, the number of paths would tend to increase with the sentence length.</S>
+    <S sid="127" ssid="92">This is not the case here.</S>
+    <S sid="128" ssid="93">Apparently we are getting less merging with longer sentences.</S>
+    <S sid="129" ssid="94">But still, given 11 sentences, we are capable of generating hundreds, thousands, and in some cases even millions of sentences.</S>
+    <S sid="130" ssid="95">Obviously, we should not get too happy with our ability to boost the number of equivalent meanings if they are incorrect.</S>
+    <S sid="131" ssid="96">To assess the quality of the FSAs generated by our algorithm, we use a language model-based metric.</S>
+    <S sid="132" ssid="97">We train a 4-gram model over one year of the Wall Street Journal using the CMU-Cambridge Statistical Language Modeling toolkit (v2).</S>
+    <S sid="133" ssid="98">For each sentence group SG, we use this language model to estimate the average entropy of the 11 original sentences in that group (ent(SG)).</S>
+    <S sid="134" ssid="99">We also compute the average entropy of all the sentences in the corresponding FSA built by our syntax-based algorithm (ent(FSA)).</S>
+    <S sid="135" ssid="100">As the statistics in Table 4 show, there is little difference between the average entropy of the original sentences and the average entropy of the paraphrase sentences we produce.</S>
+    <S sid="136" ssid="101">To better calibrate this result, we compare it with the average entropy of 6 corresponding machine translation outputs (ent(MTS)), which were also made available by LDC in conjunction with the same corpus.</S>
+    <S sid="137" ssid="102">As one can see, the difference between the average entropy of the machine produced output and the average entropy of the original 11 sentences is much higher than the difference between the average entropy of the FSA-produced outputs and the average entropy of the original 11 sentences.</S>
+    <S sid="138" ssid="103">Obviously, this does not mean that our FSAs only produce well-formed sentences.</S>
+    <S sid="139" ssid="104">But it does mean that our FSAs produce sentences that look more like human produced sentences than machine produced ones according to a language model.</S>
+    <S sid="140" ssid="105">Not surprisingly, the language model we used in Section 4.2.1 is far from being a perfect judge of sentence quality.</S>
+    <S sid="141" ssid="106">Recall the example of &#8220;bad&#8221; path we gave in Section 1: the battle of last week&#8217;s fighting took at least 12 people lost their people died in the fighting last week&#8217;s fighting.</S>
+    <S sid="142" ssid="107">Our 4-gram based language model will not find any fault with this sentence.</S>
+    <S sid="143" ssid="108">Notice, however, that some words (such as &#8220;fighting&#8221; and &#8220;people&#8221;) appear at least twice in this path, although they are not repeated in any of the source sentences.</S>
+    <S sid="144" ssid="109">These erroneous repetitions indicate mis-alignment.</S>
+    <S sid="145" ssid="110">By measuring the frequency of words that are mistakenly repeated, we can now examine quantitatively whether a direct application of the MSA algorithm suffers from different constituent orderings as we expected.</S>
+    <S sid="146" ssid="111">For each sentence group, we get a list of words that never appear more than once in any sentence in this group.</S>
+    <S sid="147" ssid="112">Given a word from this list and the FSA built from this group, we count the total number of paths that contain this word (C) and the number of paths in which this word appears at least twice (CT, i.e. number of erroneous repetitions).</S>
+    <S sid="148" ssid="113">We define the repetition ratio to be CT/C, which is the proportion of &#8220;bad&#8221; paths in this FSA according to this word.</S>
+    <S sid="149" ssid="114">If we compute this ratio for all the words in the lists of the first 499 groups2 and the corresponding FSAs produced by an instantiation of the MSA algorithm3, the average repetition ratio is 0.0304992 (14.76% of the words have a non-zero repetition ratio, and the average ratio for these words is 0.206671).</S>
+    <S sid="150" ssid="115">In comparison, the average repetition ratio for our algorithm is 0.0035074 (2.16% of the words have a non-zero repetition ratio4, and the average ratio for these words is 0.162309).</S>
+    <S sid="151" ssid="116">The presence of different constituent orderings does pose a more serious problem to the MSA algorithm.</S>
+    <S sid="152" ssid="117">Recently, Papineni et al. (2002) have proposed an automatic MT system evaluation technique (the BLEU score).</S>
+    <S sid="153" ssid="118">Given an MT system output and a set of reference translations, one can estimate the &#8220;goodness&#8221; of the MT output by measuring the n-gram overlap between the output and the reference set.</S>
+    <S sid="154" ssid="119">The higher the overlap, i.e., the closer an output string is to a set of reference translations, the better a translation it is.</S>
+    <S sid="155" ssid="120">We hypothesize that our FSAs provide a better representation against which the outputs of MT systems can be evaluated because they encode not just a few but thousands of equivalent semantic formulations of the desired meaning.</S>
+    <S sid="156" ssid="121">Ideally, if the FSAs we build accept all and only the correct renderings of a given meaning, we can just give a test sentence to the reference FSA and see if it is accepted by it.</S>
+    <S sid="157" ssid="122">Since this is not a realistic expectation, we measure the edit distance between a string and an FSA instead: the smaller this distance is, the closer it is to the meaning represented by the FSA.</S>
+    <S sid="158" ssid="123">To assess whether our FSAs are more appropriate representations for evaluating the output of MT systems, we perform the following experiment.</S>
+    <S sid="159" ssid="124">For each sentence group, we hold out one sentence as test sentence, and try to evaluate how much of it can be predicted from the other 10 sentences.</S>
+    <S sid="160" ssid="125">We compare two different ways of estimating the predictive power.</S>
+    <S sid="161" ssid="126">(a) we compute the edit distance between the test sentence and the other 10 sentences in the set.</S>
+    <S sid="162" ssid="127">The minimum of this distance is ed(input).</S>
+    <S sid="163" ssid="128">(b) we use dynamic programming to efficiently compute the minimum distance (ed(FSA)) between the test sentence and all the paths in the FSA built from the other 10 sentences.</S>
+    <S sid="164" ssid="129">The smaller the edit distance is, the better we are predicting a test sentence.</S>
+    <S sid="165" ssid="130">Mathematically, the difference between these two measures ed(input) &#8722; ed(FSA) characterizes how much is gained in predictive power by building the FSA.</S>
+    <S sid="166" ssid="131">We carry out the experiment described above in a &#8220;leave-one-out&#8221; fashion (i.e. each sentence serves as a test sentence once).</S>
+    <S sid="167" ssid="132">Now let edgain be the average of ed(input) &#8722; ed(FSA) over the 11 runs for a given group.</S>
+    <S sid="168" ssid="133">We compute this for all 899 groups and find the mean for edgain to be 0.91 (std. dev = 0.78).</S>
+    <S sid="169" ssid="134">Table 5 gives the count for groups whose edgain falls into the specified range.</S>
+    <S sid="170" ssid="135">We can see that the majority of edgain falls under 2.</S>
+    <S sid="171" ssid="136">We are also interested in the relation between the predictive power of the FSAs and the number of reference translations they are derived from.</S>
+    <S sid="172" ssid="137">For a given group, we randomly order the sentences in it, set the last one as the test sentence, and try to predict it with the first 1, 2, 3, ... 10 sentences.</S>
+    <S sid="173" ssid="138">We investigate whether more sentences Let ed(FSAn) be the edit distance from the test sentence to the FSA built on the first n sentences; similarly, let ed(inputn) be the minimum edit distance from the test sentence to an input set that consists of only the first n sentences.</S>
+    <S sid="174" ssid="139">Table 6 reports the effect of using different number of reference translations.</S>
+    <S sid="175" ssid="140">The first column shows that each translation is contributing to the predictive power of our FSA.</S>
+    <S sid="176" ssid="141">Even when we add the tenth translation to our FSA, we still improve its predictive power.</S>
+    <S sid="177" ssid="142">The second column shows that the more sentences we add to the FSA the larger the difference between its predictive power and that of a simple set.</S>
+    <S sid="178" ssid="143">The results in Table 6 suggest that our FSA may be used in order to refine the BLEU metric (Papineni et al., 2002).</S>
+  </SECTION>
+  <SECTION title="5 Conclusion &amp; Future Work" number="4">
+    <S sid="179" ssid="1">In this paper, we presented a new syntax-based algorithm that learns paraphrases from a newly available dataset.</S>
+    <S sid="180" ssid="2">The multiple translation corpus that we use in this paper is the first instance in a series of similar corpora that are built and made publicly available by LDC in the context of a series of DARPA-sponsored MT evaluations.</S>
+    <S sid="181" ssid="3">The algorithm we proposed constructs finite state representations of paraphrases that are useful in many contexts: to induce large lists of lexical and structural paraphrases; to generate semantically equivalent renderings of a given meaning; and to estimate the quality of machine translation systems.</S>
+    <S sid="182" ssid="4">More experiments need to be carried out in order to assess extrinsically whether the FSAs we produce can be used to yield higher agreement scores between human and automatic assessments of translation quality.</S>
+    <S sid="183" ssid="5">In our future work, we wish to experiment with more flexible merging algorithms and to integrate better the top-down and bottom-up processes that are used to induce FSAs.</S>
+    <S sid="184" ssid="6">We also wish to extract more abstract paraphrase patterns from the current representation.</S>
+    <S sid="185" ssid="7">Such patterns are more likely to get reused &#8211; which would help us get reliable statistics for them in the extraction phase, and also have a better chance of being applicable to unseen data.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="5">
+    <S sid="186" ssid="1">We thank Hal Daum&#180;e III, Ulrich Germann, and Ulf Hermjakob for help and discussions; Eric Breck, Hubert Chen, Stephen Chong, Dan Kifer, and Kevin O&#8217;Neill for participating in the human evaluation; and the Cornell NLP group and the reviewers for their comments on this paper.</S>
+    <S sid="187" ssid="2">We especially want to thank Regina Barzilay and Lillian Lee for many valuable suggestions and help at various stages of this work.</S>
+    <S sid="188" ssid="3">Portions of this work were done while the first author was visiting Information Sciences Institute.</S>
+    <S sid="189" ssid="4">This work was supported by the Advanced Research and Development Activity (ARDA)&#8217;s Advance Question Answering for Intelligence (AQUAINT) Program under contract number MDA908-02-C-0007, the National Science Foundation under ITR/IM grant IIS0081334 and a Sloan Research Fellowship to Lillian Lee.</S>
+    <S sid="190" ssid="5">Any opinions, findings, and conclusions or recommendations expressed above are those of the authors and do not necessarily reflect the views of the National Science Foundation or the Sloan Foundation.</S>
+  </SECTION>
+</PAPER>

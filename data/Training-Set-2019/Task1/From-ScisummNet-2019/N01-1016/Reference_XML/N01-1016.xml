@@ -1,0 +1,207 @@
+<PAPER>
+  <S sid="0">Edit Detection And Parsing For Transcribed Speech</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present a simple architecture for parsing transcribed speech in which an edited-word detector first removes such words from the sentence string, and then a standard statistical parser trained on transcribed speech parses the remaining words.</S>
+    <S sid="2" ssid="2">The edit detector achieves a misclassification rate on edited words of 2.2%. which marks everything as not edited, has an error rate of 5.9%.)</S>
+    <S sid="3" ssid="3">To evaluate our parsing results we introduce a new evaluation metric, the purpose of which is to make evaluation of a parse tree relatively indifferent the exact tree position of By this metric the parser achieves 85.3% precision and 86.5% recall.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="4" ssid="1">While significant effort has been expended on the parsing of written text, parsing speech has received relatively little attention.</S>
+    <S sid="5" ssid="2">The comparative neglect of speech (or transcribed speech) is understandable, since parsing transcribed speech presents several problems absent in regular text: &#8220;um&#8221;s and &#8220;ah&#8221;s (or more formally, filled pauses), frequent use of parentheticals (e.g., &#8220;you know&#8221;), ungrammatical constructions, and speech repairs (e.g., &#8220;Why didn&#8217;t he, why didn&#8217;t she stay home?&#8221;).</S>
+    <S sid="6" ssid="3">In this paper we present and evaluate a simple two-pass architecture for handling the problems of parsing transcribed speech.</S>
+    <S sid="7" ssid="4">The first pass tries to identify which of the words in the string are edited (&#8220;why didn&#8217;t he,&#8221; in the above example).</S>
+    <S sid="8" ssid="5">These words are removed from the string given to the second pass, an already existing statistical parser trained on a transcribed speech &#8727; This research was supported in part by NSF grant LIS SBR 9720368 and by NSF ITR grant 20100203. corpus.</S>
+    <S sid="9" ssid="6">(In particular, all of the research in this paper was performed on the parsed &#8220;Switchboard&#8221; corpus as provided by the Linguistic Data Consortium.)</S>
+    <S sid="10" ssid="7">This architecture is based upon a fundamental assumption: that the semantic and pragmatic content of an utterance is based solely on the unedited words in the word sequence.</S>
+    <S sid="11" ssid="8">This assumption is not completely true.</S>
+    <S sid="12" ssid="9">For example, Core and Schubert [8] point to counterexamples such as &#8220;have the engine take the oranges to Elmira, um, I mean, take them to Corning&#8221; where the antecedent of &#8220;them&#8221; is found in the EDITED words.</S>
+    <S sid="13" ssid="10">However, we believe that the assumption is so close to true that the number of errors introduced by this assumption is small compared to the total number of errors made by the system.</S>
+    <S sid="14" ssid="11">In order to evaluate the parser&#8217;s output we compare it with the gold-standard parse trees.</S>
+    <S sid="15" ssid="12">For this purpose a very simple third pass is added to the architecture: the hypothesized edited words are inserted into the parser output (see Section 3 for details).</S>
+    <S sid="16" ssid="13">To the degree that our fundamental assumption holds, a &#8220;real&#8221; application would ignore this last step.</S>
+    <S sid="17" ssid="14">This architecture has several things to recommend it.</S>
+    <S sid="18" ssid="15">First, it allows us to treat the editing problem as a pre-process, keeping the parser unchanged.</S>
+    <S sid="19" ssid="16">Second, the major clues in detecting edited words in transcribed speech seem to be relatively shallow phenomena, such as repeated word and part-of-speech sequences.</S>
+    <S sid="20" ssid="17">The kind of information that a parser would add, e.g., the node dominating the EDITED node, seems much less critical.</S>
+    <S sid="21" ssid="18">Note that of the major problems associated with transcribed speech, we choose to deal with only one of them, speech repairs, in a special fashion.</S>
+    <S sid="22" ssid="19">Our reasoning here is based upon what one might and might not expect from a secondpass statistical parser.</S>
+    <S sid="23" ssid="20">For example, ungrammaticality in some sense is relative, so if the training corpus contains the same kind of ungrammatical examples as the testing corpus, one would not expect ungrammaticality itself to be a show stopper.</S>
+    <S sid="24" ssid="21">Furthermore, the best statistical parsers [3,5] do not use grammatical rules, but rather define probability distributions over all possible rules.</S>
+    <S sid="25" ssid="22">Similarly, parentheticals and filled pauses exist in the newspaper text these parsers currently handle, albeit at a much lower rate.</S>
+    <S sid="26" ssid="23">Thus there is no particular reason to expect these constructions to have a major impact.1 This leaves speech repairs as the one major phenomenon not present in written text that might pose a major problem for our parser.</S>
+    <S sid="27" ssid="24">It is for that reason that we have chosen to handle it separately.</S>
+    <S sid="28" ssid="25">The organization of this paper follows the architecture just described.</S>
+    <S sid="29" ssid="26">Section 2 describes the first pass.</S>
+    <S sid="30" ssid="27">We present therein a boosting model for learning to detect edited nodes (Sections 2.1 &#8211; 2.2) and an evaluation of the model as a stand-alone edit detector (Section 2.3).</S>
+    <S sid="31" ssid="28">Section 3 describes the parser.</S>
+    <S sid="32" ssid="29">Since the parser is that already reported in [3], this section simply describes the parsing metrics used (Section 3.1), the details of the experimental setup (Section 3.2), and the results (Section 3.3).</S>
+  </SECTION>
+  <SECTION title="2 Identifying EDITED words" number="2">
+    <S sid="33" ssid="1">The Switchboard corpus annotates disfluencies such as restarts and repairs using the terminology of Shriberg [15].</S>
+    <S sid="34" ssid="2">The disfluencies include repetitions and substitutions, italicized in (1a) and (1b) respectively.</S>
+    <S sid="35" ssid="3">Restarts and repairs are indicated by disfluency tags &#8216;[&#8217;, &#8216;+&#8217; and &#8216;]&#8217; in the disfluency POS-tagged Switchboard corpus, and by EDITED nodes in the tree-tagged corpus.</S>
+    <S sid="36" ssid="4">This section describes a procedure for automatically identifying words corrected by a restart or repair, i.e., words that 1Indeed, [17] suggests that filled pauses tend to indicate clause boundaries, and thus may be a help in parsing. are dominated by an EDITED node in the treetagged corpus.</S>
+    <S sid="37" ssid="5">This method treats the problem of identifying EDITED nodes as a word-token classification problem, where each word token is classified as either edited or not.</S>
+    <S sid="38" ssid="6">The classifier applies to words only; punctuation inherits the classification of the preceding word.</S>
+    <S sid="39" ssid="7">A linear classifier trained by a greedy boosting algorithm [16] is used to predict whether a word token is edited.</S>
+    <S sid="40" ssid="8">Our boosting classifier is directly based on the greedy boosting algorithm described by Collins [7].</S>
+    <S sid="41" ssid="9">This paper contains important implementation details that are not repeated here.</S>
+    <S sid="42" ssid="10">We chose Collins&#8217; algorithm because it offers good performance and scales to hundreds of thousands of possible feature combinations.</S>
+    <S sid="43" ssid="11">This section describes the kinds of linear classifiers that the boosting algorithm infers.</S>
+    <S sid="44" ssid="12">Abstractly, we regard each word token as an event characterized by a finite tuple of random variables (Y,X1,...,Xm).</S>
+    <S sid="45" ssid="13">Y is the the conditioned variable and ranges over {&#8722;1, +1}, with Y = +1 indicating that the word is not edited.</S>
+    <S sid="46" ssid="14">X1, ... , Xm are the conditioning variables; each Xj ranges over a finite set Xj.</S>
+    <S sid="47" ssid="15">For example, X1 is the orthographic form of the word and X1 is the set of all words observed in the training section of the corpus.</S>
+    <S sid="48" ssid="16">Our classifiers use m = 18 conditioning variables.</S>
+    <S sid="49" ssid="17">The following subsection describes the conditioning variables in more detail; they include variables indicating the POS tag of the preceding word, the tag of the following word, whether or not the word token appears in a &#8220;rough copy&#8221; as explained below, etc.</S>
+    <S sid="50" ssid="18">The goal of the classifier is to predict the value of Y given values for X1, ... , Xm.</S>
+    <S sid="51" ssid="19">The classifier makes its predictions based on the occurence of combinations of conditioning variable/value pairs called features.</S>
+    <S sid="52" ssid="20">A feature F is a set of variable-value pairs (Xj, xj), with xj E Xj.</S>
+    <S sid="53" ssid="21">Our classifier is defined in terms of a finite number n of features F1, ... , Fn, where n &#8776; 106 in our classifiers.2 Each feature Fi defines an associated random boolean variable where (X=x) takes the value 1 if X = x and 0 otherwise.</S>
+    <S sid="54" ssid="22">That is, Fi = 1 iff Xj = xj for all (Xj,xj) E Fi.</S>
+    <S sid="55" ssid="23">Our classifier estimates a feature weight &#945;i for each feature Fi, that is used to define the prediction variable Z: The prediction made by the classifier is sign(Z) = Z/|Z|, i.e., &#8722;1 or +1 depending on the sign of Z.</S>
+    <S sid="56" ssid="24">Intuitively, our goal is to adjust the vector of feature weights &#945;&#65533; = (&#945;1, ... , &#945;n) to minimize the expected misclassiication rate E[(sign(Z) =&#65533; Y )].</S>
+    <S sid="57" ssid="25">This function is difficult to minimize, so our boosting classifier minimizes the expected Boost loss E[exp(&#8722;Y Z)].</S>
+    <S sid="58" ssid="26">As Singer and Schapire [16] point out, the misclassification rate is bounded above by the Boost loss, so a low value for the Boost loss implies a low misclassification rate. b Our classifier estimates the Boost loss as Et[exp(&#8722;Y Z)], where Et[&#183;] is the expectation on the empirical training corpus distribution.</S>
+    <S sid="59" ssid="27">The feature weights are adjusted iteratively; one weight is changed per iteration.</S>
+    <S sid="60" ssid="28">The feature whose weight is to be changed is selected greedily to minimize the Boost loss using the algorithm described in [7].</S>
+    <S sid="61" ssid="29">Training continues for 25,000 iterations.</S>
+    <S sid="62" ssid="30">After each iteration the misclassification rate on the development corpus bEd[(sign(Z) =&#65533; Y )] is estimated, where bEd[&#183;] is the expectation on empirical development corpus distribution.</S>
+    <S sid="63" ssid="31">While each iteration lowers the Boost loss on the training corpus, a graph of the misclassification rate on the development corpus versus iteration number is a noisy U-shaped curve, rising at later iterations due to overlearning.</S>
+    <S sid="64" ssid="32">The value of &#945;&#65533; returned word token in our training data.</S>
+    <S sid="65" ssid="33">We developed a method for quickly identifying such extensionally equivalent feature pairs based on hashing XORed random bitmaps, and deleted all but one of each set of extensionally equivalent features (we kept a feature with the smallest number of conditioning variables). by the estimator is the one that minimizes the misclassficiation rate on the development corpus; typically the minimum is obtained after about 12,000 iterations, and the feature weight vector &#945;&#65533; contains around 8000 nonzero feature weights (since some weights are adjusted more than once).3 This subsection describes the conditioning variables used in the EDITED classifier.</S>
+    <S sid="66" ssid="34">Many of the variables are defined in terms of what we call a rough copy.</S>
+    <S sid="67" ssid="35">Intuitively, a rough copy identifies repeated sequences of words that might be restarts or repairs.</S>
+    <S sid="68" ssid="36">Punctuation is ignored for the purposes of defining a rough copy, although conditioning variables indicate whether the rough copy includes punctuation.</S>
+    <S sid="69" ssid="37">A rough copy in a tagged string of words is a substring of the form &#945;1Q-y&#945;2, where: The set of free-inal words includes all partial words (i.e., ending in a hyphen) and a small set of conjunctions, adverbs and miscellanea, such as and, or, actually, so, etc.</S>
+    <S sid="70" ssid="38">The set of interregnum strings consists of a small set of expressions such as uh, you know, I guess, I mean, etc.</S>
+    <S sid="71" ssid="39">We search for rough copies in each sentence starting from left to right, searching for longer copies first.</S>
+    <S sid="72" ssid="40">After we find a rough copy, we restart searching for additional rough copies following the free final string of the previous copy.</S>
+    <S sid="73" ssid="41">We say that a word token is in a rough copy iff it appears in either the source or the free final.4 (2) is an example of a rough copy. ish the work Table 1 lists the conditioning variables used in our classifier.</S>
+    <S sid="74" ssid="42">In that table, subscript integers refer to the relative position of word tokens relative to the current word; e.g.</S>
+    <S sid="75" ssid="43">T1 is the POS tag of the following word.</S>
+    <S sid="76" ssid="44">The subscript f refers to the tag of the first word of the free final match.</S>
+    <S sid="77" ssid="45">If a variable is not defined for a particular word it is given the special value &#8216;NULL&#8217;; e.g., if a word is not in a rough copy then variables such as Nm, Nu, Ni, Nl, Nr and Tf all take the value NULL.</S>
+    <S sid="78" ssid="46">Flags are booleanvalued variables, while numeric-valued variables are bounded to a value between 0 and 4 (as well as NULL, if appropriate).</S>
+    <S sid="79" ssid="47">The three variables Ct, Cw and Ti are intended to help the classifier capture very short restarts or repairs that may not involve a rough copy.</S>
+    <S sid="80" ssid="48">The flags Ct and Ci indicate whether the orthographic form and/or tag of the next word (ignoring punctuation) are the same as those of the current word.</S>
+    <S sid="81" ssid="49">Ti has a non-NULL value only if the current word is followed by an interregnum string; in that case Ti is the POS tag of the word following that interregnum.</S>
+    <S sid="82" ssid="50">As described above, the classifier&#8217;s features are sets of variable-value pairs.</S>
+    <S sid="83" ssid="51">Given a tuple of variables, we generate a feature for each tuple of values that the variable tuple assumes in the training data.</S>
+    <S sid="84" ssid="52">In order to keep the feature set managable, the tuples of variables we consider are restricted in various ways.</S>
+    <S sid="85" ssid="53">The most important of these are constraints of the form &#8216;if Xj is included among feature&#8217;s variables, then so is Xk&#8217;.</S>
+    <S sid="86" ssid="54">For example, we require that if a feature contains Pi+1 then it also contains Pi for i &#8805; 0, and we impose a similiar constraint on POS tags.</S>
+    <S sid="87" ssid="55">For the purposes of this research the Switchboard corpus, as distributed by the Linguistic Data Consortium, was divided into four sections and the word immediately following the interregnum also appears in a (different) rough copy, then we say that the interregnum word token appears in a rough copy.</S>
+    <S sid="88" ssid="56">This permits us to approximate the Switchboard annotation convention of annotating interregna as EDITED if they appear in iterated edits.</S>
+    <S sid="89" ssid="57">(or subcorpora).</S>
+    <S sid="90" ssid="58">The training subcorpus consists of all files in the directories 2 and 3 of the parsed/merged Switchboard corpus.</S>
+    <S sid="91" ssid="59">Directory 4 is split into three approximately equal-size sections.</S>
+    <S sid="92" ssid="60">(Note that the files are not consecutively numbered.)</S>
+    <S sid="93" ssid="61">The first of these (files sw4004.mrg to sw4153.mrg) is the testing corpus.</S>
+    <S sid="94" ssid="62">All edit detection and parsing results reported herein are from this subcorpus.</S>
+    <S sid="95" ssid="63">The files sw4154.mrg to sw4483.mrg are reserved for future use.</S>
+    <S sid="96" ssid="64">The files sw4519.mrg to sw4936.mrg are the development corpus.</S>
+    <S sid="97" ssid="65">In the complete corpus three parse trees were sufficiently ill formed in that our tree-reader failed to read them.</S>
+    <S sid="98" ssid="66">These trees received trivial modifications to allow them to be read, e.g., adding the missing extra set of parentheses around the complete tree.</S>
+    <S sid="99" ssid="67">We trained our classifier on the parsed data files in the training and development sections, and evaluated the classifer on the test section.</S>
+    <S sid="100" ssid="68">Section 3 evaluates the parser&#8217;s output in conjunction with this classifier; this section focuses on the classifier&#8217;s performance at the individual word token level.</S>
+    <S sid="101" ssid="69">In our complete application, the classifier uses a bitag tagger to assign each word a POS tag.</S>
+    <S sid="102" ssid="70">Like all such taggers, our tagger has a nonnegligible error rate, and these tagging could conceivably affect the performance of the classifier.</S>
+    <S sid="103" ssid="71">To determine if this is the case, we report classifier performance when trained both on &#8220;Gold Tags&#8221; (the tags assigned by the human annotators of the Switchboard corpus) and on &#8220;Machine Tags&#8221; (the tags assigned by our bitag tagger).</S>
+    <S sid="104" ssid="72">We compare these results to a baseline &#8220;null&#8221; classifier, which never identifies a word as EDITED.</S>
+    <S sid="105" ssid="73">Our basic measure of performance is the word misclassification rate (see Section 2.1).</S>
+    <S sid="106" ssid="74">However, we also report precision and recall scores for EDITED words alone.</S>
+    <S sid="107" ssid="75">All words are assigned one of the two possible labels, EDITED or not.</S>
+    <S sid="108" ssid="76">However, in our evaluation we report the accuracy of only words other than punctuation and filled pauses.</S>
+    <S sid="109" ssid="77">Our logic here is much the same as that in the statistical parsing community which ignores the location of punctuation for purposes of evaluation [3,5, 6] on the grounds that its placement is entirely conventional.</S>
+    <S sid="110" ssid="78">The same can be said for filled pauses in the switchboard corpus.</S>
+    <S sid="111" ssid="79">Our results are given in Table 2.</S>
+    <S sid="112" ssid="80">They show that our classifier makes only approximately 1/3 of the misclassification errors made by the null classifier (0.022 vs. 0.059), and that using the POS tags produced by the bitag tagger does not have much effect on the classifier&#8217;s performance (e.g., EDITED recall decreases from 0.678 to 0.668).</S>
+  </SECTION>
+  <SECTION title="3 Parsing transcribed speech" number="3">
+    <S sid="113" ssid="1">We now turn to the second pass of our two-pass architecture, using an &#8220;off-the-shelf&#8221; statistical parser to parse the transcribed speech after having removed the words identified as edited by the first pass.</S>
+    <S sid="114" ssid="2">We first define the evaluation metric we use and then describe the results of our experiments.</S>
+    <S sid="115" ssid="3">In this section we describe the metric we use to grade the parser output.</S>
+    <S sid="116" ssid="4">As a first desideratum we want a metric that is a logical extension of that used to grade previous statistical parsing work.</S>
+    <S sid="117" ssid="5">We have taken as our starting point what we call the &#8220;relaxed labeled precision/recall&#8221; metric from previous research (e.g.</S>
+    <S sid="118" ssid="6">[3,5]).</S>
+    <S sid="119" ssid="7">This metric is characterized as follows.</S>
+    <S sid="120" ssid="8">For a particular test corpus let N be the total number of nonterminal (and non-preterminal) constituents in the gold standard parses.</S>
+    <S sid="121" ssid="9">Let M be the number of such constituents returned by the parser, and let C be the number of these that are correct (as defined below).</S>
+    <S sid="122" ssid="10">Then precision = C/M and recall = C/N.</S>
+    <S sid="123" ssid="11">A constituent c is correct if there exists a constituent d in the gold standard such that: In 2 and 3 above we introduce an equivalence relation -r between string positions.</S>
+    <S sid="124" ssid="12">We define -r to be the smallest equivalence relation satisfying a -r b for all pairs of string positions a and b separated solely by punctuation symbols.</S>
+    <S sid="125" ssid="13">The parsing literature uses -r rather than = because it is felt that two constituents should be considered equal if they disagree only in the placement of, say, a comma (or any other sequence of punctuation), where one constituent includes the punctuation and the other excludes it.</S>
+    <S sid="126" ssid="14">Our new metric, &#8220;relaxed edited labeled precision/recall&#8221; is identical to relaxed labeled precision/recall except for two modifications.</S>
+    <S sid="127" ssid="15">First, in the gold standard all non-terminal subconstituents of an EDITED node are removed and the terminal constituents are made immediate children of a single EDITED node.</S>
+    <S sid="128" ssid="16">Furthermore, two or more EDITED nodes with no separating non-edited material between them are merged into a single EDITED node.</S>
+    <S sid="129" ssid="17">We call this version a &#8220;simplified gold standard parse.&#8221; All precision recall measurements are taken with respected to the simplified gold standard.</S>
+    <S sid="130" ssid="18">Second, we replace -r with a new equivalence relation -e which we define as the smallest equivalence relation containing -r and satisfying begin(c) -e end(c) for each EDITED node c in the gold standard parse.6 We give a concrete example in Figure 1.</S>
+    <S sid="131" ssid="19">The first row indicates string position (as usual in parsing work, position indicators are between words).</S>
+    <S sid="132" ssid="20">The second row gives the words of the sentence.</S>
+    <S sid="133" ssid="21">Words that are edited out have an &#8220;E&#8221; above them.</S>
+    <S sid="134" ssid="22">The third row indicates the equivalence relation by labeling each string position with the smallest such position with which it is equivalent.</S>
+    <S sid="135" ssid="23">There are two basic ideas behind this definition.</S>
+    <S sid="136" ssid="24">First, we do not care where the EDITED nodes appear in the tree structure produced by the parser.</S>
+    <S sid="137" ssid="25">Second, we are not interested in the fine structure of EDITED sections of the string, just the fact that they are EDITED.</S>
+    <S sid="138" ssid="26">That we do care which words are EDITED comes into our figure of merit in two ways.</S>
+    <S sid="139" ssid="27">First, (noncontiguous) EDITED nodes remain, even though their substructure does not, and thus they are counted in the precision and recall numbers.</S>
+    <S sid="140" ssid="28">Secondly (and probably more importantly), failure to decide on the correct positions of edited nodes can cause collateral damage to neighboring constituents by causing them to start or stop in the wrong place.</S>
+    <S sid="141" ssid="29">This is particularly relevant because according to our definition, while the positions at the beginning and ending of an edit node are equivalent, the interior positions are not (unless related by the punctuation rule). than the simplified gold standard.</S>
+    <S sid="142" ssid="30">We rejected this because the &#8801;e relation would then itself be dependent on the parser&#8217;s output, a state of affairs that might allow complicated schemes to improve the parser&#8217;s performance as measured by the metric.</S>
+    <S sid="143" ssid="31">See Figure 1.</S>
+    <S sid="144" ssid="32">The parser described in [3] was trained on the Switchboard training corpus as specified in section 2.1.</S>
+    <S sid="145" ssid="33">The input to the training algorithm was the gold standard parses minus all EDITED nodes and their children.</S>
+    <S sid="146" ssid="34">We tested on the Switchboard testing subcorpus (again as specified in Section 2.1).</S>
+    <S sid="147" ssid="35">All parsing results reported herein are from all sentences of length less than or equal to 100 words and punctuation.</S>
+    <S sid="148" ssid="36">When parsing the test corpus we carried out the following operations: We ran the parser in three experimental situations, each using a different edit detector in step 2.</S>
+    <S sid="149" ssid="37">In the first of the experiments (labeled &#8220;Gold Edits&#8221;) the &#8220;edit detector&#8221; was simply the simplified gold standard itself.</S>
+    <S sid="150" ssid="38">This was to see how well the parser would do it if had perfect information about the edit locations.</S>
+    <S sid="151" ssid="39">In the second experiment (labeled &#8220;Gold Tags&#8221;), the edit detector was the one described in Section 2 trained and tested on the part-ofspeech tags as specified in the gold standard trees.</S>
+    <S sid="152" ssid="40">Note that the parser was not given the gold standard part-of-speech tags.</S>
+    <S sid="153" ssid="41">We were interested in contrasting the results of this experiment with that of the third experiment to gauge what improvement one could expect from using a more sophisticated tagger as input to the edit detector.</S>
+    <S sid="154" ssid="42">In the third experiment (&#8220;Machine Tags&#8221;) we used the edit detector based upon the machine generated tags.</S>
+    <S sid="155" ssid="43">The results of the experiments are given in Table 3.</S>
+    <S sid="156" ssid="44">The last line in the figure indicates the performance of this parser when trained and tested on Wall Street Journal text [3].</S>
+    <S sid="157" ssid="45">It is the &#8220;Machine Tags&#8221; results that we consider the &#8220;true&#8221; capability of the detector/parser combination: 85.3% precision and 86.5% recall.</S>
+    <S sid="158" ssid="46">The general trends of Table 3 are much as one might expect.</S>
+    <S sid="159" ssid="47">Parsing the Switchboard data is much easier given the correct positions of the EDITED nodes than without this information.</S>
+    <S sid="160" ssid="48">The difference between the Gold-tags and the Machine-tags parses is small, as would be expected from the relatively small difference in the performance of the edit detector reported in Section 2.</S>
+    <S sid="161" ssid="49">This suggests that putting significant effort into a tagger for use by the edit detector is unlikely to produce much improvement.</S>
+    <S sid="162" ssid="50">Also, as one might expect, parsing conversational speech is harder than Wall Street Journal text, even given the gold-standard EDITED nodes.</S>
+    <S sid="163" ssid="51">Probably the only aspect of the above numbers likely to raise any comment in the parsing community is the degree to which precision numbers are lower than recall.</S>
+    <S sid="164" ssid="52">With the exception of the single pair reported in [3] and repeated above, no precision values in the recent statistical-parsing literature [2,3,4,5,14] have ever been lower than recall values.</S>
+    <S sid="165" ssid="53">Even this one exception is by only 0.1% and not statistically significant.</S>
+    <S sid="166" ssid="54">We attribute the dominance of recall over precision primarily to the influence of edit-detector mistakes.</S>
+    <S sid="167" ssid="55">First, note that when given the gold standard edits the difference is quite small (0.3%).</S>
+    <S sid="168" ssid="56">When using the edit detector edits the difference increases to 1.2%.</S>
+    <S sid="169" ssid="57">Our best guess is that because the edit detector has high precision, and lower recall, many more words are left in the sentence to be parsed.</S>
+    <S sid="170" ssid="58">Thus one finds more nonterminal constituents in the machine parses than in the gold parses and the precision is lower than the recall.</S>
+  </SECTION>
+  <SECTION title="4 Previous research" number="4">
+    <S sid="171" ssid="1">While there is a significant body of work on finding edit positions [1,9,10,13,17,18], it is difficult to make meaningful comparisons between the various research efforts as they differ in (a) the corpora used for training and testing, (b) the information available to the edit detector, and (c) the evaluation metrics used.</S>
+    <S sid="172" ssid="2">For example, [13] uses a subsection of the ATIS corpus, takes as input the actual speech signal (and thus has access to silence duration but not to words), and uses as its evaluation metric the percentage of time the program identifies the start of the interregnum (see Section 2.2).</S>
+    <S sid="173" ssid="3">On the other hand, [9,10] use an internally developed corpus of sentences, work from a transcript enhanced with information from the speech signal (and thus use words), but do use a metric that seems to be similar to ours.</S>
+    <S sid="174" ssid="4">Undoubtedly the work closest to ours is that of Stolcke et al. [18], which also uses the transcribed Switchboard corpus.</S>
+    <S sid="175" ssid="5">(However, they use information on pause length, etc., that goes beyond the transcript.)</S>
+    <S sid="176" ssid="6">They categorize the transitions between words into more categories than we do.</S>
+    <S sid="177" ssid="7">At first glance there might be a mapping between their six categories and our two, with three of theirs corresponding to EDITED words and three to not edited.</S>
+    <S sid="178" ssid="8">If one accepts this mapping they achieve an error rate of 2.6%, down from their NULL rate of 4.5%, as contrasted with our error rate of 2.2% down from our NULL rate of 5.9%.</S>
+    <S sid="179" ssid="9">The difference in NULL rates, however, raises some doubts that the numbers are truly measuring the same thing.</S>
+    <S sid="180" ssid="10">There is also a small body of work on parsing disfluent sentences [8,11].</S>
+    <S sid="181" ssid="11">Hindle&#8217;s early work [11] does not give a formal evaluation of the parser&#8217;s accuracy.</S>
+    <S sid="182" ssid="12">The recent work of Schubert and Core [8] does give such an evaluation, but on a different corpus (from Rochester Trains project).</S>
+    <S sid="183" ssid="13">Also, their parser is not statistical and returns parses on only 62% of the strings, and 32% of the strings that constitute sentences.</S>
+    <S sid="184" ssid="14">Our statistical parser naturally parses all of our corpus.</S>
+    <S sid="185" ssid="15">Thus it does not seem possible to make a meaningful comparison between the two systems.</S>
+  </SECTION>
+  <SECTION title="5 Conclusion" number="5">
+    <S sid="186" ssid="1">We have presented a simple architecture for parsing transcribed speech in which an edited word detector is first used to remove such words from the sentence string, and then a statistical parser trained on edited speech (with the edited nodes removed) is used to parse the text.</S>
+    <S sid="187" ssid="2">The edit detector reduces the misclassification rate on edited words from the null-model (marking everything as not edited) rate of 5.9% to 2.2%.</S>
+    <S sid="188" ssid="3">To evaluate our parsing results we have introduced a new evaluation metric, relaxed edited labeled precision/recall.</S>
+    <S sid="189" ssid="4">The purpose of this metric is to make evaluation of a parse tree relatively indifferent to the exact tree position of EDITED nodes, in much the same way that the previous metric, relaxed labeled precision/recall, make it indifferent to the attachment of punctuation.</S>
+    <S sid="190" ssid="5">By this metric the parser achieved 85.3% precision and 86.5% recall.</S>
+    <S sid="191" ssid="6">There is, of course, great room for improvement, both in stand-alone edit detectors, and their combination with parsers.</S>
+    <S sid="192" ssid="7">Also of interest are models that compute the joint probabilities of the edit detection and parsing decisions &#8212; that is, do both in a single integrated statistical process.</S>
+  </SECTION>
+</PAPER>

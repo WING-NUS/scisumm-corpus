@@ -1,0 +1,221 @@
+<PAPER>
+  <S sid="0">A* Parsing: Fast Exact Viterbi Parse Selection</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present an extension of the classic A* search procedure to tabular PCFG parsing.</S>
+    <S sid="2" ssid="2">The use of A* search can dramatically reduce the time required to find a best parse by conservatively estimating the probabilities of parse completions.</S>
+    <S sid="3" ssid="3">We discuss various estimates and give efficient algorithms for computing them.</S>
+    <S sid="4" ssid="4">On average-length Penn treebank sentences, our most detailed estimate reduces the total number of edges processed to less than 3% of that required by exhaustive parsing, and a simpler estimate, which requires less than a minute of precomputation, reduces the work to less than 5%.</S>
+    <S sid="5" ssid="5">Unlike best-first and finite-beam methods for achieving this kind of speed-up, an A* method is guaranteed to find the most likely parse, not just an approximation.</S>
+    <S sid="6" ssid="6">Our parser, which is simpler to implement than an upward-propagating best-first parser, is correct for a wide range of parser control strategies and maintains worst-case cubic time.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="7" ssid="1">PCFG parsing algorithms with worst-case cubic-time bounds are well-known.</S>
+    <S sid="8" ssid="2">However, when dealing with wide-coverage grammars and long sentences, even cubic algorithms can be far too expensive in practice.</S>
+    <S sid="9" ssid="3">Two primary types of methods for accelerating parse selection have been proposed.</S>
+    <S sid="10" ssid="4">Roark (2001) and Ratnaparkhi (1999) use a beam-search strategy, in which only the best n parses are tracked at any moment.</S>
+    <S sid="11" ssid="5">Parsing time is linear and can be made arbitrarily fast by reducing n. This is a greedy strategy, and the actual Viterbi (highestprobability) parse can be pruned from the beam because, while it is globally optimal, it may not be locally optimal at every parse stage.</S>
+    <S sid="12" ssid="6">Chitrao and Grishman (1990), Caraballo and Charniak (1998), Charniak et al. (1998), and Collins (1999) describe best-first parsing, which is intended for a tabular item-based framework.</S>
+    <S sid="13" ssid="7">In best-first parsing, one builds a figure-of-merit (FOM) over parser items, and uses the FOM to decide the order in which agenda items should be processed.</S>
+    <S sid="14" ssid="8">This approach also dramatically reduces the work done during parsing, though it, too, gives no guarantee that the first parse returned is the actual Viterbi parse (nor does it maintain a worst-case cubic time bound).</S>
+    <S sid="15" ssid="9">We discuss best-first parsing further in section 3.3.</S>
+    <S sid="16" ssid="10">Both of these speed-up techniques are based on greedy models of parser actions.</S>
+    <S sid="17" ssid="11">The beam search greedily prunes partial parses at each beam stage, and a best-first FOM greedily orders parse item exploration.</S>
+    <S sid="18" ssid="12">If we wish to maintain optimality in a search procedure, the obvious thing to try is A* methods (see for example Russell and Norvig, 1995).</S>
+    <S sid="19" ssid="13">We apply A* search to a tabular itembased parser, ordering the parse items based on a combination of their known internal cost of construction and a conservative estimate of their cost of completion (see figure 1).</S>
+    <S sid="20" ssid="14">A* search has been proposed and used for speech applications (Goel and Byrne, 1999, Corazza et al., 1994); however, it has been little used, certainly in the recent statistical parsing literature, apparently because of difficulty in conceptualizing and computing effective admissible estimates.</S>
+    <S sid="21" ssid="15">The contribution of this paper is to demonstrate effective ways of doing this, by precomputing grammar statistics which can be used as effective A* estimates.</S>
+    <S sid="22" ssid="16">The A* formulation provides three benefits.</S>
+    <S sid="23" ssid="17">First, it substantially reduces the work required to parse a sentence, without sacrificing either the optimality of the answer or the worst-case cubic time bounds on the parser.</S>
+    <S sid="24" ssid="18">Second, the resulting parser is structurally simpler than a FOM-driven best-first parser.</S>
+    <S sid="25" ssid="19">Finally, it allows us to easily prove the correctness of our algorithm, over a broad range of control strategies and grammar encodings.</S>
+    <S sid="26" ssid="20">In this paper, we describe two methods of constructing A* bounds for PCFGs.</S>
+    <S sid="27" ssid="21">One involves context summarization, which uses estimates of the sort proposed in Corazza et al. (1994), but considering richer summaries.</S>
+    <S sid="28" ssid="22">The other involves grammar summarization, which, to our knowledge, is entirely novel.</S>
+    <S sid="29" ssid="23">We present the estimates that we use, along with algorithms to efficiently calculate them, and illustrate their effectiveness in a tabular PCFG parsing algorithm, applied to Penn Treebank sentences.</S>
+  </SECTION>
+  <SECTION title="2 An A* Algorithm" number="2">
+    <S sid="30" ssid="1">An agenda-based PCFG parser operates on parse items called edges, such as NP:[0,2], which denote a grammar symbol over a span.</S>
+    <S sid="31" ssid="2">The parser maintains two data structures: a chart or table, which records edges for which (best) parses have already been found, and an agenda of newly-formed edges waiting to be processed.</S>
+    <S sid="32" ssid="3">The core loop involves removing an edge from the agenda and combining that edge with edges already in the chart to create new edges.</S>
+    <S sid="33" ssid="4">For example, NP:[0,2] might be removed from the agenda, and, if there were a rule S &#8594; NP VP and VP:[2,8] was already entered into the chart, the edge S:[0,8] would be formed, and added to the agenda if it were not in the chart already.</S>
+    <S sid="34" ssid="5">The way an A* parser differs from a classic chart parser is that, like a best-first parser, agenda edges are processed according to a priority.</S>
+    <S sid="35" ssid="6">In best-first parsing, this priority is called a figure-of-merit (FOM), and is based on various approximations to P(e|s), the fraction of parses of a sentence s which include an edge e (though see Goodman (1997) for an alternative notion of FOM).</S>
+    <S sid="36" ssid="7">Edges which seem promising are explored first; others can wait on the agenda indefinitely.</S>
+    <S sid="37" ssid="8">Note that even if we did know P(e|s) exactly, we still would not know whether e occurs in any best parse of s. Nonetheless, good FOMs empirically lead quickly to good parses.</S>
+    <S sid="38" ssid="9">Best-first parsing aims to find a (hopefully good) parse quickly, but gives no guarantee that the first parse discovered is the Viterbi parse, nor does it allow one to recognize the Viterbi parse when it is found.</S>
+    <S sid="39" ssid="10">In A* parsing, we wish to construct priorities which will speed up parsing, yet still guarantee optimality (that the first parse returned is indeed a best parse).</S>
+    <S sid="40" ssid="11">With a categorical CFG chart parser run to exhaustion, it does not matter in what order one removes edges from the agenda; all edges involved in full parses of the sentence will be constructed at some point.</S>
+    <S sid="41" ssid="12">A cubic time bound follows straightforwardly by simply testing for edge existence, ensuring that we never process an edge twice.</S>
+    <S sid="42" ssid="13">With PCFG parsing, there is a subtlety involved.</S>
+    <S sid="43" ssid="14">In addition to knowing whether edges can be constructed, we also want to know the scores of edges&#8217; best parses.</S>
+    <S sid="44" ssid="15">Therefore, we record estimates of best-parse scores, updating them as better parses are found.</S>
+    <S sid="45" ssid="16">If, during parsing, we find a new, better way to construct some edge e that has previously been entered into the chart, we may also have found a better way to construct any edges which have already been built using e. Best-first parsers deal with this by allowing an upward propagation, which updates such edges&#8217; scores (Caraballo and Charniak, 1998).</S>
+    <S sid="46" ssid="17">If run to exhaustion, all edges&#8217; Viterbi scores will be correct, but the propagation destroys the cubic time bound of the parser, since in effect each edge can be processed many times.</S>
+    <S sid="47" ssid="18">In order to ensure optimality, it is sufficient that, for any edge e, all edges f which are contained in a best parse of e get removed from the agenda before e itself does.</S>
+    <S sid="48" ssid="19">If we have an edge priority which ensures this ordering, we can avoid upward propagation entirely (and omit the data structures involved in it) and still be sure that each edge leaves the agenda scored correctly.</S>
+    <S sid="49" ssid="20">If the grammar happens to be in CNF, one way to do this is to give shorter spans higher priority than longer ones; this priority essentially gives the CKY algorithm.</S>
+    <S sid="50" ssid="21">Formally, assume we have a PCFG G and a sentence s = 0wn (we place indices as fenceposts between words).</S>
+    <S sid="51" ssid="22">An inside parse of an edge e = X:[i, j] is a derivation in G from X to iwj.</S>
+    <S sid="52" ssid="23">Let OG(e, s) denote the log-probability of a best inside parse of e (its Viterbi inside score).1 We will drop the G, s, and even e when context permits.</S>
+    <S sid="53" ssid="24">Our parser, like a best-first parser, maintains estimates b(e, s) of O(e, s) which begin at &#8722;oo, only increase over time, and always represent the score of the best parses of their edges e discovered so far.</S>
+    <S sid="54" ssid="25">Optimality means that for any e, b(e, s) will equal OG(e, s) when e is removed from the agenda.</S>
+    <S sid="55" ssid="26">If one uses b(e, s) to prioritize edges, we show in Klein and Manning (2001a), that the parser is optimal over arbitrary PCFGs, and a wide range of control strategies.</S>
+    <S sid="56" ssid="27">This is proved using an extension of Dijkstra&#8217;s algorithm to a certain kind of hypergraph associated with parsing, shown in figure 1(b): parse items are nodes in the hypergraph, hyperarcs take sets of parse items to their result item, and hyperpaths map to parses.</S>
+    <S sid="57" ssid="28">Reachability from start corresponds to parseability, and shortest paths to Viterbi parses.</S>
+    <S sid="58" ssid="29">The hypergraph shown in figure 1(b) shows a parse of the goal S:[0,3] which includes NP:[0,2].2 This parse can be split into an inside portion (solid lines) and an outside portion (dashed lines), as indicated in figure 1(a).</S>
+    <S sid="59" ssid="30">The outside portion is an outside parse: formally, an outside parse of an edge X:[i, j] in sentence s = 0wn is a derivation from G&#8217;s root symbol to w0iXwjn.</S>
+    <S sid="60" ssid="31">We use &#945;G(e, s) to denote the score of a best outside parse of e. Using b(e, s) as the edge priority corresponds to a generalization of uniform cost search on graphs (Russell and Norvig, 1995).</S>
+    <S sid="61" ssid="32">In the analogous generalization of A* search, we add to b(e, s) an estimate a(e, s) of the competion cost &#945;G(e, s) (the cost of the dashed outside parse) to focus exploration on regions of the graph which appear to have good total cost.</S>
+    <S sid="62" ssid="33">A* search is correct as long as the estimate a satisfies two conditions.</S>
+    <S sid="63" ssid="34">First, it must be admissible, meaning that it must not underestimate the actual log-probability required to complete the parse.</S>
+    <S sid="64" ssid="35">Second, it must be monotonic, meaning that as one builds up a tree, the combined log-probability &#946; + a never increases.</S>
+    <S sid="65" ssid="36">The proof of this is very similar to the proof of the uniform-cost case in Klein and Manning (2001a), and so we omit it for space reasons (it can be found in Klein and Manning, 2002).</S>
+    <S sid="66" ssid="37">Concretely, we can use b + a as the edge priority, provided a is an admissible, monotonic estimate of &#945;.</S>
+    <S sid="67" ssid="38">We will still have a correct algorithm, and even rough heuristics can dramatically cut down the number of edges processed (and therefore total work).</S>
+    <S sid="68" ssid="39">We next discuss several estimates, describe how to compute them efficiently, and show the edge savings when parsing Penn treebank WSJ sentences.</S>
+  </SECTION>
+  <SECTION title="3 A* Estimates for Parsing" number="3">
+    <S sid="69" ssid="1">When parsing with a PCFG G, each edge e = X:[i, j] spans some interval [i, j] of the sentence and is labeled 2The example here shows a bottom-up construction of a parse tree.</S>
+    <S sid="70" ssid="2">However, the present algorithm and estimates work just as well for top-down chart parsing, given suitable active items as nodes; see (Klein and Manning, 2001a). by some grammar symbol (or state) X.</S>
+    <S sid="71" ssid="3">Our presentation assumes that G is a binarized grammar, and so in general X may be either a complete state like NP that was in an original n-ary grammar, or an intermediate state, like an Earley dotted rule, that is the result of implicit or explicit grammar binarization.</S>
+    <S sid="72" ssid="4">For the edge e, its yield in s = 0wn is the sequence of terminals that it spans (iwj).</S>
+    <S sid="73" ssid="5">Its context is its state X along with the rest of the terminals of sentence (0wiXjwn).</S>
+    <S sid="74" ssid="6">Scores are logprobabilities; lower cost is higher log-probability.</S>
+    <S sid="75" ssid="7">So, &#8216;&gt;&#8217; or &#8216;better&#8217; will mean higher log-probability.</S>
+    <S sid="76" ssid="8">One way to construct an admissible estimate is to summarize the context in some way, and to find the score of the best parse of any context that fits that summary.</S>
+    <S sid="77" ssid="9">Let c(e, s) be the context of e in s. Let u be a summary function of contexts.</S>
+    <S sid="78" ssid="10">We can then use the context summary estimate: That is, we return the exact Viterbi outside score for some context, generally not the actual context, whose summary matches the actual one&#8217;s summary.</S>
+    <S sid="79" ssid="11">If the number of summaries is reasonable, we can precompute and store the estimate for each summary once and for all, then retrieve them in constant time per edge at parse time.</S>
+    <S sid="80" ssid="12">If we give no information in the summary, the estimate will be constantly 0.</S>
+    <S sid="81" ssid="13">This is the trivial estimate NULL, and corresponds to simply using inside estimates b alone as priorities.</S>
+    <S sid="82" ssid="14">On the other extreme, if each context had a unique summary, then a(e, s) would be &#945;G(e, s) itself.</S>
+    <S sid="83" ssid="15">This is the ideal estimate, which we call TRUE.</S>
+    <S sid="84" ssid="16">In practice, of course, precomputing TRUE would not be feasible.3 3Note that our ideal estimate is not P(els) like the ideal FOM, rather it is P(T9,e)/P(Te) (where T9,e is a best parse of the goal g among those which contain e, and Te is a best parse of e over the yield of e).</S>
+    <S sid="85" ssid="17">That is, we are not estimating parser choice probabilities, but parse tree probabilities. &#945;G(e', s') &#8805; &#945;G(e, s) We used various intermediate summaries, some illustrated in figure 2.</S>
+    <S sid="86" ssid="18">S1 specifies only the total number of words outside e, while S specifies separately the number to the left and right.</S>
+    <S sid="87" ssid="19">SX also specifies e&#8217;s label.</S>
+    <S sid="88" ssid="20">SXL and SXR add the tags adjacent to e on the left and right respectively.</S>
+    <S sid="89" ssid="21">S1XLR includes both the left and right tags, but merges the number of words to the left and right.4 As the summaries become richer, the estimates become sharper.</S>
+    <S sid="90" ssid="22">As an example, consider an NP in the context &#8220;VBZ NP , PRP VBZ DT NN .&#8221; shown in figure 2.5 The summary SX reveals only that there is an NP with 1 word to the left and 6 the right, and gives an estimate of &#8722;11.3.</S>
+    <S sid="91" ssid="23">This score is backed by the concrete parse shown in figure 2(a).</S>
+    <S sid="92" ssid="24">This is a best parse of a context compatible with what little we specified, but very optimistic.</S>
+    <S sid="93" ssid="25">It assumes very common tags in very common patterns.</S>
+    <S sid="94" ssid="26">SXL adds that the tag to the left is VBZ, and the hypothesis that the NP is part of a sentence-initial PP must be abandoned; the best score drops to &#8722;13.9, backed by the parse in figure 2(b).</S>
+    <S sid="95" ssid="27">Specifying the right tag to be &#8220;,&#8221; drops the score further to &#8722;15.1, given by figure 2(c).</S>
+    <S sid="96" ssid="28">The actual best parse is figure 2(d), with a score of &#8722;18.1.</S>
+    <S sid="97" ssid="29">These estimates are similar to quantities calculated in Corazza et al. (1994); in that work, they are interested in the related problem of finding best completions for strings which contain gaps.</S>
+    <S sid="98" ssid="30">For the SX estimate, for example, the string would be the edge&#8217;s label and two (fixed-length) gaps.</S>
+    <S sid="99" ssid="31">They introduce quantities essentially the same as our SX estimate to fill gaps, and their oneword update algorithms are similarly related to those we use here.</S>
+    <S sid="100" ssid="32">The primary difference here is in the application of these quantities, not their calculation.</S>
+    <S sid="101" ssid="33">The context summary estimates described above use local information, combined with span sizes.</S>
+    <S sid="102" ssid="34">This gives the effect that, for larger contexts, the best parses which back the estimates will have less and less to do with the actual contexts (and hence will become increasingly optimistic).</S>
+    <S sid="103" ssid="35">Context summary estimates do not pin down the exact context, but do use the original grammar G. For grammar projection estimates, we use the exact context, but project the grammar to some G' which is so much simpler that it is feasible to first exhaustively parse with G' and then use the result to guide the search in the full grammar G. Formally, we have a projection &#960; which maps grammar states of G (that is, the dotted rules of an Earley-style parser) to some reduced set.</S>
+    <S sid="104" ssid="36">This projection of states induces a projection of rules.</S>
+    <S sid="105" ssid="37">If a set R = {r} of rules in G collide as the rule r' in G', we give r' the probability P(r') = maxIER P(r).</S>
+    <S sid="106" ssid="38">Note that the resulting grammar G' will not generally be a proper PCFG; it may assign more than probability 1 to the set of trees it generates.</S>
+    <S sid="107" ssid="39">In fact, it will usually assign infinite mass.</S>
+    <S sid="108" ssid="40">However, all that matters for our purposes is that every tree in G projects under &#960; to a tree in G' with the same or higher probability, which is true because every rule in G does.</S>
+    <S sid="109" ssid="41">Therefore, we know that &#945;G(e, s) &lt; &#945;G1(e, s).</S>
+    <S sid="110" ssid="42">If G' is much more compact than G, for each new sentence s, we can first rapidly calculate a&#960; = &#945;G1 for all edges, then parse with G. The identity projection t returns G and therefore a&#953; is TRUE.</S>
+    <S sid="111" ssid="43">On the other extreme, a constant projection gives NULL (if any rewrite has probability 1).</S>
+    <S sid="112" ssid="44">In between, we tried three other grammar projection estimates (examples in figure 3).</S>
+    <S sid="113" ssid="45">First, consider mapping all terminal states to a single terminal token, but not altering the grammar in any other way.</S>
+    <S sid="114" ssid="46">If we do this projection, then we get the SX estimate from the last section (collapsing the terminals together effectively hides which terminals are in the context, but not their number).</S>
+    <S sid="115" ssid="47">However, the resulting grammar is nearly as large as G, and therefore it is much more efficient to use the precomputed context summary formulation.</S>
+    <S sid="116" ssid="48">Second, for the projection XBAR, we tried collapsing all the incomplete states of each complete state to a single state (so NP&#8594; &#183; CC NP and NP&#8594; &#183; PP would both become NP').</S>
+    <S sid="117" ssid="49">This turned out to be ineffective, since most productions then had merged probability 1.</S>
+    <S sid="118" ssid="50">For our current grammar, the best estimate of this type was one we called F, for filter, which collapsed all complete (passive) symbols together, but did not collapse any terminal symbols.</S>
+    <S sid="119" ssid="51">So, for example, a state like NP&#8594; &#183; CC NP CC NP would become X&#8594; &#183; CC X CC X (see section 3.3 for a description of our grammar encodings).</S>
+    <S sid="120" ssid="52">This estimate has an interesting behavior which is complementary to the context summary estimates.</S>
+    <S sid="121" ssid="53">It does not indicate well when an edge would be moderately expensive to integrate into a sentence, but it is able to completely eliminate certain edges which are impossible to integrate into a full parse (for example in this case maybe the two CC tags required to complete the NP are not present in the future context).</S>
+    <S sid="122" ssid="54">A close approximation to the F estimate can also be computed online especially quickly during parsing.</S>
+    <S sid="123" ssid="55">Since we are parsing with the Penn treebank covering grammar, almost any (phrasal) non-terminal can be built over almost any span.</S>
+    <S sid="124" ssid="56">As discussed in Klein and Manning (2001b), the only source of constraint on what edges can be built where is the tags in the rules.</S>
+    <S sid="125" ssid="57">Therefore, an edge with a label like NP&#8212; &#183; CC NP CC NP can essentially be built whenever (and only whenever) two CC tags are in the edge&#8217;s right context, one of them being immediately to the right.</S>
+    <S sid="126" ssid="58">To the extent that this is true, F can be approximated by simply scanning for the tag configuration required by a state&#8217;s local rule, and returning 0 if it is present and &#8212;oo otherwise.</S>
+    <S sid="127" ssid="59">This is the method we used to implement F; exactly parsing with the projected grammar was much slower and did not result in substantial improvement.</S>
+    <S sid="128" ssid="60">It is worth explicitly discussing how the F estimate differs from top-down grammar-driven filtering standardly used by top-down chart parsers; in the treebank grammar, there is virtually no top-down filtering to be exploited (again, see Klein and Manning (2001b)).</S>
+    <S sid="129" ssid="61">In a left-to-right parse, top-down filtering is a prefix licensing condition; F is more of a sophisticated lookahead condition on suffixes.</S>
+    <S sid="130" ssid="62">The relationships between all of these estimates are shown in figure 4.</S>
+    <S sid="131" ssid="63">The estimates form a join lattice (figure 4(a)): adding context information to a merged context estimate can only sharpen the individual outside estimates.</S>
+    <S sid="132" ssid="64">In this sense, for example S &#65533; SX.</S>
+    <S sid="133" ssid="65">The lattice top is TRUE and the bottom is NULL.</S>
+    <S sid="134" ssid="66">In addition, the minimum (U) of a set of admissible estimates is still an admissible estimate.</S>
+    <S sid="135" ssid="67">We can use this to combine our basic estimates into composite estimates: SXMLR = U (SXL, SXR) will be valid, and a better estimate than either SXL or SXR individually.</S>
+    <S sid="136" ssid="68">Similarly, B is U (SXMLR, SIXLR).</S>
+    <S sid="137" ssid="69">There are other useful grammar projections, which are beyond the scope of this paper.</S>
+    <S sid="138" ssid="70">First, much recent statistical parsing work has gotten value from splitting grammar states, such as by annotating nodes with their parent and even grandparent categories (Johnson, 1998).</S>
+    <S sid="139" ssid="71">This annotation multiplies out the state space, giving a much larger grammar, and projecting back to the unannotated state set can be used as an outside estimate.</S>
+    <S sid="140" ssid="72">Second, and perhaps more importantly, this technique can be applied to lexical parsing, where the state projections are onto the delexicalized PCFG symbols and/or onto the word-word dependency structures.</S>
+    <S sid="141" ssid="73">This is particularly effective when the tree model takes a certain factored form; see Klein and Manning (2003) for details.</S>
+    <S sid="142" ssid="74">Following (Charniak et al., 1998), we parsed unseen sentences of length 18&#8211;26 from the Penn Treebank, using the grammar induced from the remainder of the treebank.6 We tried all estimates described above.</S>
+    <S sid="143" ssid="75">Rules were encoded as both inside (I) and outside (O) tries, shown in figure 5.</S>
+    <S sid="144" ssid="76">Such an encoding binarizes the grammar, and compacts it.</S>
+    <S sid="145" ssid="77">I-tries are as in Charniak et al. (1998), where NP&#8212; DT JJ NN becomes NP &#8212; XDT JJ NN and XDT JJ &#8212; DT JJ, and correspond to dropping the portion of an Earley dotted rule after the dot.7 O-tries, as in Leermakers (1992), turn NP&#8212; DT JJ NN into NP &#8212; XNP&#8594; &#183; NN NN and XNP&#8594; &#183; NN &#8212; DT JJ, and correspond to dropping the portion which precedes the dot.</S>
+    <S sid="146" ssid="78">Figure 6 shows the overall savings for several estimates of each type.</S>
+    <S sid="147" ssid="79">The I-tries were superior for the coarser estimates, while O-tries were superior for the finer estimates.</S>
+    <S sid="148" ssid="80">In addition, only O-tries permit the accelerated version of F, since they explicitly declare their right requirements.</S>
+    <S sid="149" ssid="81">Additionally, with I-tries, only the top-level intermediate rules have probability less than 1, while for O-tries, one can back-weight probability as in (Mohri, 1997), also shown in figure 5, enabling sub-parts of rare rules to be penalized even before they are completed.8 For all subsequent results, we discuss only the O-trie numbers.</S>
+    <S sid="150" ssid="82">Figure 8 lists the overall savings for each context summary estimate, with and without F joined in.</S>
+    <S sid="151" ssid="83">We see that the NULL estimate (i.e., uniform cost search) is not very effective &#8211; alone it only blocks 11% of the edges.</S>
+    <S sid="152" ssid="84">But it is still better than exhaustive parsing: with it, one stops parsing when the best parse is found, while in exhaustive parsing one continues until no edges remain.</S>
+    <S sid="153" ssid="85">Even the simplest non-trivial estimate, S, blocks 40% of the edges, and the best estimate BF blocks over 97% of the edges, a speed-up of over 35 times, without sacrificing optimality or algorithmic complexity.</S>
+    <S sid="154" ssid="86">For comparison to previous FOM work, figure 7 shows, for an edge count and an estimate, the proportion of sentences for which a first parse was found using at most that many edges.</S>
+    <S sid="155" ssid="87">To situate our results, the FOMs used by (Caraballo and Charniak, 1998) require 10K edges to parse 96% of these sentences, while BF requires only 6K edges.</S>
+    <S sid="156" ssid="88">On the other hand, the more complex, tuned FOM in (Charniak et al., 1998) is able to parse all of these sentences using around 2K edges, while BF requires 7K edges.</S>
+    <S sid="157" ssid="89">Our estimates do not reduce the total edge count quite as much as the best FOMs can, but they are in the same range.</S>
+    <S sid="158" ssid="90">This is as much as one could possibly expect, since, crucially, our first parses are al8However, context summary estimates which include the state compensate for this automatically. ways optimal, while the FOM parses need not be (and indeed sometimes are not).9 Also, our parser never needs to propagate score changes upwards, and so may be expected to do less work overall per edge, all else being equal.</S>
+    <S sid="159" ssid="91">This savings is substantial, even if no propagation is done, because no data structure needs to be created to track the edges which are supported by each given edge (for us, this represents a factor of approximately 2 in memory savings).</S>
+    <S sid="160" ssid="92">Moreover, the context summary estimates require only a single table lookup per edge, while the accelerated version of F requires only a rapid quadratic scan of the input per sentence (less than 1% of parse time per sentence), followed by a table lookup per edge.</S>
+    <S sid="161" ssid="93">The complex FOMs in (Charniak et al., 1998) require somewhat more online computation to assemble.</S>
+    <S sid="162" ssid="94">It is interesting that SXR is so much more effective than SXL; this is primarily because of the way that the rules have been encoded.</S>
+    <S sid="163" ssid="95">If we factor the rules in the other direction, we get the opposite effect.</S>
+    <S sid="164" ssid="96">Also, when combined with F, the difference in their performance drops from 10.3% to 0.8%; F is a right-filter and is partially redundant when added to SXR, but is orthogonal to SXL.</S>
+    <S sid="165" ssid="97">A disadvantage of admissibility for the context summary estimates is that, necessarily, they are overly optimistic as to the contents of the outside context.</S>
+    <S sid="166" ssid="98">The larger the outside context, the farther the gap between the true cost and the estimate.</S>
+    <S sid="167" ssid="99">Figure 9 shows average outside estimates for Viterbi edges as span size increases.</S>
+    <S sid="168" ssid="100">For small outside spans, all estimates are fairly good approximations of TRUE.</S>
+    <S sid="169" ssid="101">As the span increases, the approximations fall behind.</S>
+    <S sid="170" ssid="102">Beyond the smallest outside spans, all of the curves are approximately linear, but the actual value&#8217;s slope is roughly twice that of the estimates.</S>
+    <S sid="171" ssid="103">The gap between our empirical methods and the true cost grows fairly steadily, but the differences between the empirical methods themselves stay relatively constant.</S>
+    <S sid="172" ssid="104">This reflects the nature of these estimates: they have differing local information in their summaries, but all are equally ignorant about the more distant context elements.</S>
+    <S sid="173" ssid="105">The various local environments can be more or less costly to integrate into a parse, but, within a few words, the local restrictions have been incorporated one way or another, and the estimates are all free to be equally optimistic about the remainder of the context.</S>
+    <S sid="174" ssid="106">The cost to &#8220;package up&#8221; the local restrictions creates their constant differences, and the shared ignorance about the wider context causes their same-slope linear drop-off.</S>
+    <S sid="175" ssid="107">This suggests that it would be interesting to explore other, more global, notions of context.</S>
+    <S sid="176" ssid="108">We do not claim that our context estimates are the best possible &#8211; one could hope to find features of the context, such as number of verbs to the right or number of unusual tags in the context, which would partition the contexts more effectively than adjacent tags, especially as the outside context grows in size.</S>
+    <S sid="177" ssid="109">The amount of work required to (pre)calculate context summary estimates depends on how easy it is to efficiently take the max over all parses compatible with each context summary.</S>
+    <S sid="178" ssid="110">The benefit provided by an estimate will depend on how well the restrictions in that summary nail down the important features of the full context.</S>
+    <S sid="179" ssid="111">Figure 10 shows recursive pseudocode for the SX estimate; the others are similar.</S>
+    <S sid="180" ssid="112">To precalculate our A* estimates efficiently, we used a memoization approach rather than a dynamic programming approach.</S>
+    <S sid="181" ssid="113">This resulted in code comparable in efficiency, but which was simpler to reason about, and, more importantly, allowed us to exploit sparseness when present.</S>
+    <S sid="182" ssid="114">For example with left-factored trie encodings, 76% of (state, right tag) combinations are simply impossible.</S>
+    <S sid="183" ssid="115">Tables which mapped arguments to returned results were used to memoize each procedure.</S>
+    <S sid="184" ssid="116">In our experiments, we forced these tables to be filled in a precomputation step, but depending on the situation it might be advantageous to allow them to fill as needed, with early parses proceeding slowly while the tables populate.</S>
+    <S sid="185" ssid="117">With the optimal forward estimate TRUE, the actual distance to the closest goal, we would never expand edges other than those in best parses, but computing TRUE is as hard as parsing the sentence in the first place.</S>
+    <S sid="186" ssid="118">On the other hand, no precomputation is needed for NULL.</S>
+    <S sid="187" ssid="119">In between is a trade off of space/time requirements for precomputation and the online savings during the parsing of new sentences.</S>
+    <S sid="188" ssid="120">Figure 8 shows the average savings versus the precomputation time.10 Where on this curve one chooses to be depends on many factors; 9 hours may be too much to spend computing B, but an hour for SXMLR gives nearly the same performance, and the one minute required for SX is comparable to the I/O time to read the Penn treebank in our system.</S>
+    <S sid="189" ssid="121">The grammar projection estimate F had to be recomputed for each sentence parsed, but took less than 1% of the total parse time.</S>
+    <S sid="190" ssid="122">Although this method alone was less effective than SX (only 58.3% edge savings), it was extremely effective in combination with the context summary methods.</S>
+    <S sid="191" ssid="123">In practice, the combination of F and SX is easy to implement, fast to initialize, and very effective: one cuts out 95% of the work in parsing at the cost of one minute of precomputation and 5 Mb of storage for outside estimates for our grammar.</S>
+  </SECTION>
+  <SECTION title="4 Extension to Other Models" number="4">
+    <S sid="192" ssid="1">While the A* estimates given here can be used to accelerate PCFG parsing, most high-performance parsing has utilized models over lexicalized trees.</S>
+    <S sid="193" ssid="2">These A* methods can be adapted to the lexicalized case.</S>
+    <S sid="194" ssid="3">In Klein and Manning (2003), we apply a pair of grammar projection estimates to a lexicalized parsing model of a certain factored form.</S>
+    <S sid="195" ssid="4">In that model, the score of a lexicalized tree is the product of the scores of two projections of that tree, one onto unlexicalized phrase structure, and one onto phrasalcategory-free word-to-word dependency structure.</S>
+    <S sid="196" ssid="5">Since this model has a projection-based form, grammar projection methods are easy to apply and especially effective, giving over three orders of magnitude in edge savings.</S>
+    <S sid="197" ssid="6">The total cost per sentence includes the time required for two exhaustive PCFG parses, after which the A* search takes only seconds, even for very long sentences.</S>
+    <S sid="198" ssid="7">Even when a lexicalized model is not in this factored form, it still admits factored grammar projection bounds; we are currently investigating this case.</S>
+  </SECTION>
+  <SECTION title="5 Conclusions" number="5">
+    <S sid="199" ssid="1">An A* parser is simpler to build than a best-first parser, does less work per edge, and provides both an optimality guarantee and a worst-case cubic time bound.</S>
+    <S sid="200" ssid="2">We have described two general ways of constructing admissible A* estimates for PCFG parsing and given several specific estimates.</S>
+    <S sid="201" ssid="3">Using these estimates, our parser is capable of finding the Viterbi parse of an average-length Penn treebank sentence in a few seconds, processing less than 3% of the edges which would be constructed by an exhaustive parser.</S>
+  </SECTION>
+  <SECTION title="Acknowledgements." number="6">
+    <S sid="202" ssid="1">We would like to Joshua Goodman and Dan Melamed for advice and discussion about this work.</S>
+    <S sid="203" ssid="2">This paper is based on work supported by the National Science Foundation (NSF) under Grant No.</S>
+    <S sid="204" ssid="3">IIS-0085896, by the Advanced Research and Development Activity (ARDA)&#8217;s Advanced Question Answering for Intelligence (AQUAINT) Program, by an NSF Graduate Fellowship to the first author, and by an IBM Faculty Partnership Award to the second author.</S>
+  </SECTION>
+</PAPER>

@@ -1,0 +1,202 @@
+<PAPER>
+  <S sid="0">Joint Parsing and Named Entity Recognition</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">For many language technology applications, such as question answering, the overall system runs several independent processors over the data (such as a named entity recognizer, a coreference system, and a parser).</S>
+    <S sid="2" ssid="2">This easily results in inconsistent annotations, which are harmful to the performance of the aggregate system.</S>
+    <S sid="3" ssid="3">We begin to address this problem with a joint model of parsing and named entity recognition, based on a discriminative feature-based constituency parser.</S>
+    <S sid="4" ssid="4">Our model produces a consistent output, where the named entity spans do not conflict with the phrasal spans of the parse tree.</S>
+    <S sid="5" ssid="5">The joint representation also allows the information from each type of annotation to improve performance on the other, and, in experiments with the OntoNotes corpus, we found improvements of to absolute F1 for parsing, and up to F1 for named entity recognition.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="6" ssid="1">In order to build high quality systems for complex NLP tasks, such as question answering and textual entailment, it is essential to first have high quality systems for lower level tasks.</S>
+    <S sid="7" ssid="2">A good (deep analysis) question answering system requires the data to first be annotated with several types of information: parse trees, named entities, word sense disambiguation, etc.</S>
+    <S sid="8" ssid="3">However, having high performing, lowlevel systems is not enough; the assertions of the various levels of annotation must be consistent with one another.</S>
+    <S sid="9" ssid="4">When a named entity span has crossing brackets with the spans in the parse tree it is usually impossible to effectively combine these pieces of information, and system performance suffers.</S>
+    <S sid="10" ssid="5">But, unfortunately, it is still common practice to cobble together independent systems for the various types of annotation, and there is no guarantee that their outputs will be consistent.</S>
+    <S sid="11" ssid="6">This paper begins to address this problem by building a joint model of both parsing and named entity recognition.</S>
+    <S sid="12" ssid="7">Vapnik has observed (Vapnik, 1998; Ng and Jordan, 2002) that &#8220;one should solve the problem directly and never solve a more general problem as an intermediate step,&#8221; implying that building a joint model of two phenomena is more likely to harm performance on the individual tasks than to help it.</S>
+    <S sid="13" ssid="8">Indeed, it has proven very difficult to build a joint model of parsing and semantic role labeling, either with PCFG trees (Sutton and McCallum, 2005) or with dependency trees.</S>
+    <S sid="14" ssid="9">The CoNLL 2008 shared task (Surdeanu et al., 2008) was intended to be about joint dependency parsing and semantic role labeling, but the top performing systems decoupled the tasks and outperformed the systems which attempted to learn them jointly.</S>
+    <S sid="15" ssid="10">Despite these earlier results, we found that combining parsing and named entity recognition modestly improved performance on both tasks.</S>
+    <S sid="16" ssid="11">Our joint model produces an output which has consistent parse structure and named entity spans, and does a better job at both tasks than separate models with the same features.</S>
+    <S sid="17" ssid="12">We first present the joint, discriminative model that we use, which is a feature-based CRF-CFG parser operating over tree structures augmented with NER information.</S>
+    <S sid="18" ssid="13">We then discuss in detail how we make use of the recently developed OntoNotes corpus both for training and testing the model, and then finally present the performance of the model and some discussion of what causes its superior performance, and how the model relates to prior work.</S>
+  </SECTION>
+  <SECTION title="2 The Joint Model" number="2">
+    <S sid="19" ssid="1">When constructing a joint model of parsing and named entity recognition, it makes sense to think about how the two distinct levels of annotation may help one another.</S>
+    <S sid="20" ssid="2">Ideally, a named entity should correspond to a phrase in the constituency tree.</S>
+    <S sid="21" ssid="3">However, parse trees will occasionally lack some explicit structure, such as with right branching NPs.</S>
+    <S sid="22" ssid="4">In these cases, a named entity may correspond to a contiguous set of children within a subtree of the entire parse.</S>
+    <S sid="23" ssid="5">The one thing that should never happen is for a named entity span to have crossing brackets with any spans in the parse tree.</S>
+    <S sid="24" ssid="6">For named entities, the joint model should help with boundaries.</S>
+    <S sid="25" ssid="7">The internal structure of the named entity, and the structural context in which it appears, can also help with determining the type of entity.</S>
+    <S sid="26" ssid="8">Finding the best parse for a sentence can be helped by the named entity information in similar ways.</S>
+    <S sid="27" ssid="9">Because named entities should correspond to phrases, information about them should lead to better bracketing.</S>
+    <S sid="28" ssid="10">Also, knowing that a phrase is a named entity, and the type of entity, may help in getting the structural context, and internal structure, of that entity correct.</S>
+    <S sid="29" ssid="11">After modifying the OntoNotes dataset to ensure consistency, which we will discuss in Section 4, we augment the parse tree with named entity information, for input to our learning algorithm.</S>
+    <S sid="30" ssid="12">In the cases where a named entity corresponds to multiple contiguous children of a subtree, we add a new NamedEntity node, which is the new parent to those children.</S>
+    <S sid="31" ssid="13">Now, all named entities correspond to a single phrasal node in the entire tree.</S>
+    <S sid="32" ssid="14">We then augment the labels of the phrasal node and its descendents with the type of named entity.</S>
+    <S sid="33" ssid="15">We also distinguish between the root node of an entity, and the descendent nodes.</S>
+    <S sid="34" ssid="16">See Figure 1 for an illustration.</S>
+    <S sid="35" ssid="17">This representation has several benefits, outlined below.</S>
+    <S sid="36" ssid="18">The OntoNotes data does not contain any nested entities.</S>
+    <S sid="37" ssid="19">Consider the named entity portions of the rules seen in the training data.</S>
+    <S sid="38" ssid="20">These will look, for instance, like none &#8594; none person, and organization &#8594; organization organization.</S>
+    <S sid="39" ssid="21">Because we only allow named entity derivations which we have seen in the data, nested entities are impossible.</S>
+    <S sid="40" ssid="22">However, there is clear benefit in a representation allowing nested entities.</S>
+    <S sid="41" ssid="23">For example, it would be beneficial to recognize that the United States Supreme Court is a an organization, but that it also contains a nested GPE.1 Fortunately, if we encounter data which has been annotated with nested entities, this representation will be able to handle them in a natural way.</S>
+    <S sid="42" ssid="24">In the given example, we would have a derivation which includes organization &#8594; GPE organization.</S>
+    <S sid="43" ssid="25">This information will be helpful for correctly labeling nested entities such as New Jersey Supreme Court, because the model will learn how nested entities tend to decompose.</S>
+    <S sid="44" ssid="26">Currently, named entity recognizers are usually constructed using sequence models, with linear chain conditional random fields (CRFs) being the most common.</S>
+    <S sid="45" ssid="27">While it is possible for CRFs to have links that are longer distance than just between adjacent words, most of the benefit is from local features, over the words and labels themselves, and from features over adjacent pairs of words and labels.</S>
+    <S sid="46" ssid="28">Our joint representation allows us to port both types of features from such a named entity recognizer.</S>
+    <S sid="47" ssid="29">The local features can be computed at the same time the features over parts of speech are computed.</S>
+    <S sid="48" ssid="30">These are the leaves of the tree, when only the named entity for the current word is known.2 The pairwise features, over adjacent labels, are computed at the same time as features over binary rules.</S>
+    <S sid="49" ssid="31">Binarization of the tree is necessary for efficient computation, so the trees consist solely of unary and binary productions.</S>
+    <S sid="50" ssid="32">Because of this, for all pairs of adjacent words within an entity, there will be a binary rule applied where one word will be under the left child and the other word will be under the right child.</S>
+    <S sid="51" ssid="33">Therefore, we compute features over adjacent words/labels when computing the features for the binary rule which joins them.</S>
+    <S sid="52" ssid="34">We construct our joint model as an extension to the discriminatively trained, feature-rich, conditional random field-based, CRF-CFG parser of (Finkel and Manning, 2008).</S>
+    <S sid="53" ssid="35">Their parser is similar to a chartbased PCFG parser, except that instead of putting probabilities over rules, it puts clique potentials over local subtrees.</S>
+    <S sid="54" ssid="36">These unnormalized potentials know what span (and split) the rule is over, and arbitrary features can be defined over the local subtree, the span/split and the words of the sentence.</S>
+    <S sid="55" ssid="37">The insideoutside algorithm is run over the clique potentials to produce the partial derivatives and normalizing constant which are necessary for optimizing the log likelihood.</S>
+    <S sid="56" ssid="38">Because of the addition of named entity annotations to grammar rules, if we use the grammar as read off the treebank, we will encounter problems with sparseness which severely degrade performance.</S>
+    <S sid="57" ssid="39">This degradation occurs because of CFG 2Note that features can include information about other words, because the entire sentence is observed.</S>
+    <S sid="58" ssid="40">The features cannot include information about the labels of those words. rules which only occur in the training data augmented with named entity information, and because of rules which only occur without the named entity information.</S>
+    <S sid="59" ssid="41">To combat this problem, we added extra rules, unseen in the training data.</S>
+    <S sid="60" ssid="42">For every rule encountered in the training data which has been augmented with named entity information, we add extra copies of that rule to the grammar.</S>
+    <S sid="61" ssid="43">We add one copy with all of the named entity information stripped away, and another copy for each other entity type, where the named entity augmentation has been changed to the other entity type.</S>
+    <S sid="62" ssid="44">These additions help, but they are not sufficient.</S>
+    <S sid="63" ssid="45">Most entities correspond to noun phrases, so we took all rules which had an NP as a child, and made copies of that rule where the NP was augmented with each possible entity type.</S>
+    <S sid="64" ssid="46">These grammar additions sufficed to improve overall performance.</S>
+    <S sid="65" ssid="47">The lexicon is augmented in a similar manner to the rules.</S>
+    <S sid="66" ssid="48">For every part of speech tag seen with a named entity annotation, we also add that tag with no named entity information, and a version which has been augmented with each type of named entity.</S>
+    <S sid="67" ssid="49">It would be computationally infeasible to allow any word to have any part of speech tag.</S>
+    <S sid="68" ssid="50">We therefore limit the allowed part of speech tags for common words based on the tags they have been observed with in the training data.</S>
+    <S sid="69" ssid="51">We also augment each word with a distributional similarity tag, which we discuss in greater depth in Section 3, and allow tags seen with other words which belong to the same distributional similarity cluster.</S>
+    <S sid="70" ssid="52">When deciding what tags are allowed for each word, we initially ignore named entity information.</S>
+    <S sid="71" ssid="53">Once we determine what base tags are allowed for a word, we also allow that tag, augmented with any type of named entity, if the augmented tag is present in the lexicon.</S>
+  </SECTION>
+  <SECTION title="3 Features" number="3">
+    <S sid="72" ssid="1">We defined features over both the parse rules and the named entities.</S>
+    <S sid="73" ssid="2">Most of our features are over one or the other aspects of the structure, but not both.</S>
+    <S sid="74" ssid="3">Both the named entity and parsing features utilize the words of the sentence, as well as orthographic and distributional similarity information.</S>
+    <S sid="75" ssid="4">For each word we computed a word shape which encoded information about capitalization, length, and inclusion of numbers and other non-alphabetic characters.</S>
+    <S sid="76" ssid="5">For the distributional similarity information, we had to first train a distributional similarity model.</S>
+    <S sid="77" ssid="6">We trained the model described in (Clark, 2000), with code downloaded from his website, on several hundred million words from the British national corpus, and the English Gigaword corpus.</S>
+    <S sid="78" ssid="7">The model we trained had 200 clusters, and we used it to assign each word in the training and test data to one of the clusters.</S>
+    <S sid="79" ssid="8">For the named entity features, we used a fairly standard feature set, similar to those described in (Finkel et al., 2005).</S>
+    <S sid="80" ssid="9">For parse features, we used the exact same features as described in (Finkel and Manning, 2008).</S>
+    <S sid="81" ssid="10">When computing those features, we removed all of the named entity information from the rules, so that these features were just over the parse information and not at all over the named entity information.</S>
+    <S sid="82" ssid="11">Lastly, we have the joint features.</S>
+    <S sid="83" ssid="12">We included as features each augmented rule and each augmented label.</S>
+    <S sid="84" ssid="13">This allowed the model to learn that certain types of phrasal nodes, such as NPs are more likely to be named entities, and that certain entities were more likely to occur in certain contexts and have particular types of internal structure.</S>
+  </SECTION>
+  <SECTION title="4 Data" number="4">
+    <S sid="85" ssid="1">For our experiments we used the LDC2008T04 OntoNotes Release 2.0 corpus (Hovy et al., 2006).</S>
+    <S sid="86" ssid="2">The OntoNotes project leaders describe it as &#8220;a large, multilingual richly-annotated corpus constructed at 90% internanotator agreement.&#8221; The corpus has been annotated with multiple levels of annotation, including constituency trees, predicate structure, word senses, coreference, and named entities.</S>
+    <S sid="87" ssid="3">For this work, we focus on the parse trees and named entities.</S>
+    <S sid="88" ssid="4">The corpus has English and Chinese portions, and we used only the English portion, which itself has been split into seven sections: ABC, CNN, MNB, NBC, PRI, VOA, and WSJ.</S>
+    <S sid="89" ssid="5">These sections represent a mix of speech and newswire data.</S>
+    <S sid="90" ssid="6">While other work has utilized the OntoNotes corpus (Pradhan et al., 2007; Yu et al., 2008), this is the first work to our knowledge to simultaneously model the multiple levels of annotation available.</S>
+    <S sid="91" ssid="7">Because this is a new corpus, still under development, it is not surprising that we found places where the data was inconsistently annotated, namely with crossing brackets between named entity and tree annotations.</S>
+    <S sid="92" ssid="8">In the places where we found inconsistent annotation it was rarely the case that the different levels of annotation were inherently inconsistent, but rather inconsistency results from somewhat arbitrary choices made by the annotators.</S>
+    <S sid="93" ssid="9">For example, when the last word in a sentence ends with a period, such as Corp., one period functions both to mark the abbreviation and the end of the sentence.</S>
+    <S sid="94" ssid="10">The convention of the Penn Treebank is to separate the final period and treat it as the end of sentence marker, but when the final word is also part of an entity, that final period was frequently included in the named entity annotation, resulting in the sentence terminating period being part of the entity, and the entity not corresponding to a single phrase.</S>
+    <S sid="95" ssid="11">See Figure 2 for an illustration from the data.</S>
+    <S sid="96" ssid="12">In this case, we removed the terminating period from the entity, to produce a consistent annotation.</S>
+    <S sid="97" ssid="13">Overall, we found that 656 entities, out of 55,665 total, could not be aligned to a phrase, or multiple contiguous children of a node.</S>
+    <S sid="98" ssid="14">We identified and corrected the following sources of inconsistencies: Periods and abbreviations.</S>
+    <S sid="99" ssid="15">This is the problem described above with the Corp. example.</S>
+    <S sid="100" ssid="16">We corrected it by removing the sentence terminating final period from the entity annotation.</S>
+    <S sid="101" ssid="17">Determiners and PPs.</S>
+    <S sid="102" ssid="18">Noun phrases composed of a nested noun phrase and a prepositional phrase were problematic when they also consisted of a determiner followed by an entity.</S>
+    <S sid="103" ssid="19">We dealt with this by flattening the nested NP, as illustrated in Figure 3.</S>
+    <S sid="104" ssid="20">As we discussed in Section 2.1, this tree will then be augmented with an additional node for the entity (see Figure 1).</S>
+    <S sid="105" ssid="21">Adjectives and PPs.</S>
+    <S sid="106" ssid="22">This problem is similar to the previous problem, with the difference being that there are also adjectives preceding the entity.</S>
+    <S sid="107" ssid="23">The solution is also similar to the solution to the previous problem.</S>
+    <S sid="108" ssid="24">We moved the adjectives from the nested NP into the main NP.</S>
+    <S sid="109" ssid="25">These three modifications to the data solved most, but not all, of the inconsistencies.</S>
+    <S sid="110" ssid="26">Another source of problems was conjunctions, such as North and South Korea, where North and South are a phrase, but South Korea is an entity.</S>
+    <S sid="111" ssid="27">The rest of the errors seemed to be due to annotation errors and other random weirdnesses.</S>
+    <S sid="112" ssid="28">We ended up unable to make 0.4% of the entities consistent with the parses, so we omitted those entities from the training and test data.</S>
+    <S sid="113" ssid="29">One more change we made to the data was with respect to possessive NPs.</S>
+    <S sid="114" ssid="30">When we encountered noun phrases which ended with (POS &#8217;s) or (POS &#8217;), we modified the internal structure of the NP.</S>
+    <S sid="115" ssid="31">Originally, these NPs were flat, but we introduced a new nested NP which contained the entire contents of the original NP except for the POS.</S>
+    <S sid="116" ssid="32">The original NP label was then changed to PossNP.</S>
+    <S sid="117" ssid="33">This change is motivated by the status of &#8217;s as a phrasal affix or clitic: It is the NP preceding &#8217;s that is structurally equivalent to other NPs, not the larger unit that includes &#8217;s.</S>
+    <S sid="118" ssid="34">This change has the additional benefit in this context that more named entities will correspond to a single phrase in the parse tree, rather than a contiguous set of phrases.</S>
+    <S sid="119" ssid="35">The data has been annotated with eighteen types of entities.</S>
+    <S sid="120" ssid="36">Many of these entity types do not occur very often, and coupled with the relatively small amount of data, make it difficult to learn accurate entity models.</S>
+    <S sid="121" ssid="37">Examples are work of art, product, and law.</S>
+    <S sid="122" ssid="38">Early experiments showed that it was difficult for even our baseline named entity recognizer, based on a state-of-the-art CRF, to learn these types of entities.3 As a result, we decided to merge all but the three most dominant entity types into into one general entity type called misc.</S>
+    <S sid="123" ssid="39">The result was four distinct entity types: person, organization, GPE (geo-political entity, such as a city or a country), and misc.</S>
+    <S sid="124" ssid="40">3The difficulties were compounded by somewhat inconsistent and occasionally questionable annotations.</S>
+    <S sid="125" ssid="41">For example, the word today was usually labeled as a date, but about 10% of the time it was not labeled as anything.</S>
+    <S sid="126" ssid="42">We also found several strange work of arts, including Stanley Cup and the U.S.S.</S>
+    <S sid="127" ssid="43">Cole.</S>
+  </SECTION>
+  <SECTION title="5 Experiments" number="5">
+    <S sid="128" ssid="1">We ran our model on six of the OntoNotes datasets described in Section 4,4 using sentences of length 40 and under (approximately 200,000 annotated English words, considerably smaller than the Penn Treebank (Marcus et al., 1993)).</S>
+    <S sid="129" ssid="2">For each dataset, we aimed for roughly a 75% train / 25% test split.</S>
+    <S sid="130" ssid="3">See Table 1 for the the files used to train and test, along with the number of sentences in each.</S>
+    <S sid="131" ssid="4">For comparison, we also trained the parser without the named entity information (and omitted the NamedEntity nodes), and a linear chain CRF using just the named entity information.</S>
+    <S sid="132" ssid="5">Both the baseline parser and CRF were trained using the exact same features as the joint model, and all were optimized using stochastic gradient descent.</S>
+    <S sid="133" ssid="6">The full results can be found in Table 2.</S>
+    <S sid="134" ssid="7">Parse trees were scored using evalB (the extra NamedEntity nodes were ignored when computing evalB for the joint model), and named entities were scored using entity F-measure (as in the CoNLL 2003 conlleval).5 While the main benefit of our joint model is the ability to get a consistent output over both types of annotations, we also found that modeling the parse 4These datasets all consistently use the new conventions for treebank annotation, while the seventh WSJ portion is currently still annotated in the original 1990s style, and so we left the WSJ portion aside.</S>
+    <S sid="135" ssid="8">5Sometimes the parser would be unable to parse a sentence (less than 2% of sentences), due to restrictions in part of speech tags.</S>
+    <S sid="136" ssid="9">Because the underlying grammar (ignoring the additional named entity information) was the same for both the joint and baseline parsers, it is the case that whenever a sentence is unparseable by either the baseline or joint parser it is in fact unparsable by both of them, and would affect the parse scores of both models equally.</S>
+    <S sid="137" ssid="10">However, the CRF is able to named entity tag any sentence, so these unparsable sentences had an effect on the named entity score.</S>
+    <S sid="138" ssid="11">To combat this, we fell back on the baseline CRF model to get named entity tags for unparsable sentences. and named entities jointly resulted in improved performance on both.</S>
+    <S sid="139" ssid="12">When looking at these numbers, it is important to keep in mind that the sizes of the training and test sets are significantly smaller than the Penn Treebank.</S>
+    <S sid="140" ssid="13">The largest of the six datasets, CNN, has about one seventh the amount of training data as the Penn Treebank, and the smallest, MNB, has around 500 sentences from which to train.</S>
+    <S sid="141" ssid="14">Parse performance was improved by the joint model for five of the six datasets, by up to 1.36%.</S>
+    <S sid="142" ssid="15">Looking at the parsing improvements on a per-label basis, the largest gains came from improved identication of NML consituents, from an F-score of 45.9% to 57.0% (on all the data combined, for a total of 420 NML constituents).</S>
+    <S sid="143" ssid="16">This label was added in the new treebank annotation conventions, so as to identify internal left-branching structure inside previously flat NPs.</S>
+    <S sid="144" ssid="17">To our surprise, performance on NPs only increased by 1%, though over 12,949 constituents, for the largest improvement in absolute terms.</S>
+    <S sid="145" ssid="18">The second largest gain was on PPs, where we improved by 1.7% over 3,775 constituents.</S>
+    <S sid="146" ssid="19">We tested the significance of our results (on all the data combined) using Dan Bikel&#8217;s randomized parsing evaluation comparator6 and found that both the precision and recall gains were significant at p &#8804; 0.01.</S>
+    <S sid="147" ssid="20">Much greater improvements in performance were seen on named entity recognition, where most of the domains saw improvements in the range of 3&#8211; 4%, with performance on the VOA data improving by nearly 9%, which is a 45% reduction in error.</S>
+    <S sid="148" ssid="21">There was no clear trend in terms of precision versus recall, or the different entity types.</S>
+    <S sid="149" ssid="22">The first place to look for improvements is with the boundaries for named entities.</S>
+    <S sid="150" ssid="23">Once again looking at all of the data combined, in the baseline model there were 203 entities where part of the entity was found, but one or both boundaries were incorrectly identified.</S>
+    <S sid="151" ssid="24">The joint model corrected 72 of those entities, while incorrectly identifying the boundaries of 37 entities which had previously been correctly identified.</S>
+    <S sid="152" ssid="25">In the baseline NER model, there were 243 entities for which the boundaries were correctly identified, but the type of entity was incorrect.</S>
+    <S sid="153" ssid="26">The joint model corrected 80 of them, while changing the labels of 39 entities which had previously been correctly identified.</S>
+    <S sid="154" ssid="27">Additionally, 190 entities were found which the baseline model had missed entirely, and 68 entities were lost.</S>
+    <S sid="155" ssid="28">We tested the statistical significance of the gains (of all the data combined) using the same sentence-level, stratified shuffling technique as Bikel&#8217;s parse comparator and found that both precision and recall gains were significant at p &lt; 10&#8722;4.</S>
+    <S sid="156" ssid="29">An example from the data where the joint model helped improve both parse structure and named entity recognition is shown in Figure 4.</S>
+    <S sid="157" ssid="30">The output from the individual models is shown in part (a), with the output from the named entity recognizer shown in brackets on the words at leaves of the parse.</S>
+    <S sid="158" ssid="31">The output from the joint model is shown in part (b), with the named entity information encoded within the parse.</S>
+    <S sid="159" ssid="32">In this example, the named entity Egyptian Islamic Jihad helped the parser to get its surrounding context correct, because it is improbable to attach a PP headed by with to an organization.</S>
+    <S sid="160" ssid="33">At the same time, the surrounding context helped the joint model correctly identify Egyptian Islamic Jihad as an organization and not a person.</S>
+    <S sid="161" ssid="34">The baseline parser also incorrectly added an extra level of structure to the person name Osama Bin Laden, while the joint model found the correct structure.</S>
+  </SECTION>
+  <SECTION title="6 Related Work" number="6">
+    <S sid="162" ssid="1">A pioneering antecedent for our work is (Miller et al., 2000), who trained a Collins-style generative parser (Collins, 1997) over a syntactic structure augmented with the template entity and template relations annotations for the MUC-7 shared task.</S>
+    <S sid="163" ssid="2">Their sentence augmentations were similar to ours, but they did not make use of features due to the generative nature of their model.</S>
+    <S sid="164" ssid="3">This approach was not followed up on in other work, presumably because around this time nearly all the activity in named entity and relation extraction moved to the use of discriminative sequence models, which allowed the flexible specification of feature templates that are very useful for these tasks.</S>
+    <S sid="165" ssid="4">The present model is able to bring together both these lines of work, by integrating the strengths of both approaches.</S>
+    <S sid="166" ssid="5">There have been other attempts in NLP to jointly model multiple levels of structure, with varying degrees of success.</S>
+    <S sid="167" ssid="6">Most work on joint parsing and semantic role labeling (SRL) has been disappointing, despite obvious connections between the two tasks.</S>
+    <S sid="168" ssid="7">Sutton and McCallum (2005) attempted to jointly model PCFG parsing and SRL for the CoNLL 2005 shared task, but were unable to improve performance on either task.</S>
+    <S sid="169" ssid="8">The CoNLL 2008 shared task (Surdeanu et al., 2008) was joint dependency parsing and SRL, but the top performing systems decoupled the tasks, rather than building joint models.</S>
+    <S sid="170" ssid="9">Zhang and Clark (2008) successfully built a joint model of Chinese word segmentation and parts of speech using a single perceptron.</S>
+    <S sid="171" ssid="10">An alternative approach to joint modeling is to take a pipelined approach.</S>
+    <S sid="172" ssid="11">Previous work on linguistic annotation pipelines (Finkel et al., 2006; Hollingshead and Roark, 2007) has enforced consistency from one stage to the next.</S>
+    <S sid="173" ssid="12">However, these models are only used at test time; training of the components is still independent.</S>
+    <S sid="174" ssid="13">These models also have the potential to suffer from search errors and are not guaranteed to find the optimal output.</S>
+  </SECTION>
+  <SECTION title="7 Conclusion" number="7">
+    <S sid="175" ssid="1">We presented a discriminatively trained joint model of parsing and named entity recognition, which improved performance on both tasks.</S>
+    <S sid="176" ssid="2">Our model is based on a discriminative constituency parser, with the data, grammar, and features carefully constructed for the joint task.</S>
+    <S sid="177" ssid="3">In the future, we would like to add other levels of annotation available in the OntoNotes corpus to our model, including word sense disambiguation and semantic role labeling.</S>
+  </SECTION>
+  <SECTION title="Acknowledgements" number="8">
+    <S sid="178" ssid="1">The first author is supported by a Stanford Graduate Fellowship.</S>
+    <S sid="179" ssid="2">This paper is based on work funded in part by the Defense Advanced Research Projects Agency through IBM.</S>
+    <S sid="180" ssid="3">The content does not necessarily reflect the views of the U.S. Government, and no official endorsement should be inferred.</S>
+    <S sid="181" ssid="4">We also wish to thank the creators of OntoNotes, without which this project would not have been possible.</S>
+  </SECTION>
+</PAPER>

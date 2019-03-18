@@ -1,0 +1,189 @@
+<PAPER>
+  <S sid="0">A Gibbs Sampler for Phrasal Synchronous Grammar Induction</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present a phrasal synchronous grammar model of translational equivalence.</S>
+    <S sid="2" ssid="2">Unlike previous approaches, we do not resort to heuristics or constraints from a word-alignment model, but instead directly induce a synchronous grammar from parallel sentence-aligned corpora.</S>
+    <S sid="3" ssid="3">We use a hierarchical Bayesian prior to bias towards compact grammars with small translation units.</S>
+    <S sid="4" ssid="4">Inference is performed using a novel Gibbs sampler over synchronous derivations.</S>
+    <S sid="5" ssid="5">This sampler side-steps the intractability issues of previous models which required inference over derivation forests.</S>
+    <S sid="6" ssid="6">Instead each sampling iteration is highly efficient, allowing the model to be applied to larger translation corpora than previous approaches.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="7" ssid="1">The field of machine translation has seen many advances in recent years, most notably the shift from word-based (Brown et al., 1993) to phrasebased models which use token n-grams as translation units (Koehn et al., 2003).</S>
+    <S sid="8" ssid="2">Although very few researchers use word-based models for translation per se, such models are still widely used in the training of phrase-based models.</S>
+    <S sid="9" ssid="3">These wordbased models are used to find the latent wordalignments between bilingual sentence pairs, from which a weighted string transducer can be induced (either finite state (Koehn et al., 2003) or synchronous context free grammar (Chiang, 2007)).</S>
+    <S sid="10" ssid="4">Although wide-spread, the disconnect between the translation model and the alignment model is artificial and clearly undesirable.</S>
+    <S sid="11" ssid="5">Word-based models are incapable of learning translational equivalences between non-compositional phrasal units, while the algorithms used for inducing weighted transducers from word-alignments are based on heuristics with little theoretical justification.</S>
+    <S sid="12" ssid="6">A model which can fulfil both roles would address both the practical and theoretical short-comings of the machine translation pipeline.</S>
+    <S sid="13" ssid="7">The machine translation literature is littered with various attempts to learn a phrase-based string transducer directly from aligned sentence pairs, doing away with the separate word alignment step (Marcu and Wong, 2002; Cherry and Lin, 2007; Zhang et al., 2008b; Blunsom et al., 2008).</S>
+    <S sid="14" ssid="8">Unfortunately none of these approaches resulted in an unqualified success, due largely to intractable estimation.</S>
+    <S sid="15" ssid="9">Large training sets with hundreds of thousands of sentence pairs are common in machine translation, leading to a parameter space of billions or even trillions of possible bilingual phrase-pairs.</S>
+    <S sid="16" ssid="10">Moreover, the inference procedure for each sentence pair is non-trivial, proving NP-complete for learning phrase based models (DeNero and Klein, 2008) or a high order polynomial (O(|f|3|e|3))1 for a sub-class of weighted synchronous context free grammars (Wu, 1997).</S>
+    <S sid="17" ssid="11">Consequently, for such models both the parameterisation and approximate inference techniques are fundamental to their success.</S>
+    <S sid="18" ssid="12">In this paper we present a novel SCFG translation model using a non-parametric Bayesian formulation.</S>
+    <S sid="19" ssid="13">The model includes priors to impose a bias towards small grammars with few rules, each of which is as simple as possible (e.g., terminal productions consisting of short phrase pairs).</S>
+    <S sid="20" ssid="14">This explicitly avoids the degenerate solutions of maximum likelihood estimation (DeNero et al., 2006), without resort to the heuristic estimator of Koehn et al. (2003).</S>
+    <S sid="21" ssid="15">We develop a novel Gibbs sampler to perform inference over the latent synchronous derivation trees for our training instances.</S>
+    <S sid="22" ssid="16">The sampler reasons over the infinite space of possible translation units without recourse to arbitrary restrictions (e.g., constraints drawn from a wordalignment (Cherry and Lin, 2007; Zhang et al., 2008b) or a grammar fixed a priori (Blunsom et al., 2008)).</S>
+    <S sid="23" ssid="17">The sampler performs local edit operations to nodes in the synchronous trees, each of which is very fast, leading to a highly efficient inference technique.</S>
+    <S sid="24" ssid="18">This allows us to train the model on large corpora without resort to punitive length limits, unlike previous approaches which were only applied to small data sets with short sentences.</S>
+    <S sid="25" ssid="19">This paper is structured as follows: In Section 3 we argue for the use of efficient sampling techniques over SCFGs as an effective solution to the modelling and scaling problems of previous approaches.</S>
+    <S sid="26" ssid="20">We describe our Bayesian SCFG model in Section 4 and a Gibbs sampler to explore its posterior.</S>
+    <S sid="27" ssid="21">We apply this sampler to build phrase-based and hierarchical translation models and evaluate their performance on small and large corpora.</S>
+  </SECTION>
+  <SECTION title="2 Synchronous context free grammar" number="2">
+    <S sid="28" ssid="1">A synchronous context free grammar (SCFG, (Lewis II and Stearns, 1968)) generalizes contextfree grammars to generate strings concurrently in two (or more) languages.</S>
+    <S sid="29" ssid="2">A string pair is generated by applying a series of paired rewrite rules of the form, X &#8594; he, f, ai, where X is a nonterminal, e and f are strings of terminals and nonterminals and a specifies a one-to-one alignment between non-terminals in e and f. In the context of SMT, by assigning the source and target languages to the respective sides of a probabilistic SCFG it is possible to describe translation as the process of parsing the source sentence, which induces a parallel tree structure and translation in the target language (Chiang, 2007).</S>
+    <S sid="30" ssid="3">Figure 1 shows an example derivation for Japanese to English translation using an SCFG.</S>
+    <S sid="31" ssid="4">For efficiency reasons we only consider binary or ternary branching rules and don&#8217;t allow rules to mix terminals and nonterminals.</S>
+    <S sid="32" ssid="5">This allows our sampler to more efficiently explore the space of grammars (Section 4.2), however more expressive grammars would be a straightforward extension of our model.</S>
+  </SECTION>
+  <SECTION title="3 Related work" number="3">
+    <S sid="33" ssid="1">Most machine translation systems adopt the approach of Koehn et al. (2003) for &#8216;training&#8217; a phrase-based translation model.2 This method starts with a word-alignment, usually the latent state of an unsupervised word-based aligner such &#8658; hJohn-ga X4 X5, John X5 X4i &#8658; hJohn-ga ringo-o X5, John X5 an applei &#8658; hJohn-ga ringo-o tabeta, John ate an applei as GIZA++.</S>
+    <S sid="34" ssid="2">Various heuristics are used to combine source-to-target and target-to-source alignments, after which a further heuristic is used to read off phrase pairs which are &#8216;consistent&#8217; with the alignment.</S>
+    <S sid="35" ssid="3">Although efficient, the sheer number of somewhat arbitrary heuristics makes this approach overly complicated.</S>
+    <S sid="36" ssid="4">A number of authors have proposed alternative techniques for directly inducing phrase-based translation models from sentence aligned data.</S>
+    <S sid="37" ssid="5">Marcu and Wong (2002) proposed a phrase-based alignment model which suffered from a massive parameter space and intractable inference using expectation maximisation.</S>
+    <S sid="38" ssid="6">Taking a different tack, DeNero et al. (2008) presented an interesting new model with inference courtesy of a Gibbs sampler, which was better able to explore the full space of phrase translations.</S>
+    <S sid="39" ssid="7">However, the efficacy of this model is unclear due to the small-scale experiments and the short sampling runs.</S>
+    <S sid="40" ssid="8">In this work we also propose a Gibbs sampler but apply it to the polynomial space of derivation trees, rather than the exponential space of the DeNero et al. (2008) model.</S>
+    <S sid="41" ssid="9">The restrictions imposed by our tree structure make sampling considerably more efficient for long sentences.</S>
+    <S sid="42" ssid="10">Following the broad shift in the field from finite state transducers to grammar transducers (Chiang, 2007), recent approaches to phrase-based alignment have used synchronous grammar formalisms permitting polynomial time inference (Wu, 1997; Cherry and Lin, 2007; Zhang et al., 2008b; Blunsom et al., 2008).</S>
+    <S sid="43" ssid="11">However this asymptotic time complexity is of high enough order (O(|f|3|e|3)) that inference is impractical for real translation data.</S>
+    <S sid="44" ssid="12">Proposed solutions to this problem include imposing sentence length limits, using small training corpora and constraining the search space using a word-alignment model or parse tree.</S>
+    <S sid="45" ssid="13">None of these limitations are particularly desirable as they bias inference.</S>
+    <S sid="46" ssid="14">As a result phrase-based alignment models are not yet practical for the wider machine translation community.</S>
+  </SECTION>
+  <SECTION title="4 Model" number="4">
+    <S sid="47" ssid="1">Our aim is to induce a grammar from a training set of sentence pairs.</S>
+    <S sid="48" ssid="2">We use Bayes&#8217; rule to reason under the posterior over grammars, P(g|x) a P(x|g)P(g), where g is a weighted SCFG grammar and x is our training corpus.</S>
+    <S sid="49" ssid="3">The likelihood term, P(x|g), is the probability of the training sentence pairs under the grammar, while the prior term, P(g), describes our initial expectations about what consitutes a plausible grammar.</S>
+    <S sid="50" ssid="4">Specifically we incorporate priors encoding our preference for a briefer and more succinct grammar, namely that: (a) the grammar should be small, with few rules rewriting each non-terminal; and (b) terminal rules which specify phrasal translation correspondence should be small, with few symbols on their right hand side.</S>
+    <S sid="51" ssid="5">Further, Bayesian non-parametrics allow the capacity of the model to grow with the data.</S>
+    <S sid="52" ssid="6">Thereby we avoid imposing hard limits on the grammar (and the thorny problem of model selection), but instead allow the model to find a grammar appropriately sized for its training data.</S>
+    <S sid="53" ssid="7">Our Bayesian model of SCFG derivations resembles that of Blunsom et al. (2008).</S>
+    <S sid="54" ssid="8">Given a grammar, each sentence is generated as follows.</S>
+    <S sid="55" ssid="9">Starting with a root non-terminal (z1), rewrite each frontier non-terminal (zi) using a rule chosen from our grammar expanding zi.</S>
+    <S sid="56" ssid="10">Repeat until there are no remaining frontier non-terminals.</S>
+    <S sid="57" ssid="11">This gives rise to the following derivation probability: where the derivation is a sequence of rules d = (r1, ... , rn), and zi denotes the root node of ri.</S>
+    <S sid="58" ssid="12">We allow two types of rules: non-terminal and terminal expansions.</S>
+    <S sid="59" ssid="13">The former rewrites a nonterminal symbol as a string of two or three nonterminals along with an alignment, specifying the corresponding ordering of the child trees in the source and target language.</S>
+    <S sid="60" ssid="14">Terminal expansions rewrite a non-terminal as a pair of terminal n-grams, representing a phrasal translation pair, where either but not both may be empty.</S>
+    <S sid="61" ssid="15">Each rule in the grammar, ri, is generated from its root symbol, zi, by first choosing a rule type ti E {TERM, NON-TERM} from a Bernoulli distribution, ri &#8212; Bernoulli(-y).</S>
+    <S sid="62" ssid="16">We treat -y as a random variable with its own prior, -y &#8212; Beta(aR, aR) and integrate out the parameters, -y.</S>
+    <S sid="63" ssid="17">This results in the following conditional probability for ti: where n&#8722;i ri,zi is the number of times ri has been used to rewrite zi in the set of all other rules, r&#8722;i, and n&#8722;i r,zi is the total count of rewriting zi.</S>
+    <S sid="64" ssid="18">The Dirichlet (and thus Beta) distribution are exchangeable, meaning that any permutation of its events are equiprobable.</S>
+    <S sid="65" ssid="19">This allows us to reason about each event given previous and subsequent events (i.e., treat each item as the &#8216;last&#8217;.)</S>
+    <S sid="66" ssid="20">When ti = NON-TERM, we generate a binary or ternary non-terminal production.</S>
+    <S sid="67" ssid="21">The nonterminal sequence and alignment are drawn from (z, a) &#8212; ON zi and, as before, we define a prior over the parameters, ON zi &#8212; Dirichlet(aT), and integrate out (Nzi.</S>
+    <S sid="68" ssid="22">This results in the conditional probability: where nN,&#8722;i ri,zi is the count of rewriting zi with nonterminal rule ri, nN,&#8722;i &#183;,zi the total count over all nonterminal rules and |N |is the number of unique non-terminal rules.</S>
+    <S sid="69" ssid="23">For terminal productions (ti = TERM) we first decide whether to generate a phrase in both languages or in one language only, according to a fixed probability pnull.3 Contingent on this decision, the terminal strings are then drawn from 3To discourage null alignments, we used Pnuu = 10&#8722;10 for this value in the experiments we report below. either &#966;Pzi for phrase pairs or &#966;null for single language phrases.</S>
+    <S sid="70" ssid="24">We choose Dirichlet process (DP) priors for these parameters: zi where the base distributions, P1P and Pnull 1 , range over phrase pairs or monolingual phrases in either language, respectively.</S>
+    <S sid="71" ssid="25">The most important choice for our model is the priors on the parameters of these terminal distributions.</S>
+    <S sid="72" ssid="26">Phrasal SCFG models are subject to a degenerate maximum likelihood solution in which all probability mass is placed on long, or whole sentence, phrase translations (DeNero et al., 2006).</S>
+    <S sid="73" ssid="27">Therefore, careful consideration must be given when specifying the P1 distribution on terminals in order to counter this behavior.</S>
+    <S sid="74" ssid="28">To construct a prior over string pairs, first we define the probability of a monolingual string (s): P0X (s) = PPoisson(|s|; 1) X where the PPoisson(k; 1) is the probability under a Poisson distribution of length k given an expected length of 1, while VX is the vocabulary size of language X.</S>
+    <S sid="75" ssid="29">This distribution has a strong bias towards short strings.</S>
+    <S sid="76" ssid="30">In particular note that generally a string of length k will be less probable than two of length k2, a property very useful for finding &#8216;minimal&#8217; translation units.</S>
+    <S sid="77" ssid="31">This contrasts with a geometric distribution in which a string of length k will be more probable than its segmentations.</S>
+    <S sid="78" ssid="32">We define Pnull 1 as the string probability of the non-null part of the rule: The terminal translation phrase pair distribution is a hierarchical Dirichlet Process in which each phrase are independently distributed according to DPs:4 and &#966;Fz is defined analogously.</S>
+    <S sid="79" ssid="33">This prior encourages frequent phrases to participate in many different translation pairs.</S>
+    <S sid="80" ssid="34">Moreover, as longer strings are likely to be less frequent in the corpus this has a tendency to discourage long translation units.</S>
+    <S sid="81" ssid="35">Markov chain Monte Carlo sampling allows us to perform inference for the model described in 4.1 without restricting the infinite space of possible translation rules.</S>
+    <S sid="82" ssid="36">To do this we need a method for sampling a derivation for a given sentence pair from p(d|d&#8722;).</S>
+    <S sid="83" ssid="37">One possible approach would be to first build a packed chart representation of the derivation forest, calculate the inside probabilities of all cells in this chart, and then sample derivations top-down according to their inside probabilities (analogous to monolingual parse tree sampling described in Johnson et al. (2007)).</S>
+    <S sid="84" ssid="38">A problem with this approach is that building the derivation forest would take O(|f|3|e|3) time, which would be impractical for long sentences.</S>
+    <S sid="85" ssid="39">Instead we develop a collapsed Gibbs sampler (Teh et al., 2006) which draws new samples by making local changes to the derivations used in a previous sample.</S>
+    <S sid="86" ssid="40">After a period of burn in, the derivations produced by the sampler will be drawn from the posterior distribution, p(d|x).</S>
+    <S sid="87" ssid="41">The advantage of this algorithm is that we only store the current derivation for each training sentence pair (together these constitute the state of the sampler), but never need to reason over derivation forests.</S>
+    <S sid="88" ssid="42">By integrating over (collapsing) the parameters we only store counts of rules used in the current sampled set of derivations, thereby avoiding explicitly representing the possibly infinite space of translation pairs.</S>
+    <S sid="89" ssid="43">We define two operators for our Gibbs sampler, each of which re-samples local derivation structures.</S>
+    <S sid="90" ssid="44">Figures 2 and 4 illustrate the permutations these operators make to derivation trees.</S>
+    <S sid="91" ssid="45">The omitted tree structure in these figures denotes the Markov blanket of the operator: the structure which is held constant when enumerating the possible outcomes for an operator.</S>
+    <S sid="92" ssid="46">The Split/Join operator iterates through the positions between each source word sampling whether a terminal boundary should exist at that position (Figure 2).</S>
+    <S sid="93" ssid="47">If the source position adjacent nodes in a ternary rule can be re-parented as a binary rule, or vice-versa. falls between two existing terminals whose target phrases are adjacent, then any new target segmentation within those target phrases can be sampled, including null alignments.</S>
+    <S sid="94" ssid="48">If the two existing terminals also share the same parent, then any possible re-ordering is also a valid outcome, as is removing the terminal boundary to form a single phrase pair.</S>
+    <S sid="95" ssid="49">Otherwise, if the visited boundary point falls within an existing terminal, then all target split and re-orderings are possible outcomes.</S>
+    <S sid="96" ssid="50">The probability for each of these configurations is evaluated (see Figure 3) from which the new configuration is sampled.</S>
+    <S sid="97" ssid="51">While the first operator is theoretically capable of exploring the entire derivation forest (by flattening the tree into a single phrase and then splitting), the series of moves required would be highly improbable.</S>
+    <S sid="98" ssid="52">To allow for faster mixing we employ the Insert/Delete operator which adds and deletes the parent non-terminal of a pair of adjacent nodes.</S>
+    <S sid="99" ssid="53">This is illustrated in Figure 4.</S>
+    <S sid="100" ssid="54">The update equations are analogous to those used for the Split/Join operator in Figure 3.</S>
+    <S sid="101" ssid="55">In order for this operator to be effective we need to allow greater than binary branching nodes, otherwise deleting a nodes would require sampling from a much larger set of outcomes.</S>
+    <S sid="102" ssid="56">Hence our adoption of a ternary branching grammar.</S>
+    <S sid="103" ssid="57">Although such a grammar would be very inefficient for a dynamic programming algorithm, it allows our sampler to permute the internal structure of the trees more easily.</S>
+    <S sid="104" ssid="58">Our model is parameterised by a vector of hyperparameters, &#945; = which control the sparsity assumption over various model parameters.</S>
+    <S sid="105" ssid="59">We could optimise each concentration parameter on the training corpus by hand, however this would be quite an onerous task.</S>
+    <S sid="106" ssid="60">Instead we perform inference over the hyperparameters following Goldwater and Griffiths (2007) by defining a vague gamma prior on each concentration parameter, &#945;x &#8212; Gamma(10&#8722;4,104).</S>
+    <S sid="107" ssid="61">This hyper-prior is relatively benign, allowing the model to consider a wide range of values for the hyperparameter.</S>
+    <S sid="108" ssid="62">We sample a new value for each &#945;x using a log-normal distribution with mean &#945;x and variance 0.3, which is then accepted into the distribution p(&#945;x|d, &#945;&#8722;) using the MetropolisHastings algorithm.</S>
+    <S sid="109" ssid="63">Unlike the Gibbs updates, this calculation cannot be distributed over a cluster (see Section 4.4) and thus is very costly.</S>
+    <S sid="110" ssid="64">Therefore for small corpora we re-sample the hyperparameter after every pass through the corpus, for larger experiments we only re-sample every 20 passes.</S>
+    <S sid="111" ssid="65">While employing a collapsed Gibbs sampler allows us to efficiently perform inference over the massive space of possible grammars, it induces dependencies between all the sentences in the training corpus.</S>
+    <S sid="112" ssid="66">These dependencies make it difficult to scale our approach to larger corpora by distributing it across a number of processors.</S>
+    <S sid="113" ssid="67">Recent work (Newman et al., 2007; Asuncion et al., 2008) suggests that good practical parallel performance can be achieved by having multiple processors independently sample disjoint subsets of the corpus.</S>
+    <S sid="114" ssid="68">Each process maintains a set of rule counts for the entire corpus and communicates the changes it has made to its section of the corpus only after sampling every sentence in that section.</S>
+    <S sid="115" ssid="69">In this way each process is sampling according to a slightly &#8216;out-of-date&#8217; distribution.</S>
+    <S sid="116" ssid="70">However, as we confirm in Section 5 the performance of this approximation closely follows the exact collapsed Gibbs sampler.</S>
+    <S sid="117" ssid="71">Although we could use our model directly as a decoder to perform translation, its simple hierarchical reordering parameterisation is too weak to be effective in this mode.</S>
+    <S sid="118" ssid="72">Instead we use our sampler to sample a distribution over translation models for state-of-the-art phrase based (Moses) and hierarchical (Hiero) decoders (Koehn et al., 2007; Chiang, 2007).</S>
+    <S sid="119" ssid="73">Each sample from our model defines a hierarchical alignment on which we can apply the standard extraction heuristics of these models.</S>
+    <S sid="120" ssid="74">By extracting from a sequence of samples we can directly infer a distribution over phrase tables or Hiero grammars.</S>
+  </SECTION>
+  <SECTION title="5 Evaluation" number="5">
+    <S sid="121" ssid="1">Our evaluation aims to determine whether the phrase/SCFG rule distributions created by sampling from the model described in Section 4 impact upon the performance of state-of-theart translation systems.</S>
+    <S sid="122" ssid="2">We conduct experiments translating both Chinese (high reordering) and Arabic (low reordering) into English.</S>
+    <S sid="123" ssid="3">We use the GIZA++ implementation of IBM Model 4 (Brown et al., 1993; Och and Ney, 2003) coupled with the phrase extraction heuristics of Koehn et al. (2003) and the SCFG rule extraction heuristics of Chiang (2007) as our benchmark.</S>
+    <S sid="124" ssid="4">All the SCFG models employ a single X non-terminal, we leave experiments with multiple non-terminals to future work.</S>
+    <S sid="125" ssid="5">Our hypothesis is that our grammar based induction of translation units should benefit language pairs with significant reordering more than those with less.</S>
+    <S sid="126" ssid="6">While for mostly monotone translation pairs, such as Arabic-English, the benchmark GIZA++-based system is well suited due to its strong monotone bias (the sequential Markov model and diagonal growing heuristic).</S>
+    <S sid="127" ssid="7">We conduct experiments on both small and large corpora to allow a range of alignment qualities and also to verify the effectiveness of our distributed approximation of the Bayesian inference.</S>
+    <S sid="128" ssid="8">The samplers are initialised with trees created from GIZA++ Model 4 alignments, altered such that they are consistent with our ternary grammar.</S>
+    <S sid="129" ssid="9">This is achieved by using the factorisation algorithm of Zhang et al. (2008a) to first create initial trees.</S>
+    <S sid="130" ssid="10">Where these factored trees contain nodes with mixed terminals and non-terminals, or more than three non-terminals, we discard alignment points until the node factorises correctly.</S>
+    <S sid="131" ssid="11">As the alignments contain many such non-factorisable nodes, these trees are of poor quality.</S>
+    <S sid="132" ssid="12">However, all samplers used in these experiments are first &#8216;burnt-in&#8217; for 1000 full passes through the data.</S>
+    <S sid="133" ssid="13">This allows the sampler to diverge from its initialisation condition, and thus gives us confidence that subsequent samples will be drawn from the posterior.</S>
+    <S sid="134" ssid="14">An expectation over phrase tables and Hiero grammars is built from every 50th sample after the burn-in, up until the 1500th sample.</S>
+    <S sid="135" ssid="15">We evaluate the translation models using IBM BLEU (Papineni et al., 2001).</S>
+    <S sid="136" ssid="16">Table 1 lists the statistics of the corpora used in these experiments.</S>
+    <S sid="137" ssid="17">Firstly we evaluate models trained on a small Chinese-English corpus using a Gibbs sampler on a single CPU.</S>
+    <S sid="138" ssid="18">This corpus consists of transcribed utterances made available for the IWSLT workshop (Eck and Hori, 2005).</S>
+    <S sid="139" ssid="19">The sparse counts and high reordering for this corpus means the GIZA++ model produces very poor alignments.</S>
+    <S sid="140" ssid="20">Table 2 shows the results for the benchmark Moses and Hiero systems on this corpus using both the heuristic phrase estimation, and our proposed Bayesian SCFG model.</S>
+    <S sid="141" ssid="21">We can see that our model has a slight advantage.</S>
+    <S sid="142" ssid="22">When we look at the grammars extracted by the two models we note that the SCFG model creates considerably more translation rules.</S>
+    <S sid="143" ssid="23">Normally this would suggest the alignments of the SCFG model are a lot sparser (more unaligned tokens) than those of the heuristic, however this is not the case.</S>
+    <S sid="144" ssid="24">The projected SCFG derivations actually produce more alignment points.</S>
+    <S sid="145" ssid="25">However these alignments are much more locally consistent, containing fewer spurious off-diagonal alignments, than the heuristic (see Figure 5), and thus produce far more valid phrases/rules.</S>
+    <S sid="146" ssid="26">We now test our model&#8217;s performance on a larger corpus, representing a realistic SMT experiment with millions of words and long sentences.</S>
+    <S sid="147" ssid="27">The Chinese-English training data consists of the FBIS corpus (LDC2003E14) and the first 100k sentences from the Sinorama corpus (LDC2005E47).</S>
+    <S sid="148" ssid="28">The Arabic-English training data consists of the eTIRR corpus (LDC2004E72), the Arabic news corpus (LDC2004T17), the Ummah corpus (LDC2004T18), and the sentences with confidence c &gt; 0.995 in the ISI automatically extracted web parallel corpus (LDC2006T02).</S>
+    <S sid="149" ssid="29">The Chinese text was segmented with a CRF-based Chinese segmenter optimized for MT (Chang et al., 2008).</S>
+    <S sid="150" ssid="30">The Arabic text was preprocessed according to the D2 scheme of Habash and Sadat (2006), which was identified as optimal for corpora this size.</S>
+    <S sid="151" ssid="31">The parameters of the NIST systems were tuned using Och&#8217;s algorithm to maximize BLEU on the MT02 test set (Och, 2003).</S>
+    <S sid="152" ssid="32">To evaluate whether the approximate distributed inference algorithm described in Section 4.4 is effective, we compare the posterior probability of the training corpus when using a single machine, and when the inference is distributed on an eight core machine.</S>
+    <S sid="153" ssid="33">Figure 6 plots the mean posterior and standard error for five independent runs for each scenario.</S>
+    <S sid="154" ssid="34">Both sets of runs performed hyperparameter inference every twenty passes through the data.</S>
+    <S sid="155" ssid="35">It is clear from the training curves that the distributed approximation tracks the corpus probability of the correct sampler sufficiently closely.</S>
+    <S sid="156" ssid="36">This concurs with the findings of Newman et al. (2007) who also observed very little empirical difference between the sampler and its distributed approximation.</S>
+    <S sid="157" ssid="37">Tables 3 and 4 show the result on the two NIST corpora when running the distributed sampler on a single 8-core machine.5 These scores tally with our initial hypothesis: that the hierarchical structure of our model suits languages that exhibit less monotone reordering.</S>
+    <S sid="158" ssid="38">Figure 5 shows the projected alignment of a headline from the thousandth sample on the NIST Chinese data set.</S>
+    <S sid="159" ssid="39">The effect of the grammar based alignment can clearly be seen.</S>
+    <S sid="160" ssid="40">Where the combination of GIZA++ and the heuristics creates outlier alignments that impede rule extraction, the SCFG imposes a more rigid hierarchical structure on the alignments.</S>
+    <S sid="161" ssid="41">We hypothesise that this property may be particularly useful for syntactic translation models which often have difficulty with inconsistent word alignments not corresponding to syntactic structure.</S>
+    <S sid="162" ssid="42">The combined evidence of the ability of our Gibbs sampler to improve posterior likelihood (Figure 6) and our translation experiments demonstrate that we have developed a scalable and effective method for performing inference over phrasal SCFG, without compromising the strong theoretical underpinnings of our model.</S>
+  </SECTION>
+  <SECTION title="6 Discussion and Conclusion" number="6">
+    <S sid="163" ssid="1">We have presented a Bayesian model of SCFG induction capable of capturing phrasal units of translational equivalence.</S>
+    <S sid="164" ssid="2">Our novel Gibbs sampler over synchronous derivation trees can efficiently draw samples from the posterior, overcoming the limitations of previous models when dealing with long sentences.</S>
+    <S sid="165" ssid="3">This avoids explicitly representing the full derivation forest required by dynamic programming approaches, and thus we are able to perform inference without resorting to heuristic restrictions on the model.</S>
+    <S sid="166" ssid="4">Initial experiments suggest that this model performs well on languages for which the monotone bias of existing alignment and heuristic phrase extraction approaches fail.</S>
+    <S sid="167" ssid="5">These results open the way for the development of more sophisticated models employing grammars capable of capturing a wide range of translation phenomena.</S>
+    <S sid="168" ssid="6">In future we envision it will be possible to use the techniques developed here to directly induce grammars which match state-of-the-art decoders, such as Hiero grammars or tree substitution grammars of the form used by Galley et al. (2004).</S>
+  </SECTION>
+  <SECTION title="Acknowledgements" number="7">
+    <S sid="169" ssid="1">The authors acknowledge the support of the EPSRC (Blunsom &amp; Osborne, grant EP/D074959/1; Cohn, grant GR/T04557/01) and the GALE program of the Defense Advanced Research Projects Agency, Contract No.</S>
+    <S sid="170" ssid="2">HR001106-2-001 (Dyer).</S>
+  </SECTION>
+</PAPER>

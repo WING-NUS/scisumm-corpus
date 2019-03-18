@@ -1,0 +1,188 @@
+<PAPER>
+  <S sid="0">Applying Many-to-Many Alignments and Hidden Markov Models to Letter-to-Phoneme Conversion</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Letter-to-phoneme conversion generally requires aligned training data of letters and phonemes.</S>
+    <S sid="2" ssid="2">Typically, the alignments are limited to one-to-one alignments.</S>
+    <S sid="3" ssid="3">We present a novel technique of training with many-to-many alignments.</S>
+    <S sid="4" ssid="4">A letter chunking bigram prediction manages double letters and double phonemes automatically as opposed to preprocessing with fixed lists.</S>
+    <S sid="5" ssid="5">We also apply an HMM method in conjunction with a local classification model to predict a global phoneme sequence given a word.</S>
+    <S sid="6" ssid="6">The many-to-many alignments result in significant improvements over the traditional one-to-one approach.</S>
+    <S sid="7" ssid="7">Our system achieves state-of-the-art performance on several languages and data sets.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="8" ssid="1">Letter-to-phoneme (L2P) conversion requires a system to produce phonemes that correspond to a given written word.</S>
+    <S sid="9" ssid="2">Phonemes are abstract representations of how words should be pronounced in natural speech, while letters or graphemes are representations of words in written language.</S>
+    <S sid="10" ssid="3">For example, the phonemes for the word phoenix are [ f i n &#9632; k s ].</S>
+    <S sid="11" ssid="4">The L2P task is a crucial part of speech synthesis systems, as converting input text (graphemes) into phonemes is the first step in representing sounds.</S>
+    <S sid="12" ssid="5">L2P conversion can also help improve performance in spelling correction (Toutanova and Moore, 2001).</S>
+    <S sid="13" ssid="6">Unfortunately, proper nouns and unseen words prevent a table look-up approach.</S>
+    <S sid="14" ssid="7">It is infeasible to construct a lexical database that includes every word in the written language.</S>
+    <S sid="15" ssid="8">Likewise, orthographic complexity of many languages prevents us from using hand-designed conversion rules.</S>
+    <S sid="16" ssid="9">There are always exceptional rules that need to be added to cover a large vocabulary set.</S>
+    <S sid="17" ssid="10">Thus, an automatic L2P system is desirable.</S>
+    <S sid="18" ssid="11">Many data-driven techniques have been proposed for letter-to-phoneme conversion systems, including pronunciation by analogy (Marchand and Damper, 2000), constraint satisfaction (Van Den Bosch and Canisius, 2006), Hidden Markov Model (Taylor, 2005), decision trees (Black et al., 1998), and neural networks (Sejnowski and Rosenberg, 1987).</S>
+    <S sid="19" ssid="12">The training data usually consists of written words and their corresponding phonemes, which are not aligned; there is no explicit information indicating individual letter and phoneme relationships.</S>
+    <S sid="20" ssid="13">These relationships must be postulated before a prediction model can be trained.</S>
+    <S sid="21" ssid="14">Previous work has generally assumed one-to-one alignment for simplicity (Daelemans and Bosch, 1997; Black et al., 1998; Damper et al., 2005).</S>
+    <S sid="22" ssid="15">An expectation maximization (EM) based algorithm (Dempster et al., 1977) is applied to train the aligners.</S>
+    <S sid="23" ssid="16">However, there are several problems with this approach.</S>
+    <S sid="24" ssid="17">Letter strings and phoneme strings are not typically the same length, so null phonemes and null letters must be introduced to make oneto-one-alignments possible, Furthermore, two letters frequently combine to produce a single phoneme (double letters), and a single letter can sometimes produce two phonemes (double phonemes).</S>
+    <S sid="25" ssid="18">To help address these problems, we propose an automatic many-to-many aligner and incorporate it into a generic classification predictor for letter-tophoneme conversion.</S>
+    <S sid="26" ssid="19">Our many-to-many aligner automatically discovers double phonemes and double letters, as opposed to manually preprocessing data by merging phonemes using fixed lists.</S>
+    <S sid="27" ssid="20">To our knowledge, applying many-to-many alignments to letter-to-phoneme conversion is novel.</S>
+    <S sid="28" ssid="21">Once we have our many-to-many alignments, we use that data to train a prediction model.</S>
+    <S sid="29" ssid="22">Many phoneme prediction systems are based on local prediction methods, which focus on predicting an individual phoneme given each letter in a word.</S>
+    <S sid="30" ssid="23">Conversely, a method like pronunciation by analogy (PbA) (Marchand and Damper, 2000) is considered a global prediction method: predicted phoneme sequences are considered as a whole.</S>
+    <S sid="31" ssid="24">Recently, Van Den Bosch and Canisius (2006) proposed trigram class prediction, which incorporates a constraint satisfaction method to produce a global prediction for letter-to-phoneme conversion.</S>
+    <S sid="32" ssid="25">Both PbA and trigram class prediction show improvement over predicting individual phonemes, confirming that L2P systems can benefit from incorporating the relationship between phonemes in a sequence.</S>
+    <S sid="33" ssid="26">In order to capitalize on the information found in phoneme sequences, we propose to apply an HMM method after a local phoneme prediction process.</S>
+    <S sid="34" ssid="27">Given a candidate list of two or more possible phonemes, as produced by the local predictor, the HMM will find the best phoneme sequence.</S>
+    <S sid="35" ssid="28">Using this approach, our system demonstrates an improvement on several language data sets.</S>
+    <S sid="36" ssid="29">The rest of the paper is structured as follows.</S>
+    <S sid="37" ssid="30">We describe the letter-phoneme alignment methods including a standard one-to-one alignment method and our many-to-many approach in Section 2.</S>
+    <S sid="38" ssid="31">The alignment methods are used to align graphemes and phonemes before the phoneme prediction models can be trained from the training examples.</S>
+    <S sid="39" ssid="32">In Section 3, we present a letter chunk prediction method that automatically discovers double letters in grapheme sequences.</S>
+    <S sid="40" ssid="33">It incorporates our manyto-many alignments with prediction models.</S>
+    <S sid="41" ssid="34">In Section 4, we present our application of an HMM method to the local prediction results.</S>
+    <S sid="42" ssid="35">The results of experiments on several language data sets are discussed in Section 5.</S>
+    <S sid="43" ssid="36">We conclude and propose future work in Section 6.</S>
+  </SECTION>
+  <SECTION title="2 Letter-phoneme alignment" number="2">
+    <S sid="44" ssid="1">There are two main problems with one-to-one alignments: First, consider the double letter problem.</S>
+    <S sid="45" ssid="2">In most cases when the grapheme sequence is longer than the phoneme sequence, it is because some letters are silent.</S>
+    <S sid="46" ssid="3">For example, in the word abode, pronounced [ a b o d ], the letter a produces a null phoneme (E).</S>
+    <S sid="47" ssid="4">This is well captured by one-to-one aligners.</S>
+    <S sid="48" ssid="5">However, the longer grapheme sequence can also be generated by double letters; for example, in the word king, pronounced [ k i ], the letters ng together produce the phoneme [ ].</S>
+    <S sid="49" ssid="6">In this case, one-to-one aligners using null phonemes will produce an incorrect alignment.</S>
+    <S sid="50" ssid="7">This can cause problems for the phoneme prediction model by training it to produce a null phoneme from either of the letters n or g. In the double phoneme case, a new phoneme is introduced to represent a combination of two (or more) phonemes.</S>
+    <S sid="51" ssid="8">For example, in the word fume with phoneme sequence [ f j u m ], the letter u produces both the [ j ] and [ u ] phonemes.</S>
+    <S sid="52" ssid="9">There are two possible solutions for constructing a oneto-one alignment in this case.</S>
+    <S sid="53" ssid="10">The first is to create a new phoneme by merging the phonemes [ j ] and [ u ].</S>
+    <S sid="54" ssid="11">This requires constructing a fixed list of new phonemes before beginning the alignment process.</S>
+    <S sid="55" ssid="12">The second solution is to add a null letter in the grapheme sequence.</S>
+    <S sid="56" ssid="13">However, the null letter not only confuses the phoneme prediction model, but also complicates the the phoneme generation phase.</S>
+    <S sid="57" ssid="14">For comparison with our many-to-many approach, we implement a one-to-one aligner based on the epsilon scattering method (Black et al., 1998).</S>
+    <S sid="58" ssid="15">The method applies the EM algorithm to estimate the probability of mapping a letter l to a phoneme p, P(l, p).</S>
+    <S sid="59" ssid="16">The initial probability table starts by mapping all possible alignments between letters and phonemes for each word in the training data, introducing all possible null phoneme positions.</S>
+    <S sid="60" ssid="17">For example, the word/phoneme-sequence pair abode [ &#10053; b o d ] has five possible positions where a null phoneme can be added to make an alignment.</S>
+    <S sid="61" ssid="18">The training process uses the initial probability table P(l, p) to find the best possible alignments for each word using the Dynamic Time Warping (DTW) algorithm (Sankoff and Kruskal, 1999).</S>
+    <S sid="62" ssid="19">At each iteration, the probability table P(l, p) is re-calculated based on the best alignments found in that iteration.</S>
+    <S sid="63" ssid="20">Finding the best alignments and re-calculating the probability table continues iteratively until there is no change in the probability table.</S>
+    <S sid="64" ssid="21">The final probability table P(l, p) is used to find one-to-one alignments given graphemes and phonemes.</S>
+    <S sid="65" ssid="22">We present a many-to-many alignment algorithm that overcomes the limitations of one-to-one aligners.</S>
+    <S sid="66" ssid="23">The training of the many-to-many aligner is an extension of the forward-backward training of a one-to-one stochastic transducer presented in (Ristad and Yianilos, 1998).</S>
+    <S sid="67" ssid="24">Partial counts are counts of all possible mappings from letters to phonemes that are collected in the -y table, while mapping probabilities (initially uniform) are maintained in the S table.</S>
+    <S sid="68" ssid="25">For each grapheme-/phoneme-sequence pair (x, y), the EM-many2many function (Algorithm 1) calls the Expectation-many2many function (Algorithm 2) to collect partial counts.</S>
+    <S sid="69" ssid="26">T and V are the lengths of x and y respectively.</S>
+    <S sid="70" ssid="27">The maxX and maxY variables are the maximum lengths of subsequences used in a single mapping operation for x and y.</S>
+    <S sid="71" ssid="28">(For the task at hand, we set both maxX and maxY to 2.)</S>
+    <S sid="72" ssid="29">The Maximization-step function simply normalizes the partial counts to create a probability distribution.</S>
+    <S sid="73" ssid="30">Normalization can be done over the whole table to create a joint distribution or per grapheme to create a conditional distribution.</S>
+    <S sid="74" ssid="31">The Forward-many2many function (Algorithm 3) fills in the table &#945;, with each entry &#945;(t, v) being the sum of all paths through the transducer that generate the sequence pair (xi, y&#65533;&#65533;).</S>
+    <S sid="75" ssid="32">Analogously, the Backward-many2many function fills in Q, with each entry Q(t, v) being the sum of all paths through the transducer that generate the sequence pair (xt , yr).</S>
+    <S sid="76" ssid="33">The constants DELX and DELY indicate whether or not deletions are allowed on either side.</S>
+    <S sid="77" ssid="34">In our system, we allow letter deletions (i.e. mapping of letters to null phoneme), but not phoneme deletions.</S>
+    <S sid="78" ssid="35">Expectation-many2many first calls the two functions to fill the &#945; and Q tables, and then uses the probabilities to calculate partial counts for every possible mapping in the sequence pair.</S>
+    <S sid="79" ssid="36">The partial count collected at positions t and v in the sequence pair is the sum of all paths that generate the sequence pair and go through (t, v), divided by the sum of all paths that generate the entire sequence pair (&#945;(T, V )).</S>
+    <S sid="80" ssid="37">Once the probabilities are learned, the Viterbi algorithm can be used to produce the most likely alignment as in the following equations.</S>
+    <S sid="81" ssid="38">Back pointers to maximizing arguments are kept at each step so the alignment can be reconstructed.</S>
+    <S sid="82" ssid="39">Given a set of words and their phonemes, alignments are made across graphemes and phonemes.</S>
+    <S sid="83" ssid="40">For example, the word phoenix, with phonemes [ f i n i k s ], is aligned as: ph oe n i x || f i n i ks The letters ph are an example of the double letter problem (mapping to the single phoneme [ f ]), while the letter x is an example of the double phoneme problem (mapping to both [ k ] and [ s ] in the phoneme sequence).</S>
+    <S sid="84" ssid="41">These alignments provide more accurate grapheme-to-phoneme relationships for a phoneme prediction model.</S>
+  </SECTION>
+  <SECTION title="3 Letter chunking" number="3">
+    <S sid="85" ssid="1">Our new alignment scheme provides more accurate alignments, but it is also more complex &#8212; sometimes a prediction model should predict two phonemes for a single letter, while at other times the prediction model should make a prediction based on a pair of letters.</S>
+    <S sid="86" ssid="2">In order to distinguish between these two cases, we propose a method called &#8220;letter chunking&#8221;.</S>
+    <S sid="87" ssid="3">Once many-to-many alignments are built across graphemes and phonemes, each word contains a set of letter chunks, each consisting of one or two letters aligned with phonemes.</S>
+    <S sid="88" ssid="4">Each letter chunk can be considered as a grapheme unit that contains either one or two letters.</S>
+    <S sid="89" ssid="5">In the same way, each phoneme chunk can be considered as a phoneme unit consisting of one or two phonemes.</S>
+    <S sid="90" ssid="6">Note that the double letters and double phonemes are implicitly discovered by the alignments of graphemes and phonemes.</S>
+    <S sid="91" ssid="7">They are not necessarily consistent over the training data but based on the alignments found in each word.</S>
+    <S sid="92" ssid="8">In the phoneme generation phase, the system has only graphemes available to predict phonemes, so there is no information about letter chunk boundaries.</S>
+    <S sid="93" ssid="9">We cannot simply merge any two letters that have appeared as a letter chunk in the training data.</S>
+    <S sid="94" ssid="10">For example, although the letter pair sh is usually pronounced as a single phoneme in English (e.g. gash [ g ae f ]), this is not true universally (e.g. gasholder [ g ae s h o l d @ r ]).</S>
+    <S sid="95" ssid="11">Therefore, we implement a letter chunk prediction model to provide chunk boundaries given only graphemes.</S>
+    <S sid="96" ssid="12">In our system, a bigram letter chunking prediction automatically discovers double letters based on instance-based learning (Aha et al., 1991).</S>
+    <S sid="97" ssid="13">Since the many-to-many alignments are drawn from 1-0, 1-1, 1-2, 2-0, and 2-1 relationships, each letter in a word can form a chunk with its neighbor or stand alone as a chunk itself.</S>
+    <S sid="98" ssid="14">We treat the chunk prediction as a binary classification problem.</S>
+    <S sid="99" ssid="15">We generate all the bigrams in a word and determine whether each bigram should be a chunk based on its context.</S>
+    <S sid="100" ssid="16">Table 1 shows an example of how chunking prediction proceeds for the word longs.</S>
+    <S sid="101" ssid="17">Letters li&#8722;2, li&#8722;1, li+1, and li+2 are the context of the bigram li; chunk = 1 if the letter bigram li is a chunk.</S>
+    <S sid="102" ssid="18">Otherwise, the chunk simply consists of an individual letter.</S>
+    <S sid="103" ssid="19">In the example, the word is decomposed as l|o|ng|s, which can be aligned with its pronunciation [ l  |6  |N  |z ].</S>
+    <S sid="104" ssid="20">If the model happens to predict consecutive overlapping chunks, only the first of the two is accepted.</S>
+  </SECTION>
+  <SECTION title="4 Phoneme prediction" number="4">
+    <S sid="105" ssid="1">Most of the previously proposed techniques for phoneme prediction require training data to be aligned in one-to-one alignments.</S>
+    <S sid="106" ssid="2">Those models approach the phoneme prediction task as a classification problem: a phoneme is predicted for each letter independently without using other predictions from the same word.</S>
+    <S sid="107" ssid="3">These local predictions assume independence of predictions, even though there are clearly interdependencies between predictions.</S>
+    <S sid="108" ssid="4">Predicting each phoneme in a word without considering other assignments may not satisfy the main goal of finding a set of phonemes that work together to form a word.</S>
+    <S sid="109" ssid="5">A trigram phoneme prediction with constraint satisfaction inference (Van Den Bosch and Canisius, 2006) was proposed to improve on local predictions.</S>
+    <S sid="110" ssid="6">From each letter unit, it predicts a trigram class that has the target phoneme in the middle surrounded by its neighboring phonemes.</S>
+    <S sid="111" ssid="7">The phoneme sequence is generated in such a way that it satisfies the trigram, bigram and unigram constraints.</S>
+    <S sid="112" ssid="8">The overlapping predictions improve letter-to-phoneme performance mainly by repairing imperfect one-to-one alignments.</S>
+    <S sid="113" ssid="9">However, the trigram class prediction tends to be more complex as it increases the number of target classes.</S>
+    <S sid="114" ssid="10">For English, there are only 58 unigram phoneme classes but 13,005 tri-gram phoneme classes.</S>
+    <S sid="115" ssid="11">The phoneme combinations in the tri-gram classes are potentially confusing to the prediction model because the model has more target classes in its search space while it has access to the same number of local features in the grapheme side.</S>
+    <S sid="116" ssid="12">We propose to apply a supervised HMM method embedded with local classification to find the most likely sequence of phonemes given a word.</S>
+    <S sid="117" ssid="13">An HMM is a statistical model that combines the observation likelihood (probability ofphonemes given letters) and transition likelihood (probability of current phoneme given previous phonemes) to predict each phoneme.</S>
+    <S sid="118" ssid="14">Our approach differs from a basic Hidden Markov Model for letter-to-phoneme system (Taylor, 2005) that formulates grapheme sequences as observation states and phonemes as hidden states.</S>
+    <S sid="119" ssid="15">The basic HMM system for L2P does not provide good performance on the task because it lacks context information on the grapheme side.</S>
+    <S sid="120" ssid="16">In fact, a pronunciation depends more on graphemes than on the neighboring phonemes; therefore, the transition probability (language model) should affect the prediction decisions only when there is more than one possible phoneme that can be assigned to a letter.</S>
+    <S sid="121" ssid="17">Our approach is to use an instance-based learning technique as a local predictor to generate a set of phoneme candidates for each letter chunk, given its context in a word.</S>
+    <S sid="122" ssid="18">The local predictor produces confidence values for Each candidate phoneme.</S>
+    <S sid="123" ssid="19">We normalize the confidence values into values between 0 and 1, and treat them as the emission probabilities, while the transition probabilities are derived directly from the phoneme sequences in the training data.</S>
+    <S sid="124" ssid="20">The pronunciation is generated by considering both phoneme prediction values and transition probabilities.</S>
+    <S sid="125" ssid="21">The optimal phoneme sequence is found with the Viterbi search algorithm.</S>
+    <S sid="126" ssid="22">We limit the size of the context to n = 3 in order to avoid overfitting and minimize the complexity of the model.</S>
+    <S sid="127" ssid="23">Since the candidate set is from the classifier, the search space is limited to a small number of candidate phonemes (1 to 5 phonemes in most cases).</S>
+    <S sid="128" ssid="24">The HMM postprocessing is independent of local predictions from the classifier.</S>
+    <S sid="129" ssid="25">Instead, it selects the best phoneme sequence from a set of possible local predictions by taking advantage of the phoneme language model, which is trained on the phoneme sequences in the training data.</S>
+  </SECTION>
+  <SECTION title="5 Evaluation" number="5">
+    <S sid="130" ssid="1">We evaluated our approaches on CMUDict, Brulex, and German, Dutch and English Celex corpora (Baayen et al., 1996).</S>
+    <S sid="131" ssid="2">The corpora (except English Celex) are available as part of the Letterto-Phoneme Conversion PRONALSYL Challenge1.</S>
+    <S sid="132" ssid="3">For the English Celex data, we removed duplicate words as well as words shorter than four letters.</S>
+    <S sid="133" ssid="4">Table 2 shows the number of words and the language of each corpus.</S>
+    <S sid="134" ssid="5">For all of our experiments, our local classifier for predicting phonemes is the instance-based learning IB1 algorithm (Aha et al., 1991) implemented in the TiMBL package (Daelemans et al., 2004).</S>
+    <S sid="135" ssid="6">The HMM technique is applied as post processing to the instance-based learning to provide a sequence prediction.</S>
+    <S sid="136" ssid="7">In addition to comparing one-toone and many-to-many alignments, we also compare our method to the constraint satisfaction inference method as described in Section 4.</S>
+    <S sid="137" ssid="8">The results are reported in word accuracy rate based on the 10-fold cross validation, with the mean and standard deviation values.</S>
+    <S sid="138" ssid="9">Table 3 shows word accuracy performance across a variety of methods.</S>
+    <S sid="139" ssid="10">We show results comparing the one-to-one aligner described in Section 2.1 and the one-to-one aligner provided by the PRONALSYL challenge.</S>
+    <S sid="140" ssid="11">The PRONALSYS one-to-one alignments are taken directly from the PRONALSYL challenge, whose method is based on an EM algorithm.</S>
+    <S sid="141" ssid="12">For both alignments, we use instancebased learning as the prediction model.</S>
+    <S sid="142" ssid="13">Overall, our one-to-one alignments outperform the alignments provided by the data sets for all corpora.</S>
+    <S sid="143" ssid="14">The main difference between the PRONALSYS one-to-one alignment and our one-to-one alignment is that our aligner does not allow a null letter on the grapheme side.</S>
+    <S sid="144" ssid="15">Consider the word abomination [ a b n m i n e f a n ]: the first six letters and phonemes are aligned the same way by both aligners (abomin- [ a b n m i n ]).</S>
+    <S sid="145" ssid="16">However, the two aligners produce radically different alignments for the last five letters.</S>
+    <S sid="146" ssid="17">The alignment provided by the PRONALSYS one-to-one alignments is: e f a n Clearly, the latter alignment provides more information on how the graphemes map to the phonemes.</S>
+    <S sid="147" ssid="18">Table 3 also shows that impressive improvements for all evaluated corpora are achieved by using many-to-many alignments rather than one-to-one alignments (1-1 align vs. M-M align).</S>
+    <S sid="148" ssid="19">The significant improvements, ranging from 2.7% to 7.6% in word accuracy, illustrate the importance of having more precise alignments.</S>
+    <S sid="149" ssid="20">For example, we can now obtain the correct alignment for the second part of the word abomination: Instead of adding a null phoneme in the phoneme sequence, the many-to-many aligner maps the letter chunk ti to a single phoneme.</S>
+    <S sid="150" ssid="21">The HMM approach is based on the same hypothesis as the constraint satisfaction inference (CSInf) (Van Den Bosch and Canisius, 2006).</S>
+    <S sid="151" ssid="22">The results in Table 3 (1-1+CSInf vs. 1-1+HMM) show that the HMM approach consistently improves performance over the baseline system (1-1 align), while the CSInf degrades performance on the Brulex data set.</S>
+    <S sid="152" ssid="23">For the CSInf method, most errors are caused by trigram confusion in the prediction phase.</S>
+    <S sid="153" ssid="24">The results of our best system, which combines the HMM method with the many-to-many alignments (M-M+HMM), are better than the results reported in (Black et al., 1998) on both the CMUDict and German Celex data sets.</S>
+    <S sid="154" ssid="25">This is true even though Black et al. (1998) use explicit lists of letterphoneme mappings during the alignment process, while our approach is a fully automatic system that does not require any handcrafted list.</S>
+  </SECTION>
+  <SECTION title="6 Conclusion and future work" number="6">
+    <S sid="155" ssid="1">We presented a novel technique of applying manyto-many alignments to the letter-to-phoneme conversion problem.</S>
+    <S sid="156" ssid="2">The many-to-many alignments relax the constraint assumptions of the traditional one-toone alignments.</S>
+    <S sid="157" ssid="3">Letter chunking bigram prediction incorporates many-to-many alignments into the conventional phoneme prediction models.</S>
+    <S sid="158" ssid="4">Finally, the HMM technique yields global phoneme predictions based on language models.</S>
+    <S sid="159" ssid="5">Impressive word accuracy improvements are achieved when the many-to-many alignments are applied over the baseline system.</S>
+    <S sid="160" ssid="6">On several languages and data sets, using the many-to-many alignments, word accuracy improvements ranged from 2.7% to 7.6%, as compared to one-to-one alignments.</S>
+    <S sid="161" ssid="7">The HMM cooperating with the local predictions shows slight improvements when it is applied to the manyto-many alignments.</S>
+    <S sid="162" ssid="8">We illustrated that the HMM technique improves the word accuracy more consistently than the constraint-based approach.</S>
+    <S sid="163" ssid="9">Moreover, the HMM can be easily incorporated into the many-to-many alignment approach.</S>
+    <S sid="164" ssid="10">We are investigating the possibility of integrating syllabification information into our system.</S>
+    <S sid="165" ssid="11">It has been reported that syllabification can potentially improve pronunciation performance in English (Marchand and Damper, 2005).</S>
+    <S sid="166" ssid="12">We plan to explore other sequence prediction approaches, such as discriminative training methods (Collins, 2004), and sequence tagging with Support Vector Machines (SVM-HMM) (Altun et al., 2003) to incorporate more features (context information) into the phoneme generation model.</S>
+    <S sid="167" ssid="13">We are also interested in applying our approach to other related areas such as morphology and transliteration.</S>
+  </SECTION>
+  <SECTION title="Acknowledgements" number="7">
+    <S sid="168" ssid="1">We would like to thank Susan Bartlett, Colin Cherry, and other members of the Natural Language Processing research group at University of Alberta for their helpful comments and suggestions.</S>
+    <S sid="169" ssid="2">This research was supported by the Natural Sciences and Engineering Research Council of Canada.</S>
+  </SECTION>
+</PAPER>

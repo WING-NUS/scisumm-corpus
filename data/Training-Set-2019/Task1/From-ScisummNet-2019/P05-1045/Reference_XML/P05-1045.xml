@@ -1,0 +1,183 @@
+<PAPER>
+  <S sid="0">Incorporating Non-Local Information Into Information Extraction Systems By Gibbs Sampling</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Most current statistical natural language processing models use only local features so as to permit dynamic programming in inference, but this makes them unable to fully account for the long distance structure that is prevalent in language use.</S>
+    <S sid="2" ssid="2">We how to solve this dilemma with sama simple Monte Carlo method used to perform approximate inference in factored probabilistic models.</S>
+    <S sid="3" ssid="3">By using simulated annealing in place of Viterbi decoding in sequence models such as HMMs, CMMs, and CRFs, it is possible to incorporate non-local structure while preserving tractable inference.</S>
+    <S sid="4" ssid="4">We use this technique to augment an existing CRF-based information extraction system with long-distance dependency models, enforcing label consistency and extraction template consistency constraints.</S>
+    <S sid="5" ssid="5">This technique results in an error reduction of up to 9% over state-of-the-art systems on two established information extraction tasks.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="6" ssid="1">Most statistical models currently used in natural language processing represent only local structure.</S>
+    <S sid="7" ssid="2">Although this constraint is critical in enabling tractable model inference, it is a key limitation in many tasks, since natural language contains a great deal of nonlocal structure.</S>
+    <S sid="8" ssid="3">A general method for solving this problem is to relax the requirement of exact inference, substituting approximate inference algorithms instead, thereby permitting tractable inference in models with non-local structure.</S>
+    <S sid="9" ssid="4">One such algorithm is Gibbs sampling, a simple Monte Carlo algorithm that is appropriate for inference in any factored probabilistic model, including sequence models and probabilistic context free grammars (Geman and Geman, 1984).</S>
+    <S sid="10" ssid="5">Although Gibbs sampling is widely used elsewhere, there has been extremely little use of it in natural language processing.1 Here, we use it to add non-local dependencies to sequence models for information extraction.</S>
+    <S sid="11" ssid="6">Statistical hidden state sequence models, such as Hidden Markov Models (HMMs) (Leek, 1997; Freitag and McCallum, 1999), Conditional Markov Models (CMMs) (Borthwick, 1999), and Conditional Random Fields (CRFs) (Lafferty et al., 2001) are a prominent recent approach to information extraction tasks.</S>
+    <S sid="12" ssid="7">These models all encode the Markov property: decisions about the state at a particular position in the sequence can depend only on a small local window.</S>
+    <S sid="13" ssid="8">It is this property which allows tractable computation: the Viterbi, Forward Backward, and Clique Calibration algorithms all become intractable without it.</S>
+    <S sid="14" ssid="9">However, information extraction tasks can benefit from modeling non-local structure.</S>
+    <S sid="15" ssid="10">As an example, several authors (see Section 8) mention the value of enforcing label consistency in named entity recognition (NER) tasks.</S>
+    <S sid="16" ssid="11">In the example given in Figure 1, the second occurrence of the token Tanjug is mislabeled by our CRF-based statistical NER system, because by looking only at local evidence it is unclear whether it is a person or organization.</S>
+    <S sid="17" ssid="12">The first occurrence of Tanjug provides ample evidence that it is an organization, however, and by enforcing label consistency the system should be able to get it right.</S>
+    <S sid="18" ssid="13">We show how to incorporate constraints of this form into a CRF model by using Gibbs sampling instead of the Viterbi algorithm as our inference procedure, and demonstrate that this technique yields significant improvements on two established IE tasks.</S>
+    <S sid="19" ssid="14">In hidden state sequence models such as HMMs, CMMs, and CRFs, it is standard to use the Viterbi algorithm, a dynamic programming algorithm, to infer the most likely hidden state sequence given the input and the model (see, e.g., Rabiner (1989)).</S>
+    <S sid="20" ssid="15">Although this is the only tractable method for exact computation, there are other methods for computing an approximate solution.</S>
+    <S sid="21" ssid="16">Monte Carlo methods are a simple and effective class of methods for approximate inference based on sampling.</S>
+    <S sid="22" ssid="17">Imagine we have a hidden state sequence model which defines a probability distribution over state sequences conditioned on any given input.</S>
+    <S sid="23" ssid="18">With such a model M we should be able to compute the conditional probability PM(s|o) of any state sequence s = {s0, ... , sN} given some observed input sequence o = {o0, ... , oN}.</S>
+    <S sid="24" ssid="19">One can then sample sequences from the conditional distribution defined by the model.</S>
+    <S sid="25" ssid="20">These samples are likely to be in high probability areas, increasing our chances of finding the maximum.</S>
+    <S sid="26" ssid="21">The challenge is how to sample sequences efficiently from the conditional distribution defined by the model.</S>
+    <S sid="27" ssid="22">Gibbs sampling provides a clever solution (Geman and Geman, 1984).</S>
+    <S sid="28" ssid="23">Gibbs sampling defines a Markov chain in the space of possible variable assignments (in this case, hidden state sequences) such that the stationary distribution of the Markov chain is the joint distribution over the variables.</S>
+    <S sid="29" ssid="24">Thus it is called a Markov Chain Monte Carlo (MCMC) method; see Andrieu et al. (2003) for a good MCMC tutorial.</S>
+    <S sid="30" ssid="25">In practical terms, this means that we can walk the Markov chain, occasionally outputting samples, and that these samples are guaranteed to be drawn from the target distribution.</S>
+    <S sid="31" ssid="26">Furthermore, the chain is defined in very simple terms: from each state sequence we can only transition to a state sequence obtained by changing the state at any one position i, and the distribution over these possible transitions is just where s&#8722;i is all states except si.</S>
+    <S sid="32" ssid="27">In other words, the transition probability of the Markov chain is the conditional distribution of the label at the position given the rest of the sequence.</S>
+    <S sid="33" ssid="28">This quantity is easy to compute in any Markov sequence model, including HMMs, CMMs, and CRFs.</S>
+    <S sid="34" ssid="29">One easy way to walk the Markov chain is to loop through the positions i from 1 to N, and for each one, to resample the hidden state at that position from the distribution given in Equation 1.</S>
+    <S sid="35" ssid="30">By outputting complete sequences at regular intervals (such as after resampling all N positions), we can sample sequences from the conditional distribution defined by the model.</S>
+    <S sid="36" ssid="31">This is still a gravely inefficient process, however.</S>
+    <S sid="37" ssid="32">Random sampling may be a good way to estimate the shape of a probability distribution, but it is not an efficient way to do what we want: find the maximum.</S>
+    <S sid="38" ssid="33">However, we cannot just transition greedily to higher probability sequences at each step, because the space is extremely non-convex.</S>
+    <S sid="39" ssid="34">We can, however, borrow a technique from the study of non-convex optimization and use simulated annealing (Kirkpatrick et al., 1983).</S>
+    <S sid="40" ssid="35">Geman and Geman (1984) show that it is easy to modify a Gibbs Markov chain to do annealing; at time t we replace the distribution in (1) with where c = {c0, ... , cT} defines a cooling schedule.</S>
+    <S sid="41" ssid="36">At each step, we raise each value in the conditional distribution to an exponent and renormalize before sampling from it.</S>
+    <S sid="42" ssid="37">Note that when c = 1 the distribution is unchanged, and as c &#8594; 0 the distribution becomes sharper, and when c = 0 the distribution places all of its mass on the maximal outcome, having the effect that the Markov chain always climbs uphill.</S>
+    <S sid="43" ssid="38">Thus if we gradually decrease c from 1 to 0, the Markov chain increasingly tends to go uphill.</S>
+    <S sid="44" ssid="39">This annealing technique has been shown to be an effective technique for stochastic optimization (Laarhoven and Arts, 1987).</S>
+    <S sid="45" ssid="40">To verify the effectiveness of Gibbs sampling and simulated annealing as an inference technique for hidden state sequence models, we compare Gibbs and Viterbi inference methods for a basic CRF, without the addition of any non-local model.</S>
+    <S sid="46" ssid="41">The results, given in Table 1, show that if the Gibbs sampler is run long enough, its accuracy is the same as a Viterbi decoder.</S>
+  </SECTION>
+  <SECTION title="3 A Conditional Random Field Model" number="2">
+    <S sid="47" ssid="1">Our basic CRF model follows that of Lafferty et al. (2001).</S>
+    <S sid="48" ssid="2">We choose a CRF because it represents the state of the art in sequence modeling, allowing both discriminative training and the bi-directional flow of probabilistic information across the sequence.</S>
+    <S sid="49" ssid="3">A CRF is a conditional sequence model which represents the probability of a hidden state sequence given some observations.</S>
+    <S sid="50" ssid="4">In order to facilitate obtaining the conditional probabilities we need for Gibbs sampling, we generalize the CRF model in a way that is consistent with the Markov Network literature (see Cowell et al. (1999)): we create a linear chain of cliques, where each clique, c, represents the probabilistic relationship between an adjacent pair of states2 using a clique potential &#966;c, which is just a table containing a value for each possible state assignment.</S>
+    <S sid="51" ssid="5">The table is not a true probability distribution, as it only accounts for local interactions within the clique.</S>
+    <S sid="52" ssid="6">The clique potentials themselves are defined in terms of exponential models conditioned on features of the observation sequence, and must be instantiated for each new observation sequence.</S>
+    <S sid="53" ssid="7">The sequence of potentials in the clique chain then defines the probability of a state sequence (given the observation sequence) as where &#966;i(si&#8722;1, si) is the element of the clique potential at position i corresponding to states si&#8722;1 and si.3 Although a full treatment of CRF training is beyond the scope of this paper (our technique assumes the model is already trained), we list the features used by our CRF for the two tasks we address in Table 2.</S>
+    <S sid="54" ssid="8">During training, we regularized our exponential models with a quadratic prior and used the quasi-Newton method for parameter optimization.</S>
+    <S sid="55" ssid="9">As is customary, we used the Viterbi algorithm to infer the most likely state sequence in a CRF.</S>
+    <S sid="56" ssid="10">The clique potentials of the CRF, instantiated for some observation sequence, can be used to easily compute the conditional distribution over states at a position given in Equation 1.</S>
+    <S sid="57" ssid="11">Recall that at position i we want to condition on the states in the rest of the sequence.</S>
+    <S sid="58" ssid="12">The state at this position can be influenced by any other state that it shares a clique with; in particular, when the clique size is 2, there are 2 such cliques.</S>
+    <S sid="59" ssid="13">In this case the Markov blanket of the state (the minimal set of states that renders a state conditionally independent of all other states) consists of the two neighboring states and the observation sequence, all of which are observed.</S>
+    <S sid="60" ssid="14">The conditional distribution at position i can then be computed simply as where the factor tables F in the clique chain are already conditioned on the observation sequence.</S>
+  </SECTION>
+  <SECTION title="4 Datasets and Evaluation" number="3">
+    <S sid="61" ssid="1">We test the effectiveness of our technique on two established datasets: the CoNLL 2003 English named entity recognition dataset, and the CMU Seminar Announcements information extraction dataset.</S>
+    <S sid="62" ssid="2">This dataset was created for the shared task of the Seventh Conference on Computational Natural Language Learning (CoNLL),4 which concerned named entity recognition.</S>
+    <S sid="63" ssid="3">The English data is a collection of Reuters newswire articles annotated with four entity types: person (PER), location (LOC), organization (ORG), and miscellaneous (MISC).</S>
+    <S sid="64" ssid="4">The data is separated into a training set, a development set (testa), and a test set (testb).</S>
+    <S sid="65" ssid="5">The training set contains 945 documents, and approximately 203,000 tokens.</S>
+    <S sid="66" ssid="6">The development set has 216 documents and approximately 51,000 tokens, and the test set has 231 documents and approximately 46,000 tokens.</S>
+    <S sid="67" ssid="7">We evaluate performance on this task in the manner dictated by the competition so that results can be properly compared.</S>
+    <S sid="68" ssid="8">Precision and recall are evaluated on a per-entity basis (and combined into an F1 score).</S>
+    <S sid="69" ssid="9">There is no partial credit; an incorrect entity boundary is penalized as both a false positive and as a false negative.</S>
+    <S sid="70" ssid="10">This dataset was developed as part of Dayne Freitag&#8217;s dissertation research Freitag (1998).5 It consists of 485 emails containing seminar announcements at Carnegie Mellon University.</S>
+    <S sid="71" ssid="11">It is annotated for four fields: speaker, location, start time, and end time.</S>
+    <S sid="72" ssid="12">Sutton and McCallum (2004) used 5-fold cross validation when evaluating on this dataset, so we obtained and used their data splits, so that results can be properly compared.</S>
+    <S sid="73" ssid="13">Because the entire dataset is used for testing, there is no development set.</S>
+    <S sid="74" ssid="14">We also used their evaluation metric, which is slightly different from the method for CoNLL data.</S>
+    <S sid="75" ssid="15">Instead of evaluating precision and recall on a per-entity basis, they are evaluated on a per-token basis.</S>
+    <S sid="76" ssid="16">Then, to calculate the overall F1 score, the F1 scores for each class are averaged.</S>
+  </SECTION>
+  <SECTION title="5 Models of Non-local Structure" number="4">
+    <S sid="77" ssid="1">Our models of non-local structure are themselves just sequence models, defining a probability distribution over all possible state sequences.</S>
+    <S sid="78" ssid="2">It is possible to flexibly model various forms of constraints in a way that is sensitive to the linguistic structure of the data (e.g., one can go beyond imposing just exact identity conditions).</S>
+    <S sid="79" ssid="3">One could imagine many ways of defining such models; for simplicity we use the form where the product is over a set of violation types A, and for each violation type A we specify a penalty parameter &#952;&#955;.</S>
+    <S sid="80" ssid="4">The exponent #(A, s, o) is the count of the number of times that the violation A occurs in the state sequence s with respect to the observation sequence o.</S>
+    <S sid="81" ssid="5">This has the effect of assigning sequences with more violations a lower probability.</S>
+    <S sid="82" ssid="6">The particular violation types are defined specifically for each task, and are described in the following two sections.</S>
+    <S sid="83" ssid="7">This model, as defined above, is not normalized, and clearly it would be expensive to do so.</S>
+    <S sid="84" ssid="8">This doesn&#8217;t matter, however, because we only use the model for Gibbs sampling, and so only need to compute the conditional distribution at a single position i (as defined in Equation 1).</S>
+    <S sid="85" ssid="9">One (inefficient) way to compute this quantity is to enumerate all possible sequences differing only at position i, compute the score assigned to each by the model, and renormalize.</S>
+    <S sid="86" ssid="10">Although it seems expensive, this computation can be made very efficient with a straightforward memoization technique: at all times we maintain data structures representing the relationship between entity labels and token sequences, from which we can quickly compute counts of different types of violations.</S>
+    <S sid="87" ssid="11">Label consistency structure derives from the fact that within a particular document, different occurrences of a particular token sequence are unlikely to be labeled as different entity types.</S>
+    <S sid="88" ssid="12">Although any one occurrence may be ambiguous, it is unlikely that all instances are unclear when taken together.</S>
+    <S sid="89" ssid="13">The CoNLL training data empirically supports the strength of the label consistency constraint.</S>
+    <S sid="90" ssid="14">Table 3 shows the counts of entity labels for each pair of identical token sequences within a document, where both are labeled as an entity.</S>
+    <S sid="91" ssid="15">Note that inconsistent labelings are very rare.6 In addition, we also want to model subsequence constraints: having seen Geoff Woods earlier in a document as a person is a good indicator that a subsequent occurrence of Woods should also be labeled as a person.</S>
+    <S sid="92" ssid="16">However, if we examine all cases of the labelings of other occurrences of subsequences of a labeled entity, we find that the consistency constraint does not hold nearly so strictly in this case.</S>
+    <S sid="93" ssid="17">As an example, one document contains references to both The China Daily, a newspaper, and China, the country.</S>
+    <S sid="94" ssid="18">Counts of subsequence labelings within a document are listed in Table 4.</S>
+    <S sid="95" ssid="19">Note that there are many offdiagonal entries: the China Daily case is the most common, occurring 328 times in the dataset.</S>
+    <S sid="96" ssid="20">The penalties used in the long distance constraint model for CoNLL are the Empirical Bayes estimates taken directly from the data (Tables 3 and 4), except that we change counts of 0 to be 1, so that the distribution remains positive.</S>
+    <S sid="97" ssid="21">So the estimate of a PER also being an ORG is 5 3151; there were 5 instance of an entity being labeled as both, PER appeared 3150 times in the data, and we add 1 to this for smoothing, because PER-MISC never occured.</S>
+    <S sid="98" ssid="22">However, when we have a phrase labeled differently in two different places, continuing with the PER-ORG example, it is unclear if we should penalize it as PER that is also an ORG or an ORG that is also a PER.</S>
+    <S sid="99" ssid="23">To deal with this, we multiply the square roots of each estimate together to form the penalty term.</S>
+    <S sid="100" ssid="24">The penalty term is then multiplied in a number of times equal to the length of the offending entity; this is meant to &#8220;encourage&#8221; the entity to shrink.7 For example, say we have a document with three entities, Rotor Volgograd twice, once labeled as PER and once as ORG, and Rotor, labeled as an ORG.</S>
+    <S sid="101" ssid="25">The likelihood of a PER also being an ORG is 5 3151, and of an ORG also Due to the lack of a development set, our consistency model for the CMU Seminar Announcements is much simpler than the CoNLL model, the numbers where selected due to our intuitions, and we did not spend much time hand optimizing the model.</S>
+    <S sid="102" ssid="26">Specifically, we had three constraints.</S>
+    <S sid="103" ssid="27">The first is that all entities labeled as start time are normalized, and are penalized if they are inconsistent.</S>
+    <S sid="104" ssid="28">The second is a corresponding constraint for end times.</S>
+    <S sid="105" ssid="29">The last constraint attempts to consistently label the speakers.</S>
+    <S sid="106" ssid="30">If a phrase is labeled as a speaker, we assume that the last word is the speaker&#8217;s last name, and we penalize for each occurrance of that word which is not also labeled speaker.</S>
+    <S sid="107" ssid="31">For the start and end times the penalty is multiplied in based on how many words are in the entity.</S>
+    <S sid="108" ssid="32">For the speaker, the penalty is only multiplied in once.</S>
+    <S sid="109" ssid="33">We used a hand selected penalty of exp &#8722;4.0.</S>
+  </SECTION>
+  <SECTION title="6 Combining Sequence Models" number="5">
+    <S sid="110" ssid="1">In the previous section we defined two models of non-local structure.</S>
+    <S sid="111" ssid="2">Now we would like to incorporate them into the local model (in our case, the trained CRF), and use Gibbs sampling to find the most likely state sequence.</S>
+    <S sid="112" ssid="3">Because both the trained CRF and the non-local models are themselves sequence models, we simply combine the two models into a factored sequence model of the following form where M is the local CRF model, L is the new nonlocal model, and F is the factored model.8 In this form, the probability again looks difficult to compute (because of the normalizing factor, a sum over all hidden state sequences of length N).</S>
+    <S sid="113" ssid="4">However, since we are only using the model for Gibbs sampling, we never need to compute the distribution explicitly.</S>
+    <S sid="114" ssid="5">Instead, we need only the conditional probability of each position in the sequence, which can be computed as</S>
+  </SECTION>
+  <SECTION title="7 Results and Discussion" number="6">
+    <S sid="115" ssid="1">In our experiments we compare the impact of adding the non-local models with Gibbs sampling to our baseline CRF implementation.</S>
+    <S sid="116" ssid="2">In the CoNLL named entity recognition task, the non-local models increase the F1 accuracy by about 1.3%.</S>
+    <S sid="117" ssid="3">Although such gains may appear modest, note that they are achieved relative to a near state-of-the-art NER system: the winner of the CoNLL English task reported an F1 score of 88.76.</S>
+    <S sid="118" ssid="4">In contrast, the increases published by Bunescu and Mooney (2004) are relative to a baseline system which scores only 80.9% on the same task.</S>
+    <S sid="119" ssid="5">Our performance is similar on the CMU Seminar Announcements dataset.</S>
+    <S sid="120" ssid="6">We show the per-field F1 results that were reported by Sutton and McCallum (2004) for comparison, and note that we are again achieving gains against a more competitive baseline system.</S>
+    <S sid="121" ssid="7">For all experiments involving Gibbs sampling, we used a linear cooling schedule.</S>
+    <S sid="122" ssid="8">For the CoNLL dataset we collected 200 samples per trial, and for the CMU Seminar Announcements we collected 100 samples.</S>
+    <S sid="123" ssid="9">We report the average of all trials, and in all cases we outperform the baseline with greater than 95% confidence, using the standard t-test.</S>
+    <S sid="124" ssid="10">The trials had low standard deviations - 0.083% and 0.007% and high minimun F-scores - 86.72%, and 92.28% - for the CoNLL and CMU Seminar Announcements respectively, demonstrating the stability of our method.</S>
+    <S sid="125" ssid="11">The biggest drawback to our model is the computational cost.</S>
+    <S sid="126" ssid="12">Taking 100 samples dramatically increases test time.</S>
+    <S sid="127" ssid="13">Averaged over 3 runs on both Viterbi and Gibbs, CoNLL testing time increased from 55 to 1738 seconds, and CMU Seminar Announcements testing time increases from 189 to 6436 seconds.</S>
+  </SECTION>
+  <SECTION title="8 Related Work" number="7">
+    <S sid="128" ssid="1">Several authors have successfully incorporated a label consistency constraint into probabilistic sequence model named entity recognition systems.</S>
+    <S sid="129" ssid="2">Mikheev et al. (1999) and Finkel et al.</S>
+    <S sid="130" ssid="3">(2004) incorporate label consistency information by using adhoc multi-stage labeling procedures that are effective but special-purpose.</S>
+    <S sid="131" ssid="4">Malouf (2002) and Curran and Clark (2003) condition the label of a token at a particular position on the label of the most recent previous instance of that same token in a prior sentence of the same document.</S>
+    <S sid="132" ssid="5">Note that this violates the Markov property, but is achieved by slightly relaxing the requirement of exact inference.</S>
+    <S sid="133" ssid="6">Instead of finding the maximum likelihood sequence over the entire document, they classify one sentence at a time, allowing them to condition on the maximum likelihood sequence of previous sentences.</S>
+    <S sid="134" ssid="7">This approach is quite effective for enforcing label consistency in many NLP tasks, however, it permits a forward flow of information only, which is not sufficient for all cases of interest.</S>
+    <S sid="135" ssid="8">Chieu and Ng (2002) propose a solution to this problem: for each token, they define additional features taken from other occurrences of the same token in the document.</S>
+    <S sid="136" ssid="9">This approach has the added advantage of allowing the training procedure to automatically learn good weightings for these &#8220;global&#8221; features relative to the local ones.</S>
+    <S sid="137" ssid="10">However, this approach cannot easily be extended to incorporate other types of non-local structure.</S>
+    <S sid="138" ssid="11">The most relevant prior works are Bunescu and Mooney (2004), who use a Relational Markov Network (RMN) (Taskar et al., 2002) to explicitly models long-distance dependencies, and Sutton and McCallum (2004), who introduce skip-chain CRFs, which maintain the underlying CRF sequence model (which (Bunescu and Mooney, 2004) lack) while adding skip edges between distant nodes.</S>
+    <S sid="139" ssid="12">Unfortunately, in the RMN model, the dependencies must be defined in the model structure before doing any inference, and so the authors use crude heuristic part-of-speech patterns, and then add dependencies between these text spans using clique templates.</S>
+    <S sid="140" ssid="13">This generates a extremely large number of overlapping candidate entities, which then necessitates additional templates to enforce the constraint that text subsequences cannot both be different entities, something that is more naturally modeled by a CRF.</S>
+    <S sid="141" ssid="14">Another disadvantage of this approach is that it uses loopy beliefpropagation and a voted perceptron for approximate learning and inference &#8211; ill-founded and inherently unstable algorithms which are noted by the authors to have caused convergence problems.</S>
+    <S sid="142" ssid="15">In the skip-chain CRFs model, the decision of which nodes to connect is also made heuristically, and because the authors focus on named entity recognition, they chose to connect all pairs of identical capitalized words.</S>
+    <S sid="143" ssid="16">They also utilize loopy belief propagation for approximate learning and inference.</S>
+    <S sid="144" ssid="17">While the technique we propose is similar mathematically and in spirit to the above approaches, it differs in some important ways.</S>
+    <S sid="145" ssid="18">Our model is implemented by adding additional constraints into the model at inference time, and does not require the preprocessing step necessary in the two previously mentioned works.</S>
+    <S sid="146" ssid="19">This allows for a broader class of long-distance dependencies, because we do not need to make any initial assumptions about which nodes should be connected, and is helpful when you wish to model relationships between nodes which are the same class, but may not be similar in any other way.</S>
+    <S sid="147" ssid="20">For instance, in the CMU Seminar Announcements dataset, we can normalize all entities labeled as a start time and penalize the model if multiple, nonconsistent times are labeled.</S>
+    <S sid="148" ssid="21">This type of constraint cannot be modeled in an RMN or a skip-CRF, because it requires the knowledge that both entities are given the same class label.</S>
+    <S sid="149" ssid="22">We also allow dependencies between multi-word phrases, and not just single words.</S>
+    <S sid="150" ssid="23">Additionally, our model can be applied on top of a pre-existing trained sequence model.</S>
+    <S sid="151" ssid="24">As such, our method does not require complex training procedures, and can instead leverage all of the established methods for training high accuracy sequence models.</S>
+    <S sid="152" ssid="25">It can indeed be used in conjunction with any statistical hidden state sequence model: HMMs, CMMs, CRFs, or even heuristic models.</S>
+    <S sid="153" ssid="26">Third, our technique employs Gibbs sampling for approximate inference, a simple and probabilistically well-founded algorithm.</S>
+    <S sid="154" ssid="27">As a consequence of these differences, our approach is easier to understand, implement, and adapt to new applications.</S>
+  </SECTION>
+  <SECTION title="9 Conclusions" number="8">
+    <S sid="155" ssid="1">We have shown that a constraint model can be effectively combined with an existing sequence model in a factored architecture to successfully impose various sorts of long distance constraints.</S>
+    <S sid="156" ssid="2">Our model generalizes naturally to other statistical models and other tasks.</S>
+    <S sid="157" ssid="3">In particular, it could in the future be applied to statistical parsing.</S>
+    <S sid="158" ssid="4">Statistical context free grammars provide another example of statistical models which are restricted to limiting local structure, and which could benefit from modeling nonlocal structure.</S>
+  </SECTION>
+  <SECTION title="Acknowledgements" number="9">
+    <S sid="159" ssid="1">This work was supported in part by the Advanced Researchand Development Activity (ARDA)&#8217;s Advanced Question Answeringfor Intelligence (AQUAINT) Program.</S>
+    <S sid="160" ssid="2">Additionally, we would like to that our reviewers for their helpful comments.</S>
+  </SECTION>
+</PAPER>

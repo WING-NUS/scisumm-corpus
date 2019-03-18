@@ -1,0 +1,1330 @@
+﻿Reducing semantic drift with bagging and distributional similarity
+
+
+Tara McIntosh and James R. Curran 
+School of Information Technologies 
+University of Sydney
+NSW 2006, Australia
+{tara,james}@it.usyd.edu.au
+
+
+
+
+
+Abstract
+
+Iterative bootstrapping algorithms are typ- 
+ically compared using a single set of hand- 
+picked seeds.  However, we demonstrate 
+that performance varies greatly depend- 
+ing on these seeds, and favourable seeds 
+for one algorithm can perform very poorly 
+with others, making comparisons unreli- 
+able.  We exploit this wide variation with 
+bagging, sampling from automatically ex- 
+tracted seeds to reduce semantic drift.
+However, semantic drift still occurs in 
+later iterations. We propose an integrated 
+distributional similarity filter to identify 
+and censor potential semantic drifts, en- 
+suring over 10% higher precision when ex- 
+tracting large semantic lexicons.
+
+1   Introduction
+
+Iterative bootstrapping algorithms have been pro- 
+posed to extract semantic lexicons for N L P tasks 
+with limited linguistic resources.  Bootstrapping 
+was initially proposed by Riloff and Jones (1999), 
+and has since been successfully applied to extract- 
+ing general semantic lexicons (Riloff and Jones,
+1999; Thelen and Riloff, 2002), biomedical enti- 
+ties (Yu and Agichtein, 2003), facts (Pas¸ca et al.,
+2006), and coreference data (Yang and Su, 2007).
+  Bootstrapping approaches are attractive because 
+they are domain and language independent, re- 
+quire minimal linguistic pre-processing and can be 
+applied to raw text, and are efficient enough for 
+tera-scale extraction (Pas¸ca et al., 2006).
+  Bootstrapping is minimally supervised, as it is 
+initialised with a small number of seed instances 
+of the information to extract.  For semantic lexi- 
+cons, these seeds are terms from the category of in- 
+terest. The seeds identify contextual patterns that 
+express a particular semantic category, which in 
+turn recognise new terms (Riloff and Jones, 1999).
+
+
+Unfortunately, semantic drift often occurs when 
+ambiguous or erroneous terms and/or patterns are 
+introduced into and then dominate the iterative 
+process (Curran et al., 2007).
+  Bootstrapping algorithms are typically com- 
+pared using only a single set of hand-picked seeds. 
+We first show that different seeds cause these al- 
+gorithms to generate diverse lexicons which vary 
+greatly in precision.  This makes evaluation un- 
+reliable – seeds which perform well on one algo- 
+rithm can perform surprisingly poorly on another. 
+In fact, random gold-standard seeds often outper- 
+form seeds carefully chosen by domain experts.
+  Our second contribution exploits this diversity 
+we have identified.  We present an unsupervised 
+bagging algorithm which samples from the ex- 
+tracted lexicon rather than relying on existing 
+gazetteers or hand-selected seeds. Each sample is 
+then fed back as seeds to the bootstrapper and the 
+results combined using voting. This both improves 
+the precision of the lexicon and the robustness of 
+the algorithms to the choice of initial seeds.
+  Unfortunately, semantic drift still dominates in 
+later iterations, since erroneous extracted terms 
+and/or patterns eventually shift the category’s di- 
+rection. Our third contribution focuses on detect- 
+ing and censoring the terms introduced by seman- 
+tic drift.  We integrate a distributional similarity 
+filter directly into W M E B  (McIntosh and Curran,
+2008).  This filter judges whether a new term is 
+more similar to the earlier or most recently ex- 
+tracted terms, a sign of potential semantic drift.
+  We demonstrate these methods for extracting 
+biomedical semantic lexicons using two bootstrap- 
+ping algorithms.  Our unsupervised bagging ap- 
+proach outperforms carefully hand-picked seeds
+by ∼ 10% in later iterations.  Our distributional
+similarity filter gives a similar performance im-
+provement. This allows us to produce large lexi- 
+cons accurately and efficiently for domain-specific 
+language processing.
+
+
+
+
+396
+
+Proceedings of the 47th Annual Meeting of the ACL and the 4th IJCNLP of the AFNLP,  pages 396–404, 
+Suntec, Singapore, 2-7 August 2009. Qc 2009 ACL and AFNLP
+
+
+2   Background
+
+Hearst (1992) exploited patterns for information 
+extraction, to acquire is-a relations using manually 
+devised patterns like such Z as X and/or Y where X 
+and Y are hyponyms of Z. Riloff and Jones (1999) 
+extended this with an automated bootstrapping al- 
+gorithm, Multi-level Bootstrapping (M L B), which 
+iteratively extracts semantic lexicons from text.
+  In M L B, bootstrapping alternates between two 
+stages: pattern extraction and selection, and term 
+extraction and selection. M B is seeded with a small 
+set of user selected seed terms.  These seeds are 
+used to identify contextual patterns they appear in, 
+which in turn identify new lexicon entries.  This 
+process is repeated with the new lexicon terms 
+identifying new patterns. In each iteration, the top- 
+n candidates are selected, based on a metric scor- 
+ing their membership in the category and suitabil- 
+ity for extracting additional terms and patterns.
+  Bootstrapping eventually extracts polysemous 
+terms and patterns which weakly constrain the 
+semantic class, causing the lexicon’s meaning to 
+shift, called semantic drift by Curran et al. (2007). 
+For example, female firstnames may drift into 
+flowers when Iris and Rose are extracted.  Many 
+variations on bootstrapping have been developed 
+to reduce semantic drift.1
+  One approach is to extract multiple semantic 
+categories simultaneously, where the individual 
+bootstrapping instances compete with one another 
+in an attempt to actively direct the categories away 
+from each other.  Multi-category algorithms out- 
+perform M L B  (Thelen and Riloff, 2002), and we 
+focus on these algorithms in our experiments.
+  In BA S I L I S K, M E B, and W M E B, each compet- 
+ing category iterates simultaneously between the 
+term and pattern extraction and selection stages. 
+These algorithms differ in how terms and patterns 
+selected by multiple categories are handled, and 
+their scoring metrics.  In BA S I L I S K  (Thelen and 
+Riloff, 2002), candidate terms are ranked highly if 
+they have strong evidence for a category and little 
+or no evidence for other categories. This typically 
+favours less frequent terms, as they will match far 
+fewer patterns and are thus more likely to belong 
+to one category.  Patterns are selected similarly, 
+however patterns may also be selected by differ- 
+ent categories in later iterations.
+Curran et al. (2007) introduced Mutual Exclu-
+
+  1 Komachi et al. (2008) used graph-based algorithms to 
+reduce semantic drift for Word Sense Disambiguation.
+
+
+sion Bootstrapping (M E B) which forces stricter 
+boundaries between the competing categories than 
+BA S I L I S K.  In M E B, the key assumptions are that 
+terms only belong to a category and that patterns 
+only extract terms of a single category. Semantic 
+drift is reduced by eliminating patterns that collide 
+with multiple categories in an iteration and by ig- 
+noring colliding candidate terms (for the current 
+iteration). This excludes generic patterns that can 
+occur frequently with multiple categories, and re- 
+duces the chance of assigning ambiguous terms to 
+their less dominant sense.
+
+2.1   Weighted MEB
+
+The scoring of candidate terms and patterns in 
+M E B is na¨ıve. Candidates which 1) match the most 
+input instances; and 2) have the potential to gen- 
+erate the most new candidates, are preferred (Cur- 
+ran et al., 2007). This second criterion aims to in- 
+crease recall. However, the selected instances are 
+highly likely to introduce drift.
+  Our Weighted M E B    algorithm (McIntosh and 
+Curran, 2008), extends M E B by incorporating term 
+and pattern weighting, and a cumulative pattern 
+pool.  W M E B uses the χ2  statistic to identify pat- 
+terns and terms that are strongly associated with 
+the growing lexicon terms and their patterns re- 
+spectively. The terms and patterns are then ranked 
+first by the number of input instances they match 
+(as in M E B), but then by their weighted score.
+  In M E B  and BA S I L I S K2, the top-k patterns for 
+each iteration are used to extract new candidate 
+terms. As the lexicons grow, general patterns can 
+drift into the top-k and as a result the earlier pre- 
+cise patterns lose their extracting influence.   In 
+W M E B, the pattern pool accumulates all top-k pat- 
+terns from previous iterations, to ensure previous 
+patterns can contribute.
+
+2.2   Distributional Similarity
+
+Distributional  similarity  has  been  used  to  ex- 
+tract semantic lexicons (Grefenstette, 1994), based 
+on the distributional hypothesis that semantically 
+similar words appear in similar contexts (Harris,
+1954). Words are represented by context vectors, 
+and words are considered similar if their context 
+vectors are similar.
+  Patterns and distributional methods have been 
+combined previously.   Pantel and Ravichandran
+
+  2 In BA S I L I S K, k is increased by one in each iteration, to 
+ensure at least one new pattern is introduced.
+
+
+
+
+
+
+
+   Table 1: Filtered 5-gram dataset statistics. 
+(2004)  used  lexical-syntactic  patterns  to  label
+clusters of distributionally similar terms. Mirkin et 
+al. (2006) used 11 patterns, and the distributional 
+similarity score of each pair of terms, to construct 
+features for lexical entailment. Pas¸ca et al. (2006) 
+used distributional similarity to find similar terms 
+for verifying the names in date-of-birth facts for 
+their tera-scale bootstrapping system.
+
+2.3   Selecting seeds
+
+For the majority of bootstrapping tasks, there is 
+little or no guidance on how to select seeds which 
+will generate the most accurate lexicons.  Most 
+previous works used seeds selected based on a 
+user’s or domain expert’s intuition (Curran et al.,
+2007), which may then have to meet a frequency 
+criterion (Riloff et al., 2003).
+  Eisner and Karakos (2005) focus on this issue 
+by considering an approach called strapping for 
+word sense disambiguation.  In strapping, semi- 
+supervised bootstrapping instances are used to 
+train a meta-classifier, which given a bootstrap- 
+ping instance can predict the usefulness (fertility) 
+of its seeds.  The most fertile seeds can then be 
+used in place of hand-picked seeds.
+  The design of a strapping algorithm is more 
+complex than that of a supervised learner (Eisner 
+and Karakos, 2005), and it is unclear how well 
+strapping will generalise to other bootstrapping 
+tasks.  In our work, we build upon bootstrapping 
+using unsupervised approaches.
+
+3   Experimental setup
+
+In our experiments we consider the task of extract- 
+ing biomedical semantic lexicons from raw text 
+using BA S I L I S K and W M E B.
+
+3.1   Data
+
+We compared the performance of BA S I L I S K  and 
+W M E B using 5-grams (t1, t2, t3, t4, t5) from raw 
+M E D L I N E abstracts3. In our experiments, the can- 
+didate terms are the middle tokens (t3),  and the 
+patterns are a tuple of the surrounding tokens (t1,
+
+3 The set contains all M E D L I N E abstracts available up to
+Oct 2007 (16 140 000 abstracts).
+
+
+
+C AT    D E S C R I P T I O N
+A N T I   Antibodies:   Immunoglobulin molecules that react 
+with a specific antigen that induced its synthesis
+MAb IgG IgM rituximab infliximab (κ1 :0.89, κ2 :1.0)
+C E L L   Cells: A morphological or functional form of a cell
+RBC HUVEC BAEC VSMC SMC (κ1 :0.91, κ2 :1.0)
+C L N E  Cell lines: A population of cells that are totally de-
+rived from a single common ancestor cell
+PC12 CHO HeLa Jurkat COS (κ1 :0.93, κ2 : 1.0)
+D I S E   Diseases: A definite pathological process that affects
+humans, animals and or plants
+asthma hepatitis tuberculosis HIV malaria
+(κ1 :0.98, κ2 :1.0)
+D RU G  Drugs: A pharmaceutical preparation
+acetylcholine carbachol heparin penicillin tetracy-
+clin (κ1 :0.86, κ2 :0.99)
+F U N C  Molecular functions and processes
+kinase  ligase  acetyltransferase  helicase  binding
+(κ1 :0.87, κ2 :0.99)
+M U T N  Mutations: Gene and protein mutations, and mutants
+Leiden C677T C282Y 35delG null (κ1 :0.89, κ2 :1.0)
+P ROT   Proteins and genes
+p53 actin collagen albumin IL-6 (κ1 :0.99, κ2 :1.0)
+S I G N   Signs and symptoms of diseases
+anemia  hypertension  hyperglycemia  fever  cough
+(κ1 :0.96, κ2 :0.99)
+T U M R  Tumors: Types of tumors
+lymphoma sarcoma melanoma neuroblastoma
+osteosarcoma (κ1 :0.89, κ2 :0.95)
+
+Table 2: The M E D L I N E semantic categories.
+
+
+t2, t4, t5).  Unlike Riloff and Jones (1999) and 
+Yangarber (2003), we do not use syntactic knowl- 
+edge, as we aim to take a language independent 
+approach.
+  The 5-grams were extracted from the M E D L I N E 
+abstracts following McIntosh and Curran (2008). 
+The abstracts were tokenised and split into sen- 
+tences using bio-specific N L P tools (Grover et al.,
+2006).  The 5-grams were filtered to remove pat- 
+terns appearing with less than 7 terms4. The statis- 
+tics of the resulting dataset are shown in Table 1.
+
+3.2   Semantic Categories
+The semantic categories we extract from M E D - 
+L I N E  are shown in Table 2.  These are a subset 
+of the T R E C Genomics 2007 entities (Hersh et al.,
+2007). Categories which are predominately multi- 
+term entities, e.g. Pathways and Toxicities, were 
+excluded.5  Genes and Proteins were merged into 
+P ROT  as they have a high degree of metonymy, 
+particularly out of context. The Cell or Tissue Type 
+category was split into two fine grained classes, 
+C E L L and C L N E (cell line).
+
+  4 This frequency was selected as it resulted in the largest 
+number of patterns and terms loadable by BA S I L I S K
+    5 Note that polysemous terms in these categories may be 
+correctly extracted by another category.  For example, all 
+Pathways also belong to F U N C.
+
+
+  The five hand-picked seeds used for each cat- 
+egory are shown in italics in Table 2. These were 
+carefully chosen based on the evaluators’ intuition, 
+and are as unambiguous as possible with respect to 
+the other categories.
+  We also utilised terms in stop categories which 
+are known to cause semantic drift in specific 
+classes.   These extra categories bound the lexi- 
+cal space and reduce ambiguity (Yangarber, 2003; 
+Curran et al., 2007).  We used four stop cate- 
+gories introduced in McIntosh and Curran (2008): 
+A M I N O AC I D, A N I M A L, B O DY and O R G A N I S M.
+
+3.3   Lexicon evaluation
+
+The evaluation involves manually inspecting each 
+extracted term and judging whether it was a mem- 
+ber of the semantic class. This manual evaluation 
+is extremely time consuming and is necessary due 
+to the limited coverage of biomedical resources. 
+To make later evaluations more efficient, all eval- 
+uators’ decisions for each category are cached.
+  Unfamiliar terms were checked using online 
+resources including M E D L I N E,  Medical Subject 
+Headings (MeSH), Wikipedia.  Each ambiguous 
+term was counted as correct if it was classified into 
+one of its correct categories, such as lymphoma 
+which is a T U M R  and D I S E.   If a term was un- 
+ambiguously part of a multi-word term we consid- 
+ered it correct. Abbreviations, acronyms and typo- 
+graphical variations were included. We also con- 
+sidered obvious spelling mistakes to be correct, 
+such as nuetrophils instead of neutrophils (a type 
+of C E L L).  Non-specific modifiers are marked as 
+incorrect, for example, gastrointestinal may be in- 
+correctly extracted for T U M R, as part of the entity 
+gastrointestinal carcinoma.  However, the modi- 
+fier may also be used for D I S E  (gastrointestinal 
+infection) and C E L L.
+  The terms were evaluated by two domain ex- 
+perts.   Inter-annotator agreement was measured 
+on the top-100 terms extracted by BA S I L I S K and 
+W M E B  with the hand-picked seeds for each cat- 
+egory. All disagreements were discussed, and the 
+kappa scores, before (κ1) and after (κ2) the discus- 
+sions, are shown in Table 2. Each score is above
+0.8 which reflects an agreement strength of “al- 
+most perfect” (Landis and Koch, 1977).
+  For comparing the accuracy of the systems we 
+evaluated the precision of samples of the lexicons 
+extracted for each category.  We report average 
+precision over the 10 semantic categories on the
+
+
+1-200, 401-600 and 801-1000 term samples, and 
+over the first 1000 terms. In each algorithm, each 
+category is initialised with 5 seed terms, and the 
+number of patterns, k, is set to 5.  In each itera- 
+tion, 5 lexicon terms are extracted by each cate- 
+gory. Each algorithm is run for 200 iterations.
+
+4   Seed diversity
+
+The first step in bootstrapping is to select a set of 
+seeds by hand. These hand-picked seeds are typi- 
+cally chosen by a domain expert who selects a rea- 
+sonably unambiguous representative sample of the 
+category with high coverage by introspection.
+  To improve the seeds, the frequency of the po- 
+tential seeds in the corpora is often considered, on 
+the assumption that highly frequent seeds are bet- 
+ter (Thelen and Riloff, 2002). Unfortunately, these 
+seeds may be too general and extract many non- 
+specific patterns. Another approach is to identify 
+seeds using hyponym patterns like, * is a [NAMED 
+ENTITY] (Meij and Katrenko, 2007).
+  This leads us to our first investigation of seed 
+variability and the methodology used to compare 
+bootstrapping algorithms.   Typically algorithms 
+are compared using one set of hand-picked seeds 
+for each category (Pennacchiotti and Pantel, 2006; 
+McIntosh and Curran, 2008). This approach does 
+not provide a fair comparison or any detailed anal- 
+ysis of the algorithms under investigation.   As 
+we shall see, it is possible that the seeds achieve 
+the maximum precision for one algorithm and the 
+minimum for another, and thus the single compar- 
+ison is inappropriate. Even evaluating on multiple 
+categories does not ensure the robustness of the 
+evaluation.  Secondly, it provides no insight into 
+the sensitivity of an algorithm to different seeds.
+
+4.1   Analysis with random gold seeds
+
+Our initial analysis investigated the sensitivity and 
+variability of the lexicons generated using differ- 
+ent seeds. We instantiated each algorithm 10 times 
+with different random gold seeds (Sgold) for each 
+category.   We randomly sample Sgold  from two 
+sets of correct terms extracted from the evalua- 
+tion cache. U N I O N: the correct terms extracted by 
+BA S I L I S K  and W M E B; and U N I QU E:  the correct 
+terms uniquely identified by only one algorithm. 
+The degree of ambiguity of each seed is unknown 
+and term frequency is not considered during the 
+random selection.
+Firstly, we investigated the variability of the
+
+
+
+90
+Hand-picked
+Average
+
+80
+
+
+70
+
+Table 3: Variation in precision with random gold
+60
+seed sets
+
+
+
+50
+50	60	70	80	90	100
+WMEB (precision)
+
+Figure  1:     Performance  relationship  between
+W M E B and BA S I L I S K on Sgold  U N I O N
+
+
+extracted lexicons using U N I O N.  Each extracted 
+lexicon was compared with the other 9 lexicons 
+for each category and the term overlap calcu- 
+lated.  For the top 100 terms, BA S I L I S K  had an 
+overlap of 18% and W M E B  44%.   For the top
+500 terms, BA S I L I S K had an overlap of 39% and 
+W M E B 47%. Clearly BA S I L I S K is far more sensi- 
+tive to the choice of seeds – this also makes the 
+cache a lot less valuable for the manual evaluation 
+of BA S I L I S K. These results match our annotators’ 
+intuition that BA S I L I S K retrieved far more of the 
+esoteric, rare and misspelt results. The overlap be- 
+tween algorithms was even worse:  6.3% for the 
+top 100 terms and 9.1% for the top 500 terms.
+  The plot in Figure 1 shows the variation in pre- 
+cision between W M E B and BA S I L I S K with the 10 
+seed sets from U N I O N.  Precision is measured on 
+the first 100 terms and averaged over the 10 cate- 
+gories. The Shand is marked with a square, as well 
+as each algorithms’ average precision with 1 stan- 
+dard deviation (S .D .)  error bars.  The axes start 
+at 50% precision.  Visually, the scatter is quite 
+obvious and the S .D .  quite large.  Note that on 
+our Shand evaluation, BA S I L I S K performed signif- 
+icantly better than average.
+  We applied a linear regression analysis to iden- 
+tify any correlation between the algorithm’s per- 
+formances. The resulting regression line is shown 
+in Figure 1. The regression analysis identified no 
+correlation between W M E B and BA S I L I S K (R2  =
+0.13). It is almost impossible to predict the per- 
+formance of an algorithm with a given set of seeds 
+from another’s performance, and thus compar- 
+isons using only one seed set are unreliable.
+  Table 3 summarises the results on Sgold, in- 
+cluding the minimum and maximum averages over 
+the 10 categories.   At only 100 terms, lexicon
+
+
+
+variations are already obvious.  As noted above, 
+Shand on BA S I L I S K performed better than average, 
+whereas W M E B Sgold  U N I QU E performed signifi- 
+cantly better on average than Shand.  This clearly 
+indicates the difficulty of picking the best seeds 
+for an algorithm, and that comparing algorithms 
+with only one set has the potential to penalise an 
+algorithm.  These results do show that W M E B  is 
+significantly better than BA S I L I S K.
+  In the U N I QU E  experiments, we hypothesized 
+that each algorithm would perform well on its 
+own  set,  but  BA S I L I S K   performs  significantly 
+worse than W M E B, with a S .D .  greater than 9.7. 
+BA S I L I S K’s poor performance may be a direct re- 
+sult of it preferring low frequency terms, which are 
+unlikely to be good seeds.
+  These experiments have identified previously 
+unreported performance variations of these sys- 
+tems and their sensitivity to different seeds.  The 
+standard evaluation paradigm, using one set of 
+hand-picked seeds over a few categories, does not 
+provide a robust and informative basis for compar- 
+ing bootstrapping algorithms.
+
+5   Supervised Bagging
+
+While the wide variation we reported in the pre- 
+vious section is an impediment to reliable evalua- 
+tion, it presents an opportunity to improve the per- 
+formance of bootstrapping algorithms. In the next 
+section, we present a novel unsupervised bagging 
+approach to reducing semantic drift.  In this sec- 
+tion, we consider the standard bagging approach 
+introduced by Breiman (1996). Bagging was used 
+by Ng and Cardie (2003) to create committees of 
+classifiers for labelling unseen data for retraining.
+  Here, a bootstrapping algorithm is instantiated 
+n = 50 times with random seed sets selected from 
+the U N I O N evaluation cache. This generates n new 
+lexicons L1, L2, . . . , Ln   for each category.  The 
+next phase involves aggregating the predictions in 
+L1−n  to form the final lexicon for each category, 
+using a weighted voting function.
+
+
+
+
+1-
+20
+0	401-600	801-1000	1-1000
+Sha
+nd
+B
+A 
+S 
+I 
+L 
+I 
+S 
+K 
+W
+ 
+M
+ E 
+B
+
+7
+6.
+3	67.8	58.3	66.7
+9
+0.
+3	82.3	62.0	78.6
+Sgo
+ld  
+BA
+G
+B
+A 
+S 
+I 
+L 
+I 
+S 
+K 
+W
+ 
+M
+ E 
+B
+
+8
+4.
+2	80.2	58.2	78.2
+9
+5.
+1	79.7	65.0	78.6
+
+Table 4: Bagging with 50 gold seed sets
+
+
+
+
+  Our weighting function is based on two related 
+hypotheses of terms in highly accurate lexicons: 1) 
+the more category lexicons in L1−n a term appears 
+in, the more likely the term is a member of the 
+category; 2) terms ranked higher in lexicons are 
+more reliable category members. Firstly, we rank 
+the aggregated terms by the number of lexicons 
+they appear in, and to break ties, we take the term 
+that was extracted in the earliest iteration across 
+the lexicons.
+
+5.1	Supervised results
+Table 4 compares the average precisions of the
+
+
+Table 5: Bagging with 50 unsupervised seed sets 
+for the top 100 terms) and may provide an accept-
+able source of seed terms.   This approach now
+only requires the original 50 hand-picked seed 
+terms across the 10 categories,  rather than the
+2100 terms used above. The process now uses two 
+rounds of bootstrapping:  first to create Lhand  to 
+sample from and then another round with the 50 
+sets of randomly unsupervised seeds, Srand.
+The next decision is how to sample Srand  from
+
+
+lexicons for BA S I L I S K  and W M E B  using just the
+hand-picked seeds (Shand) and 50 sample super-
+
+
+Lhand
+
+
+.  One approach is to use uniform random
+
+
+
+vised bagging (Sgold  BAG).
+Bagging with samples from Sgold  successfully
+increased the performance of both BA S I L I S K and
+W M E B in the top 200 terms. While the improve- 
+ment continued for BA S I L I S K in later sections, it 
+had a more variable effect for W M E B.   Overall, 
+BA S I L I S K gets the greater improvement in perfor- 
+mance (a 12% gain), almost reaching the perfor- 
+mance of W M E B across the top 1000 terms, while 
+W M E B’s performance is the same for both Shand
+
+
+sampling from restricted sections of Lhand.   We
+performed random sampling from the top 100,
+200 and 500 terms of Lhand.  The seeds from the 
+smaller samples will have higher precision, but 
+less diversity.
+  In a truly unsupervised approach, it is impossi- 
+ble to know if and when semantic drift occurs and 
+thus using arbitrary cut-offs can reduce the diver- 
+sity of the selected seeds. To increase diversity we 
+also sampled from the top n=500 using a proba- 
+bility density function (P D F) using rejection sam-
+
+
+and Sgold  BAG. We believe the greater variability
+in BA S I L I S K meant it benefited from bagging with
+
+
+pling, where r is the rank of the term in L
+
+
+hand:
+
+
+gold seeds.
+
+
+ n 	−1
+
+
+
+P D F(r)  =
+
+
+ 	i=r i 	
+
+
+
+(1)
+
+
+6   Unsupervised bagging
+
+A significant problem for supervised bagging ap- 
+proaches is that they require a larger set of gold- 
+standard seed terms to sample from – either an 
+existing gazetteer or a large hand-picked set.  In 
+our case, we used the evaluation cache which took 
+considerable time to accumulate.   This saddles 
+the major application of bootstrapping, the quick 
+construction of accurate semantic lexicons, with a 
+chicken-and-egg problem.
+  However, we propose a novel solution – sam- 
+pling from the terms extracted with the hand- 
+picked seeds (Lhand).   W M E B  already has very 
+high precision for the top extracted terms (88.1%
+
+
+ n 	n
+i=1  j=i j−1
+
+6.1   Unsupervised results
+Table 5 shows the average precision of the lex- 
+icons after bagging on the unsupervised seeds, 
+sampled from the top 100 – 500 terms from Lhand. 
+Using the top 100 seed sample is much less effec- 
+tive than Sgold  BAG for BA S I L I S K but nearly as ef- 
+fective for W M E B.  As the sample size increases, 
+W M E B steadily improves with the increasing vari- 
+ability, however BA S I L I S K is more effective when 
+the more precise seeds are sampled from higher 
+ranking terms in the lexicons.
+  Sampling with P D F-500 results in more accurate 
+lexicons over the first 1000 terms than the other
+
+
+
+3
+
+
+2.5
+
+
+2
+
+
+1.5
+
+
+1
+
+
+0.5
+
+
+0
+
+
+
+C
+o
+r
+r
+e
+c
+t
+I
+n
+c
+o
+r
+r
+e
+c
+t
+
+
+
+
+
+
+
+
+
+
+
+
+0 	100       
+200       300       
+400       500       
+600       700       
+800       900      
+1000
+N
+u
+m
+b
+e
+r
+ 
+o
+f
+ 
+t
+e
+r
+m
+s
+
+
+first 
+term
+s.   
+A 
+drift
+(t, n, 
+m) 
+of 
+0.2 
+corr
+espo
+nds 
+to a 
+20% 
+diffe
+renc
+e in 
+aver
+age 
+simil
+arity 
+betw
+een 
+L1...n  
+and 
+L(N 
+−m)..
+.N 
+for 
+term 
+t.
+  D
+rift 
+can 
+be 
+used 
+as a 
+post-
+proc
+essin
+g 
+step 
+to 
+fil- 
+ter 
+term
+s 
+that 
+are a 
+poss
+ible 
+cons
+eque
+nce 
+of 
+drift. 
+How
+ever, 
+our 
+main 
+prop
+osal 
+is to 
+inco
+rpor
+ate 
+the 
+drift 
+mea
+sure 
+direc
+tly 
+with
+in 
+the 
+W M E 
+B 
+boot
+strap
+- 
+ping 
+algo
+rith
+m, to 
+dete
+ct 
+and 
+then 
+prev
+ent 
+drift 
+oc- 
+curi
+ng. 
+In 
+each 
+itera
+tion, 
+the 
+set 
+of 
+cand
+idate 
+term
+s to 
+be 
+adde
+d to 
+the 
+lexic
+on 
+are 
+scor
+ed 
+and 
+rank
+ed 
+for 
+their 
+suita
+bilit
+y.  
+We 
+now 
+addit
+ional
+ly 
+deter
+- 
+mine 
+the 
+drift 
+of 
+each 
+cand
+idate 
+term 
+befo
+re it 
+is
+
+
+Figure 2: Semantic drift in C E L L (n=20, m=20)
+
+sampling methods for W M E B. In particular, W M E B 
+is more accurate with the unsupervised seeds than 
+the Sgold and Shand (81.0% vs 78.6% and 78.6%). 
+W M E B  benefits from the larger variability intro- 
+duced by the more diverse sets of seeds, and the 
+greater variability available out-weighs the poten- 
+tial noise from incorrect seeds. The P D F-500 dis- 
+tribution allows some variability whilst still prefer- 
+ring the most reliable unsupervised seeds.  In the 
+critical later iterations, W M E B P D F-500 improves 
+over supervised bagging (Sgold  BAG) by 7% and 
+the original hand-picked seeds (Shand) by 10%.
+
+7   Detecting semantic drift
+
+As shown above, semantic drift still dominates the 
+later iterations of bootstrapping even after bag- 
+ging.  In this section, we propose distributional 
+similarity measurements over the extracted lexi- 
+con to detect semantic drift during the bootstrap- 
+ping process. Our hypothesis is that semantic drift 
+has occurred when a candidate term is more sim- 
+ilar to recently added terms than to the seed and 
+high precision terms added in the earlier iterations. 
+We experiment with a range of values of both.
+Given a growing lexicon of size N , LN , let
+L1...n  correspond to the first n terms extracted into 
+L, and L(N −m)...N correspond to the last m terms 
+added to LN . In an iteration, let t be the next can- 
+didate term to be added to the lexicon.
+  We calculate the average distributional similar- 
+ity (sim) of t with all terms in L1...n  and those in 
+L(N −m)...N and call the ratio the drift for term t:
+
+sim(L1...n, t)
+
+
+added to the lexicon. If the term’s drift is below a 
+specified threshold, it is discarded from the extrac- 
+tion process. If the term has zero similarity with 
+the last m terms, but is similar to at least one of 
+the first n terms, the term is selected. Preventing 
+the drifted term from entering the lexicon during 
+the bootstrapping process, has a flow on effect as 
+it will not be able to extract additional divergent 
+patterns which would lead to accelerated drift.
+  For calculating drift we use the distributional 
+similarity approach described in Curran (2004). 
+We extracted window-based features from the 
+filtered  5-grams  to  form  context  vectors  for 
+each term.   We used the standard t-test weight 
+and weighted Jaccard measure functions (Curran,
+2004). This system produces a distributional score 
+for each pair of terms presented by the bootstrap- 
+ping system.
+
+7.1   Drift detection results
+
+To evaluate our semantic drift detection we incor- 
+porate our process in W M E B. Candidate terms are 
+still weighted in W M E B using the χ2 statistic as de- 
+scribed in (McIntosh and Curran, 2008). Many of 
+the M E D L I N E categories suffer from semantic drift 
+in W M E B in the later stages.  Figure 2 shows the 
+distribution of correct and incorrect terms appear- 
+ing in the C E L L lexicon extracted using Shand with 
+the term’s ranks plotted against their drift scores. 
+Firstly, it is evident that incorrect terms begin to 
+dominate in later iterations. Encouragingly, there 
+is a trend where low values of drift correspond to 
+incorrect terms being added. Drift also occurs in 
+A N T I and M U T N, with an average precision at 801-
+1000 terms of 41.5% and 33.0% respectively.
+
+
+drift(t, n, m)   =
+
+
+
+sim(L
+
+
+
+(N −m)...N
+
+
+(2)
+, t)
+
+
+We  utilise  drift  in  
+two  ways  with  W 
+M E B;
+as  a  post-processing  
+filter  (W M E B +P O S T)  
+and
+
+
+  Smaller values of drift(t, n, m) correspond to 
+the current term moving further away from the
+
+
+internally	during	the	term	selection	phase
+(W M E B +D I S T).   Table 6 shows the performance
+
+
+
+
+Sha
+nd	Avg.    Min.    Max.    S.D.
+1-
+200
+W M 
+E B
+W M 
+E B 
++D I 
+S T
+
+9
+0.
+3	82.2	73.3	91.5    6.43
+9
+0.
+7	84.8	78.0	91.0    4.61
+401
+-
+600
+W M 
+E B
+W M 
+E B 
++D I 
+S T
+
+8
+2.
+3	66.8	61.4	74.5    4.67
+8
+2.
+0	73.1	65.2	79.3    4.52
+
+Table 7: Final accuracy with drift detection
+
+
+
+
+
+Table 6: Semantic drift detection results
+
+
+
+of drift detection with W M E B, using Shand.  We 
+use a drift threshold of 0.2 which was selected 
+empirically. A higher value substantially reduced 
+the lexicons’ size, while a lower value resulted 
+in little improvements.   We experimented with 
+various sizes of initial terms L1...n  (n=20, n=100) 
+and L(N −m)...N (m=5, m=20).
+  There is little performance variation observed 
+in the various W M E B +P O S T  experiments.  Over- 
+all,  W M E B +P O S T  was outperformed slightly by 
+W M E B.  The post-filtering removed many incor- 
+rect terms, but did not address the underlying drift 
+problem.  This only allowed additional incorrect 
+terms to enter the top 1000, resulting in no appre- 
+ciable difference.
+  Slight variations in precision are obtained using 
+W M E B +D I S T in the first 600 terms, but noticeable 
+gains are achieved in the 801-1000 range. This is 
+not surprising as drift in many categories does not 
+start until later (cf. Figure 2).
+  With respect to the drift parameters n and m, we 
+found values of n below 20 to be inadequate. We 
+experimented initially with n=5 terms, but this is 
+equivalent to comparing the new candidate terms 
+to the initial seeds.  Setting m to 5 was also less 
+useful than a larger sample, unless n was also 
+large.  The best performance gain of 4.2% over- 
+all for 1000 terms and 17.3% at 801-1000 terms 
+was obtained using n=100 and m=5. In different 
+phases of W M E B +D I S T  we reduce semantic drift 
+significantly. In particular, at 801-1000, A N T I in- 
+crease by 46% to 87.5% and M U T N  by 59% to
+92.0%.
+  For our final experiments, we report the perfor- 
+mance of our best performing W M E B +D I S T  sys- 
+tem (n=100 m=5) using the 10 random G O L D seed 
+sets from section 4.1, in Table 7.   On average 
+W M E B +D I S T performs above W M E B, especially in 
+the later iterations where the difference is 6.3%.
+
+
+8   Conclusion
+
+In this paper, we have proposed unsupervised 
+bagging and integrated distributional similarity to 
+minimise the problem of semantic drift in itera- 
+tive bootstrapping algorithms, particularly when 
+extracting large semantic lexicons.
+  There are a number of avenues that require fur- 
+ther examination.  Firstly, we would like to take 
+our two-round unsupervised bagging further by 
+performing another iteration of sampling and then 
+bootstrapping, to see if we can get a further im- 
+provement.  Secondly, we also intend to experi- 
+ment with machine learning methods for identify- 
+ing the correct cutoff for the drift score.  Finally, 
+we intend to combine the bagging and distribu- 
+tional approaches to further improve the lexicons.
+  Our initial analysis demonstrated that the output 
+and accuracy of bootstrapping systems can be very 
+sensitive to the choice of seed terms and therefore 
+robust evaluation requires results averaged across 
+randomised seed sets. We exploited this variability 
+to create both supervised and unsupervised bag- 
+ging algorithms. The latter requires no more seeds 
+than the original algorithm but performs signifi- 
+cantly better and more reliably in later iterations. 
+Finally, we incorporated distributional similarity 
+measurements directly into W M E B  which detect 
+and censor terms which could lead to semantic 
+drift.   This approach significantly outperformed 
+standard W M E B, with a 17.3% improvement over 
+the last 200 terms extracted (801-1000). The result 
+is an efficient, reliable and accurate system for ex- 
+tracting large-scale semantic lexicons.
+
+Acknowledgments
+
+We would like to thank Dr Cassie Thornley, our 
+second evaluator who also helped with the eval- 
+uation guidelines; and the anonymous reviewers 
+for their helpful feedback.  This work was sup- 
+ported by the CSIRO ICT Centre and the Aus- 
+tralian Research Council under Discovery project 
+DP0665973.
+
+
+References
+
+Leo Breiman. 1996. Bagging predictors. Machine Learning,
+26(2):123–140.
+
+James R. Curran, Tara Murphy, and Bernhard Scholz. 2007.
+Minimising semantic drift with mutual exclusion boot- 
+strapping.  In Proceedings of the 10th Conference of the 
+Pacific Association for Computational Linguistics, pages
+172–180, Melbourne, Australia.
+
+James R. Curran.   2004.   From Distributional to Semantic
+Similarity. Ph.D. thesis, University of Edinburgh.
+
+Jason Eisner and Damianos Karakos.  2005.  Bootstrapping 
+without the boot.   In Proceedings of the Conference on 
+Human Language Technology and Conference on Empiri- 
+cal Methods in Natural Language Processing, pages 395–
+402, Vancouver, British Columbia, Canada.
+
+Gregory Grefenstette. 1994. Explorations in Automatic The- 
+saurus Discovery. Kluwer Academic Publishers, USA.
+
+Claire Grover, Michael Matthews, and Richard Tobin. 2006.
+Tools to address the interdependence between tokeni- 
+sation and standoff annotation.   In Proceedings of the 
+Multi-dimensional Markup in Natural Language Process- 
+ing Workshop, Trento, Italy.
+
+Zellig  Harris.	1954.	Distributional  structure.	Word,
+10(2/3):146–162.
+
+Marti A. Hearst. 1992. Automatic acquisition of hyponyms 
+from large text corpora. In Proceedings of the 14th Inter- 
+national Conference on Computational Linguistics, pages
+539–545, Nantes, France.
+
+William  Hersh,   Aaron  M.  Cohen,   Lynn  Ruslen,   and 
+Phoebe M. Roberts. 2007. TREC 2007 Genomics Track 
+Overview. In Proceedings of the 16th Text REtrieval Con- 
+ference, Gaithersburg, MD, USA.
+
+Mamoru Komachi, Taku Kudo, Masashi Shimbo, and Yuji 
+Matsumoto. 2008. Graph-based analysis of semantic drift 
+in Espresso-like bootstrapping algorithms. In Proceedings 
+of the Conference on Empirical Methods in Natural Lan- 
+guage Processing, pages 1011–1020, Honolulu, USA.
+
+J. Richard Landis and Gary G. Koch.  1977.  The measure- 
+ment of observer agreement in categorical data.  Biomet- 
+rics, 33(1):159–174.
+
+Tara McIntosh and James R. Curran.  2008.  Weighted mu- 
+tual exclusion bootstrapping for domain independent lex- 
+icon and template acquisition. In Proceedings of the Aus- 
+tralasian Language Technology Association Workshop, 
+pages 97–105, Hobart, Australia.
+
+Edgar Meij and Sophia Katrenko. 2007. Bootstrapping lan- 
+guage associated with biomedical entities. The AID group 
+at TREC Genomics 2007. In Proceedings of The 16th Text 
+REtrieval Conference, Gaithersburg, MD, USA.
+
+Shachar Mirkin, Ido Dagan, and Maayan Geffet.  2006.  In- 
+tegrating pattern-based and distributional similarity meth- 
+ods for lexical entailment acquistion.  In Proceedings of 
+the 21st International Conference on Computational Lin- 
+guisitics and the 44th Annual Meeting of the Association 
+for Computational Linguistics, pages 579–586, Sydney, 
+Australia.
+
+
+
+Vincent Ng and Claire Cardie.   2003.   Weakly supervised 
+natural language learning without redundant views.  In 
+Proceedings of the Human Language Technology Confer- 
+ence of the North American Chapter of the Association 
+for Computational Linguistics, pages 94–101, Edmonton, 
+USA.
+
+Marius Pas¸ca, Dekang Lin, Jeffrey Bigham, Andrei Lifchits, 
+and Alpa Jain. 2006. Names and similarities on the web: 
+Fact extraction in the fast lane. In Proceedings of the 21st 
+International Conference on Computational Linguisitics 
+and the 44th Annual Meeting of the Association for Com- 
+putational Linguistics, pages 809–816, Sydney, Australia.
+
+Patrick Pantel and Deepak Ravichandran.  2004.  Automati- 
+cally labelling semantic classes. In Proceedings of the Hu- 
+man Language Technology Conference of the North Amer- 
+ican Chapter of the Association for Computational Lin- 
+guistics, pages 321–328, Boston, MA, USA.
+
+Marco Pennacchiotti and Patrick Pantel. 2006. A bootstrap- 
+ping algorithm for automatically harvesting semantic re- 
+lations. In Proceedings of Inference in Computational Se- 
+mantics (ICoS-06), pages 87–96, Buxton, England.
+
+Ellen Riloff and Rosie Jones.  1999.  Learning dictionaries 
+for information extraction by multi-level bootstrapping. In 
+Proceedings of the 16th National Conference on Artificial 
+Intelligence and the 11th Innovative Applications of Ar- 
+tificial Intelligence Conference, pages 474–479, Orlando, 
+FL, USA.
+
+Ellen Riloff,  Janyce Wiebe,  and Theresa Wilson.    2003.
+Learning subjective nouns using extraction pattern boot- 
+strapping.  In Proceedings of the Seventh Conference on 
+Natural Language Learning (CoNLL-2003), pages 25–32.
+
+Michael Thelen and Ellen Riloff.   2002.   A bootstrapping 
+method for learning semantic lexicons using extraction 
+pattern contexts. In Proceedings of the Conference on Em- 
+pirical Methods in Natural Language Processing, pages
+214–221, Philadelphia, USA.
+
+Xiaofeng Yang and Jian Su.   2007.   Coreference resolu- 
+tion using semantic relatedness information from automat- 
+ically discovered patterns. In Proceedings of the 45th An- 
+nual Meeting of the Association for Computational Lin- 
+guistics, pages 528–535, Prague, Czech Republic.
+
+Roman Yangarber.  2003.  Counter-training in discovery of 
+semantic patterns.   In Proceedings of the 41st Annual 
+Meeting of the Association for Computational Linguistics, 
+pages 343–350, Sapporo, Japan.
+
+Hong Yu and Eugene Agichtein.  2003.  Extracting synony- 
+mous gene and protein terms from biological literature. 
+Bioinformatics, 19(1):i340–i349.
+
+

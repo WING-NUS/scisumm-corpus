@@ -1,0 +1,247 @@
+<PAPER>
+  <S sid="0">Supervised Models for Coreference Resolution</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">Traditional learning-based coreference reoperate by training a mentionfor determining whether two mentions are coreferent or not.</S>
+    <S sid="2" ssid="2">Two independent lines of recent research have attempted to improve these mention-pair one by learning a mentionto rank preceding mentions for a given anaphor, and the other training an to determine whether a preceding cluster is coreferent with a given mention.</S>
+    <S sid="3" ssid="3">We propose a cluster-ranking approach to coreference resolution that combines the strengths of mention rankers and entitymention models.</S>
+    <S sid="4" ssid="4">We additionally show how our cluster-ranking framework naturally allows discourse-new entity detection to be learned jointly with coreference resolution.</S>
+    <S sid="5" ssid="5">Experimental results on the ACE data sets demonstrate its superior performance to competing approaches.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="6" ssid="1">Noun phrase (NP) coreference resolution is the task of identifying which NPs (or mentions) refer to the same real-world entity or concept.</S>
+    <S sid="7" ssid="2">Traditional learning-based coreference resolvers operate by training a model for classifying whether two mentions are co-referring or not (e.g., Soon et al. (2001), Ng and Cardie (2002b), Kehler et al.</S>
+    <S sid="8" ssid="3">(2004), Ponzetto and Strube (2006)).</S>
+    <S sid="9" ssid="4">Despite their initial successes, these mention-pair models have at least two major weaknesses.</S>
+    <S sid="10" ssid="5">First, since each candidate antecedent for a mention to be resolved (henceforth an active mention) is considered independently of the others, these models only determine how good a candidate antecedent is relative to the active mention, but not how good a candidate antecedent is relative to other candidates.</S>
+    <S sid="11" ssid="6">In other words, they fail to answer the critical question of which candidate antecedent is most probable.</S>
+    <S sid="12" ssid="7">Second, they have limitations in their expressiveness: the information extracted from the two mentions alone may not be sufficient for making an informed coreference decision, especially if the candidate antecedent is a pronoun (which is semantically empty) or a mention that lacks descriptive information such as gender (e.g., Clinton).</S>
+    <S sid="13" ssid="8">To address the first weakness, researchers have attempted to train a mention-ranking model for determining which candidate antecedent is most probable given an active mention (e.g., Denis and Baldridge (2008)).</S>
+    <S sid="14" ssid="9">Ranking is arguably a more natural reformulation of coreference resolution than classification, as a ranker allows all candidate antecedents to be considered simultaneously and therefore directly captures the competition among them.</S>
+    <S sid="15" ssid="10">Another desirable consequence is that there exists a natural resolution strategy for a ranking approach: a mention is resolved to the candidate antecedent that has the highest rank.</S>
+    <S sid="16" ssid="11">This contrasts with classification-based approaches, where many clustering algorithms have been employed to co-ordinate the pairwise coreference decisions (because it is unclear which one is the best).</S>
+    <S sid="17" ssid="12">To address the second weakness, researchers have investigated the acquisition of entity-mention coreference models (e.g., Luo et al. (2004), Yang et al.</S>
+    <S sid="18" ssid="13">(2004)).</S>
+    <S sid="19" ssid="14">Unlike mention-pair models, these entity-mention models are trained to determine whether an active mention belongs to a preceding, possibly partially-formed, coreference cluster.</S>
+    <S sid="20" ssid="15">Hence, they can employ cluster-level features (i.e., features that are defined over any subset of mentions in a preceding cluster), which makes them more expressive than mention-pair models.</S>
+    <S sid="21" ssid="16">Motivated in part by these recently developed models, we propose in this paper a clusterranking approach to coreference resolution that combines the strengths of mention-ranking models and entity-mention models.</S>
+    <S sid="22" ssid="17">Specifically, we recast coreference as the problem of determining which of a set of preceding coreference clusters is the best to link to an active mention using a learned cluster ranker.</S>
+    <S sid="23" ssid="18">In addition, we show how discourse-new detection (i.e., the task of determining whether a mention introduces a new entity in a discourse) can be learned jointly with coreference resolution in our cluster-ranking framework.</S>
+    <S sid="24" ssid="19">It is worth noting that researchers typically adopt a pipeline coreference architecture, performing discourse-new detection prior to coreference resolution and using the resulting information to prevent a coreference system from resolving mentions that are determined to be discourse-new (see Poesio et al. (2004) for an overview).</S>
+    <S sid="25" ssid="20">As a result, errors in discourse-new detection could be propagated to the resolver, possibly leading to a deterioration of coreference performance (see Ng and Cardie (2002a)).</S>
+    <S sid="26" ssid="21">Jointly learning discoursenew detection and coreference resolution can potentially address this error-propagation problem.</S>
+    <S sid="27" ssid="22">In sum, we believe our work makes three main contributions to coreference resolution: Proposing a simple, yet effective coreference model.</S>
+    <S sid="28" ssid="23">Our work advances the state-of-the-art in coreference resolution by bringing learningbased coreference systems to the next level of performance.</S>
+    <S sid="29" ssid="24">When evaluated on the ACE 2005 coreference data sets, cluster rankers outperform three competing models &#8212; mention-pair, entitymention, and mention-ranking models &#8212; by a large margin.</S>
+    <S sid="30" ssid="25">Also, our joint-learning approach to discourse-new detection and coreference resolution consistently yields cluster rankers that outperform those adopting the pipeline architecture.</S>
+    <S sid="31" ssid="26">Equally importantly, cluster rankers are conceptually simple and easy to implement and do not rely on sophisticated training and inference procedures to make coreference decisions in dependent relation to each other, unlike relational coreference models (see McCallum and Wellner (2004)).</S>
+    <S sid="32" ssid="27">Bridging the gap between machine-learning approaches and linguistically-motivated approaches to coreference resolution.</S>
+    <S sid="33" ssid="28">While machine learning approaches to coreference resolution have received a lot of attention since the mid90s, popular learning-based coreference frameworks such as the mention-pair model are arguably rather unsatisfactory from a linguistic point of view.</S>
+    <S sid="34" ssid="29">In particular, they have not leveraged advances in discourse-based anaphora resolution research in the 70s and 80s.</S>
+    <S sid="35" ssid="30">Our work bridges this gap by realizing in a new machine learning framework ideas rooted in Lappin and Leass&#8217;s (1994) heuristic-based pronoun resolver, which in turn was motivated by classic salience-based approaches to anaphora resolution.</S>
+    <S sid="36" ssid="31">Revealing the importance of adopting the right model.</S>
+    <S sid="37" ssid="32">While entity-mention models have previously been shown to be worse or at best marginally better than their mention-pair counterparts (Luo et al., 2004; Yang et al., 2008), our cluster-ranking models, which are a natural extension of entity-mention models, significantly outperformed all competing approaches.</S>
+    <S sid="38" ssid="33">This suggests that the use of an appropriate learning framework can bring us a long way towards highperformance coreference resolution.</S>
+    <S sid="39" ssid="34">The rest of the paper is structured as follows.</S>
+    <S sid="40" ssid="35">Section 2 discusses related work.</S>
+    <S sid="41" ssid="36">Section 3 describes our baseline coreference models: mentionpair, entity-mention, and mention-ranking.</S>
+    <S sid="42" ssid="37">We discuss our cluster-ranking approach in Section 4, evaluate it in Section 5, and conclude in Section 6.</S>
+  </SECTION>
+  <SECTION title="2 Related Work" number="2">
+    <S sid="43" ssid="1">Heuristic-based cluster ranking.</S>
+    <S sid="44" ssid="2">As mentioned previously, the work most related to ours is Lappin and Leass (1994), whose goal is to perform pronoun resolution by assigning an anaphoric pronoun to the highest-scored preceding cluster.</S>
+    <S sid="45" ssid="3">Nevertheless, Lappin and Leass&#8217;s work differs from ours in several respects.</S>
+    <S sid="46" ssid="4">First, they only tackle pronoun resolution rather than the full coreference task.</S>
+    <S sid="47" ssid="5">Second, their algorithm is heuristic-based; in particular, the score assigned to a preceding cluster is computed by summing over the weights associated with the factors applicable to the cluster, where the weights are determined heuristically, rather than learned, unlike ours.</S>
+    <S sid="48" ssid="6">Like many heuristic-based pronoun resolvers (e.g., Mitkov (1998)), they first apply a set of constraints to filter grammatically incompatible candidate antecedents and then rank the remaining ones using salience factors.</S>
+    <S sid="49" ssid="7">As a result, their cluster-ranking model employs only factors that capture the salience of a cluster, and can therefore be viewed as a simple model of attentional state (see Grosz and Sidner (1986)) realized by coreference clusters.</S>
+    <S sid="50" ssid="8">By contrast, our resolution strategy is learned without applying hand-coded constraints in a separate filtering step.</S>
+    <S sid="51" ssid="9">In particular, we attempt to determine the compatibility between a cluster and an active mention, using factors that determine not only salience (e.g., the distance between the cluster and the mention) but also lexical and grammatical compatibility, for instance.</S>
+    <S sid="52" ssid="10">Entity-mention coreference models.</S>
+    <S sid="53" ssid="11">Luo et al. (2004) represent one of the earliest attempts to investigate learning-based entity-mention models.</S>
+    <S sid="54" ssid="12">They use the ANY predicate to generate clusterlevel features as follows: given a binary-valued feature X defined over a pair of mentions, they introduce an ANY-X cluster-level feature, which has the value TRUE if X is true between the active mention and any mention in the preceding cluster under consideration.</S>
+    <S sid="55" ssid="13">Contrary to common wisdom, this entity-mention model underperforms its mention-pair counterpart in spite of the generalization from mention-pair to cluster-level features.</S>
+    <S sid="56" ssid="14">In Yang et al.&#8217;s (2004) entity-mention model, a training instance is composed of an active mention mk, a preceding cluster C, and a mention mj in C that is closest in distance to mk in the associated text.</S>
+    <S sid="57" ssid="15">The feature set used to represent the instance is primarily composed of features that describe the relationship between mj and mk, as well as a few cluster-level features.</S>
+    <S sid="58" ssid="16">In other words, the model still relies heavily on features used in a mention-pair model.</S>
+    <S sid="59" ssid="17">In particular, the inclusion of mj in the feature vector representation to some extent reflects the authors&#8217; lack of confidence that a strong entity-mention model can be trained without mention-pair-based features.</S>
+    <S sid="60" ssid="18">Our ranking model, on the other hand, is trained without such features.</S>
+    <S sid="61" ssid="19">More recently, Yang et al. (2008) have proposed another entity-mention model trained by inductive logic programming.</S>
+    <S sid="62" ssid="20">Like their previous work, the scarcity of clusterlevel predicates (only two are used) under-exploits the expressiveness of entity-mention models.</S>
+    <S sid="63" ssid="21">Mention ranking.</S>
+    <S sid="64" ssid="22">The notion of ranking candidate antecedents can be traced back to centering algorithms, many of which use grammatical roles to rank forward-looking centers (see Grosz et al. (1995), Walker et al.</S>
+    <S sid="65" ssid="23">(1998), and Mitkov (2002)).</S>
+    <S sid="66" ssid="24">However, mention ranking has been employed in learning-based coreference resolvers only recently.</S>
+    <S sid="67" ssid="25">As mentioned before, Denis and Baldridge (2008) train a mention-ranking model.</S>
+    <S sid="68" ssid="26">Their work can be viewed as an extension of Yang et al.&#8217;s (2003) twin-candidate coreference model, which ranks only two candidate antecedents at a time.</S>
+    <S sid="69" ssid="27">Unlike ours, however, their model ranks mentions rather than clusters, and relies on an independently-trained discourse-new detector.</S>
+    <S sid="70" ssid="28">Discourse-new detection.</S>
+    <S sid="71" ssid="29">Discourse-new detection is often tackled independently of coreference resolution.</S>
+    <S sid="72" ssid="30">Pleonastic its have been detected using heuristics (e.g., Kennedy and Boguraev (1996)) and learning-based techniques such as rule learning (e.g., M&#168;uller (2006)), kernels (e.g., Versley et al. (2008)), and distributional methods (e.g., Bergsma et al.</S>
+    <S sid="73" ssid="31">(2008)).</S>
+    <S sid="74" ssid="32">Non-anaphoric definite descriptions have been detected using heuristics (e.g., Vieira and Poesio (2000)) and unsupervised methods (e.g., Bean and Riloff (1999)).</S>
+    <S sid="75" ssid="33">General discourse-new detectors that are applicable to different types of NPs have been built using heuristics (e.g., Byron and Gegg-Harrison (2004)) and modeled generatively (e.g., Elsner and Charniak (2007)) and discriminatively (e.g., Uryupina (2003)).</S>
+    <S sid="76" ssid="34">There have also been attempts to perform joint inference for discourse-new detection and coreference resolution using integer linear programming (ILP), where a discourse-new classifier and a coreference classifier are trained independently of each other, and then ILP is applied as a post-processing step to jointly infer discourse-new and coreference decisions so that they are consistent with each other (e.g., Denis and Baldridge (2007)).</S>
+    <S sid="77" ssid="35">Joint inference is different from our jointlearning approach, which allows the two tasks to be learned jointly and not independently.</S>
+  </SECTION>
+  <SECTION title="3 Baseline Coreference Models" number="3">
+    <S sid="78" ssid="1">In this section, we describe three coreference models that will serve as our baselines: the mentionpair model, the entity-mention model, and the mention-ranking model.</S>
+    <S sid="79" ssid="2">For illustrative purposes, we will use the text segment shown in Figure 1.</S>
+    <S sid="80" ssid="3">Each mention m in the segment is annotated as [m]cidmid, where mid is the mention id and cid is the id of the cluster to which m belongs.</S>
+    <S sid="81" ssid="4">As we can see, the mentions are partitioned into four sets, with Barack Obama, his, and he in one cluster, and each of the remaining mentions in its own cluster.</S>
+    <S sid="82" ssid="5">As noted before, a mention-pair model is a classifier that decides whether or not an active mention mk is coreferent with a candidate antecedent mj.</S>
+    <S sid="83" ssid="6">Each instance i(mj, mk) represents mj and mk and consists of the 39 features shown in Table 1.</S>
+    <S sid="84" ssid="7">These features have largely been employed by state-of-the-art learning-based coreference systems (e.g., Soon et al. (2001), Ng and Cardie (2002b), Bengtson and Roth (2008)), and are computed automatically.</S>
+    <S sid="85" ssid="8">As can be seen, the features are divided into four blocks.</S>
+    <S sid="86" ssid="9">The first two blocks consist of features that describe the properties of mj and mk, respectively, and the last two blocks of features describe the relationship between mj and mk.</S>
+    <S sid="87" ssid="10">The classification associated with a training instance is either positive or negative, depending on whether mj and mk are coreferent.</S>
+    <S sid="88" ssid="11">If one training instance were created from each pair of mentions, the negative instances would significantly outnumber the positives, yielding a skewed class distribution that will typically have an adverse effect on model training.</S>
+    <S sid="89" ssid="12">As a result, only a subset of mention pairs will be generated for training.</S>
+    <S sid="90" ssid="13">Following Soon et al. (2001), we create (1) a positive instance for each discourse-old mention mk and its closest antecedent mj; and (2) a negative instance for mk paired with each of the intervening mentions, mj+1, mj+2, ... , mk&#8722;1.</S>
+    <S sid="91" ssid="14">In our running example shown in Figure 1, three training instances will be generated for He: i(Monday, He), i(secretary of state, He), and i(his, He).</S>
+    <S sid="92" ssid="15">The first two of these instances will be labeled as negative, and the last one will be labeled as positive.</S>
+    <S sid="93" ssid="16">To train a mention-pair classifier, we use the SVM learning algorithm from the SVMlight package (Joachims, 2002), converting all multi-valued features into an equivalent set of binary-valued features.</S>
+    <S sid="94" ssid="17">After training, the resulting SVM classifier is used to identify an antecedent for a mention in a test text.</S>
+    <S sid="95" ssid="18">Specifically, an active mention mk selects as its antecedent the closest preceding mention that is classified as coreferent with mk.</S>
+    <S sid="96" ssid="19">If mk is not classified as coreferent with any preceding mention, it will be considered discourse-new (i.e., no antecedent will be selected for mk).</S>
+    <S sid="97" ssid="20">Unlike a mention-pair model, an entity-mention model is a classifier that decides whether or not an active mention mk is coreferent with a partial cluster cj that precedes mk.</S>
+    <S sid="98" ssid="21">Each training instance, i(cj, mk), represents cj and mk.</S>
+    <S sid="99" ssid="22">The features for an instance can be divided into two types: (1) features that describe mk (i.e, those shown in the second block of Table 1), and (2) cluster-level features, which describe the relationship between cj and mk.</S>
+    <S sid="100" ssid="23">Motivated by previous work (Luo et al., 2004; Culotta et al., 2007; Yang et al., 2008), we create cluster-level features from mention-pair features using four predicates: NONE, MOST-FALSE, MOST-TRUE, and ALL.</S>
+    <S sid="101" ssid="24">Specifically, for each feature X shown in the last two blocks in Table 1, we first convert X into an equivalent set of binary-valued features if it is multi-valued.</S>
+    <S sid="102" ssid="25">Then, for each resulting binaryvalued feature Xb, we create four binary-valued cluster-level features: (1) NONE-Xb is true when Xb is false between mk and each mention in cj; (2) MOST-FALSE-Xb is true when Xb is true between mk and less than half (but at least one) of the mentions in cj; (3) MOST-TRUE-Xb is true when Xb is true between mk and at least half (but not all) of the mentions in cj; and (4) ALL-Xb is true when Xb is true between mk and each mention in cj.</S>
+    <S sid="103" ssid="26">Hence, for each Xb, exactly one of these four cluster-level features evaluates to true.</S>
+    <S sid="104" ssid="27">Following Yang et al. (2008), we create (1) a positive instance for each discourse-old mention mk and the preceding cluster cj to which it belongs; and (2) a negative instance for mk paired with each partial cluster whose last mention appears between mk and its closest antecedent (i.e., the last mention of cj).</S>
+    <S sid="105" ssid="28">Consider again our running example.</S>
+    <S sid="106" ssid="29">Three training instances will be generated for He: i({Monday}, He), i({secretary of state}, He), and i({Barack Obama, his}, He).</S>
+    <S sid="107" ssid="30">The first two of these instances will be labeled as negative, and the last one will be labeled as positive.</S>
+    <S sid="108" ssid="31">As in the mention-pair model, we train an entity-mention classifier using the SVM learner.</S>
+    <S sid="109" ssid="32">After training, the resulting classifier is used to identify a preceding cluster for a mention in a test text.</S>
+    <S sid="110" ssid="33">Specifically, the mentions are processed in a left-to-right manner.</S>
+    <S sid="111" ssid="34">For each active mention mk, a test instance is created between mk and each of the preceding clusters formed so far.</S>
+    <S sid="112" ssid="35">All the test instances are then presented to the classifier.</S>
+    <S sid="113" ssid="36">Finally, mk will be linked to the closest preceding cluster that is classified as coreferent with mk.</S>
+    <S sid="114" ssid="37">If mk is not classified as coreferent with any preceding cluster, it will be considered discoursenew.</S>
+    <S sid="115" ssid="38">Note that all partial clusters preceding mk are formed incrementally based on the predictions of the classifier for the first k &#8722; 1 mentions.</S>
+    <S sid="116" ssid="39">As noted before, a ranking model imposes a ranking on all the candidate antecedents of an active mention mk.</S>
+    <S sid="117" ssid="40">To train a ranker, we use the SVM ranker-learning algorithm from the SVMlZght package.</S>
+    <S sid="118" ssid="41">Like the mention-pair model, each training instance i(mj, mk) represents mk and a preceding mention mj.</S>
+    <S sid="119" ssid="42">In fact, the features that represent the instance as well as the method for creating training instances are identical to those employed by the mention-pair model.</S>
+    <S sid="120" ssid="43">The only difference lies in the assignment of class values to training instances.</S>
+    <S sid="121" ssid="44">Assuming that Sk is the set of training instances created for anaphoric mention mk, the class value for an instance i(mj, mk) in Sk is the rank of mj among competing candidate antecedents, which is 2 if mj is the closest antecedent of mk, and 1 otherwise.1 To exemplify, consider our running example.</S>
+    <S sid="122" ssid="45">As in the mention-pair model, three training instances will be generated for He: i(Monday, He), i(secretary of state, He), i(his, He).</S>
+    <S sid="123" ssid="46">The third instance will have a class value of 2, and the remaining two will have a class value of 1.</S>
+    <S sid="124" ssid="47">After training, the mention-ranking model is applied to rank the candidate antecedents for an active mention in a test text as follows.</S>
+    <S sid="125" ssid="48">Given an active mention mk, we follow Denis and Baldridge (2008) and use an independently-trained classifier to determine whether mk is discourse-new.</S>
+    <S sid="126" ssid="49">If so, mk will not be resolved.</S>
+    <S sid="127" ssid="50">Otherwise, we create test instances for mk by pairing it with each of its preceding mentions.</S>
+    <S sid="128" ssid="51">The test instances are then presented to the ranker, and the preceding mention that is assigned the largest value by the ranker is selected as the antecedent of mk.</S>
+    <S sid="129" ssid="52">The discourse-new classifier used in the resolution step is trained with 26 of the 37 features2 described in Ng and Cardie (2002a) that are deemed useful for distinguishing between anaphoric and non-anaphoric mentions.</S>
+    <S sid="130" ssid="53">These features can be broadly divided into two types: (1) features that encode the form of the mention (e.g., NP type, number, definiteness), and (2) features that compare the mention to one of its preceding mentions.</S>
+  </SECTION>
+  <SECTION title="4 Coreference as Cluster Ranking" number="4">
+    <S sid="131" ssid="1">In this section, we describe our cluster-ranking approach to NP coreference.</S>
+    <S sid="132" ssid="2">As noted before, our approach aims to combine the strengths of entitymention models and mention-ranking models.</S>
+    <S sid="133" ssid="3">For ease of exposition, we will describe in this subsection how to train and apply a cluster ranker when it is used in a pipeline architecture, where discourse-new detection is performed prior to coreference resolution.</S>
+    <S sid="134" ssid="4">In the next subsection, we will show how the two tasks can be learned jointly.</S>
+    <S sid="135" ssid="5">Recall that a cluster ranker ranks a set of preceding clusters for an active mention mk.</S>
+    <S sid="136" ssid="6">Since a cluster ranker is a hybrid of a mention-ranking model and an entity-mention model, the way it is trained and applied is also a hybrid of the two.</S>
+    <S sid="137" ssid="7">In particular, the instance representation employed by a cluster ranker is identical to that used by an entity-mention model, where each training instance i(cj, mk) represents a preceding cluster cj and a discourse-old mention mk and consists of cluster-level features formed from predicates.</S>
+    <S sid="138" ssid="8">Unlike in an entity-mention model, however, in a cluster ranker, (1) a training instance is created between each discourse-old mention mk and each of its preceding clusters; and (2) since we are training a model for ranking clusters, the assignment of class values to training instances is similar to that of a mention ranker.</S>
+    <S sid="139" ssid="9">Specifically, the class value of a training instance i(cj, mk) created for mk is the rank of cj among the competing clusters, which is 2 if mk belongs to cj, and 1 otherwise.</S>
+    <S sid="140" ssid="10">Applying the learned cluster ranker to a test text is similar to applying a mention ranker.</S>
+    <S sid="141" ssid="11">Specifically, the mentions are processed in a left-to-right manner.</S>
+    <S sid="142" ssid="12">For each active mention mk, we first apply an independently-trained classifier to determine if mk is discourse-new.</S>
+    <S sid="143" ssid="13">If so, mk will not be resolved.</S>
+    <S sid="144" ssid="14">Otherwise, we create test instances for mk by pairing it with each of its preceding clusters.</S>
+    <S sid="145" ssid="15">The test instances are then presented to the ranker, and mk is linked to the cluster that is assigned the highest value by the ranker.</S>
+    <S sid="146" ssid="16">Note that these partial clusters preceding mk are formed incrementally based on the predictions of the ranker for the first k&#8722;1 mentions; no gold-standard coreference information is used in their formation.</S>
+    <S sid="147" ssid="17">The cluster ranker described above can be used to determine which preceding cluster a discourseold mention should be linked to, but it cannot be used to determine whether a mention is discoursenew or not.</S>
+    <S sid="148" ssid="18">The reason is simple: all the training instances are generated from discourse-old mentions.</S>
+    <S sid="149" ssid="19">Hence, to jointly learn discourse-new detection and coreference resolution, we must train the ranker using instances generated from both discourse-old and discourse-new mentions.</S>
+    <S sid="150" ssid="20">Specifically, when training the ranker, we provide each active mention with the option to start a new cluster by creating an additional instance that (1) contains features that solely describe the active mention (i.e., the features shown in the second block of Table 1), and (2) has the highest rank value among competing clusters (i.e., 2) if it is discourse-new and the lowest rank value (i.e., 1) otherwise.</S>
+    <S sid="151" ssid="21">The main advantage of jointly learning the two tasks is that it allows the ranking model to evaluate all possible options for an active mention (i.e., whether to resolve it, and if so, which preceding cluster is the best) simultaneously.</S>
+    <S sid="152" ssid="22">After training, the resulting cluster ranker processes the mentions in a test text in a left-to-right manner.</S>
+    <S sid="153" ssid="23">For each active mention mk, we create test instances for it by pairing it with each of its preceding clusters.</S>
+    <S sid="154" ssid="24">To allow for the possibility that mk is discourse-new, we create an additional test instance that contains features that solely describe the active mention (similar to what we did in the training step above).</S>
+    <S sid="155" ssid="25">All these test instances are then presented to the ranker.</S>
+    <S sid="156" ssid="26">If the additional test instance is assigned the highest rank value by the ranker, then mk is classified as discourse-new and will not be resolved.</S>
+    <S sid="157" ssid="27">Otherwise, mk is linked to the cluster that has the highest rank.</S>
+    <S sid="158" ssid="28">As before, all partial clusters preceding mk are formed incrementally based on the predictions of the ranker for the first k &#8722; 1 mentions.</S>
+  </SECTION>
+  <SECTION title="5 Evaluation" number="5">
+    <S sid="159" ssid="1">Corpus.</S>
+    <S sid="160" ssid="2">We use the ACE 2005 coreference corpus as released by the LDC, which consists of the 599 training documents used in the official ACE evaluation.3 To ensure diversity, the corpus was created by selecting documents from six different sources: Broadcast News (bn), Broadcast Conversations (bc), Newswire (nw), Webblog (wb), Usenet (un), and conversational telephone speech (cts).</S>
+    <S sid="161" ssid="3">The number of documents belonging to each source is shown in Table 2.</S>
+    <S sid="162" ssid="4">For evaluation, we partition the 599 documents into a training set and a test set following a 80/20 ratio, ensuring that the two sets have the same proportion of documents from the six sources.</S>
+    <S sid="163" ssid="5">Mention extractor.</S>
+    <S sid="164" ssid="6">We evaluate each coreference model using both true mentions (i.e., gold standard mentions4) and system mentions (i.e., automatically identified mentions).</S>
+    <S sid="165" ssid="7">To extract system mentions from a test text, we trained a mention extractor on the training texts.</S>
+    <S sid="166" ssid="8">Following Florian et al. (2004), we recast mention extraction as a sequence labeling task, where we assign to each token in a test text a label that indicates whether it begins a mention, is inside a mention, or is outside a mention.</S>
+    <S sid="167" ssid="9">Hence, to learn the extractor, we create one training instance for each token in a training text and derive its class value (one of b, i, and o) from the annotated data.</S>
+    <S sid="168" ssid="10">Each instance represents wi, the token under consideration, and consists of 29 linguistic features, many of which are modeled after the systems of Bikel et al. (1999) and Florian et al.</S>
+    <S sid="169" ssid="11">(2004), as described below.</S>
+    <S sid="170" ssid="12">Lexical (7): Tokens in a window of 7: {wi&#8722;3, ... , wi+3}.</S>
+    <S sid="171" ssid="13">Capitalization (4): Determine whether wi IsAllCap, IsInitCap, IsCapPeriod, and IsAllLower (see Bikel et al. (1999)).</S>
+    <S sid="172" ssid="14">Morphological (8): wi&#8217;s prefixes and suffixes of length one, two, three, and four.</S>
+    <S sid="173" ssid="15">Grammatical (1): The part-of-speech (POS) tag of wi obtained using the Stanford log-linear POS tagger (Toutanova et al., 2003).</S>
+    <S sid="174" ssid="16">Semantic (1): The named entity (NE) tag of wi obtained using the Stanford CRF-based NE recognizer (Finkel et al., 2005).</S>
+    <S sid="175" ssid="17">Gazetteers (8): Eight dictionaries containing pronouns (77 entries), common words and words that are not names (399.6k), person names (83.6k), person titles and honorifics (761), vehicle words (226), location names (1.8k), company names (77.6k), and nouns extracted from WordNet that are hyponyms of PERSON (6.3k).</S>
+    <S sid="176" ssid="18">We employ CRF++5, a C++ implementation of conditional random fields, for training the mention detector, which achieves an F-score of 86.7 (86.1 recall, 87.2 precision) on the test set.</S>
+    <S sid="177" ssid="19">These extracted mentions are to be used as system mentions in our coreference experiments.</S>
+    <S sid="178" ssid="20">Scoring programs.</S>
+    <S sid="179" ssid="21">To score the output of a coreference model, we employ three scoring programs: MUC (Vilain et al., 1995), B3 (Bagga and Baldwin, 1998), and &#966;3-CEAF (Luo, 2005).</S>
+    <S sid="180" ssid="22">There is a complication, however.</S>
+    <S sid="181" ssid="23">When scoring a response (i.e., system-generated) partition against a key (i.e., gold-standard) partition, a scoring program needs to construct a mapping between the mentions in the response and those in the key.</S>
+    <S sid="182" ssid="24">If the response is generated using true mentions, then every mention in the response is mapped to some mention in the key and vice versa; in other words, there are no twinless (i.e., unmapped) mentions (Stoyanov et al., 2009).</S>
+    <S sid="183" ssid="25">However, this is not the case when system mentions are used.</S>
+    <S sid="184" ssid="26">The aforementioned complication does not arise from the construction of the mapping, but from the fact that Bagga and Baldwin (1998) and Luo (2005) do not specify how to apply B3 and CEAF to score partitions generated from system mentions.</S>
+    <S sid="185" ssid="27">We propose a simple solution to this problem: we remove all and only those twinless system mentions that are singletons before applying B3 and CEAF.</S>
+    <S sid="186" ssid="28">The reason is simple: since the coreference resolver has successfully identified these mentions as singletons, it should not be penalized, and removing them allows us to avoid such penalty.</S>
+    <S sid="187" ssid="29">Note that we only remove twinless (as opposed to all) system mentions that are singletons: this allows us to reward a resolver for successful identification of singleton mentions that have twins, thus overcoming a major weakness of and common criticism against the MUC scorer.</S>
+    <S sid="188" ssid="30">Also, we retain twinless system mentions that are nonsingletons, as the resolver should be penalized for identifying spurious coreference relations.</S>
+    <S sid="189" ssid="31">On the other hand, we do not remove twinless mentions in the key partition, as we want to ensure that the resolver makes the correct (non-)coreference decisions for them.</S>
+    <S sid="190" ssid="32">We believe that our proposal addresses Stoyanov et al.&#8217;s (2009) problem of having very low precision when applying the CEAF scorer to score partitions of system mentions.</S>
+    <S sid="191" ssid="33">The mention-pair baseline.</S>
+    <S sid="192" ssid="34">We train our first baseline, the mention-pair coreference classifier, using the SVM learning algorithm as implemented in the SVMlight package (Joachims, 2002).6 Results of this baseline using true mentions and system mentions, shown in row 1 of Tables 3 and 4, are reported in terms of recall (R), precision (P), and F-score (F) provided by the three scoring programs.</S>
+    <S sid="193" ssid="35">As we can see, this baseline achieves Fscores of 54.3&#8211;70.0 and 53.4&#8211;62.5 for true mentions and system mentions, respectively.</S>
+    <S sid="194" ssid="36">The entity-mention baseline.</S>
+    <S sid="195" ssid="37">Next, we train our second baseline, the entity-mention coreference classifier, using the SVM learner.</S>
+    <S sid="196" ssid="38">Results of this baseline are shown in row 2 of Tables 3 and 4.</S>
+    <S sid="197" ssid="39">For true mentions, this baseline achieves an Fscore of 54.8&#8211;70.7.</S>
+    <S sid="198" ssid="40">In comparison to the mentionpair baseline, F-score rises insignificantly according to all three scorers.7 Similar trends can be observed for system mentions, where the F-scores between the two models are statistically indistinguishable across the board.</S>
+    <S sid="199" ssid="41">While the insignificant performance difference is somewhat surprising given the improved expressiveness of entitymention models over mention-pair models, similar trends have been reported by Luo et al. (2004).</S>
+    <S sid="200" ssid="42">The mention-ranking baseline.</S>
+    <S sid="201" ssid="43">Our third baseline is the mention-ranking coreference model, trained using the ranker-learning algorithm in SVMlight.</S>
+    <S sid="202" ssid="44">To identify discourse-new mentions, we employ two methods.</S>
+    <S sid="203" ssid="45">In the first method, we adopt a pipeline architecture, where we train an SVM classifier for discourse-new detection independently of the mention ranker on the training set using the 26 features described in Section 3.3.</S>
+    <S sid="204" ssid="46">We then apply the resulting classifier to each test text to filter discourse-new mentions prior to coreference resolution.</S>
+    <S sid="205" ssid="47">Results of the mention ranker are shown in row 3 of Tables 3 and 4.</S>
+    <S sid="206" ssid="48">As we can see, the ranker achieves F-scores of 57.8&#8211;71.2 and 54.1&#8211;65.4 for true mentions and system mentions, respectively, yielding a significant improvement over the entity-mention baseline in all but one case (MUC/true mentions).</S>
+    <S sid="207" ssid="49">In the second method, we perform discoursenew detection jointly with coreference resolution using the method described in Section 4.2.</S>
+    <S sid="208" ssid="50">While we discussed this joint learning method in the context of cluster ranking, it should be easy to see that the method is equally applicable to a mention ranker.</S>
+    <S sid="209" ssid="51">Results of the mention ranker using this joint architecture are shown in row 4 of Tables 3 and 4.</S>
+    <S sid="210" ssid="52">As we can see, the ranker achieves F-scores of 61.6&#8211;73.4 and 55.6&#8211;67.1 for true mentions and system mentions, respectively.</S>
+    <S sid="211" ssid="53">For both types of mentions, the improvements over the corresponding results for the entity-mention baseline are significant, and suggest that mention ranking is a precision-enhancing device.</S>
+    <S sid="212" ssid="54">Moreover, in comparison to the pipeline architecture in row 3, we see that F-score rises significantly by 2.2&#8211;3.8% for true mentions, and improves by a smaller margin of 0.3&#8211;1.7% for system mentions.</S>
+    <S sid="213" ssid="55">These results demonstrate the benefits of joint modeling.</S>
+    <S sid="214" ssid="56">Our cluster-ranking model.</S>
+    <S sid="215" ssid="57">Finally, we evaluate our cluster-ranking model.</S>
+    <S sid="216" ssid="58">As in the mentionranking baseline, we employ both the pipeline architecture and the joint architecture for discoursenew detection.</S>
+    <S sid="217" ssid="59">Results are shown in rows 5 and 6 of Tables 3 and 4, respectively, for the two architectures.</S>
+    <S sid="218" ssid="60">When true mentions are used, the pipeline architecture yields an F-score of 61.8&#8211; 74.8, which represents a significant improvement over the mention ranker adopting the pipeline architecture.</S>
+    <S sid="219" ssid="61">With the joint architecture, the cluster ranker achieves an F-score of 63.3&#8211;76.0.</S>
+    <S sid="220" ssid="62">This also represents a significant improvement over the mention ranker adopting the joint architecture, the best of the baselines, and suggests that cluster ranking is abetter precision-enhancing model than mention ranking.</S>
+    <S sid="221" ssid="63">Moreover, comparing the results in these two rows reveals the superiority of the joint architecture over the pipeline architecture, particularly in terms of its ability to enhance system precision.</S>
+    <S sid="222" ssid="64">Similar performance trends can be observed when system mentions are used.</S>
+  </SECTION>
+  <SECTION title="6 Conclusions" number="6">
+    <S sid="223" ssid="1">We have presented a cluster-ranking approach that recasts the mention resolution process as the problem of finding the best preceding cluster to link an active mention to.</S>
+    <S sid="224" ssid="2">Crucially, our approach combines the strengths of entity-mention models and mention-ranking models.</S>
+    <S sid="225" ssid="3">Experimental results on the ACE 2005 corpus show that (1) jointly learning coreference resolution and discourse-new detection allows the cluster ranker to achieve better performance than adopting a pipeline coreference architecture; and (2) our cluster ranker significantly outperforms the mention ranker, the best of the three baseline coreference models, under both the pipeline architecture and the joint architecture.</S>
+    <S sid="226" ssid="4">Overall, we believe that our cluster-ranking approach advances the state-of-the-art in coreference resolution both theoretically and empirically.</S>
+  </SECTION>
+  <SECTION title="Acknowledgments" number="7">
+    <S sid="227" ssid="1">We thank the three anonymous reviewers for their invaluable comments on the paper.</S>
+    <S sid="228" ssid="2">This work was supported in part by NSF Grant IIS-0812261.</S>
+  </SECTION>
+</PAPER>

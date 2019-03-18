@@ -1,0 +1,217 @@
+<PAPER>
+  <S sid="0">Learning Accurate Compact And Interpretable Tree Annotation</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We present an automatic approach to tree annotation in which basic nonterminal symbols are alternately split and merged to maximize the likelihood of a training treebank.</S>
+    <S sid="2" ssid="2">Starting with a simple Xbar grammar, we learn a new grammar whose nonterminals are subsymbols of the original nonterminals.</S>
+    <S sid="3" ssid="3">In contrast with previous work, we are able to split various terminals to different degrees, as appropriate to the actual complexity in the data.</S>
+    <S sid="4" ssid="4">Our grammars automatically learn the kinds of linguistic distinctions exhibited in previous work on manual tree annotation.</S>
+    <S sid="5" ssid="5">On the other hand, our grammars are much more compact and substantially more accurate than previous work on automatic annotation.</S>
+    <S sid="6" ssid="6">Despite its simplicity, our best grammar achieves 90.2% on the Penn Treebank, higher than fully lexicalized systems.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="7" ssid="1">Probabilistic context-free grammars (PCFGs) underlie most high-performance parsers in one way or another (Collins, 1999; Charniak, 2000; Charniak and Johnson, 2005).</S>
+    <S sid="8" ssid="2">However, as demonstrated in Charniak (1996) and Klein and Manning (2003), a PCFG which simply takes the empirical rules and probabilities off of a treebank does not perform well.</S>
+    <S sid="9" ssid="3">This naive grammar is a poor one because its context-freedom assumptions are too strong in some places (e.g. it assumes that subject and object NPs share the same distribution) and too weak in others (e.g. it assumes that long rewrites are not decomposable into smaller steps).</S>
+    <S sid="10" ssid="4">Therefore, a variety of techniques have been developed to both enrich and generalize the naive grammar, ranging from simple tree annotation and symbol splitting (Johnson, 1998; Klein and Manning, 2003) to full lexicalization and intricate smoothing (Collins, 1999; Charniak, 2000).</S>
+    <S sid="11" ssid="5">In this paper, we investigate the learning of a grammar consistent with a treebank at the level of evaluation symbols (such as NP, VP, etc.) but split based on the likelihood of the training trees.</S>
+    <S sid="12" ssid="6">Klein and Manning (2003) addressed this question from a linguistic perspective, starting with a Markov grammar and manually splitting symbols in response to observed linguistic trends in the data.</S>
+    <S sid="13" ssid="7">For example, the symbol NP might be split into the subsymbol NP&amp;quot;S in subject position and the subsymbol NP&amp;quot;VP in object position.</S>
+    <S sid="14" ssid="8">Recently, Matsuzaki et al. (2005) and also Prescher (2005) exhibited an automatic approach in which each symbol is split into a fixed number of subsymbols.</S>
+    <S sid="15" ssid="9">For example, NP would be split into NP-1 through NP-8.</S>
+    <S sid="16" ssid="10">Their exciting result was that, while grammars quickly grew too large to be managed, a 16-subsymbol induced grammar reached the parsing performance of Klein and Manning (2003)&#8217;s manual grammar.</S>
+    <S sid="17" ssid="11">Other work has also investigated aspects of automatic grammar refinement; for example, Chiang and Bikel (2002) learn annotations such as head rules in a constrained declarative language for tree-adjoining grammars.</S>
+    <S sid="18" ssid="12">We present a method that combines the strengths of both manual and automatic approaches while addressing some of their common shortcomings.</S>
+    <S sid="19" ssid="13">Like Matsuzaki et al. (2005) and Prescher (2005), we induce splits in a fully automatic fashion.</S>
+    <S sid="20" ssid="14">However, we use a more sophisticated split-and-merge approach that allocates subsymbols adaptively where they are most effective, like a linguist would.</S>
+    <S sid="21" ssid="15">The grammars recover patterns like those discussed in Klein and Manning (2003), heavily articulating complex and frequent categories like NP and VP while barely splitting rare or simple ones (see Section 3 for an empirical analysis).</S>
+    <S sid="22" ssid="16">Empirically, hierarchical splitting increases the accuracy and lowers the variance of the learned grammars.</S>
+    <S sid="23" ssid="17">Another contribution is that, unlike previous work, we investigate smoothed models, allowing us to split grammars more heavily before running into the oversplitting effect discussed in Klein and Manning (2003), where data fragmentation outweighs increased expressivity.</S>
+    <S sid="24" ssid="18">Our method is capable of learning grammars of substantially smaller size and higher accuracy than previous grammar refinement work, starting from a simpler initial grammar.</S>
+    <S sid="25" ssid="19">For example, even beginning with an X-bar grammar (see Section 1.1) with 98 symbols, our best grammar, using 1043 symbols, achieves a test set F, of 90.2%.</S>
+    <S sid="26" ssid="20">This is a 27% reduction in error and a significant reduction in size1 over the most accurate grammar in Matsuzaki et al. (2005).</S>
+    <S sid="27" ssid="21">Our grammar&#8217;s accuracy was higher than fully lexicalized systems, including the maximum-entropy inspired parser of Charniak and Johnson (2005).</S>
+    <S sid="28" ssid="22">We ran our experiments on the Wall Street Journal (WSJ) portion of the Penn Treebank using the standard setup: we trained on sections 2 to 21, and we used section 1 as a validation set for tuning model hyperparameters.</S>
+    <S sid="29" ssid="23">Section 22 was used as development set for intermediate results.</S>
+    <S sid="30" ssid="24">All of section 23 was reserved for the final test.</S>
+    <S sid="31" ssid="25">We used the EVALB parseval reference implementation, available from Sekine and Collins (1997), for scoring.</S>
+    <S sid="32" ssid="26">All reported development set results are averages over four runs.</S>
+    <S sid="33" ssid="27">For the final test we selected the grammar that performed best on the development set.</S>
+    <S sid="34" ssid="28">Our experiments are based on a completely unannotated X-bar style grammar, obtained directly from the Penn Treebank by the binarization procedure shown in Figure 1.</S>
+    <S sid="35" ssid="29">For each local tree rooted at an evaluation nonterminal X, we introduce a cascade of new nodes labeled X so that each has two children.</S>
+    <S sid="36" ssid="30">Rather than experiment with head-outward binarization as in Klein and Manning (2003), we simply used a left branching binarization; Matsuzaki et al. (2005) contains a comparison showing that the differences between binarizations are small.</S>
+  </SECTION>
+  <SECTION title="2 Learning" number="2">
+    <S sid="37" ssid="1">To obtain a grammar from the training trees, we want to learn a set of rule probabilities &#946; on latent annotations that maximize the likelihood of the training trees, despite the fact that the original trees lack the latent annotations.</S>
+    <S sid="38" ssid="2">The Expectation-Maximization (EM) algorithm allows us to do exactly that.2 Given a sentence w and its unannotated tree T, consider a nonterminal A spanning (r, t) and its children B and C spanning (r, s) and (s, t).</S>
+    <S sid="39" ssid="3">Let Ax be a subsymbol of A, By of B, and Cz of C. Then the inside and outside probabilities PIN(r, t, Ax) def = P(wT:t|Ax) and POUT(r, t, Ax) def = P(w1:TAxwt:n) can be computed reencourages sparsity) suggest a large reduction.</S>
+    <S sid="40" ssid="4">2Other techniques are also possible; Henderson (2004) uses neural networks to induce latent left-corner parser states.</S>
+    <S sid="41" ssid="5">Although we show only the binary component here, of course there are both binary and unary productions that are included.</S>
+    <S sid="42" ssid="6">In the Expectation step, one computes the posterior probability of each annotated rule and position in each training set tree T: In the Maximization step, one uses the above probabilities as weighted observations to update the rule probabilities: Note that, because there is no uncertainty about the location of the brackets, this formulation of the insideoutside algorithm is linear in the length of the sentence rather than cubic (Pereira and Schabes, 1992).</S>
+    <S sid="43" ssid="7">For our lexicon, we used a simple yet robust method for dealing with unknown and rare words by extracting a small number of features from the word and then computing appproximate tagging probabilities.3 EM is only guaranteed to find a local maximum of the likelihood, and, indeed, in practice it often gets stuck in a suboptimal configuration.</S>
+    <S sid="44" ssid="8">If the search space is very large, even restarting may not be sufficient to alleviate this problem.</S>
+    <S sid="45" ssid="9">One workaround is to manually specify some of the annotations.</S>
+    <S sid="46" ssid="10">For instance, Matsuzaki et al. (2005) start by annotating their grammar with the identity of the parent and sibling, which are observed (i.e. not latent), before adding latent annotations.4 If these manual annotations are good, they reduce the search space for EM by constraining it to a smaller region.</S>
+    <S sid="47" ssid="11">On the other hand, this pre-splitting defeats some of the purpose of automatically learning latent annotations, leaving to the user the task of guessing what a good starting annotation might be.</S>
+    <S sid="48" ssid="12">We take a different, fully automated approach.</S>
+    <S sid="49" ssid="13">We start with a completely unannotated X-bar style grammar as described in Section 1.1.</S>
+    <S sid="50" ssid="14">Since we will evaluate our grammar on its ability to recover the Penn Treebank nonterminals, we must include them in our grammar.</S>
+    <S sid="51" ssid="15">Therefore, this initialization is the absolute minimum starting grammar that includes the evaluation nonterminals (and maintains separate grammar symbols for each of them).5 It is a very compact grammar: 98 symbols,6 236 unary rules, and 3840 binary rules.</S>
+    <S sid="52" ssid="16">However, it also has a very low parsing performance: 65.8/59.8 LP/LR on the development set.</S>
+    <S sid="53" ssid="17">Beginning with this baseline grammar, we repeatedly split and re-train the grammar.</S>
+    <S sid="54" ssid="18">In each iteration we initialize EM with the results of the smaller grammar, splitting every previous annotation symbol in two and adding a small amount of randomness (1%) to break the symmetry.</S>
+    <S sid="55" ssid="19">The results are shown in Figure 3.</S>
+    <S sid="56" ssid="20">Hierarchical splitting leads to better parameter estimates over directly estimating a grammar with 2k subsymbols per symbol.</S>
+    <S sid="57" ssid="21">While the two procedures are identical for only two subsymbols (Fl: 76.1%), the hierarchical training performs better for four subsymbols (83.7% vs. 83.2%).</S>
+    <S sid="58" ssid="22">This advantage grows as the number of subsymbols increases (88.4% vs. 87.3% for 16 subsymbols).</S>
+    <S sid="59" ssid="23">This trend is to be expected, as the possible interactions between the subsymbols grows as their number grows.</S>
+    <S sid="60" ssid="24">As an example of how staged training proceeds, Figure 2 shows the evolution of the subsymbols of the determiner (DT) tag, which first splits demonstratives from determiners, then splits quantificational elements from demonstratives along one branch and definites from indefinites along the other.</S>
+    <S sid="61" ssid="25">5If our purpose was only to model language, as measured for instance by perplexity on new text, it could make sense to erase even the labels of the Penn Treebank to let EM find better labels by itself, giving an experiment similar to that of Pereira and Schabes (1992).</S>
+    <S sid="62" ssid="26">645 part of speech tags, 27 phrasal categories and the 26 intermediate symbols which were added during binarization Because EM is a local search method, it is likely to converge to different local maxima for different runs.</S>
+    <S sid="63" ssid="27">In our case, the variance is higher for models with few subcategories; because not all dependencies can be expressed with the limited number of subcategories, the results vary depending on which one EM selects first.</S>
+    <S sid="64" ssid="28">As the grammar size increases, the important dependencies can be modeled, so the variance decreases.</S>
+    <S sid="65" ssid="29">It is clear from all previous work that creating more latent annotations can increase accuracy.</S>
+    <S sid="66" ssid="30">On the other hand, oversplitting the grammar can be a serious problem, as detailed in Klein and Manning (2003).</S>
+    <S sid="67" ssid="31">Adding subsymbols divides grammar statistics into many bins, resulting in a tighter fit to the training data.</S>
+    <S sid="68" ssid="32">At the same time, each bin gives a less robust estimate of the grammar probabilities, leading to overfitting.</S>
+    <S sid="69" ssid="33">Therefore, it would be to our advantage to split the latent annotations only where needed, rather than splitting them all as in Matsuzaki et al. (2005).</S>
+    <S sid="70" ssid="34">In addition, if all symbols are split equally often, one quickly (4 split cycles) reaches the limits of what is computationally feasible in terms of training time and memory usage.</S>
+    <S sid="71" ssid="35">Consider the comma POS tag.</S>
+    <S sid="72" ssid="36">We would like to see only one sort of this tag because, despite its frequency, it always produces the terminal comma (barring a few annotation errors in the treebank).</S>
+    <S sid="73" ssid="37">On the other hand, we would expect to find an advantage in distinguishing between various verbal categories and NP types.</S>
+    <S sid="74" ssid="38">Additionally, splitting symbols like the comma is not only unnecessary, but potentially harmful, since it needlessly fragments observations of other symbols&#8217; behavior.</S>
+    <S sid="75" ssid="39">It should be noted that simple frequency statistics are not sufficient for determining how often to split each symbol.</S>
+    <S sid="76" ssid="40">Consider the closed part-of-speech classes (e.g.</S>
+    <S sid="77" ssid="41">DT, CC, IN) or the nonterminal ADJP.</S>
+    <S sid="78" ssid="42">These symbols are very common, and certainly do contain subcategories, but there is little to be gained from exhaustively splitting them before even beginning to model the rarer symbols that describe the complex inner correlations inside verb phrases.</S>
+    <S sid="79" ssid="43">Our solution is to use a split-and-merge approach broadly reminiscent of ISODATA, a classic clustering procedure (Ball and Hall, 1967).</S>
+    <S sid="80" ssid="44">To prevent oversplitting, we could measure the utility of splitting each latent annotation individually and then split the best ones first.</S>
+    <S sid="81" ssid="45">However, not only is this impractical, requiring an entire training phase for each new split, but it assumes the contributions of multiple splits are independent.</S>
+    <S sid="82" ssid="46">In fact, extra subsymbols may need to be added to several nonterminals before they can cooperate to pass information along the parse tree.</S>
+    <S sid="83" ssid="47">Therefore, we go in the opposite direction; that is, we split every symbol in two, train, and then measure for each annotation the loss in likelihood incurred when removing it.</S>
+    <S sid="84" ssid="48">If this loss is small, the new annotation does not carry enough useful information and can be removed.</S>
+    <S sid="85" ssid="49">What is more, contrary to the gain in likelihood for splitting, the loss in likelihood for merging can be efficiently approximated.7 Let T be a training tree generating a sentence w. Consider a node n of T spanning (r, t) with the label A; that is, the subtree rooted at n generates wT:t and has the label A.</S>
+    <S sid="86" ssid="50">In the latent model, its label A is split up into several latent labels, Ax.</S>
+    <S sid="87" ssid="51">The likelihood of the data can be recovered from the inside and outside probabilities at n: Consider merging, at n only, two annotations A1 and A2.</S>
+    <S sid="88" ssid="52">Since A now combines the statistics of A1 and A2, its production probabilities are the sum of those of A1 and A2, weighted by their relative frequency p1 and p2 in the training data.</S>
+    <S sid="89" ssid="53">Therefore the inside score of A is: Since A can be produced as A1 or A2 by its parents, its outside score is: Replacing these quantities in (2) gives us the likelihood Pn(w, T) where these two annotations and their corresponding rules have been merged, around only node n. We approximate the overall loss in data likelihood due to merging A1 and A2 everywhere in all sentences wi by the product of this loss for each local change: This expression is an approximation because it neglects interactions between instances of a symbol at multiple places in the same tree.</S>
+    <S sid="90" ssid="54">These instances, however, are often far apart and are likely to interact only weakly, and this simplification avoids the prohibitive cost of running an inference algorithm for each tree and annotation.</S>
+    <S sid="91" ssid="55">We refer to the operation of splitting annotations and re-merging some them based on likelihood loss as a split-merge (SM) cycle.</S>
+    <S sid="92" ssid="56">SM cycles allow us to progressively increase the complexity of our grammar, giving priority to the most useful extensions.</S>
+    <S sid="93" ssid="57">In our experiments, merging was quite valuable.</S>
+    <S sid="94" ssid="58">Depending on how many splits were reversed, we could reduce the grammar size at the cost of little or no loss of performance, or even a gain.</S>
+    <S sid="95" ssid="59">We found that merging 50% of the newly split symbols dramatically reduced the grammar size after each splitting round, so that after 6 SM cycles, the grammar was only 17% of the size it would otherwise have been (1043 vs. 6273 subcategories), while at the same time there was no loss in accuracy (Figure 3).</S>
+    <S sid="96" ssid="60">Actually, the accuracy even increases, by 1.1% at 5 SM cycles.</S>
+    <S sid="97" ssid="61">The numbers of splits learned turned out to not be a direct function of symbol frequency; the numbers of symbols for both lexical and nonlexical tags after 4 SM cycles are given in Table 2.</S>
+    <S sid="98" ssid="62">Furthermore, merging makes large amounts of splitting possible.</S>
+    <S sid="99" ssid="63">It allows us to go from 4 splits, equivalent to the 24 = 16 substates of Matsuzaki et al. (2005), to 6 SM iterations, which take a few days to run on the Penn Treebank.</S>
+    <S sid="100" ssid="64">Splitting nonterminals leads to a better fit to the data by allowing each annotation to specialize in representing only a fraction of the data.</S>
+    <S sid="101" ssid="65">The smaller this fraction, the higher the risk of overfitting.</S>
+    <S sid="102" ssid="66">Merging, by allowing only the most beneficial annotations, helps mitigate this risk, but it is not the only way.</S>
+    <S sid="103" ssid="67">We can further minimize overfitting by forcing the production probabilities from annotations of the same nonterminal to be similar.</S>
+    <S sid="104" ssid="68">For example, a noun phrase in subject position certainly has a distinct distribution, but it may benefit from being smoothed with counts from all other noun phrases.</S>
+    <S sid="105" ssid="69">Smoothing the productions of each subsymbol by shrinking them towards their common base symbol gives us a more reliable estimate, allowing them to share statistical strength.</S>
+    <S sid="106" ssid="70">We perform smoothing in a linear way.</S>
+    <S sid="107" ssid="71">The estimated probability of a production px = P(Ax &#8594; By C,) is interpolated with the average over all subsymbols of A.</S>
+    <S sid="108" ssid="72">Here, &#945; is a small constant: we found 0.01 to be a good value, but the actual quantity was surprisingly unimportant.</S>
+    <S sid="109" ssid="73">Because smoothing is most necessary when production statistics are least reliable, we expect smoothing to help more with larger numbers of subsymbols.</S>
+    <S sid="110" ssid="74">This is exactly what we observe in Figure 3, where smoothing initially hurts (subsymbols are quite distinct and do not need their estimates pooled) but eventually helps (as symbols have finer distinctions in behavior and smaller data support).</S>
+    <S sid="111" ssid="75">When parsing new sentences with an annotated grammar, returning the most likely (unannotated) tree is intractable: to obtain the probability of an unannotated tree, one must sum over combinatorially many annotation trees (derivations) for each tree (Sima&#8217;an, 1992).</S>
+    <S sid="112" ssid="76">Matsuzaki et al. (2005) discuss two approximations.</S>
+    <S sid="113" ssid="77">The first is settling for the most probable derivation rather than most probable parse, i.e. returning the single most likely (Viterbi) annotated tree (derivation).</S>
+    <S sid="114" ssid="78">This approximation is justified if the sum is dominated by one particular annotated tree.</S>
+    <S sid="115" ssid="79">The second approximation that Matsuzaki et al. (2005) present is the Viterbi parse under a new sentence-specific PCFG, whose rule probabilities are given as the solution of a variational approximation of the original grammar.</S>
+    <S sid="116" ssid="80">However, their rule probabilities turn out to be the posterior probability, given the sentence, of each rule being used at each position in the tree.</S>
+    <S sid="117" ssid="81">Their algorithm is therefore the labelled recall algorithm of Goodman (1996) but applied to rules.</S>
+    <S sid="118" ssid="82">That is, it returns the tree whose expected number of correct rules is maximal.</S>
+    <S sid="119" ssid="83">Thus, assuming one is interested in a per-position score like F1 (which is its own debate), this method of parsing is actually more appropriate than finding the most likely parse, not simply a cheap approximation of it, and it need not be derived by a variational argument.</S>
+    <S sid="120" ssid="84">We refer to this method of parsing as the max-rule parser.</S>
+    <S sid="121" ssid="85">Since this method is not a contribution of this paper, we refer the reader to the fuller presentations in Goodman (1996) and Matsuzaki et al. (2005).</S>
+    <S sid="122" ssid="86">Note that contrary to the original labelled recall algorithm, which maximizes the number of correct symbols, this tree only contains rules allowed by the grammar.</S>
+    <S sid="123" ssid="87">As a result, the percentage of complete matches with the max-rule parser is typically higher than with the Viterbi parser.</S>
+    <S sid="124" ssid="88">(37.5% vs. 35.8% for our best grammar).</S>
+    <S sid="125" ssid="89">These posterior rule probabilities are still given by (1), but, since the structure of the tree is no longer known, we must sum over it when computing the inside and outside probabilities: For efficiency reasons, we use a coarse-to-fine pruning scheme like that of Caraballo and Charniak (1998).</S>
+    <S sid="126" ssid="90">For a given sentence, we first run the inside-outside algorithm using the baseline (unannotated) grammar, nificantly, while preserving the accuracy and enabling us to do more SM cycles.</S>
+    <S sid="127" ssid="91">Parameter smoothing leads to even better accuracy for grammars with high complexity. producing a packed forest representation of the posterior symbol probabilities for each span.</S>
+    <S sid="128" ssid="92">For example, one span might have a posterior probability of 0.8 of the symbol NP, but e&#8722;10 for PP.</S>
+    <S sid="129" ssid="93">Then, we parse with the larger annotated grammar, but, at each span, we prune away any symbols whose posterior probability under the baseline grammar falls below a certain threshold (e&#8722;8 in our experiments).</S>
+    <S sid="130" ssid="94">Even though our baseline grammar has a very low accuracy, we found that this pruning barely impacts the performance of our better grammars, while significantly reducing the computational cost.</S>
+    <S sid="131" ssid="95">For a grammar with 479 subcategories (4 SM cycles), lowering the threshold to e&#8722;15 led to an F1 improvement of 0.13% (89.03 vs. 89.16) on the development set but increased the parsing time by a factor of 16.</S>
+  </SECTION>
+  <SECTION title="3 Analysis" number="3">
+    <S sid="132" ssid="1">So far, we have presented a split-merge method for learning to iteratively subcategorize basic symbols like NP and VP into automatically induced subsymbols (subcategories in the original sense of Chomsky (1965)).</S>
+    <S sid="133" ssid="2">This approach gives parsing accuracies of up to 90.7% on the development set, substantially higher than previous symbol-splitting approaches, while starting from an extremely simple base grammar.</S>
+    <S sid="134" ssid="3">However, in general, any automatic induction system is in danger of being entirely uninterpretable.</S>
+    <S sid="135" ssid="4">In this section, we examine the learned grammars, discussing what is learned.</S>
+    <S sid="136" ssid="5">We focus particularly on connections with the linguistically motivated annotations of Klein and Manning (2003), which we do generally recover.</S>
+    <S sid="137" ssid="6">Inspecting a large grammar by hand is difficult, but fortunately, our baseline grammar has less than 100 nonterminal symbols, and even our most complicated grammar has only 1043 total (sub)symbols.</S>
+    <S sid="138" ssid="7">It is therefore relatively straightforward to review the broad behavior of a grammar.</S>
+    <S sid="139" ssid="8">In this section, we review a randomly-selected grammar after 4 SM cycles that produced an Fl score on the development set of 89.11.</S>
+    <S sid="140" ssid="9">We feel it is reasonable to present only a single grammar because all the grammars are very similar.</S>
+    <S sid="141" ssid="10">For example, after 4 SM cycles, the Fl scores of the 4 trained grammars have a variance of only 0.024, which is tiny compared to the deviation of 0.43 obtained by Matsuzaki et al. (2005)).</S>
+    <S sid="142" ssid="11">Furthermore, these grammars allocate splits to nonterminals with a variance of only 0.32, so they agree to within a single latent state.</S>
+    <S sid="143" ssid="12">One of the original motivations for lexicalization of parsers is the fact that part-of-speech (POS) tags are usually far too general to encapsulate a word&#8217;s syntactic behavior.</S>
+    <S sid="144" ssid="13">In the limit, each word may well have its own unique syntactic behavior, especially when, as in modern parsers, semantic selectional preferences are lumped in with traditional syntactic trends.</S>
+    <S sid="145" ssid="14">However, in practice, and given limited data, the relationship between specific words and their syntactic contexts may be best modeled at a level more fine than POS tag but less fine than lexical identity.</S>
+    <S sid="146" ssid="15">In our model, POS tags are split just like any other grammar symbol: the subsymbols for several tags are shown in Table 1, along with their most frequent members.</S>
+    <S sid="147" ssid="16">In most cases, the categories are recognizable as either classic subcategories or an interpretable division of some other kind.</S>
+    <S sid="148" ssid="17">Nominal categories are the most heavily split (see Table 2), and have the splits which are most semantic in nature (though not without syntactic correlations).</S>
+    <S sid="149" ssid="18">For example, plural common nouns (NNS) divide into the maximum number of categories (16).</S>
+    <S sid="150" ssid="19">One category consists primarily of dates, whose typical parent is an NP subsymbol whose typical parent is a root S, essentially modeling the temporal noun annotation discussed in Klein and Manning (2003).</S>
+    <S sid="151" ssid="20">Another category specializes in capitalized words, preferring as a parent an NP with an S parent (i.e. subject position).</S>
+    <S sid="152" ssid="21">A third category specializes in monetary units, and so on.</S>
+    <S sid="153" ssid="22">These kinds of syntactico-semantic categories are typical, and, given distributional clustering results like those of Schuetze (1998), unsurprising.</S>
+    <S sid="154" ssid="23">The singular nouns are broadly similar, if slightly more homogenous, being dominated by categories for stocks and trading.</S>
+    <S sid="155" ssid="24">The proper noun category (NNP, shown) also splits into the maximum 16 categories, including months, countries, variants of Co. and Inc., first names, last names, initials, and so on.</S>
+    <S sid="156" ssid="25">Verbal categories are also heavily split.</S>
+    <S sid="157" ssid="26">Verbal subcategories sometimes reflect syntactic selectional preferences, sometimes reflect semantic selectional preferences, and sometimes reflect other aspects of verbal syntax.</S>
+    <S sid="158" ssid="27">For example, the present tense third person verb subsymbols (VBZ) are shown.</S>
+    <S sid="159" ssid="28">The auxiliaries get three clear categories: do, have, and be (this pattern repeats in other tenses), as well a fourth category for the ambiguous &#8217;s.</S>
+    <S sid="160" ssid="29">Verbs of communication (says) and propositional attitudes (beleives) that tend to take inflected sentential complements dominate two classes, while control verbs (wants) fill out another.</S>
+    <S sid="161" ssid="30">As an example of a less-split category, the superlative adjectives (JJS) are split into three categories, corresponding principally to most, least, and largest, with most frequent parents NP, QP, and ADVP, respectively.</S>
+    <S sid="162" ssid="31">The relative adjectives (JJR) are split in the same way.</S>
+    <S sid="163" ssid="32">Relative adverbs (RBR) are split into a different three categories, corresponding to (usually metaphorical) distance (further), degree (more), and time (earlier).</S>
+    <S sid="164" ssid="33">Personal pronouns (PRP) are well-divided into three categories, roughly: nominative case, accusative case, and sentence-initial nominative case, which each correlate very strongly with syntactic position.</S>
+    <S sid="165" ssid="34">As another example of a specific trend which was mentioned by Klein and Manning (2003), adverbs (RB) do contain splits for adverbs under ADVPs (also), NPs (only), and VPs (not).</S>
+    <S sid="166" ssid="35">Functional categories generally show fewer splits, but those splits that they do exhibit are known to be strongly correlated with syntactic behavior.</S>
+    <S sid="167" ssid="36">For example, determiners (DT) divide along several axes: definite (the), indefinite (a), demonstrative (this), quantificational (some), negative polarity (no, any), and various upper- and lower-case distinctions inside these types.</S>
+    <S sid="168" ssid="37">Here, it is interesting to note that these distinctions emerge in a predictable order (see Figure 2 for DT splits), beginning with the distinction between demonstratives and non-demonstratives, with the other distinctions emerging subsequently; this echoes the result of Klein and Manning (2003), where the authors chose to distinguish the demonstrative constrast, but not the additional ones learned here.</S>
+    <S sid="169" ssid="38">Another very important distinction, as shown in Klein and Manning (2003), is the various subdivisions in the preposition class (IN).</S>
+    <S sid="170" ssid="39">Learned first is the split between subordinating conjunctions like that and proper prepositions.</S>
+    <S sid="171" ssid="40">Then, subdivisions of each emerge: wh-subordinators like if, noun-modifying prepositions like of, predominantly verb-modifying ones like from, and so on.</S>
+    <S sid="172" ssid="41">Many other interesting patterns emerge, including many classical distinctions not specifically mentioned or modeled in previous work.</S>
+    <S sid="173" ssid="42">For example, the whdeterminers (WDT) split into one class for that and another for which, while the wh-adverbs align by reference type: event-based how and why vs. entity-based when and where.</S>
+    <S sid="174" ssid="43">The possesive particle (POS) has one class for the standard &#8217;s, but another for the plural-only apostrophe.</S>
+    <S sid="175" ssid="44">As a final example, the cardinal number nonterminal (CD) induces various categories for dates, fractions, spelled-out numbers, large (usually financial) digit sequences, and others.</S>
+    <S sid="176" ssid="45">Analyzing the splits of phrasal nonterminals is more difficult than for lexical categories, and we can merely give illustrations.</S>
+    <S sid="177" ssid="46">We show some of the top productions of two categories in Table 3.</S>
+    <S sid="178" ssid="47">A nonterminal split can be used to model an otherwise uncaptured correlation between that symbol&#8217;s external context (e.g. its parent symbol) and its internal context (e.g. its child symbols).</S>
+    <S sid="179" ssid="48">A particularly clean example of a split correlating external with internal contexts is the inverted sentence category (SINV), which has only two subsymbols, one which usually has the ROOT symbol as its parent (and which has sentence final puncutation as its last child), and a second subsymbol which occurs in embedded contexts (and does not end in punctuation).</S>
+    <S sid="180" ssid="49">Such patterns are common, but often less easy to predict.</S>
+    <S sid="181" ssid="50">For example, possesive NPs get two subsymbols, depending on whether their possessor is a person / country or an organization.</S>
+    <S sid="182" ssid="51">The external correlation turns out to be that people and countries are more likely to possess a subject NP, while organizations are more likely to possess an object NP.</S>
+    <S sid="183" ssid="52">Nonterminal splits can also be used to relay information between distant tree nodes, though untangling this kind of propagation and distilling it into clean examples is not trivial.</S>
+    <S sid="184" ssid="53">As one example, the subsymbol S-12 (matrix clauses) occurs only under the ROOT symbol.</S>
+    <S sid="185" ssid="54">S-12&#8217;s children usually include NP-8, which in turn usually includes PRP-0, the capitalized nominative pronouns, DT-{1,2,61 (the capitalized determiners), and so on.</S>
+    <S sid="186" ssid="55">This same propagation occurs even more frequently in the intermediate symbols, with, for example, one subsymbol of NP symbol specializing in propagating proper noun sequences.</S>
+    <S sid="187" ssid="56">Verb phrases, unsurprisingly, also receive a full set of subsymbols, including categories for infinitive VPs, passive VPs, several for intransitive VPs, several for transitive VPs with NP and PP objects, and one for sentential complements.</S>
+    <S sid="188" ssid="57">As an example of how lexical splits can interact with phrasal splits, the two most frequent rewrites involving intransitive past tense verbs (VBD) involve two different VPs and VBDs: VP-14 &#8594; VBD-13 and VP-15 &#8594; VBD-12.</S>
+    <S sid="189" ssid="58">The difference is that VP-14s are main clause VPs, while VP-15s are subordinate clause VPs.</S>
+    <S sid="190" ssid="59">Correspondingly, VBD-13s are verbs of communication (said, reported), while VBD12s are an assortment of verbs which often appear in subordinate contexts (did, began).</S>
+    <S sid="191" ssid="60">Other interesting phenomena also emerge.</S>
+    <S sid="192" ssid="61">For example, intermediate symbols, which in previous work were very heavily, manually split using a Markov process, end up encoding processes which are largely Markov, but more complex.</S>
+    <S sid="193" ssid="62">For example, some classes of adverb phrases (those with RB-4 as their head) are &#8216;forgotten&#8217; by the VP intermediate grammar.</S>
+    <S sid="194" ssid="63">The relevant rule is the very probable VP-2 &#8594; VP-2 ADVP-6; adding this ADVP to a growing VP does not change the VP subsymbol.</S>
+    <S sid="195" ssid="64">In essense, at least a partial distinction between verbal arguments and verbal adjucts has been learned (as exploited in Collins (1999), for example).</S>
+  </SECTION>
+  <SECTION title="4 Conclusions" number="4">
+    <S sid="196" ssid="1">By using a split-and-merge strategy and beginning with the barest possible initial structure, our method reliably learns a PCFG that is remarkably good at parsing.</S>
+    <S sid="197" ssid="2">Hierarchical split/merge training enables us to learn compact but accurate grammars, ranging from extremely compact (an Fl of 78% with only 147 symbols) to extremely accurate (an Fl of 90.2% for our largest grammar with only 1043 symbols).</S>
+    <S sid="198" ssid="3">Splitting provides a tight fit to the training data, while merging improves generalization and controls grammar size.</S>
+    <S sid="199" ssid="4">In order to overcome data fragmentation and overfitting, we smooth our parameters.</S>
+    <S sid="200" ssid="5">Smoothing allows us to add a larger number of annotations, each specializing in only a fraction of the data, without overfitting our training set.</S>
+    <S sid="201" ssid="6">As one can see in Table 4, the resulting parser ranks among the best lexicalized parsers, beating those of Collins (1999) and Charniak and Johnson (2005).8 Its Fl performance is a 27% reduction in error over Matsuzaki et al. (2005) and Klein and Manning (2003).</S>
+    <S sid="202" ssid="7">Not only is our parser more accurate, but the learned grammar is also significantly smaller than that of previous work.</S>
+    <S sid="203" ssid="8">While this all is accomplished with only automatic learning, the resulting grammar is human-interpretable.</S>
+    <S sid="204" ssid="9">It shows most of the manually introduced annotations discussed by Klein and Manning (2003), but also learns other linguistic phenomena.</S>
+  </SECTION>
+</PAPER>

@@ -1,0 +1,224 @@
+<PAPER>
+  <S sid="0">What's In A Translation Rule?</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We propose a theory that gives formal semantics to word-level alignments defined over parallel corpora.</S>
+    <S sid="2" ssid="2">We use our theory to introduce a linear algorithm that can be used to derive from word-aligned, parallel corpora the minimal set of syntactically motivated transformation rules that explain human translation data.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="3" ssid="1">In a very interesting study of syntax in statistical machine translation, Fox (2002) looks at how well proposed translation models fit actual translation data.</S>
+    <S sid="4" ssid="2">One such model embodies a restricted, linguistically-motivated notion of word re-ordering.</S>
+    <S sid="5" ssid="3">Given an English parse tree, children at any node may be reordered prior to translation.</S>
+    <S sid="6" ssid="4">Nodes are processed independently.</S>
+    <S sid="7" ssid="5">Previous to Fox (2002), it had been observed that this model would prohibit certain re-orderings in certain language pairs (such as subjectVP(verb-object) into verb-subject-object), but Fox carried out the first careful empirical study, showing that many other common translation patterns fall outside the scope of the child-reordering model.</S>
+    <S sid="8" ssid="6">This is true even for languages as similar as English and French.</S>
+    <S sid="9" ssid="7">For example, English adverbs tend to move outside the local parent/children in environment.</S>
+    <S sid="10" ssid="8">The English word &#8220;not&#8221; translates to the discontiguous pair &#8220;ne ... pas.&#8221; English parsing errors also cause trouble, as a normally well-behaved re-ordering environment can be disrupted by wrong phrase attachment.</S>
+    <S sid="11" ssid="9">For other language pairs, the divergence is expected to be greater.</S>
+    <S sid="12" ssid="10">In the face of these problems, we may choose among several alternatives.</S>
+    <S sid="13" ssid="11">The first is to abandon syntax in statistical machine translation, on the grounds that syntactic models are a poor fit for the data.</S>
+    <S sid="14" ssid="12">On this view, adding syntax yields no improvement over robust phrasesubstitution models, and the only question is how much does syntax hurt performance.</S>
+    <S sid="15" ssid="13">Along this line, (Koehn et al., 2003) present convincing evidence that restricting phrasal translation to syntactic constituents yields poor translation performance &#8211; the ability to translate nonconstituent phrases (such as &#8220;there are&#8221;, &#8220;note that&#8221;, and &#8220;according to&#8221;) turns out to be critical and pervasive.</S>
+    <S sid="16" ssid="14">Another direction is to abandon conventional English syntax and move to more robust grammars that adapt to the parallel training corpus.</S>
+    <S sid="17" ssid="15">One approach here is that of Wu (1997), in which word-movement is modeled by rotations at unlabeled, binary-branching nodes.</S>
+    <S sid="18" ssid="16">At each sentence pair, the parse adapts to explain the translation pattern.</S>
+    <S sid="19" ssid="17">If the same unambiguous English sentence were to appear twice in the corpus, with different Chinese translations, then it could have different learned parses.</S>
+    <S sid="20" ssid="18">A third direction is to maintain English syntax and investigate alternate transformation models.</S>
+    <S sid="21" ssid="19">After all, many conventional translation systems are indeed based on syntactic transformations far more expressive than what has been proposed in syntax-based statistical MT.</S>
+    <S sid="22" ssid="20">We take this approach in our paper.</S>
+    <S sid="23" ssid="21">Of course, the broad statistical MT program is aimed at a wider goal than the conventional rule-based program &#8211; it seeks to understand and explain human translation data, and automatically learn from it.</S>
+    <S sid="24" ssid="22">For this reason, we think it is important to learn from the model/data explainability studies of Fox (2002) and to extend her results.</S>
+    <S sid="25" ssid="23">In addition to being motivated by rule-based systems, we also see advantages to English syntax within the statistical framework, such as marrying syntax-based translation models with syntaxbased language models (Charniak et al., 2003) and other potential benefits described by Eisner (2003).</S>
+    <S sid="26" ssid="24">Our basic idea is to create transformation rules that condition on larger fragments of tree structure.</S>
+    <S sid="27" ssid="25">It is certainly possible to build such rules by hand, and we have done this to formally explain a number of humantranslation examples.</S>
+    <S sid="28" ssid="26">But our main interest is in collecting a large set of such rules automatically through corpus analysis.</S>
+    <S sid="29" ssid="27">The search for these rules is driven exactly by the problems raised by Fox (2002) &#8211; cases of crossing and divergence motivate the algorithms to come up with better explanations of the data and better rules.</S>
+    <S sid="30" ssid="28">Section 2 of this paper describes algorithms for the acquisition of complex rules for a transformation model.</S>
+    <S sid="31" ssid="29">Section 3 gives empirical results on the explanatory power of the acquired rules versus previous models.</S>
+    <S sid="32" ssid="30">Section 4 presents examples of learned rules and shows the various types of transformations (lexical and nonlexical, contiguous and noncontiguous, simple and complex) that the algorithms are forced (by the data) to invent.</S>
+    <S sid="33" ssid="31">Section 5 concludes.</S>
+    <S sid="34" ssid="32">Due to space constraints, all proofs are omitted.</S>
+  </SECTION>
+  <SECTION title="2 Rule Acquisition" number="2">
+    <S sid="35" ssid="1">Suppose that we have a French sentence, its translation into English, and a parse tree over the English translation, as shown in Figure 1.</S>
+    <S sid="36" ssid="2">Generally one defines an alignment as a relation between the words in the French sentence and the words in the English sentence.</S>
+    <S sid="37" ssid="3">Given such an alignment however, what kinds of rules are we entitled to learn from this instance?</S>
+    <S sid="38" ssid="4">How do we know when it is valid to extract a particular rule, especially in the presence of numerous crossings in the alignment?</S>
+    <S sid="39" ssid="5">In this section, we give principled answers to these questions, by constructing a theory that gives formal semantics to word alignments.</S>
+    <S sid="40" ssid="6">We are going to define a generative process through which a string from a source alphabet is mapped to a rooted tree whose nodes are labeled from a target alphabet.</S>
+    <S sid="41" ssid="7">Henceforth we will refer to symbols from our source alphabet as source symbols and symbols from our target alphabet as target symbols.</S>
+    <S sid="42" ssid="8">We define a symbol tree over an alphabet A as a rooted, directed tree, the nodes of which are each labeled with a symbol of A.</S>
+    <S sid="43" ssid="9">We want to capture the process by which a symbol tree over the target language is derived from a string of source symbols.</S>
+    <S sid="44" ssid="10">Let us refer to the symbol tree that we want to derive as the target tree.</S>
+    <S sid="45" ssid="11">Any subtree of this tree will be called a target subtree.</S>
+    <S sid="46" ssid="12">Furthermore, we define a derivation string as an ordered sequence of elements, each of which is either a source symbol or a target subtree.</S>
+    <S sid="47" ssid="13">Now we are ready to define the derivation process.</S>
+    <S sid="48" ssid="14">Given a derivation string S, a derivation step replaces a substring S' of S with a target subtree T that has the following properties: Moreover, a derivation from a string S of source symbols to the target tree T is a sequence of derivation steps that produces T from S. Moving away from the abstract for a moment, let us revisit the example from Figure 1.</S>
+    <S sid="49" ssid="15">Figure 2 shows three derivations of the target tree from the source string &#8220;il ne va pas&#8221;, which are all consistent with our definitions.</S>
+    <S sid="50" ssid="16">However, it is apparent that one of these derivations seems much more &#8220;wrong&#8221; than the other.</S>
+    <S sid="51" ssid="17">Specifically, in the second derivation, &#8220;pas&#8221; is replaced by the English word &#8220;he,&#8221; which makes no sense.</S>
+    <S sid="52" ssid="18">Given the vast space of possible derivations (according to the definition above), how do we distinguish between good ones and bad ones?</S>
+    <S sid="53" ssid="19">Here is where the notion of an alignment becomes useful.</S>
+    <S sid="54" ssid="20">Let S be a string of source symbols and let T be a target tree.</S>
+    <S sid="55" ssid="21">First observe the following facts about derivations from S to T (these follow directly from the definitions): 1.</S>
+    <S sid="56" ssid="22">Each element of S is replaced at exactly one step of the derivation.</S>
+    <S sid="57" ssid="23">Thus for each element s of S, we can define replaced(s, D) to be the step of the derivation D during which s is replaced.</S>
+    <S sid="58" ssid="24">For instance, in the leftmost derivation of Figure 2, &#8220;va&#8221; is replaced by the second step of the derivation, thus replaced(va, D) = 2.</S>
+    <S sid="59" ssid="25">Similarly, for each node t of T, we can define created(t, D) to be the step of derivation D during which t is created.</S>
+    <S sid="60" ssid="26">For instance, in the same derivation, the nodes labeled by &#8220;AUX&#8221; and &#8220;VP&#8221; are created during the third step of the derivation, thus created(AUX, D) = 3 and created(VP, D) = 3.</S>
+    <S sid="61" ssid="27">Given a string S of source symbols and a target tree T, an alignment A with respect to S and T is a relation between the leaves of T and the elements of S. Choose some derivation D from S to T. The alignment A induced by D is created as follows: an element s of S is aligned with a leaf node t of T iff replaced(s, D) = created(t, D).</S>
+    <S sid="62" ssid="28">In other words, a source word is aligned with a target word if the target word is created during the same step in which the source word is replaced.</S>
+    <S sid="63" ssid="29">Figure 3 shows the alignments induced by the derivations of Figure 2.</S>
+    <S sid="64" ssid="30">Now, say that we have a source string, a target tree, and an alignment A.</S>
+    <S sid="65" ssid="31">A key observation is that the set of &#8220;good&#8221; derivations according to A is precisely the set of derivations that induce alignments A' such that A is a subalignment of A'.</S>
+    <S sid="66" ssid="32">By subalignment, we mean that A C_ A' (recall that alignments are simple mathematical relations).</S>
+    <S sid="67" ssid="33">In other words, A is a subalignment of A' if A aligns two elements only if A' also aligns them.</S>
+    <S sid="68" ssid="34">We can see this intuitively by examining Figures 2 and 3.</S>
+    <S sid="69" ssid="35">Notice that the two derivations that seem &#8220;right&#8221; (the first and the third) are superalignments of the alignment given in Figure 1, while the derivation that is clearly wrong is not.</S>
+    <S sid="70" ssid="36">Hence we now have a formal definition of the derivations that we are interested in.</S>
+    <S sid="71" ssid="37">We say that a derivation is admitted by an alignment A if it induces a superalignment of A.</S>
+    <S sid="72" ssid="38">The set of derivations from source string S to target tree T that are admitted by alignment A can be denoted 6A(S, T).</S>
+    <S sid="73" ssid="39">Given this, we are ready to obtain a formal characterization of the set of rules that can be inferred from the source string, target tree, and alignment.</S>
+    <S sid="74" ssid="40">In essence, a derivation step can be viewed as the application of a rule.</S>
+    <S sid="75" ssid="41">Thus, compiling the set of derivation steps used in any derivation of 6A(S, T) gives us, in a meaningful sense, all relevant rules that can be extracted from the triple (S, T, A).</S>
+    <S sid="76" ssid="42">In this section, we show in concrete terms how to convert a derivation step into a usable rule.</S>
+    <S sid="77" ssid="43">Consider the second-last derivation step of the first derivation in Figure 2.</S>
+    <S sid="78" ssid="44">In it, we begin with a source symbol &#8220;ne&#8221;, followed by a target subtree rooted at V B, followed by another source symbol &#8220;pas.&#8221; These three elements of the derivation string are replaced with a target subtree rooted at V P that discards the source symbols and contains the target subtree rooted at V B.</S>
+    <S sid="79" ssid="45">In general, this replacement process can be captured by the rule depicted in Figure 4.</S>
+    <S sid="80" ssid="46">The input to the rule are the roots of the elements of the derivation string that are replaced (where we define the root of a symbol to be simply the symbol itself), whereas the output of the rule is a symbol tree, except that some of the leaves are labeled with variables instead of symbols from the target alphabet.</S>
+    <S sid="81" ssid="47">These variables correspond to elements of the input to the rule.</S>
+    <S sid="82" ssid="48">For instance, the leaf labeled x2 means that when this rule is applied, x2 is replaced by the target subtree rooted at V B (since V B is the second element of the input).</S>
+    <S sid="83" ssid="49">Observe that the second rule induced in Figure 4 is simply a CFG rule expressed in the opposite direction, thus this rule format can (and should) be viewed as a strict generalization of CFG rules.</S>
+    <S sid="84" ssid="50">Every derivation step can be mapped to a rule in this way.</S>
+    <S sid="85" ssid="51">Hence given a source string S, a target tree T, and an alignment A, we can define the set PA(S, T) as the set of rules in any derivation D E 6A(S, T).</S>
+    <S sid="86" ssid="52">We can regard this as the set of rules that we are entitled to infer from the triple (S, T, A).</S>
+    <S sid="87" ssid="53">Now we have a precise problem statement: learn the set PA(S, T).</S>
+    <S sid="88" ssid="54">It is not immediately clear how such a set can be learned from the triple (S, T, A).</S>
+    <S sid="89" ssid="55">Fortunately, we can infer these rules directly from a structure called an alignment graph.</S>
+    <S sid="90" ssid="56">In fact, we have already seen numerous examples of alignment graphs.</S>
+    <S sid="91" ssid="57">Graphically, we have been depicting the triple (S, T, A) as a rooted, directed, acyclic graph (where direction is top-down in the diagrams).</S>
+    <S sid="92" ssid="58">We refer to such a graph as an alignment graph.</S>
+    <S sid="93" ssid="59">Formally, the alignment graph corresponding to S, T, and A is just T, augmented with a node for each element of S, and edges from leaf node t E T to element s E S iff A aligns s with t. Although there is a difference between a node of the alignment graph and its label, we will not make a distinction, to ease the notational burden.</S>
+    <S sid="94" ssid="60">To make the presentation easier to follow, we assume throughout this section that the alignment graph is connected, i.e. there are no unaligned elements.</S>
+    <S sid="95" ssid="61">All of the results that follow have generalizations to deal with unaligned elements, but unaligned elements incur certain procedural complications that would cloud the exposition.</S>
+    <S sid="96" ssid="62">It turns out that it is possible to systematically convert certain fragments of the alignment graph into rules of PA(S, T).</S>
+    <S sid="97" ssid="63">We define a fragment of a directed, acyclic graph G to be a nontrivial (i.e. not just a single node) subgraph G' of G such that if a node n is in G' then either n is a sink node of G' (i.e. it has no children) or all of its children are in G' (and it is connected to all of them).</S>
+    <S sid="98" ssid="64">In Figure 6, we show two examples of graph fragments of the alignment graph of Figure 5.</S>
+    <S sid="99" ssid="65">The span of a node n of the alignment graph is the subset of nodes from S that are reachable from n. Note that this definition is similar to, but not quite the same as, the definition of a span given by Fox (2002).</S>
+    <S sid="100" ssid="66">We say that a span is contiguous if it contains all elements of a contiguous substring of S. The closure of span(n) is the shortest contiguous span which is a superset of span(n).</S>
+    <S sid="101" ssid="67">For instance, the closure of 1s2, s3, s5, s71 would be 1s2, s3, s4, s5, s6, s71 The alignment graph in Figure 5 is annotated with the span of each node.</S>
+    <S sid="102" ssid="68">Take a look at the graph fragments in Figure 6.</S>
+    <S sid="103" ssid="69">These fragments are special: they are examples of frontier graph fragments.</S>
+    <S sid="104" ssid="70">We first define the frontier set of an alignment graph to be the set of nodes n that satisfy the following property: for every node n' of the alignment graph that is connected to n but is neither an ancestor nor a descendant of n, span(n') n closure(span(n)) = 0.</S>
+    <S sid="105" ssid="71">We then define a frontier graph fragment of an alignment graph to be a graph fragment such that the root and all sinks are in the frontier set.</S>
+    <S sid="106" ssid="72">Frontier graph fragments have the property that the spans of the sinks of the fragment are each contiguous and form a partition of the span of the root, which is also contiguous.</S>
+    <S sid="107" ssid="73">This allows the following transformation process: take the tree part of the fragment (i.e. project the fragment on T).</S>
+    <S sid="108" ssid="74">This forms the output of the rule.</S>
+    <S sid="109" ssid="75">Figure 6 shows the rules derived from the given graph fragments.</S>
+    <S sid="110" ssid="76">We have the following result.</S>
+    <S sid="111" ssid="77">Theorem 1 Rules constructed according to the above procedure are in PA(S, T).</S>
+    <S sid="112" ssid="78">Rule extraction: Algorithm 1.</S>
+    <S sid="113" ssid="79">Thus we now have a simple method for extracting rules of PA(S, T) from the alignment graph: search the space of graph fragments for frontier graph fragments.</S>
+    <S sid="114" ssid="80">Unfortunately, the search space of all fragments of a graph is exponential in the size of the graph, thus this procedure can also take a long time to execute.</S>
+    <S sid="115" ssid="81">To arrive at a much faster procedure, we take advantage of the following provable facts: minimal frontier graph fragment rooted at n (observe that for any node n' not in the frontier set, there is no frontier graph fragment rooted at n', by definition).</S>
+    <S sid="116" ssid="82">By minimal, we mean that the frontier graph fragment is a subgraph of every other frontier graph fragment with the same root.</S>
+    <S sid="117" ssid="83">Clearly, for an alignment graph with k nodes, there are at most k minimal frontier graph fragments.</S>
+    <S sid="118" ssid="84">In Figure 7, we show the seven minimal frontier graph fragments of the alignment graph of Figure 5.</S>
+    <S sid="119" ssid="85">Furthermore, all other frontier graph fragments can be created by composing 2 or more minimal graph fragments, as shown in Figure 8.</S>
+    <S sid="120" ssid="86">Thus, the entire set of frontier graph fragments (and all rules derivable from these fragments) can be computed systematically as follows: compute the set of minimal frontier graph fragments, compute the set of graph fragments resulting from composing 2 minimal frontier graph fragments, compute the set of graph fragments resulting from composing 3 minimal graph fragments, etc.</S>
+    <S sid="121" ssid="87">In this way, the rules derived from the minimal frontier graph fragments can be regarded as a basis for all other rules derivable from frontier graph fragments.</S>
+    <S sid="122" ssid="88">Furthermore, we conjecture that the set of rules derivable from frontier graph fragments is in fact equivalent to PA(S, T).</S>
+    <S sid="123" ssid="89">Thus we have boiled down the problem of extracting complex rules to the following simple problem: find the set of minimal frontier graph fragments of a given alignment graph.</S>
+    <S sid="124" ssid="90">The algorithm is a two-step process, as shown below.</S>
+    <S sid="125" ssid="91">Step 1 can be computed in a single traversal of the alignment graph.</S>
+    <S sid="126" ssid="92">This traversal annotates each node with its span and its complement span.</S>
+    <S sid="127" ssid="93">The complement span is computed as the union of the complement span of its parent and the span of all its siblings (siblings are nodes that share the same parent).</S>
+    <S sid="128" ssid="94">A node n is in the frontier set iff complement span(n) n closure(span(n)) = 0.</S>
+    <S sid="129" ssid="95">Notice that the complement span merely summarizes the spans of all nodes that are neither ancestors nor descendents of n. Since this step requires only a single graph traversal, it runs in linear time.</S>
+    <S sid="130" ssid="96">Step 2 can also be computed straightforwardly.</S>
+    <S sid="131" ssid="97">For each node n of the frontier set, do the following: expand n, then as long as there is some sink node n' of the resulting graph fragment that is not in the frontier set, expand n'.</S>
+    <S sid="132" ssid="98">Note that after computing the minimal graph fragment rooted at each node of the frontier set, every node of the alignment graph has been expanded at most once.</S>
+    <S sid="133" ssid="99">Thus this step also runs in linear time.</S>
+    <S sid="134" ssid="100">For clarity of exposition and lack of space, a couple of issues have been glossed over.</S>
+    <S sid="135" ssid="101">Briefly: results of the next two sections are all based on implementations that handle unaligned elements.</S>
+    <S sid="136" ssid="102">&#8226; This theory can be generalized quite cleanly to include derivations for which substrings are replaced by sets of trees, rather than one single tree.</S>
+    <S sid="137" ssid="103">This corresponds to allowing rules that do not require the output to be a single, rooted tree.</S>
+    <S sid="138" ssid="104">Such a generalization gives some nice power to effectively explain certain linguistic phenomena.</S>
+    <S sid="139" ssid="105">For instance, it allows us to immediately translate &#8220;va&#8221; as &#8220;does go&#8221; instead of delaying the creation of the auxiliary word &#8220;does&#8221; until later in the derivation.</S>
+  </SECTION>
+  <SECTION title="3 Experiments" number="3">
+    <S sid="140" ssid="1">We evaluated the coverage of our model of transformation rules with two language pairs: English-French and English-Chinese.</S>
+    <S sid="141" ssid="2">These two pairs clearly contrast by the underlying difficulty to understand and model syntactic transformations among pairs: while there is arguably a fair level of cohesion between English and French, English and Chinese are syntactically more distant languages.</S>
+    <S sid="142" ssid="3">We also chose French to compare our study with that of Fox (2002).</S>
+    <S sid="143" ssid="4">The additional language pair provides a good means of evaluating how our transformation rule extraction method scales to more problematic language pairs for which child-reordering models are shown not to explain the data well.</S>
+    <S sid="144" ssid="5">We performed experiments with two corpora, the FBIS English-Chinese Parallel Text and the Hansard FrenchEnglish corpus.We parsed the English sentences with a state-of-the-art statistical parser (Collins, 1999).</S>
+    <S sid="145" ssid="6">For the FBIS corpus (representing eight million English words), we automatically generated word-alignments using GIZA++ (Och and Ney, 2003), which we trained on a much larger data set (150 million words).</S>
+    <S sid="146" ssid="7">Cases other than one-to-one sentence mappings were eliminated.</S>
+    <S sid="147" ssid="8">For the Hansard corpus, we took the human annotation of word alignment described in (Och and Ney, 2000).</S>
+    <S sid="148" ssid="9">The corpus contains two kinds of alignments: S (sure) for unambiguous cases and P (possible) for unclear cases, e.g. idiomatic expressions and missing function words (S C_ P).</S>
+    <S sid="149" ssid="10">In order to be able to make legitimate comparisons between the two language pairs, we also used GIZA++ to obtain machine-generated word alignments for Hansard: we trained it with the 500 sentences and additional data representing 13.7 million English words (taken from the Hansard and European parliament corpora).</S>
+    <S sid="150" ssid="11">From a theoretical point of view, we have shown that our model can fully explain the transformation of any parse tree of the source language into a string of the target language.</S>
+    <S sid="151" ssid="12">The purpose of this section is twofold: to provide quantitative results confirming the full coverage of our model and to analyze some properties of the transformation rules that support these derivations (linguistic analyses of these rules are presented in the next section).</S>
+    <S sid="152" ssid="13">Figure 9 summarizes the coverage of our model with respect to the Hansard and FBIS corpora.</S>
+    <S sid="153" ssid="14">For the former, we present results for the three alignments: S alignments, P alignments, and the alignments computed by GIZA++.</S>
+    <S sid="154" ssid="15">Each plotted value represents a percentage of parse trees in a corpus that can be transformed into a target sentence using transformation rules.</S>
+    <S sid="155" ssid="16">The x-axis represents different restrictions on the size of these rules: if we use a model that restrict rules to a single expansion of a non-terminal into a sequence of symbols, we are in the scope of the child-reordering model of (Yamada and Knight, 2001; Fox, 2002).</S>
+    <S sid="156" ssid="17">We see that its explanatory power is quite poor, with only 19.4%, 14.3%, 16.5%, and 12.1% (for the respective corpora).</S>
+    <S sid="157" ssid="18">Allowing more expansions logically expands the coverage of the model, until the point where it is total: transformation rules no larger than 17, 18, 23, and 43 (in number of rule expansions) respectively provide enough coverage to explain the data at 100% for each of the four cases.</S>
+    <S sid="158" ssid="19">It appears from the plot that the quality of alignments plays an important role.</S>
+    <S sid="159" ssid="20">If we compare the three kinds of alignments available for the Hansard corpus, we see that much more complex transformation rules are extracted from noisy GIZA++ alignments.</S>
+    <S sid="160" ssid="21">It also appears that the language difference produces quite contrasting results.</S>
+    <S sid="161" ssid="22">Rules acquired for the English-Chinese pair have, on average, many more nodes.</S>
+    <S sid="162" ssid="23">Note that the language difference in terms of syntax might be wider than what the plot seems to indicate, since word alignments computed for the Hansard corpus are likely to be more errorful than the ones for FBIS because the training data used to induce the latter is more than ten times larger than for the former.</S>
+    <S sid="163" ssid="24">In Figure 10, we show the explanatory power of our model at the node level.</S>
+    <S sid="164" ssid="25">At each node of the frontier set, we determine whether it is possible to extract a rule that doesn&#8217;t exceed a given limit k on its size.</S>
+    <S sid="165" ssid="26">The plotted values represent the percentage of frontier set internal nodes that satisfy this condition.</S>
+    <S sid="166" ssid="27">These results appear more promising for the child-reordering model, with coverage ranging from 72.3% to 85.1% of the nodes, but we should keep in mind that many of these nodes are low in the tree (e.g. base NPs); extraction of 1-level transformation rules generally present no difficulties when child nodes are pre-terminals, since any crossings can be resolved by lexicalizing the elements involved in it.</S>
+    <S sid="167" ssid="28">However, higher level syntactic constituents are more problematic for child-reordering models, and the main reasons they fail to provide explanation of the parses at the sentence level.</S>
+    <S sid="168" ssid="29">Table 1 shows that the extraction of rules can be performed quite efficiently.</S>
+    <S sid="169" ssid="30">Our first algorithm, which has an exponential running time, cannot scale to process large corpora and extract a sufficient number of rules that a syntax-based statistical MT system would require.</S>
+    <S sid="170" ssid="31">The second algorithm, which runs in linear time, is on the other hand barely affected by the size of rules it extracts.</S>
+  </SECTION>
+  <SECTION title="4 Discussions" number="4">
+    <S sid="171" ssid="1">In this section, we present some syntactic transformation rules that our system learns.</S>
+    <S sid="172" ssid="2">Fox (2002) identified three major causes of crossings between English and French: the &#8220;ne ... pas&#8221; construct, modals and adverbs, which a child-reordering model doesn&#8217;t account for.</S>
+    <S sid="173" ssid="3">In section 2, we have already explained how we learn syntactic rules involving &#8220;ne ... pas&#8221;.</S>
+    <S sid="174" ssid="4">Here we describe the other two problematic cases.</S>
+    <S sid="175" ssid="5">Figure 11 presents a frequent cause of crossings between English and French: adverbs in French often appear after the verb, which is less common in English.</S>
+    <S sid="176" ssid="6">Parsers generally create nested verb phrases when adverbs are present, thus no child reordering can allow a verb and an adverb to be permuted.</S>
+    <S sid="177" ssid="7">Multi-level reodering as the rule in the figure can prevent crossings.</S>
+    <S sid="178" ssid="8">Fox&#8217;s solution to the problem of crossings is to flatten verb phrases.</S>
+    <S sid="179" ssid="9">This is a solution for this sentence pair, since this accounts for adverb-verb reorderings, but flattening the tree structure is not a general solution.</S>
+    <S sid="180" ssid="10">Indeed, it can only apply to a very limited number of syntactic categories, for which the advantage of having a deep syntactic structure is lost.</S>
+    <S sid="181" ssid="11">Figure 12 (dotted lines are P alignments) shows an interesting example where flattening the tree structure cannot resolve all crossings in node-reordering models.</S>
+    <S sid="182" ssid="12">In these models, a crossing remains between MD and AUX no matter how VPs are flattened.</S>
+    <S sid="183" ssid="13">Our transformation rule model creates a lexicalized rule as shown in the figure, where the transformation of &#8220;will be&#8221; into &#8220;sera&#8221; is the only way to resolve the crossing.</S>
+    <S sid="184" ssid="14">In the Chinese-English domain, the rules extracted by our algorithm often have the attractive quality that they are the kind of common-sense constructions that are used in Chinese language textbooks to teach students.</S>
+    <S sid="185" ssid="15">For instance, there are several that illustrate the complex reorderings that occur around the Chinese marker word &#8220;de.&#8221;</S>
+  </SECTION>
+  <SECTION title="5 Conclusion" number="5">
+    <S sid="186" ssid="1">The fundamental assumption underlying much recent work in statistical machine translation (Yamada and Knight, 2001; Eisner, 2003; Gildea, 2003) is that local transformations (primarily child-node re-orderings) of one-level parent-children substructures are an adequate model for parallel corpora.</S>
+    <S sid="187" ssid="2">Our empirical results suggest that this may be too strong of an assumption.</S>
+    <S sid="188" ssid="3">To explain the data in two parallel corpora, one English-French, and one English-Chinese, we are often forced to learn rules involving much larger tree fragments.</S>
+    <S sid="189" ssid="4">The theory, algorithms, and transformation rules we learn automatically from data have several interesting aspects.</S>
+    <S sid="190" ssid="5">1.</S>
+    <S sid="191" ssid="6">Our rules provide a good, realistic indicator of the complexities inherent in translation.</S>
+    <S sid="192" ssid="7">We believe that these rules can inspire subsequent developments of generative statistical models that are better at explaining parallel data than current ones.</S>
+    <S sid="193" ssid="8">2.</S>
+    <S sid="194" ssid="9">Our rules put at the fingertips of linguists a very rich source of information.</S>
+    <S sid="195" ssid="10">They encode translation transformations that are both syntactically and lexically motivated (some of our rules are purely syntactic; others are lexically grounded).</S>
+    <S sid="196" ssid="11">A simple sort on the counts of our rules makes explicit the transformations that occur most often.</S>
+    <S sid="197" ssid="12">A comparison of the number of rules extracted from parallel corpora specific to multiple language pairs provide a quantitative estimator of the syntactic &#8220;closeness&#8221; between various language pairs.</S>
+    <S sid="198" ssid="13">3.</S>
+    <S sid="199" ssid="14">The theory we proposed in this paper is independent of the method that one uses to compute the wordlevel alignments in a parallel corpus.</S>
+    <S sid="200" ssid="15">4.</S>
+    <S sid="201" ssid="16">The theory and rule-extraction algorithm are also well-suited to deal with the errors introduced by the word-level alignment and parsing programs one uses.</S>
+    <S sid="202" ssid="17">Our theory makes no a priori assumptions about the transformations that one is permitted to learn.</S>
+    <S sid="203" ssid="18">If a parser, for example, makes a systematic error, we expect to learn a rule that can nevertheless be systematically used to produce correct translations.</S>
+    <S sid="204" ssid="19">In this paper, we focused on providing a well-founded mathematical theory and efficient, linear algorithms for learning syntactically motivated transformation rules from parallel corpora.</S>
+    <S sid="205" ssid="20">One can easily imagine a range of techniques for defining probability distributions over the rules that we learn.</S>
+    <S sid="206" ssid="21">We suspect that such probabilistic rules could be also used in conjunction with statistical decoders, to increase the accuracy of statistical machine translation systems.</S>
+  </SECTION>
+  <SECTION title="Acknowledgements" number="6">
+    <S sid="207" ssid="1">This work was supported by DARPA contract N6600100-1-9814 and MURI grant N00014-00-1-0617.</S>
+  </SECTION>
+</PAPER>

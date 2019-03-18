@@ -1,0 +1,910 @@
+<PAPER>
+  <S sid="0">Wide-Coverage Efficient Statistical Parsing with CCG and Log-Linear Models</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">This article describes a number of log-linear parsing models for an automatically extracted lexicalized grammar.</S>
+    <S sid="2" ssid="2">The models are &#8220;full&#8221; parsing models in the sense that probabilities are defined for complete parses, rather than for independent events derived by decomposing the parse tree.</S>
+    <S sid="3" ssid="3">Discriminative training is used to estimate the models, which requires incorrect parses for each sentence in the training data as well as the correct parse.</S>
+    <S sid="4" ssid="4">The lexicalized grammar formalism used is Combinatory Categorial Grammar (CCG), and the grammar is automatically extracted from CCGbank, a CCG version of the Penn Treebank.</S>
+    <S sid="5" ssid="5">The combination of discriminative training and an automatically extracted grammar leads to a significant memory requirement (up to 25 GB), which is satisfied using a parallel implementation of the BFGS optimization algorithm running on a Beowulf cluster.</S>
+    <S sid="6" ssid="6">Dynamic programming over a packed chart, in combination with the parallel implementation, allows us to solve one of the largest-scale estimation problems in the statistical parsing literature in under three hours.</S>
+    <S sid="7" ssid="7">A key component of the parsing system, for both training and testing, is a Maximum Entropy supertagger which assigns CCG lexical categories to words in a sentence.</S>
+    <S sid="8" ssid="8">The supertagger makes the discriminative training feasible, and also leads to a highly efficient parser.</S>
+    <S sid="9" ssid="9">Surprisingly, given CCG&#8217;s &#8220;spurious ambiguity,&#8221; the parsing speeds are significantly higher than those reported for comparable parsers in the literature.</S>
+    <S sid="10" ssid="10">We also extend the existing parsing techniques for CCG by developing a new model and efficient parsing algorithm which exploits all derivations, including CCG&#8217;s nonstandard derivations.</S>
+    <S sid="11" ssid="11">This model and parsing algorithm, when combined with normal-form constraints, give state-of-the-art accuracy for the recovery of predicate&#8211;argument dependencies from CCGbank.</S>
+    <S sid="12" ssid="12">The parser is also evaluated on DepBank and compared against the RASP parser, outperforming RASP overall and on the majority of relation types.</S>
+    <S sid="13" ssid="13">The evaluation on DepBank raises a number of issues regarding parser evaluation.</S>
+    <S sid="14" ssid="14">This article provides a comprehensive blueprint for building a wide-coverage CCG parser.</S>
+    <S sid="15" ssid="15">We demonstrate that both accurate and highly efficient parsing is possible with CCG.</S>
+  </ABSTRACT>
+  <SECTION title="" number="1">
+    <S sid="16" ssid="1">This article describes a number of log-linear parsing models for an automatically extracted lexicalized grammar.</S>
+    <S sid="17" ssid="2">The models are &#8220;full&#8221; parsing models in the sense that probabilities are defined for complete parses, rather than for independent events derived by decomposing the parse tree.</S>
+    <S sid="18" ssid="3">Discriminative training is used to estimate the models, which requires incorrect parses for each sentence in the training data as well as the correct parse.</S>
+    <S sid="19" ssid="4">The lexicalized grammar formalism used is Combinatory Categorial Grammar (CCG), and the grammar is automatically extracted from CCGbank, a CCG version of the Penn Treebank.</S>
+    <S sid="20" ssid="5">The combination of discriminative training and an automatically extracted grammar leads to a significant memory requirement (up to 25 GB), which is satisfied using a parallel implementation of the BFGS optimization algorithm running on a Beowulf cluster.</S>
+    <S sid="21" ssid="6">Dynamic programming over a packed chart, in combination with the parallel implementation, allows us to solve one of the largest-scale estimation problems in the statistical parsing literature in under three hours.</S>
+    <S sid="22" ssid="7">A key component of the parsing system, for both training and testing, is a Maximum Entropy supertagger which assigns CCG lexical categories to words in a sentence.</S>
+    <S sid="23" ssid="8">The supertagger makes the discriminative training feasible, and also leads to a highly efficient parser.</S>
+    <S sid="24" ssid="9">Surprisingly, given CCG&#8217;s &#8220;spurious ambiguity,&#8221; the parsing speeds are significantly higher than those reported for comparable parsers in the literature.</S>
+    <S sid="25" ssid="10">We also extend the existing parsing techniques for CCG by developing a new model and efficient parsing algorithm which exploits all derivations, including CCG&#8217;s nonstandard derivations.</S>
+    <S sid="26" ssid="11">This model and parsing algorithm, when combined with normal-form constraints, give state-of-the-art accuracy for the recovery of predicate&#8211;argument dependencies from CCGbank.</S>
+    <S sid="27" ssid="12">The parser is also evaluated on DepBank and compared against the RASP parser, outperforming RASP overall and on the majority of relation types.</S>
+    <S sid="28" ssid="13">The evaluation on DepBank raises a number of issues regarding parser evaluation.</S>
+    <S sid="29" ssid="14">This article provides a comprehensive blueprint for building a wide-coverage CCG parser.</S>
+    <S sid="30" ssid="15">We demonstrate that both accurate and highly efficient parsing is possible with CCG.</S>
+  </SECTION>
+  <SECTION title="1." number="2">
+    <S sid="31" ssid="1">Log-linear models have been applied to a number of problems in NLP, for example, POS tagging (Ratnaparkhi 1996; Lafferty, McCallum, and Pereira 2001), named entity recognition (Borthwick 1999), chunking (Koeling 2000), and parsing (Johnson et al. 1999).</S>
+    <S sid="32" ssid="2">Log-linear models are also referred to as maximum entropy models and random fields in the NLP literature.</S>
+    <S sid="33" ssid="3">They are popular because of the ease with which complex discriminating features can be included in the model, and have been shown to give good performance across a range of NLP tasks.</S>
+    <S sid="34" ssid="4">Log-linear models have previously been applied to statistical parsing (Johnson et al. 1999; Toutanova et al.</S>
+    <S sid="35" ssid="5">2002; Riezler et al. 2002; Malouf and van Noord 2004), but typically under the assumption that all possible parses for a sentence can be enumerated.</S>
+    <S sid="36" ssid="6">For manually constructed grammars, this assumption is usually sufficient for efficient estimation and decoding.</S>
+    <S sid="37" ssid="7">However, for wide-coverage grammars extracted from a treebank, enumerating all parses is infeasible.</S>
+    <S sid="38" ssid="8">In this article we apply the dynamic programming method of Miyao and Tsujii (2002) to a packed chart; however, because the grammar is automatically extracted, the packed charts require a considerable amount of memory: up to 25 GB.</S>
+    <S sid="39" ssid="9">We solve this massive estimation problem by developing a parallelized version of the estimation algorithm which runs on a Beowulf cluster.</S>
+    <S sid="40" ssid="10">The lexicalized grammar formalism we use is Combinatory Categorial Grammar (CCG; Steedman 2000).</S>
+    <S sid="41" ssid="11">A number of statistical parsing models have recently been developed for CCG and used in parsers applied to newspaper text (Clark, Hockenmaier, and Steedman 2002; Hockenmaier and Steedman 2002b; Hockenmaier 2003b).</S>
+    <S sid="42" ssid="12">In this article we extend existing parsing techniques by developing log-linear models for CCG, as well as a new model and efficient parsing algorithm which exploits all CCG&#8217;s derivations, including the nonstandard ones.</S>
+    <S sid="43" ssid="13">Estimating a log-linear model involves computing expectations of feature values.</S>
+    <S sid="44" ssid="14">For the conditional log-linear models used in this article, computing expectations requires a sum over all derivations for each sentence in the training data.</S>
+    <S sid="45" ssid="15">Because there can be a massive number of derivations for some sentences, enumerating all derivations is infeasible.</S>
+    <S sid="46" ssid="16">To solve this problem, we have adapted the dynamic programming method of Miyao and Tsujii (2002) to packed CCG charts.</S>
+    <S sid="47" ssid="17">A packed chart efficiently represents all derivations for a sentence.</S>
+    <S sid="48" ssid="18">The dynamic programming method uses inside and outside scores to calculate expectations, similar to the inside&#8211;outside algorithm for estimating the parameters of a PCFG from unlabeled data (Lari and Young 1990).</S>
+    <S sid="49" ssid="19">Generalized Iterative Scaling (Darroch and Ratcliff 1972) is a common choice in the NLP literature for estimating a log-linear model (e.g., Ratnaparkhi 1998; Curran and Clark 2003).</S>
+    <S sid="50" ssid="20">Initially we used generalized iterative scaling (GIS) for the parsing models described here, but found that convergence was extremely slow; Sha and Pereira (2003) present a similar finding for globally optimized log-linear models for sequences.</S>
+    <S sid="51" ssid="21">As an alternative to GIS, we use the limited-memory BFGS algorithm (Nocedal and Wright 1999).</S>
+    <S sid="52" ssid="22">As Malouf (2002) demonstrates, general purpose numerical optimization algorithms such as BFGS can converge much faster than iterative scaling algorithms (including Improved Iterative Scaling; Della Pietra, Della Pietra, and Lafferty 1997).</S>
+    <S sid="53" ssid="23">Despite the use of a packed representation, the complete set of derivations for the sentences in the training data requires up to 25 GB of RAM for some of the models in this article.</S>
+    <S sid="54" ssid="24">There are a number of ways to solve this problem.</S>
+    <S sid="55" ssid="25">Possibilities include using a subset of the training data; repeatedly parsing the training data for each iteration of the estimation algorithm; or reading the packed charts from disk for each iteration.</S>
+    <S sid="56" ssid="26">These methods are either too slow or sacrifice parsing performance, and so we use a parallelized version of BFGS running on an 18-node Beowulf cluster to perform the estimation.</S>
+    <S sid="57" ssid="27">Even given the large number of derivations and the large feature sets in our models, the estimation time for the best-performing model is less than three hours.</S>
+    <S sid="58" ssid="28">This gives us a practical framework for developing a statistical parser.</S>
+    <S sid="59" ssid="29">A corollary of CCG&#8217;s base-generative treatment of long-range dependencies in relative clauses and coordinate constructions is that the standard predicate&#8211;argument relations can be derived via nonstandard surface derivations.</S>
+    <S sid="60" ssid="30">The addition of &#8220;spurious&#8221; derivations in CCG complicates the modeling and parsing problems.</S>
+    <S sid="61" ssid="31">In this article we consider two solutions.</S>
+    <S sid="62" ssid="32">The first, following Hockenmaier (2003a), is to define a model in terms of normal-form derivations (Eisner 1996).</S>
+    <S sid="63" ssid="33">In this approach we recover only one derivation leading to a given set of predicate&#8211;argument dependencies and ignore the rest.</S>
+    <S sid="64" ssid="34">The second approach is to define a model over the predicate&#8211;argument dependencies themselves, by summing the probabilities of all derivations leading to a given set of dependencies.</S>
+    <S sid="65" ssid="35">We also define a new efficient parsing algorithm for such a model, based on Goodman (1996), which maximizes the expected recall of dependencies.</S>
+    <S sid="66" ssid="36">The development of this model allows us to test, for the purpose of selecting the correct predicate&#8211;argument dependencies, whether there is useful information in the additional derivations.</S>
+    <S sid="67" ssid="37">We also compare the performance of our best log-linear model against existing CCG parsers, obtaining the highest results to date for the recovery of predicate&#8211; argument dependencies from CCGbank.</S>
+    <S sid="68" ssid="38">A key component of the parsing system is a Maximum Entropy CCG supertagger (Ratnaparkhi 1996; Curran and Clark 2003) which assigns lexical categories to words in a sentence.</S>
+    <S sid="69" ssid="39">The role of the supertagger is twofold.</S>
+    <S sid="70" ssid="40">First, it makes discriminative estimation feasible by limiting the number of incorrect derivations for each training sentence; the supertagger can be thought of as supplying a number of incorrect but plausible lexical categories for each word in the sentence.</S>
+    <S sid="71" ssid="41">Second, it greatly increases the efficiency of the parser, which was the original motivation for supertagging (Bangalore and Joshi 1999).</S>
+    <S sid="72" ssid="42">One possible criticism of CCG has been that highly efficient parsing is not possible because of the additional &#8220;spurious&#8221; derivations.</S>
+    <S sid="73" ssid="43">In fact, we show that a novel method which tightly integrates the supertagger and parser leads to parse times significantly faster than those reported for comparable parsers in the literature.</S>
+    <S sid="74" ssid="44">The parser is evaluated on CCGbank (available through the Linguistic Data Consortium).</S>
+    <S sid="75" ssid="45">In order to facilitate comparisons with parsers using different formalisms, we also evaluate on the publicly available DepBank (King et al. 2003), using the Briscoe and Carroll annotation consistent with the RASP parser (Briscoe, Carroll, and Watson 2006).</S>
+    <S sid="76" ssid="46">The dependency annotation is designed to be as theory-neutral as possible to allow easy comparison.</S>
+    <S sid="77" ssid="47">However, there are still considerable difficulties associated with a cross-formalism comparison, which we describe.</S>
+    <S sid="78" ssid="48">Even though the CCG dependencies are being mapped into another representation, the accuracy of the CCG parser is over 81% F-score on labeled dependencies, against an upper bound of 84.8%.</S>
+    <S sid="79" ssid="49">The CCG parser also outperforms RASP overall and on the majority of dependency types.</S>
+    <S sid="80" ssid="50">The contributions of this article are as follows.</S>
+    <S sid="81" ssid="51">First, we explain how to estimate a full log-linear parsing model for an automatically extracted grammar, on a scale as large as that reported anywhere in the NLP literature.</S>
+    <S sid="82" ssid="52">Second, the article provides a comprehensive blueprint for building a wide-coverage CCG parser, including theoretical and practical aspects of the grammar, the estimation process, and decoding.</S>
+    <S sid="83" ssid="53">Third, we investigate the difficulties associated with cross-formalism parser comparison, evaluating the parser on DepBank.</S>
+    <S sid="84" ssid="54">And finally, we develop new models and decoding algorithms for CCG, and give a convincing demonstration that, through use of a supertagger, highly efficient parsing is possible with CCG.</S>
+  </SECTION>
+  <SECTION title="2." number="3">
+    <S sid="85" ssid="1">The first application of log-linear models to parsing is the work of Ratnaparkhi and colleagues (Ratnaparkhi, Roukos, and Ward 1994; Ratnaparkhi 1996, 1999).</S>
+    <S sid="86" ssid="2">Similar to Della Pietra, Della Pietra, and Lafferty (1997), Ratnaparkhi motivates log-linear models from the perspective of maximizing entropy, subject to certain constraints.</S>
+    <S sid="87" ssid="3">Ratnaparkhi models the various decisions made by a shift-reduce parser, using log-linear distributions defined over features of the local context in which a decision is made.</S>
+    <S sid="88" ssid="4">The probabilities of each decision are multiplied together to give a score for the complete sequence of decisions, and beam search is used to find the most probable sequence, which corresponds to the most probable derivation.</S>
+    <S sid="89" ssid="5">A different approach is proposed by Abney (1997), who develops log-linear models for attribute-value grammars, such as Head-driven Phrase Structure Grammar (HPSG).</S>
+    <S sid="90" ssid="6">Rather than define a model in terms of parser moves, Abney defines a model directly over the syntactic structures licensed by the grammar.</S>
+    <S sid="91" ssid="7">Another difference is that Abney uses a global model, in which a single log-linear model is defined over the complete space of attribute&#8211;value structures.</S>
+    <S sid="92" ssid="8">Abney&#8217;s motivation for using log-linear models is to overcome various problems in applying models based on PCFGs directly to attributevalue grammars.</S>
+    <S sid="93" ssid="9">A further motivation for using global models is that these do not suffer from the label bias problem (Lafferty, McCallum, and Pereira 2001), which is a potential problem for Ratnaparkhi&#8217;s approach.</S>
+    <S sid="94" ssid="10">Abney defines the following model for a syntactic analysis w: where fi(w) is a feature, or feature function, and &#946;i is its corresponding weight; Z is a normalizing constant, also known as the partition function.</S>
+    <S sid="95" ssid="11">In much work using loglinear models in NLP, including Ratnaparkhi&#8217;s, the features of a model are indicator functions which take the value 0 or 1.</S>
+    <S sid="96" ssid="12">However, in Abney&#8217;s models, and in the models used in this article, the feature functions are integer valued and count the number of times some feature appears in a syntactic analysis.1 Abney calls the feature functions frequency functions and, like Abney, we will not always distinguish between a feature and its corresponding frequency function.</S>
+    <S sid="97" ssid="13">There are practical difficulties with Abney&#8217;s proposal, in that finding the maximumlikelihood solution during estimation involves calculating expectations of feature values, which are sums over the complete space of possible analyses.</S>
+    <S sid="98" ssid="14">Abney suggests a Metropolis-Hastings sampling procedure for calculating the expectations, but does not experiment with an implementation.</S>
+    <S sid="99" ssid="15">Johnson et al. (1999) propose an alternative solution, which is to maximize the conditional likelihood function.</S>
+    <S sid="100" ssid="16">In this case the likelihood function is the product of the conditional probabilities of the syntactic analyses in the data, each probability conditioned on the respective sentence.</S>
+    <S sid="101" ssid="17">The advantage of this method is that calculating the conditional feature expectations only requires a sum over the syntactic analyses for the sentences in the training data.</S>
+    <S sid="102" ssid="18">The conditional-likelihood estimator is also consistent for the conditional distributions (Johnson et al. 1999).</S>
+    <S sid="103" ssid="19">The same solution is arrived at by Della Pietra, Della Pietra, and Lafferty (1997) via a maximum entropy argument.</S>
+    <S sid="104" ssid="20">Another feature of Johnson et al.&#8217;s approach is the use of a Gaussian prior term to avoid overfitting, which involves adding a regularization term to the likelihood function; the regularization term penalizes models whose weights get too large in absolute value.</S>
+    <S sid="105" ssid="21">This smoothing method for log-linear models is also proposed by Chen and Rosenfeld (1999).</S>
+    <S sid="106" ssid="22">Calculating the conditional feature expectations can still be problematic if the grammar licenses a large number of analyses for some sentences.</S>
+    <S sid="107" ssid="23">This is not a problem for Johnson et al. (1999) because their grammars are hand-written and constraining enough to allow the analyses for each sentence to be enumerated.</S>
+    <S sid="108" ssid="24">However, for grammars with wider coverage it is often not possible to enumerate the analyses for each sentence in the training data.</S>
+    <S sid="109" ssid="25">Osborne (2000) investigates training on a sample of the analyses for each sentence, for example the top-n most probable according to some other probability model, or simply a random sample.</S>
+    <S sid="110" ssid="26">The CCG grammar used in this article is automatically extracted, has wide coverage, and can produce an extremely large number of derivations for some sentences, far too many to enumerate.</S>
+    <S sid="111" ssid="27">We adapt the feature-forest method of Miyao and Tsujii (2002), which involves using dynamic programming to efficiently calculate the feature expectations.</S>
+    <S sid="112" ssid="28">Geman and Johnson (2002) propose a similar method in the context of LFG parsing; an implementation is described in Kaplan et al. (2004).</S>
+    <S sid="113" ssid="29">Miyao and Tsujii have carried out a number of investigations similar to the work in this article.</S>
+    <S sid="114" ssid="30">In Miyao and Tsujii (2003b, 2003a) log-linear models are developed for automatically extracted grammars for Lexicalized Tree Adjoining Grammar (LTAG) and Head Driven Phrase Structure Grammar (HPSG).</S>
+    <S sid="115" ssid="31">One of Miyao and Tsujii&#8217;s motivations is to model predicate&#8211;argument dependencies, including long-range dependencies, which was one of the original motivations of the wide-coverage CCG parsing project.</S>
+    <S sid="116" ssid="32">Miyao and Tsujii (2003a) present another log-linear model for an automatically extracted LTAG which uses a simple unigram model of the elementary trees together with a loglinear model of the attachments.</S>
+    <S sid="117" ssid="33">Miyao and Tsujii (2005) address the issue of practical estimation using an automatically extracted HPSG grammar.</S>
+    <S sid="118" ssid="34">A simple unigram model of lexical categories is used to limit the size of the charts for training, in a similar way to how we use a CCG supertagger to restrict the size of the charts.</S>
+    <S sid="119" ssid="35">The main differences between Miyao and Tsujii&#8217;s work and ours, aside from the different grammar formalisms, are as follows.</S>
+    <S sid="120" ssid="36">The CCG supertagger is a key component of our parsing system.</S>
+    <S sid="121" ssid="37">It allows practical estimation of the log-linear models as well as highly efficient parsing.</S>
+    <S sid="122" ssid="38">The Maximum Entropy supertagger we use could also be applied to Miyao and Tsujii&#8217;s grammars, although whether similar performance would be obtained depends on the characteristics of the grammar; see subsequent sections for more discussion of this issue in relation to LTAG.</S>
+    <S sid="123" ssid="39">The second major difference is in our use of a cluster and parallelized estimation algorithm.</S>
+    <S sid="124" ssid="40">We have found that significantly increasing the size of the parse space available for discriminative estimation, which is possible on the cluster, improves the accuracy of the resulting parser.</S>
+    <S sid="125" ssid="41">Another advantage of parallelization, as discussed in Section 5.5, is the reduction in estimation time.</S>
+    <S sid="126" ssid="42">Again, our parallelization techniques could be applied to Miyao and Tsujii&#8217;s framework.</S>
+    <S sid="127" ssid="43">Malouf and van Noord (2004) present similar work to ours, in the context of an HPSG grammar for Dutch.</S>
+    <S sid="128" ssid="44">One similarity is that their parsing system uses an HMM tagger before parsing, similar to our supertagger.</S>
+    <S sid="129" ssid="45">One difference is that we use a Maximum Entropy tagger which allows more flexibility in terms of the features that can be encoded; for example, we have found that using Penn Treebank POS tags as features significantly improves supertagging accuracy.</S>
+    <S sid="130" ssid="46">Another difference is that Malouf and van Noord use the random sampling method of Osborne (2000) to allow practical estimation, whereas we construct the complete parse forest but use the supertagger to limit the size of the charts.</S>
+    <S sid="131" ssid="47">Their work is also on a somewhat smaller scale, with the Dutch Alpino treebank containing 7,100 sentences, compared with the 36,000 sentences we use for training.</S>
+    <S sid="132" ssid="48">Kaplan et al. (2004) present similar work to ours in the context of an LFG grammar for English.</S>
+    <S sid="133" ssid="49">The main difference is that the LFG grammar is hand-built, resulting in less ambiguity than an automatically extracted grammar and thus requiring fewer resources for model estimation.</S>
+    <S sid="134" ssid="50">One downside of hand-built grammars is that they are typically less robust, which Kaplan et al. address by developing a &#8220;fragment&#8221; grammar, together with a &#8220;skimming mode,&#8221; which increases coverage on Section 23 of the Penn Treebank from 80% to 100%.</S>
+    <S sid="135" ssid="51">Kaplan et al. also present speed figures for their parser, comparing with the Collins parser.</S>
+    <S sid="136" ssid="52">Comparing parser speeds is difficult because of implementation and accuracy differences, but their highest reported speed is around 2 sentences per second on sentences from Section 23.</S>
+    <S sid="137" ssid="53">The parse speeds that we present in Section 10.3 are an order of magnitude higher.</S>
+    <S sid="138" ssid="54">More generally, the literature on statistical parsing using linguistically motivated grammar formalisms is large and growing.</S>
+    <S sid="139" ssid="55">Statistical parsers have been developed for TAG (Chiang 2000; Sarkar and Joshi 2003), LFG (Riezler et al. 2002; Kaplan et al.</S>
+    <S sid="140" ssid="56">2004; Cahill et al. 2004), and HPSG (Toutanova et al.</S>
+    <S sid="141" ssid="57">2002; Toutanova, Markova, and Manning 2004; Miyao and Tsujii 2004; Malouf and van Noord 2004), among others.</S>
+    <S sid="142" ssid="58">The motivation for using these formalisms is that many NLP tasks, such as Machine Translation, Information Extraction, and Question Answering, could benefit from the more sophisticated linguistic analyses they provide.</S>
+    <S sid="143" ssid="59">The formalism most closely related to CCG from this list is TAG.</S>
+    <S sid="144" ssid="60">TAG grammars have been automatically extracted from the Penn Treebank, using techniques similar to those used by Hockenmaier (Chen and Vijay-Shanker 2000; Xia, Palmer, and Joshi 2000).</S>
+    <S sid="145" ssid="61">Also, the supertagging idea which is central to the efficiency of the CCG parser originated with TAG (Bangalore and Joshi 1999).</S>
+    <S sid="146" ssid="62">Chen et al. (2002) describe the results of reranking the output of an HMM supertagger using an automatically extracted LTAG.</S>
+    <S sid="147" ssid="63">The accuracy for a single supertag per word is slightly over 80%.</S>
+    <S sid="148" ssid="64">This figure is increased to over 91% when the tagger is run in n-best mode, but at a considerable cost in ambiguity, with 8 supertags per word.</S>
+    <S sid="149" ssid="65">Nasr and Rambow (2004) investigate the potential impact of LTAG supertagging on parsing speed and accuracy by performing a number of oracle experiments.</S>
+    <S sid="150" ssid="66">They find that, with the perfect supertagger, extremely high parsing accuracies and speeds can be obtained.</S>
+    <S sid="151" ssid="67">Interestingly, the accuracy of LTAG supertaggers using automatically extracted grammars is significantly below the accuracy of the CCG supertagger.</S>
+    <S sid="152" ssid="68">One possible way to increase the accuracy of LTAG supertagging is to use a Maximum Entropy, rather than HMM, tagger (as discussed previously), but this is likely to result in an improvement of only a few percentage points.</S>
+    <S sid="153" ssid="69">Thus whether the difference in supertagging accuracy is due to the nature of the formalisms, the supertagging methods used, or properties of the extracted grammars, is an open question.</S>
+    <S sid="154" ssid="70">Related work on statistical parsing with CCG will be described in Section 3.</S>
+  </SECTION>
+  <SECTION title="3." number="4">
+    <S sid="155" ssid="1">Combinatory Categorial Grammar (CCG) (Steedman 1996, 2000) is a type-driven lexicalized theory of grammar based on Categorial Grammar (Wood 1993).</S>
+    <S sid="156" ssid="2">CCG lexical Clark and Curran Wide-Coverage Efficient Statistical Parsing entries consist of a syntactic category, which defines valency and directionality, and a semantic interpretation.</S>
+    <S sid="157" ssid="3">In this article we are concerned with the syntactic component; see Steedman (2000) for how a semantic interpretation can be composed during a syntactic derivation, and also Bos et al. (2004) for how semantic interpretations can be built for newspaper text using the wide-coverage parser described in this article.</S>
+    <S sid="158" ssid="4">Categories can be either basic or complex.</S>
+    <S sid="159" ssid="5">Examples of basic categories are S (sentence), N (noun), NP (noun phrase), and PP (prepositional phrase).</S>
+    <S sid="160" ssid="6">Complex categories are built recursively from basic categories, and indicate the type and directionality of arguments (using slashes), and the type of the result.</S>
+    <S sid="161" ssid="7">For example, the following category for the transitive verb bought specifies its first argument as a noun phrase to its right, its second argument as a noun phrase to its left, and its result as a sentence: In the theory of CCG, basic categories are regarded as complex objects that include syntactic features such as number, gender, and case.</S>
+    <S sid="162" ssid="8">For the grammars in this article, categories are augmented with some additional information, such as head information, and also features on S categories which distinguish different types of sentence, such as declarative, infinitival, and wh-question.</S>
+    <S sid="163" ssid="9">This additional information will be described in later sections.</S>
+    <S sid="164" ssid="10">Categories are combined in a derivation using combinatory rules.</S>
+    <S sid="165" ssid="11">In the original Categorial Grammar (Bar-Hillel 1953), which is context-free, there are two rules of functional application: where X and Y denote categories (either basic or complex).</S>
+    <S sid="166" ssid="12">The first rule is forward application (&gt;) and the second rule is backward application (&lt;).</S>
+    <S sid="167" ssid="13">Figure 1 gives an example derivation using these rules.</S>
+    <S sid="168" ssid="14">CCG extends the original Categorial Grammar by introducing a number of additional combinatory rules.</S>
+    <S sid="169" ssid="15">The first is forward composition, which Steedman denotes Example derivation using forward and backward application.</S>
+    <S sid="170" ssid="16">Example derivation using type-raising and forward composition. by &gt; B (because B is the symbol used by Curry to denote function composition in combinatory logic; Curry and Feys 1958): Forward composition is often used in conjunction with type-raising (T), as in Figure 2.</S>
+    <S sid="171" ssid="17">In this case type-raising takes a subject noun phrase and turns it into a functor looking to the right for a verb phrase; the fund is then able to combine with reached using forward composition, giving the fund reached the category S[dcl]/NP (a declarative sentence missing an object).</S>
+    <S sid="172" ssid="18">It is exactly this type of constituent which the object relative pronoun category is looking for to its right: (NP\NP)/(S[dcl]/NP).</S>
+    <S sid="173" ssid="19">Note that the fund reached is a perfectly reasonable constituent in CCG, having the type S[dcl]/NP.</S>
+    <S sid="174" ssid="20">This allows analyses for sentences such as the fund reached but investors disagreed with the agreement, even though this construction is often described as &#8220;nonconstituent coordination.&#8221; In this example, the fund reached and investors disagreed with have the same type, allowing them to be coordinated, resulting in the fund reached but investors disagreed with having the type S[dcl]/NP.</S>
+    <S sid="175" ssid="21">Note also that it is this flexible notion of constituency which leads to so-called spurious ambiguity, because even the simple sentence the fund reached an agreement will have more than one derivation, with each derivation leading to the same set of predicate&#8211;argument dependencies.</S>
+    <S sid="176" ssid="22">Forward composition is generalized to allow additional arguments to the right of the Z category in (5).</S>
+    <S sid="177" ssid="23">For example, the following combination allows analysis of sentences such as I offered, and may give, a flower to a policeman (Steedman 2000): may give ((S\NP)/PP)/NP This example shows how the categories for may and give combine, resulting in a category of the same type as offered, which can then be coordinated.</S>
+    <S sid="178" ssid="24">Steedman (2000) gives a more precise definition of generalized forward composition.</S>
+    <S sid="179" ssid="25">Further combinatory rules in the theory of CCG include backward composition (&lt; B) and backward crossed composition (&lt; BX): Clark and Curran Wide-Coverage Efficient Statistical Parsing Backward composition provides an analysis for sentences involving &#8220;argument cluster coordination,&#8221; such as I gave a teacher an apple and a policeman a flower (Steedman 2000).</S>
+    <S sid="180" ssid="26">Backward crossed composition is required for heavy NP shift and coordinations such as I shall buy today and cook tomorrow the mushrooms.</S>
+    <S sid="181" ssid="27">In this coordination example from Steedman (2000), backward crossed composition is used to combine the categories for buy, (S\NP)/NP, and today, (S\NP)\(S\NP), and similarly for cook and tomorrow, producing categories of the same type which can be coordinated.</S>
+    <S sid="182" ssid="28">This rule is also generalized in an analogous way to forward composition.</S>
+    <S sid="183" ssid="29">Finally, there is a coordination rule which conjoins categories of the same type, producing a further category of that type.</S>
+    <S sid="184" ssid="30">This rule can be implemented by assuming the following category schema for a coordination term: (X\X)/X, where X can be any category.</S>
+    <S sid="185" ssid="31">All of the combinatory rules described above are implemented in our parser.</S>
+    <S sid="186" ssid="32">Other combinatory rules, such as substitution, have been suggested in the literature to deal with certain linguistic phenomena, but we chose not to implement them.</S>
+    <S sid="187" ssid="33">The reason is that adding new combinatory rules reduces the efficiency of the parser, and we felt that, in the case of substitution, for example, the small gain in grammatical coverage was not worth the reduction in speed.</S>
+    <S sid="188" ssid="34">Section 9.3 discusses some of the choices we made when implementing the grammar.</S>
+    <S sid="189" ssid="35">One way of dealing with the additional ambiguity in CCG is to only consider normal-form derivations.</S>
+    <S sid="190" ssid="36">Informally, a normal-form derivation is one which uses typeraising and composition only when necessary.</S>
+    <S sid="191" ssid="37">Eisner (1996) describes a technique for eliminating spurious ambiguity entirely, by defining exactly one normal-form derivation for each semantic equivalence class of derivations.</S>
+    <S sid="192" ssid="38">The idea is to restrict the combination of categories produced by composition; more specifically, any constituent which is the result of a forward composition cannot serve as the primary (left) functor in another forward composition or forward application.</S>
+    <S sid="193" ssid="39">Similarly, any constituent which is the result of a backward composition cannot serve as the primary (right) functor in another backward composition or backward application.</S>
+    <S sid="194" ssid="40">Eisner only deals with a grammar without type-raising, and so the constraints cannot guarantee a normal-form derivation when applied to the grammars used in this article.</S>
+    <S sid="195" ssid="41">However, the constraints can still be used to significantly reduce the parsing space.</S>
+    <S sid="196" ssid="42">Section 9.3 describes the various normal-form constraints used in our experiments.</S>
+    <S sid="197" ssid="43">A recent development in the theory of CCG is the multi-modal treatment given by Baldridge (2002) and Baldridge and Kruijff (2003), following the type-logical approaches to Categorial Grammar (Moortgat 1997).</S>
+    <S sid="198" ssid="44">One possible extension to the parser and grammar described in this article is to incorporate the multi-modal approach; Baldridge suggests that, as well as having theoretical motivation, a multi-modal approach can improve the efficiency of CCG parsing.</S>
+    <S sid="199" ssid="45">CCG was designed to deal with the long-range dependencies inherent in certain constructions, such as coordination and extraction, and arguably provides the most linguistically satisfactory account of these phenomena.</S>
+    <S sid="200" ssid="46">Long-range dependencies are relatively common in text such as newspaper text, but are typically not recovered by treebank parsers such as Collins (2003) and Charniak (2000).</S>
+    <S sid="201" ssid="47">This has led to a number of proposals for post-processing the output of the Collins and Charniak parsers, in which trace sites are located and the antecedent of the trace determined (Johnson 2002; Dienes and Dubey 2003; Levy and Manning 2004).</S>
+    <S sid="202" ssid="48">An advantage of using CCG is that the recovery of long-range dependencies can be integrated into the parsing process in a straightforward manner, rather than be relegated to such a post-processing phase (Clark, Hockenmaier, and Steedman 2002; Hockenmaier 2003a; Clark, Steedman, and Curran 2004).</S>
+    <S sid="203" ssid="49">Another advantage of CCG is that providing a compositional semantics for the grammar is relatively straightforward.</S>
+    <S sid="204" ssid="50">It has a completely transparent interface between syntax and semantics and, because CCG is a lexicalized grammar formalism, providing a compositional semantics simply involves adding semantic representations to the lexical entries and interpreting the small number of combinatory rules.</S>
+    <S sid="205" ssid="51">Bos et al. (2004) show how this can be done for the grammar and parser described in this article.</S>
+    <S sid="206" ssid="52">Of course some of these advantages could be obtained with other grammar formalisms, such as TAG, LFG, and HPSG, although CCG is especially well-suited to analysing coordination and long-range dependencies.</S>
+    <S sid="207" ssid="53">For example, the analysis of &#8220;non-constituent coordination&#8221; described in the previous section is, as far as we know, unique to CCG.</S>
+    <S sid="208" ssid="54">Finally, the lexicalized nature of CCG has implications for the engineering of a widecoverage parser.</S>
+    <S sid="209" ssid="55">Later we show that use of a supertagger (Bangalore and Joshi 1999) prior to parsing can produce an extremely efficient parser.</S>
+    <S sid="210" ssid="56">The supertagger uses statistical sequence tagging techniques to assign a small number of lexical categories to each word in the sentence.</S>
+    <S sid="211" ssid="57">Because there is so much syntactic information in lexical categories, the parser is required to do less work once the lexical categories have been assigned; hence Srinivas and Joshi, in the context of TAG, refer to supertagging as almost parsing.</S>
+    <S sid="212" ssid="58">The parser is able to parse 20 Wall Street Journal (WSJ) sentences per second on standard hardware, using our best-performing model, which compares very favorably with other parsers using linguistically motivated grammars.</S>
+    <S sid="213" ssid="59">A further advantage of the supertagger is that it can be used to reduce the parse space for estimation of the log-linear parsing models.</S>
+    <S sid="214" ssid="60">By focusing on those parses which result from the most probable lexical category sequences, we are able to perform effective discriminative training without considering the complete parse space, which for most sentences is prohibitively large.</S>
+    <S sid="215" ssid="61">The idea of supertagging originated with LTAG; however, in contrast to the CCG grammars used in this article, the automatically extracted LTAG grammars have, as yet, been too large to enable effective supertagging (as discussed in the previous section).</S>
+    <S sid="216" ssid="62">We are not aware of any other work which has demonstrated the parsing efficiency benefits of supertagging using an automatically extracted grammar.</S>
+    <S sid="217" ssid="63">The work in this article began as part of the Edinburgh wide-coverage CCG parsing project (2000&#8211;2004).</S>
+    <S sid="218" ssid="64">There has been some other work on defining stochastic categorial grammars, but mainly in the context of grammar learning (Osborne and Briscoe 1997; Watkinson and Manandhar 2001; Zettlemoyer and Collins 2005).</S>
+    <S sid="219" ssid="65">An early attempt from the Edinburgh project at wide-coverage CCG parsing is presented in Clark, Hockenmaier, and Steedman (2002).</S>
+    <S sid="220" ssid="66">In order to deal with the problem of the additional, nonstandard CCG derivations, a conditional model of dependency structures is presented, based on Collins (1996), in which the dependencies are modeled directly and derivations are not modeled at all.</S>
+    <S sid="221" ssid="67">The conditional probability of a dependency structure &#960;, given a sentence S, is factored into two parts.</S>
+    <S sid="222" ssid="68">The first part is the probability of the lexical category sequence, C, and the second part is the dependency structure, D, giving P(&#960;|S) = P(CIS)P(DIC,S).</S>
+    <S sid="223" ssid="69">Intuitively, the category sequence is genClark and Curran Wide-Coverage Efficient Statistical Parsing erated first, conditioned on the sentence, and then attachment decisions are made to form the dependency links.</S>
+    <S sid="224" ssid="70">The probability of the category sequence is estimated using a maximum entropy model, following the supertagger described in Clark (2002).</S>
+    <S sid="225" ssid="71">The probabilities of the dependencies are estimated using relative frequencies, following Collins (1996).</S>
+    <S sid="226" ssid="72">The model was designed to include some long-range predicate&#8211;argument dependencies, as well as local dependencies.</S>
+    <S sid="227" ssid="73">However, there are a number of problems with the model, as the authors acknowledge.</S>
+    <S sid="228" ssid="74">First, the model is deficient, losing probability mass to dependency structures not generated by the grammar.</S>
+    <S sid="229" ssid="75">Second, the relative frequency estimation of the dependency probabilities is ad hoc, and cannot be seen as maximum likelihood estimation, or some other principled method.</S>
+    <S sid="230" ssid="76">Despite these flaws, the parser based on this model was able to recover CCG predicate&#8211;argument dependencies at around 82% overall F-score on unseen WSJ text.</S>
+    <S sid="231" ssid="77">Hockenmaier (2003a) and Hockenmaier and Steedman (2002b) present a generative model of normal-form derivations, based on various techniques from the statistical parsing literature (Charniak 1997; Goodman 1997; Collins 2003).</S>
+    <S sid="232" ssid="78">A CCG binary derivation tree is generated top-down, with the probability of generating particular child nodes being conditioned on some limited context from the previously generated structure.</S>
+    <S sid="233" ssid="79">Hockenmaier&#8217;s parser uses rule instantiations read off CCGbank (see Section 3.3) and some of these will be instances of type-raising and composition; hence the parser can produce non-normal-form derivations.</S>
+    <S sid="234" ssid="80">However, because the parsing model is estimated over normal-form derivations, any non-normal-form derivations will receive low probabilities and are unlikely to be returned as the most probable parse.</S>
+    <S sid="235" ssid="81">Hockenmaier (2003a) compares a number of generative models, starting with a baseline model based on a PCFG.</S>
+    <S sid="236" ssid="82">Various extensions to the baseline are considered: increasing the amount of lexicalization; generating a lexical category at its maximal projection; conditioning the probability of a rule instantiation on the grandparent node (Johnson 1998); adding features designed to deal with coordination; and adding distance to the dependency features.</S>
+    <S sid="237" ssid="83">Some of these extensions, such as increased lexicalization and generating a lexical category at its maximal projection, improved performance, whereas others, such as the coordination and distance features, reduced performance.</S>
+    <S sid="238" ssid="84">Hockenmaier (2003a) conjectures that the reduced performance is due to the problem of data sparseness, which becomes particularly severe for the generative model when the number of features is increased.</S>
+    <S sid="239" ssid="85">The best performing model outperforms that of Clark, Hockenmaier, and Steedman (2002), recovering CCG predicate&#8211;argument dependencies with an overall F-score of around 84% using a similar evaluation.</S>
+    <S sid="240" ssid="86">Hockenmaier (2003b) presents another generative model of normal-form derivations, which is based on the dependencies in the predicate&#8211;argument structure, including long-range dependencies, rather than the dependencies defined by the local trees in the derivation.</S>
+    <S sid="241" ssid="87">Hockenmaier also argues that, compared to Hockenmaier and Steedman (2002b), the predicate&#8211;argument model is better suited to languages with freer word order than English.</S>
+    <S sid="242" ssid="88">The model was also designed to test whether the inclusion of predicate&#8211;argument dependencies improves parsing accuracy.</S>
+    <S sid="243" ssid="89">In fact, the results given in Hockenmaier (2003b) are lower than previous results.</S>
+    <S sid="244" ssid="90">However, Hockenmaier (2003b) reports that the increased complexity of the model reduces the effectiveness of the dynamic programming used in the parser, and hence a more aggressive beam search is required to produce reasonable parse times.</S>
+    <S sid="245" ssid="91">Thus the reduced accuracy could be due to implementation difficulties rather than the model itself.</S>
+    <S sid="246" ssid="92">The use of conditional log-linear models in this article is designed to overcome some of the weaknesses identified in the approach of Clark, Hockenmaier, and Steedman (2002), and to offer a more flexible framework for including features than the generative models of Hockenmaier (2003a).</S>
+    <S sid="247" ssid="93">For example, adding long-range dependency features to the log-linear model is straightforward.</S>
+    <S sid="248" ssid="94">We also showed in Clark and Curran (2004b) that, in contrast with Hockenmaier (2003a), adding distance to the dependency features in the log-linear model does improve parsing accuracy.</S>
+    <S sid="249" ssid="95">Another feature of conditional log-linear models is that they are trained discriminatively, by maximizing the conditional probability of each gold-standard parse relative to the incorrect parses for the sentence.</S>
+    <S sid="250" ssid="96">Generative models, in contrast, are typically trained by maximizing the joint probability of the (training sentence, parse) pairs, even though the sentence does not need to be inferred.</S>
+    <S sid="251" ssid="97">The treebank used in this article performs two roles: It provides the lexical category set used by the supertagger, plus some unary type-changing rules and punctuation rules used by the parser, and it is used as training data for the statistical models.</S>
+    <S sid="252" ssid="98">The treebank is CCGbank (Hockenmaier and Steedman 2002a; Hockenmaier 2003a), a CCG version of the Penn Treebank (Marcus, Santorini, and Marcinkiewicz 1993).</S>
+    <S sid="253" ssid="99">Penn Treebank conversions have also been carried out for other linguistic formalisms, including TAG (Chen and Vijay-Shanker 2000; Xia, Palmer, and Joshi 2000), LFG (Burke et al. 2004), and HPSG (Miyao, Ninomiya, and Tsujii 2004).</S>
+    <S sid="254" ssid="100">CCGbank was created by converting the phrase-structure trees in the Penn Treebank into CCG normal-form derivations.</S>
+    <S sid="255" ssid="101">Some preprocessing of the phrase-structure trees was required, in order to allow the correct CCG analyses for some constructions, such as coordination.</S>
+    <S sid="256" ssid="102">Hockenmaier (2003a) gives a detailed description of the procedure used to create CCGbank.</S>
+    <S sid="257" ssid="103">Figure 3 shows an example normal-form derivation for an (abbreviated) CCGbank sentence.</S>
+    <S sid="258" ssid="104">The derivation has been inverted, so that it is represented as a binary tree.</S>
+    <S sid="259" ssid="105">Sentence categories (S) in CCGbank carry features, such as [dcl] for declarative, [wq] for wh-questions, and [for] for small clauses headed by for; see Hockenmaier (2003a) for the complete list.</S>
+    <S sid="260" ssid="106">S categories also carry features in verb phrases; for example, S[b]\NP Clark and Curran Wide-Coverage Efficient Statistical Parsing is a bare-infinitive; S[to]\NP is a to-infinitive; S[pss]\NP is a past participle in passive mode.</S>
+    <S sid="261" ssid="107">Note that, whenever an S or S\NP category is modified, any feature on the S is carried through to the result category; this is true in our parser also.</S>
+    <S sid="262" ssid="108">Finally, determiners specify that the resulting noun phrase is non-bare: NP[nb]/N, although this feature is largely ignored by the parser described in this article.</S>
+    <S sid="263" ssid="109">As well as instances of the standard CCG combinatory rules&#8212;forward and backward application, forward and backward composition, backward-crossed composition, type-raising, coordination of like types&#8212;CCGbank contains a number of unary type-changing rules and rules for dealing with punctuation.</S>
+    <S sid="264" ssid="110">The type-changing rules typically change a verb phrase into a modifier.</S>
+    <S sid="265" ssid="111">The following examples, taken from Hockenmaier (2003a), demonstrate the most common rules.</S>
+    <S sid="266" ssid="112">The bracketed expression has the type-changing rule applied to it: the millions of dollars [it generates] Another common type-changing rule in CCGbank, which appears in Figure 3, changes a noun category N into a noun phrase NP.</S>
+    <S sid="267" ssid="113">Appendix A lists the unary type-changing rules used by our parser.</S>
+    <S sid="268" ssid="114">There are also a number of rules in CCGbank for absorbing punctuation.</S>
+    <S sid="269" ssid="115">For example, Figure 3 contains a rule which takes a comma followed by a declarative sentence and returns a declarative sentence: There are a number of similar comma rules for other categories.</S>
+    <S sid="270" ssid="116">There are also similar punctuation rules for semicolons, colons, and brackets.</S>
+    <S sid="271" ssid="117">There is also a rule schema which treats a comma as a coordination: Appendix A contains the complete list of punctuation rules used in the parser.</S>
+    <S sid="272" ssid="118">A small number of local trees in CCGbank&#8212;consisting of a parent and one or two children&#8212;do not correspond to any of the CCG combinatory rules, or the type-changing rules or punctuation rules.</S>
+    <S sid="273" ssid="119">This is because some of the phrase structure subtrees in the Penn Treebank are difficult to convert to CCG combinatory rules, and because of noise introduced by the Treebank conversion process.</S>
+    <S sid="274" ssid="120">Dependency structures perform two roles in this article.</S>
+    <S sid="275" ssid="121">First, they are used for parser evaluation: The accuracy of a parsing model is measured using precision and recall over CCG predicate&#8211;argument dependencies.</S>
+    <S sid="276" ssid="122">Second, dependency structures form the core of the dependency model: Probabilities are defined over dependency structures, and the parsing algorithm for this model returns the highest scoring dependency structure.</S>
+    <S sid="277" ssid="123">We define a CCG dependency structure as a set of CCG predicate&#8211;argument dependencies.</S>
+    <S sid="278" ssid="124">They are defined as sets, rather than multisets, because the lexical items in a dependency are considered to be indexed by sentence position; this is important for evaluation purposes and, for the dependency model, determining which derivations lead to a given set of dependencies.</S>
+    <S sid="279" ssid="125">However, there are situations where the lexical items need to be considered independently of sentence position, for example when defining feature functions in terms of dependencies.</S>
+    <S sid="280" ssid="126">Such cases should be clear from the context.</S>
+    <S sid="281" ssid="127">We define CCG predicate&#8211;argument relations in terms of the argument slots in CCG lexical categories.</S>
+    <S sid="282" ssid="128">Thus the transitive verb category, (S\NP)/NP, has two predicate&#8211; argument relations associated with it, one corresponding to the object NP argument and one corresponding to the subject NP argument.</S>
+    <S sid="283" ssid="129">In order to distinguish different argument slots, the arguments are numbered from left to right.</S>
+    <S sid="284" ssid="130">Thus, the subject relation for a transitive verb is represented as ((S\NP1)/NP2,1).</S>
+    <S sid="285" ssid="131">The predicate&#8211;argument dependencies are represented as 5-tuples: (hf,f, s, ha, l), where hf is the lexical item of the lexical category expressing the dependency relation, f is the lexical category, s is the argument slot, ha is the head word of the argument, and l encodes whether the dependency is non-local.</S>
+    <S sid="286" ssid="132">For example, the dependency encoding company as the object of bought (as in IBM bought the company) is represented as follows: The subscripts on the lexical items indicate sentence position, and the final field (&#8722;) indicates that the dependency is a local dependency.</S>
+    <S sid="287" ssid="133">Head and dependency information is represented on the lexical categories, and dependencies are created during a derivation as argument slots are filled.</S>
+    <S sid="288" ssid="134">Long-range dependencies are created by passing head information from one category to another using unification.</S>
+    <S sid="289" ssid="135">For example, the expanded category for the control verb persuade is: The head of the infinitival complement&#8217;s subject is identified with the head of the object, using the variable X. Unification then passes the head of the object to the subject of the infinitival, as in standard unification-based accounts of control.</S>
+    <S sid="290" ssid="136">In the current implementation, the head and dependency markup depends on the category only and not the lexical item.</S>
+    <S sid="291" ssid="137">This gives semantically incorrect dependencies in some cases; for Clark and Curran Wide-Coverage Efficient Statistical Parsing example, the control verbs persuade and promise have the same lexical category, which means that promise Brooks to go is assigned a structure meaning promise Brooks that Brooks will go.</S>
+    <S sid="292" ssid="138">The kinds of lexical items that use the head passing mechanism are raising, auxiliary and control verbs, modifiers, and relative pronouns.</S>
+    <S sid="293" ssid="139">Among the constructions that project unbounded dependencies are relativization and right node raising.</S>
+    <S sid="294" ssid="140">The following relative pronoun category (for words such as who, which, and that) shows how heads are co-indexed for object-extraction: In a sentence such as The company which IBM bought, the co-indexing will allow company to be returned as the object of bought, which is represented using the following dependency: The final field indicates the category which mediated the long-range dependency, in this case the object relative pronoun category.</S>
+    <S sid="295" ssid="141">The dependency annotation also permits complex categories as arguments.</S>
+    <S sid="296" ssid="142">For example, the marked up category for about (as in about 5,000 pounds) is: If 5,000 has the category (NX/NX)5,000, the dependency relation marked on the (N/N)Y,1 argument in (12) allows the dependency between about and 5,000 to be captured.</S>
+    <S sid="297" ssid="143">In the current implementation every argument slot in a lexical category corresponds to a dependency relation.</S>
+    <S sid="298" ssid="144">This means, for example, that the parser produces subjects of to-infinitival clauses and auxiliary verbs.</S>
+    <S sid="299" ssid="145">In the sentence IBM may like to buy Lotus, IBM will be returned as the subject of may, like, to, and buy.</S>
+    <S sid="300" ssid="146">The only exception is during evaluation, when some of these dependencies are ignored in order to be consistent with the predicate&#8211;argument dependencies in CCGbank, and also DepBank.</S>
+    <S sid="301" ssid="147">In future work we may investigate removing some of these dependencies from the parsing model and the parser output.</S>
+  </SECTION>
+  <SECTION title="4." number="5">
+    <S sid="302" ssid="1">This section describes two parsing models for CCG.</S>
+    <S sid="303" ssid="2">The first defines the probability of a dependency structure, and the second&#8212;the normal-form model&#8212;defines the probability of a single derivation.</S>
+    <S sid="304" ssid="3">In many respects, modeling single derivations is simpler than modeling dependency structures, as the rest of the article will demonstrate.</S>
+    <S sid="305" ssid="4">However, there are a number of reasons for modeling dependency structures.</S>
+    <S sid="306" ssid="5">First, for many applications predicate&#8211;argument dependencies provide a more useful output than derivations, and the parser evaluation is over dependencies; hence it would seem reasonable to optimize over the dependencies rather than the derivation.</S>
+    <S sid="307" ssid="6">Second, we want to investigate, for the purposes of parse selection, whether there is useful information in the nonstandard derivations.</S>
+    <S sid="308" ssid="7">We can test this by defining the probability of a dependency structure in terms of all the derivations leading to that structure, rather than emphasising a single derivation.</S>
+    <S sid="309" ssid="8">Thus, the probability of a dependency structure, &#960;, given a sentence, S, is defined as follows: where O(&#960;) is the set of derivations which lead to &#960;.</S>
+    <S sid="310" ssid="9">This approach is different from that of Clark, Hockenmaier, and Steedman (2002), who define the probability of a dependency structure simply in terms of the dependencies.</S>
+    <S sid="311" ssid="10">One reason for modeling derivations (either one distinguished derivation or a set of derivations), in addition to predicate&#8211;argument dependencies, is that derivations may contain useful information for inferring the correct dependency structure.</S>
+    <S sid="312" ssid="11">For both the dependency model and the normal-form model, the probability of a parse is defined using a log-linear form.</S>
+    <S sid="313" ssid="12">However, the meaning of parse differs in the two cases.</S>
+    <S sid="314" ssid="13">For the dependency model, a parse is taken to be a (d, &#960;) pair, as in Equation (13).</S>
+    <S sid="315" ssid="14">For the normal-form model, a parse is simply a (head-lexicalized) derivation.2 We define a conditional log-linear model of a parse &#969; &#8712; Q, given a sentence S, as follows: where &#955; &#183; f (&#969;) = Ei &#955;ifi(&#969;).</S>
+    <S sid="316" ssid="15">The function fi is the integer-valued frequency function of the ith feature; &#955;i is the weight of the ith feature; and ZS is a normalizing constant which ensures that P(&#969;|S) is a probability distribution: where &#961;(S) is the set of possible parses for S. For the normal-form model, features are defined over single derivations, including local word&#8211;word dependencies arising from lexicalized rule instantiations.</S>
+    <S sid="317" ssid="16">The feature set is derived from the gold-standard normal-form derivations in CCGbank.</S>
+    <S sid="318" ssid="17">For the dependency model, features are defined over dependency structures as well as derivations, and the feature set is derived from all derivations leading to gold-standard dependency structures, including nonstandard derivations.</S>
+    <S sid="319" ssid="18">Section 7 describes the feature types in more detail.</S>
+    <S sid="320" ssid="19">For the dependency model, the training data consists of gold-standard dependency structures, namely, sets of CCG predicate&#8211;argument dependencies, as described earlier.</S>
+    <S sid="321" ssid="20">We follow Riezler et al. (2002) in using a discriminative estimation method by maximizing the conditional log-likelihood of the model given the data, minus a Gaussian prior 2 We could model predicate&#8211;argument dependencies together with the derivation, but we wanted to use features from the derivation only, following Hockenmaier and Steedman (2002b).</S>
+    <S sid="322" ssid="21">Clark and Curran Wide-Coverage Efficient Statistical Parsing term to prevent overfitting (Chen and Rosenfeld 1999; Johnson et al. 1999).</S>
+    <S sid="323" ssid="22">Thus, given training sentences S1,..., Sm, gold-standard dependency structures, &#960;1, ... , &#960;m, and the definition of the probability of a dependency structure from Equation (13), the objective function is: where L(&#923;) is the log-likelihood of model &#923;, G(&#923;) is the Gaussian prior term, and n is the number of features.</S>
+    <S sid="324" ssid="23">We use a single smoothing parameter &#963;, so that &#963;i = &#963; for all i; however, grouping the features into classes and using a different &#963; for each class is worth investigating and may improve the results.</S>
+    <S sid="325" ssid="24">Optimization of the objective function, whether using iterative scaling or more general numerical optimization methods, requires calculation of the gradient of the objective function at each iteration.</S>
+    <S sid="326" ssid="25">The components of the gradient vector are as follows: The first two terms are expectations of feature fi: the second expectation is over all derivations for each sentence in the training data, and the first is over only the derivations leading to the gold-standard dependency structure for each sentence.</S>
+    <S sid="327" ssid="26">The estimation process attempts to make the expectations in Equation (17) equal (ignoring the Gaussian prior term).</S>
+    <S sid="328" ssid="27">Another way to think of the estimation process is that it attempts to put as much mass as possible on the derivations leading to the goldstandard structures (Riezler et al. 2002).</S>
+    <S sid="329" ssid="28">The Gaussian prior term prevents overfitting by penalizing any model whose weights get too large in absolute value.</S>
+    <S sid="330" ssid="29">The estimation process can also be thought of in terms of the framework of Della Pietra, Della Pietra, and Lafferty (1997), because setting the gradient in Equation (17) to zero yields the usual maximum entropy constraints, namely that the expected value of each feature is equal to its empirical value (again ignoring the Gaussian prior term).</S>
+    <S sid="331" ssid="30">However, in this case the empirical values are themselves expectations, over all derivations leading to each gold-standard dependency structure.</S>
+    <S sid="332" ssid="31">For the normal-form model, the training data consists of gold-standard normal-form derivations.</S>
+    <S sid="333" ssid="32">The objective function and gradient vector for the normal-form model are: where dj is the the gold-standard normal-form derivation for sentence Sj and &#952;(Sj) is the set of possible derivations for Sj.</S>
+    <S sid="334" ssid="33">Note that &#952;(Sj) could contain some non-normal-form derivations; however, because any non-normal-form derivations will be considered incorrect, the resulting model will typically assign low probabilities to non-normal-form derivations.</S>
+    <S sid="335" ssid="34">The empirical value in Equation (19) is simply a count of the number of times the feature appears in the gold-standard normal-form derivations.</S>
+    <S sid="336" ssid="35">The second term in Equation (19) is an expectation over all derivations for each sentence.</S>
+    <S sid="337" ssid="36">The limited memory BFGS (L-BFGS) algorithm is a general purpose numerical optimization algorithm (Nocedal and Wright 1999).</S>
+    <S sid="338" ssid="37">In contrast to iterative scaling algorithms such as GIS, which update the parameters one at a time on each iteration, L-BFGS updates the parameters all at once on each iteration.</S>
+    <S sid="339" ssid="38">It does this by considering the topology of the feature space and moving in a direction which is guaranteed to increase the value of the objective function.</S>
+    <S sid="340" ssid="39">The simplest way in which to consider the shape of the feature space is to move in the direction in which the value of the objective function increases most rapidly; this leads to the method of steepest-ascent.</S>
+    <S sid="341" ssid="40">Hence steepest-ascent uses the first partial derivative (the gradient) of the objective function to determine parameter updates.</S>
+    <S sid="342" ssid="41">L-BFGS improves on steepest-ascent by also considering the second partial derivative (the Hessian).</S>
+    <S sid="343" ssid="42">In fact, calculation of the Hessian can be prohibitively expensive, and so L-BFGS estimates this derivative by observing the change in a fixed number of previous gradients (hence the limited memory).</S>
+    <S sid="344" ssid="43">Malouf (2002) gives a more thorough description of numerical optimization methods applied to log-linear models.</S>
+    <S sid="345" ssid="44">He also presents a convincing demonstration that general purpose numerical optimization methods can greatly outperform iterative scaling methods for many NLP tasks.3 Malouf uses standard numerical computation libraries Clark and Curran Wide-Coverage Efficient Statistical Parsing as the basis of his implementation.</S>
+    <S sid="346" ssid="45">One of our aims was to provide a self contained estimation code base, and so we implemented our own version of the L-BFGS algorithm as described in Nocedal and Wright (1999).</S>
+  </SECTION>
+  <SECTION title="5." number="6">
+    <S sid="347" ssid="1">The L-BFGS algorithm requires the following values at each iteration: the expected value and the empirical expected value of each feature, for calculating the gradient; and the value of the likelihood function.</S>
+    <S sid="348" ssid="2">For the normal-form model, the empirical expected values and the likelihood can be easily obtained, because these only involve the single gold-standard derivation for each sentence.</S>
+    <S sid="349" ssid="3">For the dependency model, the computations of the empirical expected values and the likelihood function are more complex, because these involve sums over just those derivations leading to the goldstandard dependency structures.</S>
+    <S sid="350" ssid="4">We explain how these derivations can be found in Section 5.4.</S>
+    <S sid="351" ssid="5">The next section explains how CCG charts can be represented in a way which allows efficient estimation.</S>
+    <S sid="352" ssid="6">The packed charts perform a number of roles.</S>
+    <S sid="353" ssid="7">First, they compactly represent every (derivation, dependency-structure) pair, by grouping together equivalent chart entries.</S>
+    <S sid="354" ssid="8">Entries are equivalent when they interact in the same manner with both the generation of subsequent parse structure and the statistical parse selection.</S>
+    <S sid="355" ssid="9">In practice, this means that equivalent entries have the same span; form the same structures, that is, the remaining derivation plus dependencies, in any subsequent parsing; and generate the same features in any subsequent parsing.</S>
+    <S sid="356" ssid="10">Back pointers to the daughters indicate how an individual entry was created, so that any derivation plus dependency structure can be recovered from the chart.</S>
+    <S sid="357" ssid="11">The second role of the packed charts is to allow recovery of the highest scoring derivation or dependency structure without enumerating all derivations.</S>
+    <S sid="358" ssid="12">And finally, packed charts are an instance of a feature forest, which Miyao and Tsujii (2002) show can be used to efficiently estimate expected values of features, even though the expectation may involve a sum over an exponential number of trees in the forest.</S>
+    <S sid="359" ssid="13">One of the contributions of this section is showing how Miyao and Tsujii&#8217;s feature forest approach can be applied to a particular grammar formalism, namely CCG.</S>
+    <S sid="360" ssid="14">As Chiang (2003) points out, Miyao and Tsujii do not provide a way of constructing a feature forest given a sentence, but provide the mathematical tools for estimation once the feature forest has been constructed.</S>
+    <S sid="361" ssid="15">In our packed charts, entries are equivalent when they have the same category type, identical head, and identical unfilled dependencies.</S>
+    <S sid="362" ssid="16">The equivalence test must account for heads and unfilled dependencies because equivalent entries form the same dependencies in any subsequent parsing.</S>
+    <S sid="363" ssid="17">Individual entries in the chart are obtained by combining canonical representatives of equivalence classes, using the rules of the grammar.</S>
+    <S sid="364" ssid="18">Equivalence classes in the chart are sets of equivalent individual entries.</S>
+    <S sid="365" ssid="19">A feature forest &#934; is defined as a tuple (C, D, R,&#947;, &#948;) where: The interpretation of a packed chart as a feature forest is straightforward.</S>
+    <S sid="366" ssid="20">First, only entries which are part of a derivation spanning the whole sentence are relevant.</S>
+    <S sid="367" ssid="21">These entries can be found by traversing the chart top-down, starting with the entries which span the sentence.</S>
+    <S sid="368" ssid="22">Individual entries in a cell are the conjunctive nodes, which are either (lexical category, word) pairs at the leaves, or have been obtained by combining two equivalence classes (or applying a unary rule to an equivalence class).</S>
+    <S sid="369" ssid="23">The equivalence classes of individual entries are the disjunctive nodes.</S>
+    <S sid="370" ssid="24">And finally, the equivalence classes at the roots of the CCG derivations are the root disjunctive nodes.</S>
+    <S sid="371" ssid="25">For each feature function defined over parses (see Section 4) there is a corresponding feature function defined over conjunctive nodes, that is, for each fi : &#8486; -4 N there is a corresponding fi : C -4 N which counts the number of times feature fi appears on a particular conjunctive node.</S>
+    <S sid="372" ssid="26">The value of fi for a parse is then the sum of the values offi for each conjunctive node in the parse.</S>
+    <S sid="373" ssid="27">The features used in the parsing model determine the definition of the equivalence relation used for grouping individual entries.</S>
+    <S sid="374" ssid="28">In our models, features are defined in terms of individual dependencies and local rule instantiations, where a rule instantiation is the local tree arising from the application of a rule in the grammar.</S>
+    <S sid="375" ssid="29">Note that features can be defined in terms of long-range dependencies, even though such dependencies may involve words which are a long way apart in the sentence.</S>
+    <S sid="376" ssid="30">Our earlier definition of equivalence is consistent with these feature types.</S>
+    <S sid="377" ssid="31">As an example, consider the following composition of will with buy using the forward composition rule: The equivalence class of the resulting individual entry is determined by the CCG category plus heads, in this case (S[dcl]will\NP)/NP, plus the dependencies yet to be filled.</S>
+    <S sid="378" ssid="32">The dependencies are not shown, but there are two subject dependencies on the first NP, one encoding the subject of will and one encoding the subject of buy, and there is an object dependency on the second NP encoding the object of buy.</S>
+    <S sid="379" ssid="33">Entries in the same equivalence class are identical for the purposes of creating new dependencies for the remainder of the parsing.</S>
+    <S sid="380" ssid="34">It is possible to extend the locality of the features beyond single rule instantiations and local dependencies.</S>
+    <S sid="381" ssid="35">For example, the definition of equivalence given earlier allows the incorporation of long-range dependencies as features.</S>
+    <S sid="382" ssid="36">The equivalence test considers unfilled dependencies which are both local and long-range; thus any individual entries which have different long-range dependencies waiting to be filled will be in different equivalence classes.</S>
+    <S sid="383" ssid="37">One of the advantages of log-linear models is that it is easy to include such features; Hockenmaier (2003b) describes the difficulties in including such features in a generative model.</S>
+    <S sid="384" ssid="38">One of the early motivations of the Edinburgh CCG parsing project was to see if the long-range dependencies recovered by a CCG parser could improve the accuracy of a parsing model.</S>
+    <S sid="385" ssid="39">In fact, we have found that adding long-range dependencies to any of the models described in this article has no impact on accuracy.</S>
+    <S sid="386" ssid="40">One possible explanation is that the long-range dependencies are so rare that a much larger amount of training data would be required for these dependencies to have an impact.</S>
+    <S sid="387" ssid="41">Of course the fact that CCG enables recovery of long-range dependencies is still a useful property, even if these dependencies are not currently useful as features, because it improves the utility of the parser output.</S>
+    <S sid="388" ssid="42">There is considerable flexibility in defining the features for a parsing model in our log-linear framework, as the long-range dependency example demonstrates, but the need for dynamic programming for both estimation and decoding reduces the range of features which can be used.</S>
+    <S sid="389" ssid="43">Any extension to the &#8220;locality&#8221; of the features would reduce the effectiveness of the chart packing and any dynamic programming performed over the chart.</S>
+    <S sid="390" ssid="44">Two possible extensions, which we have not investigated, include defining dependency features which account for all three elements of the triple in a PP-attachment (Collins and Brooks 1995), and defining a rule feature which includes the grandparent node (Johnson 1998).</S>
+    <S sid="391" ssid="45">Another alternative for future work is to compare the dynamic programming approach taken here with the beam-search approach of Collins and Roark (2004), which allows more &#8220;global&#8221; features.</S>
+    <S sid="392" ssid="46">For estimating both the normal-form model and the dependency model, the following expectation of each feature fi, with respect to some model A, is required: where &#961;(S) is the set of all parses for sentence S, and &#955; is the vector of weights for A.</S>
+    <S sid="393" ssid="47">This is essentially the same calculation for both models, even though for the dependency model, features can be defined in terms of dependencies as well as the derivations.</S>
+    <S sid="394" ssid="48">Dependencies can be stored as part of the individual entries (conjunctive nodes) at which they are created; hence all features can be defined in terms of the individual entries which make up the derivations.</S>
+    <S sid="395" ssid="49">Calculating E&#923; fi requires summing over all derivations &#969; which include fi for each sentence S in the training data.</S>
+    <S sid="396" ssid="50">The key to performing this sum efficiently is to write the sum in terms of inside and outside scores for each conjunctive node.</S>
+    <S sid="397" ssid="51">The inside and outside scores can be defined recursively.</S>
+    <S sid="398" ssid="52">If the inside score for a conjunctive node c is denoted &#966;c, and the outside score denoted &#968;c, then the expected value of fi can be written as follows: where CS is the set of conjunctive nodes in the packed chart for sentence S. The inside score for a conjunctive node, &#966;c, is defined in terms of the inside scores of c&#8217;s disjunctive node daughters: where &#955; &#183; f (c) = ~i &#955;ifi(c).</S>
+    <S sid="399" ssid="53">If the conjunctive node is a leaf node, the inside score is just the exponentiation of the sum of the feature weights on that node.</S>
+    <S sid="400" ssid="54">The outside score for a conjunctive node, &#968;c, is the outside score for its disjunctive node mother: The calculation of the outside score for a disjunctive node, &#968;d, is a little more involved; it is defined as a sum over the conjunctive mother nodes, of the product of the outside score of the mother, the inside score of the disjunctive node sister, and the feature weights on the mother.</S>
+    <S sid="401" ssid="55">For example, the outside score of d4 in Figure 4 is the sum of two product terms.</S>
+    <S sid="402" ssid="56">The first term is the product of the outside score of c5, the inside score of d5, and the feature weights at c5; and the second term is the product of the outside score of c2, the inside score of d3, and the feature weights at c2.</S>
+    <S sid="403" ssid="57">The definition is as follows; the outside score for a root disjunctive node is 1, otherwise: The normalization constant ZS is the sum of the inside scores for the root disjunctive nodes: In order to calculate inside scores, the scores for daughter nodes need to be calculated before the scores for mother nodes (and vice versa for the outside scores).</S>
+    <S sid="404" ssid="58">This can easily be achieved by ordering the nodes in the bottom-up CKY parsing order.</S>
+    <S sid="405" ssid="59">For the dependency model, the computations of the empirical expected values (17) and the log-likelihood function (16) require sums over just those derivations leading to the gold-standard dependency structure.</S>
+    <S sid="406" ssid="60">We will refer to such derivations as correct derivations.</S>
+    <S sid="407" ssid="61">As far as we know, this problem of identifying derivations in a packed chart which lead to a particular dependency structure has not been addressed before in the NLP literature.</S>
+    <S sid="408" ssid="62">Figure 5 gives an algorithm for finding nodes in a packed chart which appear in correct derivations. cdeps(c) returns the number of correct dependencies on conjunctive node c, and returns the incorrect marker * if there are any incorrect dependencies on c; dmax(c) returns the maximum number of correct dependencies produced by any sub-derivation headed by c, and returns * if there are no sub-derivations producing Algorithm for finding nodes in correct derivations. only correct dependencies; dmax(d) returns the same value but for disjunctive node d. Recursive definitions of these functions are given in Figure 5; the base case occurs when conjunctive nodes have no disjunctive daughters.</S>
+    <S sid="409" ssid="63">The algorithm identifies all those root nodes heading derivations which produce just the correct dependencies, and traverses the chart top-down marking the nodes in those derivations.</S>
+    <S sid="410" ssid="64">The insight behind the algorithm is that, for two conjunctive nodes in the same equivalence class, if one node heads a sub-derivation producing more correct dependencies than the other node (and each sub-derivation only produces correct dependencies), then the node with less correct dependencies cannot be part of a correct derivation.</S>
+    <S sid="411" ssid="65">The conjunctive and disjunctive nodes appearing in correct derivations form a new feature forest, which we call a correct forest.</S>
+    <S sid="412" ssid="66">The correct forest forms a subset of the complete forest (containing all derivations for the sentence).</S>
+    <S sid="413" ssid="67">The correct and complete forests can be used to estimate the required log-likelihood value and feature expectations.</S>
+    <S sid="414" ssid="68">Let E&#934;&#923; fi be the expected value of fi over the forest (D for model A; then the values in Equation (17) can be obtained by calculating E&#934;j where log Z&#934; and log Z&#936; are the normalization constants for (D and T. Estimating the parsing models consists of generating packed charts for each sentence in the training data, and then repeatedly calculating the values needed by the L-BFGS estimation algorithm until convergence.</S>
+    <S sid="415" ssid="69">Even though the packed charts are an efficient representation of the derivation space, the charts for the complete training data (Sections 02&#8211;21 of CCGbank) take up a considerable amount of memory.</S>
+    <S sid="416" ssid="70">One solution is to only keep a small number of charts in memory at any one time, and to keep reading in the charts on each iteration.</S>
+    <S sid="417" ssid="71">However, given that the L-BFGS algorithm takes hundreds of iterations to converge, this approach would be infeasibly slow.</S>
+    <S sid="418" ssid="72">Our solution is to keep all charts in memory by developing a parallel version of the L-BFGS training algorithm and running it on an 18-node Beowulf cluster.</S>
+    <S sid="419" ssid="73">As well as solving the memory problem, another significant advantge of parallelization is the reduction in estimation time: using 18 nodes allows our best-performing model to be estimated in less than three hours.</S>
+    <S sid="420" ssid="74">We use the the Message Passing Interface (MPI) standard for the implementation (Gropp et al. 1996).</S>
+    <S sid="421" ssid="75">The parallel implementation is a straightforward extension of the BFGS algorithm.</S>
+    <S sid="422" ssid="76">Each machine in the cluster deals with a subset of the training data, holding the packed charts for that subset in memory.</S>
+    <S sid="423" ssid="77">The key stages of the algorithm are the calculations of the model expectations and the likelihood function.</S>
+    <S sid="424" ssid="78">For a singleprocess version these are calculated by summing over all the training instances in one place.</S>
+    <S sid="425" ssid="79">For a multi-process version, these are summed in parallel, and at the end of each iteration the parallel sums are combined to give a master sum.</S>
+    <S sid="426" ssid="80">Producing a master operation across a cluster using MPI is a reduce operation.</S>
+    <S sid="427" ssid="81">In our case, every node needs to be holding a copy of the master sum, so we use an all reduce operation.</S>
+    <S sid="428" ssid="82">The MPI library handles all aspects of the parallelization, including finding the optimal way of summing across the nodes of the Beowulf cluster (typically it is done using a tree algorithm).</S>
+    <S sid="429" ssid="83">In fact, the parallelization only adds around twenty lines of code to the single-process implementation.</S>
+    <S sid="430" ssid="84">Because of the simplicity of the parellel communication between the nodes, parallelizing the estimation code is an example of an embarrassingly parallel problem.</S>
+    <S sid="431" ssid="85">One difficult aspect of the parallel implementation is that debugging can be much harder, in which case it is often easier to test a non-MPI version of the program first.</S>
+  </SECTION>
+  <SECTION title="6." number="7">
+    <S sid="432" ssid="1">For the normal-form model, the Viterbi algorithm is used to find the most probable derivation from a packed chart.</S>
+    <S sid="433" ssid="2">For each equivalence class, we record the individual entry at the root of the subderivation which has the highest score for the class.</S>
+    <S sid="434" ssid="3">The equivalence classes were defined so that any other individual entry cannot be part of the highest scoring derivation for the sentence.</S>
+    <S sid="435" ssid="4">The score for a subderivation d is Ei &#955;ifi(d) where fi(d) is the number of times the ith feature occurs in the subderivation.</S>
+    <S sid="436" ssid="5">The highest-scoring subderivations can be calculated recursively using the highest-scoring equivalence classes that were combined to create the individual entry.</S>
+    <S sid="437" ssid="6">For the dependency model, the highest scoring dependency structure is required.</S>
+    <S sid="438" ssid="7">Clark and Curran (2003) outline an algorithm for finding the most probable dependency structure, which keeps track of the highest scoring set of dependencies for each node in the chart.</S>
+    <S sid="439" ssid="8">For a set of equivalent entries in the chart (a disjunctive node), this involves summing over all conjunctive node daughters which head sub-derivations leading to the same set of high scoring dependencies.</S>
+    <S sid="440" ssid="9">In practice large numbers of such conjunctive nodes lead to very long parse times.</S>
+    <S sid="441" ssid="10">As an alternative to finding the most probable dependency structure, we have developed an algorithm which maximizes the expected labeled recall over dependencies.</S>
+    <S sid="442" ssid="11">Our algorithm is based on Goodman&#8217;s (1996) labeled recall algorithm for the phrase-structure PARSEVAL measures.</S>
+    <S sid="443" ssid="12">As far as we know, this is the first application of Goodman&#8217;s approach to finding highest scoring dependency structures.</S>
+    <S sid="444" ssid="13">Watson, Carroll, and Briscoe (2005) have also applied our algorithm to the grammatical relations output by the RASP parser.</S>
+    <S sid="445" ssid="14">The dependency structure, &#960;max, which maximizes the expected recall is: where &#960;i ranges over the dependency structures for S. The expectation for a single dependency structure &#960; is realized as a weighted intersection over all possible dependency structures &#960;i for S. The intuition is that, if &#960;i is the gold standard, then the number of dependencies recalled in &#960; is |&#960; &#8745; &#960;i|.</S>
+    <S sid="446" ssid="15">Because we do not know which &#960;i is the gold standard, then we calculate the expected recall by summing the recall of &#960; relative to each &#960;i, weighted by the probability of &#960;i.</S>
+    <S sid="447" ssid="16">The expression can be expanded further: The reason for this manipulation is that the expected recall score for &#960; is now written in terms of a sum over the individual dependencies in &#960;, rather than a sum over each dependency structure for S. The inner sum is over all derivations which contain a particular individual dependency &#964;.</S>
+    <S sid="448" ssid="17">Thus the final score for a dependency structure &#960; is a sum of the scores for each dependency &#964; in &#960;; and the score for a dependency &#964; is the sum of the probabilities of those derivations producing &#964;.</S>
+    <S sid="449" ssid="18">This latter sum can be calculated efficiently using inside and outside scores: where &#966;c is the inside score and &#968;c is the outside score for node c; C is the set of conjunctive nodes in the packed chart for sentence S and deps(c) is the set of dependencies on conjunctive node c. The intuition behind the expected recall score is that a dependency structure scores highly if it has dependencies produced by high probability derivations.4 The reason for rewriting the score in terms of individual dependencies is to make use of the packed chart: The score for an individual dependency can be calculated using dynamic programming (as explained previously), and the highest scoring dependency structure can be found using dynamic programming also.</S>
+    <S sid="450" ssid="19">The algorithm which finds &#960;max is essentially the same as the Viterbi algorithm described earlier, efficiently finding a derivation which produces the highest scoring set of dependencies.</S>
+  </SECTION>
+  <SECTION title="7." number="8">
+    <S sid="451" ssid="1">The log-linear modeling framework allows considerable flexibility for representing the parse space in terms of features.</S>
+    <S sid="452" ssid="2">In this article we limit the features to those defined over local rule instantiations and single predicate&#8211;argument dependencies.</S>
+    <S sid="453" ssid="3">The feature sets described below differ for the dependency and normal-form models.</S>
+    <S sid="454" ssid="4">The dependency model has features defined over the CCG predicate&#8211;argument dependencies, whereas the dependencies for the normal-form model are defined in terms of local rule instantiations in the derivation.</S>
+    <S sid="455" ssid="5">Another difference is that the rule features for the normal-form model are taken from the gold-standard normal-form derivations, whereas the dependency model contains rule features from non-normal-form derivations.</S>
+    <S sid="456" ssid="6">There are a number of features defined over derivations which are common to the dependency model and the normal-form model.5 First, there are features which represent each (word, lexical-category) pair in a derivation, and generalizations of these which represent (POS, lexical-category) pairs.</S>
+    <S sid="457" ssid="7">Second, there are features representing the root category of a derivation, which we also extend with the head word of the root category; this latter feature is then generalized using the POS tag of the head (as previously described).</S>
+    <S sid="458" ssid="8">Third, there are features which encode rule instantiations&#8212;local trees consisting of a parent and one or two children&#8212;in the derivation.</S>
+    <S sid="459" ssid="9">The first set of rule features encode the combining categories and the result category; the second set of features extend the first by also encoding the head of the result category; and the third set generalizes the second using POS tags.</S>
+    <S sid="460" ssid="10">Table 1 gives an example for each of these feature types.</S>
+    <S sid="461" ssid="11">The dependency model also has CCG predicate&#8211;argument dependencies as features, defined as 5-tuples as in Section 3.4.</S>
+    <S sid="462" ssid="12">In addition these features are generalized in three ways using POS tags, with the word&#8211;word pair replaced with word&#8211;POS, POS&#8211;word, and POS&#8211;POS.</S>
+    <S sid="463" ssid="13">Table 2 gives some examples.</S>
+    <S sid="464" ssid="14">We extend the dependency features further by adding distance information.</S>
+    <S sid="465" ssid="15">The distance features encode the dependency relation and the word associated with the lexical category (but not the argument word), plus some measure of distance between the two dependent words.</S>
+    <S sid="466" ssid="16">We use three distance measures which count the following: the number of intervening words, with four possible values 0, 1, 2, or more; the number of intervening punctuation marks, with four possible values 0, 1, 2, or more; and the number of intervening verbs (determined by POS tag), with three possible values 0, 1, or more.</S>
+    <S sid="467" ssid="17">Each of these features is again generalized by replacing the word associated with the lexical category with its POS tag.</S>
+    <S sid="468" ssid="18">5 Each feature has a corresponding frequency function, defined in Equation (14), which counts the number of times the feature appears in a derivation.</S>
+    <S sid="469" ssid="19">For the normal-form model we follow Hockenmaier and Steedman (2002b) by defining dependency features in terms of the local rule instantiations, by adding the heads of the combining categories to the rule instantiation features.6 These are generalized in three ways using POS tags, as shown in Table 3.</S>
+    <S sid="470" ssid="20">There are also the three distance measures which encode the distance between the two head words of the combining categories, as for the dependency model.</S>
+    <S sid="471" ssid="21">Here the distance feature encodes the combining categories, the result category, the head of the result category (either as a word or POS tag), and the distance between the two head words.</S>
+    <S sid="472" ssid="22">For the features in the normal-form model, a frequency cutoff of two was applied; that is, a feature had to occur at least twice in the gold-standard normal-form derivations to be included in the model.</S>
+    <S sid="473" ssid="23">The same cutoff was applied to the features in the dependency model, except for the rule instantiation feature types.</S>
+    <S sid="474" ssid="24">For these features the counting was done across all derivations licensed by the gold-standard lexical category sequences and a frequency cutoff of 10 was applied.</S>
+    <S sid="475" ssid="25">The larger cutoff was used because the productivity of the grammar can lead to very large numbers of these features.</S>
+    <S sid="476" ssid="26">We also only included those features which had a nonzero empirical count, that is, those features which occured on at least one correct derivation.</S>
+    <S sid="477" ssid="27">These feature types and frequency cutoffs led to 475,537 features for the normal-form model and 632,591 features for the dependency model.</S>
+  </SECTION>
+  <SECTION title="8." number="9">
+    <S sid="478" ssid="1">Parsing with lexicalized grammar formalisms such as CCG is a two-step process: first, elementary syntactic structures&#8212;in CCG&#8217;s case lexical categories&#8212;are assigned to each word in the sentence, and then the parser combines the structures together.</S>
+    <S sid="479" ssid="2">The first step can be performed by simply assigning to each word all lexical categories the word is seen with in the training data, together with some strategy for dealing with rare and unknown words (such as assigning the complete lexical category set; Hockenmaier 2003a).</S>
+    <S sid="480" ssid="3">Because the number of lexical categories assigned to a word can be high, some strategy is needed to make parsing practical; Hockenmaier, for example, uses a beam search to discard chart entries with low scores.</S>
+    <S sid="481" ssid="4">In this article we take a different approach, by using a supertagger (Bangalore and Joshi 1999) to perform step one.</S>
+    <S sid="482" ssid="5">Clark and Curran (2004a) describe the supertagger, which uses log-linear models to define a distribution over the lexical category set for each local five-word context containing the target word (Ratnaparkhi 1996).</S>
+    <S sid="483" ssid="6">The features used in the models are the words and POS tags in the five-word window, plus the two previously assigned lexical categories to the left.</S>
+    <S sid="484" ssid="7">The conditional probability of a sequence of lexical categories, given a sentence, is then defined as the product of the individual probabilities for each category.</S>
+    <S sid="485" ssid="8">The most probable lexical category sequence can be found efficiently using a variant of the Viterbi algorithm for HMM taggers.</S>
+    <S sid="486" ssid="9">We restrict the categories which can be assigned to a word by using a tag dictionary: for words seen at least k times in the training data, the tagger can only assign categories which have been seen with the word in the data.</S>
+    <S sid="487" ssid="10">For words seen less than k times, an alternative based on the word&#8217;s POS tag is used: The tagger can only assign categories which have been seen with the POS tag in the data.</S>
+    <S sid="488" ssid="11">We have found the tag dictionary to be beneficial in terms of both efficiency and accuracy.</S>
+    <S sid="489" ssid="12">A value of k = 20 was used in the experiments described in this article.</S>
+    <S sid="490" ssid="13">The lexical category set used by the supertagger is described in Clark and Curran (2004a) and Curran, Clark, and Vadas (2006).</S>
+    <S sid="491" ssid="14">It includes all lexical catgeories which appear at least 10 times in Sections 02&#8211;21 of CCGbank, resulting in a set of 425 categories.</S>
+    <S sid="492" ssid="15">The Clark and Curran paper shows this set to have very high coverage on unseen data.</S>
+    <S sid="493" ssid="16">The accuracy of the supertagger on Section 00 of CCGbank is 92.6%, with a sentence accuracy of 36.8%.</S>
+    <S sid="494" ssid="17">Sentence accuracy is the percentage of sentences whose words are all tagged correctly.</S>
+    <S sid="495" ssid="18">These figures include punctuation marks, for which the lexical category is simply the punctuation mark itself, and are obtained using gold standard POS tags.</S>
+    <S sid="496" ssid="19">With automatically assigned POS tags, using the POS tagger of Curran and Clark (2003), the accuracies drop to 91.5% and 32.5%.</S>
+    <S sid="497" ssid="20">An accuracy of 91&#8211;92% may appear reasonable given the large lexical category set; however, the low sentence accuracy suggests that the supertagger may not be accurate enough to serve as a front-end to a parser.</S>
+    <S sid="498" ssid="21">Clark (2002) reports that a significant loss in coverage results if the supertagger is used as a front-end to the parser of Hockenmaier and Steedman (2002b).</S>
+    <S sid="499" ssid="22">In order to increase the number of words assigned the correct category, we develop a CCG multitagger, which is able to assign more than one category to each word.</S>
+    <S sid="500" ssid="23">Here yi is to be thought of as a constant category, whereas yj ( j =&#65533; i) varies over the possible categories for word j.</S>
+    <S sid="501" ssid="24">In words, the probability of category yi, given the sentence, is the sum of the probabilities of all sequences containing yi.</S>
+    <S sid="502" ssid="25">This sum can be calculated efficiently using a variant of the forward&#8211;backward algorithm.</S>
+    <S sid="503" ssid="26">For each word in the sentence, the multitagger then assigns all those categories whose probability according to Equation (32) is within some factor, &#946;, of the highest probability category for that word.</S>
+    <S sid="504" ssid="27">In the implementation used here the forward&#8211;backward sum is limited to those sequences allowed by the tag dictionary.</S>
+    <S sid="505" ssid="28">For efficiency purposes, an extra pruning strategy is also used to discard low probability sub-sequences before the forward&#8211; backward algorithm is run.</S>
+    <S sid="506" ssid="29">This uses a second variable-width beam of 0.1&#946;.</S>
+    <S sid="507" ssid="30">Table 4 gives the per-word accuracy of the supertagger on Section 00 for various levels of category ambiguity, together with the average number of categories per word.7 The SENT column gives the percentage of sentences whose words are all supertagged correctly.</S>
+    <S sid="508" ssid="31">The set of categories assigned to a word is considered correct if it contains the correct category.</S>
+    <S sid="509" ssid="32">The table gives results when using gold standard POS tags and, in the final two columns, when using POS tags automatically assigned by the POS tagger described in Curran and Clark (2003).</S>
+    <S sid="510" ssid="33">The drop in accuracy is expected, given the importance of POS tags as features.</S>
+    <S sid="511" ssid="34">The table demonstrates the significant reduction in the average number of categories that can be achieved through the use of a supertagger.</S>
+    <S sid="512" ssid="35">To give one example, the number of categories in the tag dictionary&#8217;s entry for the word is is 45.</S>
+    <S sid="513" ssid="36">However, in the sentence Mr. Vinken is chairman of Elsevier N.V., the Dutch publishing group., the supertagger correctly assigns one category to is for all values of &#946;.</S>
+    <S sid="514" ssid="37">In our earlier work (Clark and Curran 2004a) the forward&#8211;backward algorithm was not used to estimate the probability in Equation (32).</S>
+    <S sid="515" ssid="38">Curran, Clark, and Vadas (2006) investigate the improvement obtained from using the forward&#8211;backward algorithm, and also address the drop in supertagger accuracy when using automatically assigned POS tags.</S>
+    <S sid="516" ssid="39">We show how to maintain some POS ambiguity through to the supertagging phase, using a multi-POS tagger, and also how POS tag probabilities can be encoded as real-valued features in the supertagger.</S>
+    <S sid="517" ssid="40">The drop in supertagging accuracy when moving from gold to automatically assigned POS tags is reduced by roughly 50% across the various values of &#946;.</S>
+  </SECTION>
+  <SECTION title="9." number="10">
+    <S sid="518" ssid="1">The philosophy in earlier work which combined the supertagger and parser (Clark, Hockenmaier, and Steedman 2002; Clark and Curran 2003) was to use an unrestrictive setting of the supertagger, but still allow a reasonable compromise between speed and accuracy.</S>
+    <S sid="519" ssid="2">The idea was to give the parser the greatest possibility of finding the correct parse, by initializing it with as many lexical categories as possible, but still retain reasonable efficiency.</S>
+    <S sid="520" ssid="3">However, for some sentences, the number of categories in the chart gets extremely large with this approach, and parsing is unacceptably slow.</S>
+    <S sid="521" ssid="4">Hence a limit was applied to the number of categories in the chart, and a more restrictive setting of the supertagger was reverted to if the limit was exceeded.</S>
+    <S sid="522" ssid="5">In this article we consider the opposite approach: Start with a very restrictive setting of the supertagger, and only assign more categories if the parser cannot find an analysis spanning the sentence.</S>
+    <S sid="523" ssid="6">In this way the parser interacts much more closely with the supertagger.</S>
+    <S sid="524" ssid="7">In effect, the parser is using the grammar to decide if the categories provided by the supertagger are acceptable, and if not the parser requests more categories.</S>
+    <S sid="525" ssid="8">The advantage of this adaptive supertagging approach is that parsing speeds are much higher, without any corresponding loss in accuracy.</S>
+    <S sid="526" ssid="9">Section 10.3 gives results for the speed of the parser.</S>
+    <S sid="527" ssid="10">The algorithm used to build the packed charts is the CKY chart parsing algorithm (Kasami 1965; Younger 1967) described in Steedman (2000).</S>
+    <S sid="528" ssid="11">The CKY algorithm applies naturally to CCG because the grammar is binary.</S>
+    <S sid="529" ssid="12">It builds the chart bottom-up, starting with constituents spanning a single word, incrementally increasing the span until the whole sentence is covered.</S>
+    <S sid="530" ssid="13">Because the constituents are built in order of span size, at any point in the process all the sub-constituents which could be used to create a particular new constituent must be present in the chart.</S>
+    <S sid="531" ssid="14">Hence dynamic programming can be used to prevent the need for backtracking during the parsing process.</S>
+    <S sid="532" ssid="15">There is a trade-off between the size and coverage of the grammar and the efficiency of the parser.</S>
+    <S sid="533" ssid="16">One of our main goals in this work has been to develop a parser which can provide analyses for the vast majority of linguistic constructions in CCGbank, but is also efficient enough for large-scale NLP applications.</S>
+    <S sid="534" ssid="17">In this section we describe some of the decisions we made when implementing the grammar, with this trade-off in mind.</S>
+    <S sid="535" ssid="18">First, the lexical category set we use does not contain all the categories in Sections 02&#8211;21 of CCGbank.</S>
+    <S sid="536" ssid="19">Applying a frequency cutoff of 10 results in a set of 425 lexical categories.</S>
+    <S sid="537" ssid="20">This set has excellent coverage on unseen data (Clark and Curran 2004a) and is a manageable size for adding the head and dependency information, and also mapping to grammatical relations for evaluation purposes (Section 11).</S>
+    <S sid="538" ssid="21">Second, for the normal-form model, and also the hybrid dependency model described in Section 10.2.1, two types of contraints on the grammar rules are used.</S>
+    <S sid="539" ssid="22">Section 3 described the Eisner constraints, in which any constituent which is the result of a forward composition cannot serve as the primary (left) functor in another forward composition or forward application; an analogous constraint applies for backward composition.</S>
+    <S sid="540" ssid="23">The second type of constraint only allows two categories to combine if they have been seen to combine in the training data.</S>
+    <S sid="541" ssid="24">Although this constraint only permits category combinations seen in Sections 02&#8211;21 of CCGbank, we have found that it is detrimental to neither parser accuracy nor coverage.</S>
+    <S sid="542" ssid="25">Neither of these constraints guarantee a normal-form derivation, but they are both effective at reducing the size of the charts, which can greatly increase parser speed (Clark and Curran 2004a).</S>
+    <S sid="543" ssid="26">The constraints are also useful for training.</S>
+    <S sid="544" ssid="27">Section 10 shows that having a less restrictive setting on the supertagger, when creating charts for discriminative training, can lead to more accurate models.</S>
+    <S sid="545" ssid="28">However, the optimal setting on the supertagger for training purposes can only be used when the constraints are applied, because otherwise the memory requirements are prohibitive.</S>
+    <S sid="546" ssid="29">Following Steedman (2000), we place the following constraint on backward crossed composition (for all models): The Y category in (7) cannot be an N or NP category.</S>
+    <S sid="547" ssid="30">We also place a similar constraint on backward composition.</S>
+    <S sid="548" ssid="31">Both constraints reduce the size of the charts considerably with no impact on coverage or accuracy.</S>
+    <S sid="549" ssid="32">Type-raising is performed by the parser for the categories NP, PP, and S[adj]\NP.</S>
+    <S sid="550" ssid="33">It is implemented by adding one of three fixed sets of categories to the chart whenever an NP, PP, or S[adj]\NP is present.</S>
+    <S sid="551" ssid="34">Appendix A gives the category sets.</S>
+    <S sid="552" ssid="35">Each category transformation is an instance of the following two rule schemata: Appendix A lists the punctuation and type-changing rules implemented in the parser.</S>
+    <S sid="553" ssid="36">This is a larger grammar than we have used in previous articles (Clark and Curran 2004b, 2004a, 2006), mainly because the improvement in the supertagger since the earlier work means that we can now use a larger grammar but still maintain highly efficient parsing.</S>
+  </SECTION>
+  <SECTION title="10." number="11">
+    <S sid="554" ssid="1">The statistics relating to model estimation were obtained using Sections 02&#8211;21 of CCGbank as training data.</S>
+    <S sid="555" ssid="2">The results for parsing accuracy were obtained using Section 00 as development data and Section 23 as the final test data.</S>
+    <S sid="556" ssid="3">The results for parsing speed were obtained using Section 23.</S>
+    <S sid="557" ssid="4">There are various hyperparameters in the parsing system, for example the frequency cutoff for features, the &#963; parameter in the Gaussian prior term, the R values used in the supertagger, and so on.</S>
+    <S sid="558" ssid="5">All of these were set experimentally using Section 00 as development data.</S>
+  </SECTION>
+  <SECTION title="10.1 Model Estimation" number="12">
+    <S sid="559" ssid="1">The gold standard for the normal-form model consists of the normal-form derivations in CCGbank.</S>
+    <S sid="560" ssid="2">For the dependency model, the gold-standard dependency structures are produced by running our CCG parser over the normal-form derivations.</S>
+    <S sid="561" ssid="3">It is essential that the packed charts for each sentence contain the gold standard; for the normalform model this means that our parser must be able to produce the gold-standard derivation from the gold-standard lexical category sequence; and for the dependency model this means that at least one derivation in the chart must produce the goldstandard dependency structure.</S>
+    <S sid="562" ssid="4">Not all rule instantiations in CCGbank can be produced by our parser, because some are not instances of combinatory rules, and others are very rare punctuation and type-changing rules which we have not implemented.</S>
+    <S sid="563" ssid="5">Hence it is not possible for the parser to produce the gold standard for every sentence in Sections 02&#8211;21, for either the normal-form or the dependency model.</S>
+    <S sid="564" ssid="6">These sentences are not used in the training process.</S>
+    <S sid="565" ssid="7">For parsing the training data, we ensure that the correct category is a member of the set assigned to each word.</S>
+    <S sid="566" ssid="8">(We do not do this when parsing the test data.)</S>
+    <S sid="567" ssid="9">The average number of categories assigned to each word is determined by the &#946; parameter in the supertagger.</S>
+    <S sid="568" ssid="10">A category is assigned to a word if the category&#8217;s probability is within &#946; of the highest probability category for that word.</S>
+    <S sid="569" ssid="11">Hence the value of &#946; has a direct effect on the size of the packed charts: Smaller &#946; values lead to larger charts.</S>
+    <S sid="570" ssid="12">For training purposes, the &#946; parameter determines how many incorrect derivations will be used for each sentence for the discriminative training algorithm.</S>
+    <S sid="571" ssid="13">We have found that the &#946; parameter can have a large impact on the accuracy of the resulting models: If the &#946; value is too large, then the training algorithm does not have enough incorrect derivations to &#8220;discriminate against&#8221;; if the &#946; value is too small, then this introduces too many incorrect derivations into the training process, and can lead to impractical memory requirements.</S>
+    <S sid="572" ssid="14">For some sentences, the packed charts can become very large.</S>
+    <S sid="573" ssid="15">The supertagging approach we adopt for training differs from that used for testing and follows the original approach of Clark, Hockenmaier, and Steedman (2002): If the size of the chart exceeds some threshold, the value of &#946; is increased, reducing ambiguity, and the sentence is supertagged and parsed again.</S>
+    <S sid="574" ssid="16">The threshold which limits the size of the charts was set at 300,000 individual entries.</S>
+    <S sid="575" ssid="17">(This is the threshold used for training; a higher value was used for testing.)</S>
+    <S sid="576" ssid="18">For a small number of long sentences the threshold is exceeded even at the largest &#946; value; these sentences are not used for training.</S>
+    <S sid="577" ssid="19">For the normal-form model we were able to use 35,732 sentences for training (90.2% of Sections 02&#8211;21) and for the dependency model 35,889 sentences (90.6%).</S>
+    <S sid="578" ssid="20">Table 5 gives training statistics for the normal-form and dependency models (and a hybrid model described in Section 10.2.1), for various sequences of &#946; values, when the training algorithm is run to convergence on an 18-node cluster.</S>
+    <S sid="579" ssid="21">The training algorithm is defined to have converged when the percentage change in the objective function is less than 0.0001%.</S>
+    <S sid="580" ssid="22">The &#963; value in Equation (16), which was determined experimentally using the development data, was set at 1.3 for all the experiments in this article.</S>
+    <S sid="581" ssid="23">The main reason that the normal-form model requires less memory and converges faster than the dependency model is that, for the normal-form model, we applied the two types of normal-form restriction described in Section 9.3: First, categories can only combine if they appear together in a rule instantiation in Sections 2&#8211;21 of CCGbank; and second, we applied the Eisner constraints described in Section 3.</S>
+    <S sid="582" ssid="24">We conclude this section by noting that it is only through the use of the supertagger that we are able to perform the discriminative estimation at all; without it the memory requirements would be prohibitive, even when using the cluster.</S>
+    <S sid="583" ssid="25">This section gives accuracy figures on the predicate&#8211;argument dependencies in CCGbank.</S>
+    <S sid="584" ssid="26">Overall results are given, as well as results broken down by relation type, as in Clark, Hockenmaier, and Steedman (2002).</S>
+    <S sid="585" ssid="27">Because the purpose of this article is to demonstrate the feasibility of wide-coverage parsing with CCG, we do not give an evaluation targeted specifically at long-range dependencies; such an evaluation was presented in Clark, Steedman, and Curran (2004).</S>
+    <S sid="586" ssid="28">For evaluation purposes, the threshold parameter which limits the size of the charts was set at 1,000,000 individual entries.</S>
+    <S sid="587" ssid="29">This value was chosen to maximize the coverage of the parser, so that the evaluation is performed on as much of the unseen data as possible.</S>
+    <S sid="588" ssid="30">This was also the threshold parameter used for the speed experiments in Section 10.3.</S>
+    <S sid="589" ssid="31">All of the intermediate results were obtained using Section 00 of CCGbank as development data.</S>
+    <S sid="590" ssid="32">The final test result, showing the performance of the best performing model, was obtained using Section 23.</S>
+    <S sid="591" ssid="33">Evaluation was performed by comparing the dependency output of the parser against the predicate&#8211;argument dependencies in CCGbank.</S>
+    <S sid="592" ssid="34">We report precision, recall, and F-scores for labeled and unlabeled dependencies, and also category accuracy.</S>
+    <S sid="593" ssid="35">The category accuracy is the percentage of words assigned the correct lexical category by the parser (including punctuation).</S>
+    <S sid="594" ssid="36">The labeled dependency scores take into account the lexical category containing the dependency relation, the argument slot, the word associated with the lexical category, and the argument head word: All four must be correct to score a point.</S>
+    <S sid="595" ssid="37">For the unlabeled scores, only the two dependent words are considered.</S>
+    <S sid="596" ssid="38">The F-score is the balanced harmonic mean of precision (P) and recall (R): 2PR/(P + R).</S>
+    <S sid="597" ssid="39">The scores are given only for those sentences which were parsed successfully.</S>
+    <S sid="598" ssid="40">We also give coverage values showing the percentage of sentences which were parsed successfully.</S>
+    <S sid="599" ssid="41">Using the CCGbank dependencies for evaluation is a departure from our earlier work, in which we generated our own gold standard by running the parser over the derivations in CCGbank and outputting the dependencies.</S>
+    <S sid="600" ssid="42">In this article we wanted to use a gold standard which is easily accessible to other researchers.</S>
+    <S sid="601" ssid="43">However, there are some differences between the dependency scheme used by our parser and CCGbank.</S>
+    <S sid="602" ssid="44">For example, our parser outputs some coordination dependencies which are not in CCGbank; also, because the parser currently encodes every argument slot in each lexical category as a dependency relation, there are some relations, such as the subject of to in a to-infinitival construction, which are not in CCGbank either.</S>
+    <S sid="603" ssid="45">In order to provide a fair evaluation, we ignore those dependency relations.</S>
+    <S sid="604" ssid="46">This still leaves some minor differences.</S>
+    <S sid="605" ssid="47">We can measure the remaining differences as follows: Comparing the CCGbank dependencies in Section 00 against those generated by running our parser over the derivations in 00 gives labeled precision and recall values of 99.80% and 99.18%, respectively.</S>
+    <S sid="606" ssid="48">Thus there are a small number of dependencies in CCGbank which the current version of the parser can never get right.</S>
+    <S sid="607" ssid="49">10.2.1 Dependency Model vs. Normal-Form Model.</S>
+    <S sid="608" ssid="50">Table 6 shows the results for the normalform and dependency models evaluated against the predicate&#8211;argument dependencies in CCGbank.</S>
+    <S sid="609" ssid="51">Gold standard POS tags were used; the LF(POS) column gives the labeled F-score with automatically assigned POS tags for comparison.</S>
+    <S sid="610" ssid="52">Decoding with the dependency model involves finding the maximum-recall dependency structure, and decoding with the normal-form model involves finding the most probable derivation, as described in Section 6.</S>
+    <S sid="611" ssid="53">The &#946; value refers to the setting of the supertagger used for training and is the first in the sequence of &#946;s from Table 5.</S>
+    <S sid="612" ssid="54">The &#946; values used during the testing are those in Table 4 and the new, efficient supertagging strategy of taking the highest &#946; value first was used.</S>
+    <S sid="613" ssid="55">With the same &#946; values used for training (&#946; = 0.1), the results for the dependency model are slightly higher than for the normal-form model.</S>
+    <S sid="614" ssid="56">However, the coverage of the normal-form model is higher (because the use of the normal-form constraints mean that there are less sentences which exceed the chart-size threshold).</S>
+    <S sid="615" ssid="57">One clear result from the table is that increasing the chart size used for training, by using smaller &#946; values, can significantly improve the results, in this case around 1.5% F-score for the normal-form model.</S>
+    <S sid="616" ssid="58">The training of the dependency model already uses most of the RAM available on the cluster.</S>
+    <S sid="617" ssid="59">However, it is possible to use smaller &#946; values for training the dependency model if we also apply the two types of normal-form restriction used by the normalform model.</S>
+    <S sid="618" ssid="60">This hybrid model still uses the features from the dependency model; it is still trained using dependency structures as the gold standard; and decoding is still performed using the maximum-recall algorithm; the only difference is that the derivations in the charts are restricted by the normal-form constraints (both for training and testing).</S>
+    <S sid="619" ssid="61">Table 5 gives the training statistics for this model, compared to the dependency and normal-form models.</S>
+    <S sid="620" ssid="62">The number of sentences we were able to use for training this model was 36,345 (91.8% of Sections 02&#8211;21).</S>
+    <S sid="621" ssid="63">The accuracy of this hybrid dependency model is given in Table 7.</S>
+    <S sid="622" ssid="64">These are the highest results we have obtained to date on Section 00.</S>
+    <S sid="623" ssid="65">We also give the results for the normal-form model from Table 6 for comparison.</S>
+    <S sid="624" ssid="66">Table 8 gives the results for the hybrid dependency model, broken down by relation type, using the same relations given in Clark, Hockenmaier, and Steedman (2002).</S>
+    <S sid="625" ssid="67">Automatically assigned POS tags were used.</S>
+    <S sid="626" ssid="68">10.2.2 Final Test Results.</S>
+    <S sid="627" ssid="69">Table 9 gives the final test results on Section 23 for the hybrid dependency model.</S>
+    <S sid="628" ssid="70">The coverage for these results is 99.63% (for gold-standard POS tags), which corresponds to 2,398 of the 2,407 sentences in Section 23 receiving an analysis.</S>
+    <S sid="629" ssid="71">When using automatically assigned POS tags, the coverage is slightly lower: 99.58%.</S>
+    <S sid="630" ssid="72">We used version 1.2 of CCGbank to obtain these results.</S>
+    <S sid="631" ssid="73">Results are also given for Hockenmaier&#8217;s parser (Hockenmaier 2003a) which used an earlier, slightly different version of the treebank.</S>
+    <S sid="632" ssid="74">We wanted to use the latest version to enable other researchers to compare with our results.</S>
+    <S sid="633" ssid="75">The results in this section were obtained using a 3.2 GHz Intel Xeon P4.</S>
+    <S sid="634" ssid="76">Table 10 gives parse times for the 2,407 sentences in Section 23 of CCGbank.</S>
+    <S sid="635" ssid="77">In order not to optimize speed by compromising accuracy, we used the hybrid dependency model, together with both kinds of normal-form constraints, and the maximum-recall decoder.</S>
+    <S sid="636" ssid="78">Times are given for both automatically assigned POS tags and gold-standard POS tags (POS).</S>
+    <S sid="637" ssid="79">The sents and words columns give the number of sentences, and the number of words, parsed per second.</S>
+    <S sid="638" ssid="80">For all of the figures reported on Section 23, unless stated otherwise, we chose settings for the various parameters which resulted in a coverage of 99.6%.</S>
+    <S sid="639" ssid="81">It is possible to obtain an analysis for the remaining 0.4%, but at a significant loss in speed.</S>
+    <S sid="640" ssid="82">The parse times and speeds include the failed sentences, and include the time taken by the supertagger, but not the POS tagger; however, the POS tagger is extremely efficient, taking less than 4 seconds to supertag Section 23, most of which consists of load time for the Maximum Entropy model.</S>
+    <S sid="641" ssid="83">The first row corresponds to the strategy of earlier work by starting with an unrestrictive setting of the supertagger.</S>
+    <S sid="642" ssid="84">The first value of &#946; is 0.005; if the parser cannot find a spanning analysis, this is changed to &#946; = 0.001k-150, which increases the average number of categories assigned to a word by decreasing &#946; and increasing the tagdictionary parameter.</S>
+    <S sid="643" ssid="85">If the node limit is exceeded at &#946; = 0.005 (for these experiments the node limit is set at 1,000,000), &#946; is changed to 0.01.</S>
+    <S sid="644" ssid="86">If the node limit is still exceeded, &#946; is changed to 0.03, and finally to 0.075.</S>
+    <S sid="645" ssid="87">The second row corresponds to the new strategy of starting with the most restrictive setting of the supertagger (&#946; = 0.075), and moving through the settings if the parser cannot find a spanning analysis.</S>
+    <S sid="646" ssid="88">The table shows that the new strategy has a significant impact on parsing speed, increasing it by a factor of 3 over the earlier approach (given the parameter settings used in these experiments).</S>
+    <S sid="647" ssid="89">The penultimate row corresponds to using only one supertagging level with &#946; = 0.075; the parser ignores the sentence if it cannot get an analysis at this level.</S>
+    <S sid="648" ssid="90">The percentage of sentences without an analysis is now over 6% (with automatically assigned POS tags), but the parser is extremely fast, processing over 30 sentences per second.</S>
+    <S sid="649" ssid="91">This configuration of the system would be useful for obtaining data for lexical knowledge acquisition, for example, for which large amounts of data are required.</S>
+    <S sid="650" ssid="92">The oracle row gives the parser speed when it is provided with only the correct lexical categories, showing the speeds which could be achieved given the perfect supertagger.</S>
+    <S sid="651" ssid="93">Table 11 gives the percentage of sentences which are parsed at each supertagger level, for both the new and old parsing strategies.</S>
+    <S sid="652" ssid="94">The results show that, for the old approach, most of the sentences are parsed using the least restrictive setting of the supertagger (&#946; = 0.005); conversely, for the new approach, most of the sentences are parsed using the most restrictive setting (&#946; = 0.075).</S>
+    <S sid="653" ssid="95">This suggests that, in order to increase the accuracy of the parser without losing efficiency, the accuracy of the supertagger at the &#946; = 0.075 level needs to be improved, without increasing the number of categories assigned on average.</S>
+    <S sid="654" ssid="96">A possible response to our policy of adaptive supertagging is that any statistical parser can be made to run faster, for example by changing the beam parameter in the Collins (2003) parser, but that any increase in speed is typically associated with a reduction in accuracy.</S>
+    <S sid="655" ssid="97">For the CCG parser, the accuracy did not degrade when using the new adaptive parsing strategy.</S>
+    <S sid="656" ssid="98">Thus the accuracy and efficiency of the parser were not tuned separately: The configuration used to obtain the speed results was also used to obtain the accuracy results in Sections 10.2 and 11.</S>
+    <S sid="657" ssid="99">To give some idea of how these parsing speeds compare with existing parsers, Table 12 gives the parse times on Section 23 for a number of well-known parsers.</S>
+    <S sid="658" ssid="100">Sagae and Lavie (2005) is a classifier-based linear time parser.</S>
+    <S sid="659" ssid="101">The times for the Sagae, Collins, and Charniak parsers were taken from the Sagae and Lavie paper, and were obtained using a 1.8 GHz P4, compared to a 3.2 GHz P4 for the CCG numbers.</S>
+    <S sid="660" ssid="102">Comparing parser speeds is especially problematic because of implementation differences and the fact that the accuracy of the parsers is not being controlled.</S>
+    <S sid="661" ssid="103">Thus we are not making any strong claims about the efficiency of parsing with CCG compared to other formalisms.</S>
+    <S sid="662" ssid="104">However, the results in Table 12 add considerable weight to one of our main claims in this article, namely, that highly efficient parsing is possible with CCG, and that largescale processing is possible with linguistically motivated grammars.</S>
+  </SECTION>
+  <SECTION title="11." number="13">
+    <S sid="663" ssid="1">An obvious question is how well the CCG parser compares with parsers using different grammar formalisms.</S>
+    <S sid="664" ssid="2">One question we are often asked is whether the CCG derivations output by the parser could be converted to Penn Treebank&#8211;style trees to enable a comparison with, for example, the Collins and Charniak parsers.</S>
+    <S sid="665" ssid="3">The difficulty is that CCG derivations often have a different shape to the Penn Treebank analyses (coordination being a prime example) and reversing the mapping used by Hockenmaier to create CCGbank is a far from trivial task.</S>
+    <S sid="666" ssid="4">There is some existing work comparing parser performance across formalisms.</S>
+    <S sid="667" ssid="5">Briscoe and Carroll (2006) evaluate the RASP parser on the Parc Dependency Bank (DepBank; King et al. 2003).</S>
+    <S sid="668" ssid="6">Cahill et al. (2004) evaluate an LFG parser, which uses an automatically extracted grammar, against DepBank.</S>
+    <S sid="669" ssid="7">NVliyao and Tsujii (2004) evaluate their HPSG parser against PropBank (Palmer, Gildea, and Kingsbury 2005).</S>
+    <S sid="670" ssid="8">Kaplan et al. (2004) compare the Collins parser with the Parc LFG parser by mapping Penn Treebank parses into the dependencies of DepBank, claiming that the LFG parser is more accurate with only a slight reduction in speed.</S>
+    <S sid="671" ssid="9">Preiss (2003) compares the parsers of Collins and Charniak, the grammatical relations finder of Buchholz, Veenstra, and Daelemans (1999), and the Briscoe and Carroll (2002) parser, using the gold-standard grammatical relations (GRs) from Carroll, Briscoe, and Sanfilippo (1998).</S>
+    <S sid="672" ssid="10">The Penn Treebank trees of the Collins and Charniak parsers, and the GRs of the Buchholz parser, are mapped into the required grammatical relations, with the result that the GR finder of Buchholz is the most accurate.</S>
+    <S sid="673" ssid="11">There are a number of problems with such evaluations.</S>
+    <S sid="674" ssid="12">The first is that, when converting the output of the Collins parser, for example, into the output of another parser, the Collins parser is at an immediate disadvantage.</S>
+    <S sid="675" ssid="13">This is especially true if the alternative output is significantly different from the Penn Treebank trees and if the information required to produce the alternative output is hard to extract.</S>
+    <S sid="676" ssid="14">One could argue that the relative lack of grammatical information in the output of the Collins parser is a weakness and any evaluation should measure that.</S>
+    <S sid="677" ssid="15">However, we feel that the onus of mapping into another formalism should ideally lie with the researchers making claims about their own particular parser.</S>
+    <S sid="678" ssid="16">The second difficulty is that some constructions may be analyzed differently across formalisms, and even apparently trivial differences such as tokenization can complicate the comparison (Crouch et al. 2002).</S>
+    <S sid="679" ssid="17">Despite these difficulties we have attempted a cross-formalism comparison of the CCG parser.</S>
+    <S sid="680" ssid="18">For the gold standard we chose the version of DepBank reannotated by Briscoe and Carroll (2006) (hereafter B&amp;C), consisting of 700 sentences from Section 23 of the Penn Treebank.</S>
+    <S sid="681" ssid="19">The B&amp;C scheme is similar to the original DepBank scheme in many respects, but overall contains less grammatical detail.</S>
+    <S sid="682" ssid="20">Briscoe and Carroll (2006) describe the differences between the two schemes.</S>
+    <S sid="683" ssid="21">We chose this resource for the following reasons: It is publicly available, allowing other researchers to compare against our results; the GRs making up the annotation share some similarities with the predicate&#8211;argument dependencies output by the CCG parser; and we can directly compare our parser against a non-CCG parser, namely the RASP parser&#8212;and because we are converting the CCG output into the format used by RASP the CCG parser is not at an unfair advantage.</S>
+    <S sid="684" ssid="22">There is also the SUSANNE GR gold standard (Carroll, Briscoe, and Sanfilippo 1998), on which the B&amp;C annotation is based, but we chose not to use this for evaluation.</S>
+    <S sid="685" ssid="23">This earlier GR scheme is less like the dependencies output by the CCG parser, and the comparison would be complicated further by fact that, unlike CCGbank, the SUSANNE corpus is not based on the Penn Treebank.</S>
+    <S sid="686" ssid="24">The GRs are described in Briscoe (2006), Briscoe and Carroll (2006), and Briscoe, Carroll, and Watson (2006).</S>
+    <S sid="687" ssid="25">Table 13 contains the complete list of GRs used in the evaluation, with examples taken from Briscoe.</S>
+    <S sid="688" ssid="26">The CCG dependencies were transformed into GRs in two stages.</S>
+    <S sid="689" ssid="27">The first stage was to create a mapping between the xcomp unsaturated VP complement Kim thought of leaving (xcomp thought of) (xcomp of leaving) ccomp saturated clausal complement Kim asked about him playing rugby (ccomp asked about) (ccomp about him) (ncsubj playing him ) (dobj playing rugby) ta textual adjunct delimited He made the discovery: (ta colon discovery was) by punctuation Kim was the abbot CCG dependencies and the GRs.</S>
+    <S sid="690" ssid="28">This involved mapping each argument slot in the 425 lexical categories in the CCG lexicon onto a GR.</S>
+    <S sid="691" ssid="29">In the second stage, the GRs created for a particular sentence&#8212;by applying the mapping to the parser output&#8212;were passed through a Python script designed to correct some of the obvious remaining differences between the CCG and GR representations.</S>
+    <S sid="692" ssid="30">In the process of performing the transformation we encountered a methodological problem: Without looking at examples it was difficult to create the mapping and impossible to know whether the two representations were converging.</S>
+    <S sid="693" ssid="31">Briscoe, Carroll, and Watson (2006) split the 700 sentences in DepBank into a test and development set, but the latter only consists of 140 sentences which we found was not enough to reliably create the transformation.</S>
+    <S sid="694" ssid="32">There are some development files in the RASP release which provide examples of the GRs, which we used when possible, but these only cover a subset of the CCG lexical categories.</S>
+    <S sid="695" ssid="33">Our solution to this problem was to convert the gold-standard dependencies from CCGbank into GRs and use these to develop the transformation.</S>
+    <S sid="696" ssid="34">So we did inspect the annotation in DepBank, and compared it to the transformed CCG dependencies, but only the gold-standard CCG dependencies.</S>
+    <S sid="697" ssid="35">Thus the parser output was never used during this process.</S>
+    <S sid="698" ssid="36">We also ensured that the dependency mapping and the post-processing are general to the GRs scheme and not specific to the test set.</S>
+    <S sid="699" ssid="37">Table 14 gives some examples of the dependency mapping.</S>
+    <S sid="700" ssid="38">Because the number of sentences annotated with GRs is so small, the only other option would have been to guess at various DepBank analyses, which would have made the the evaluation even more biased against the CCG parser.</S>
+    <S sid="701" ssid="39">One advantage of this approach is that, by comparing the transformed goldstandard CCG dependencies with the gold-standard GRs, we can measure how close the CCG representation is to the GRs.</S>
+    <S sid="702" ssid="40">This provides some indication of how difficult it is to perform the transformation, and also provides an upper bound on the accuracy of the parser on DepBank.</S>
+    <S sid="703" ssid="41">This method would be useful when converting the output of the Collins parser into an alternative representation (Kaplan et al. 2004): Applying the transformation to the gold-standard Penn Treebank trees and comparing with DepBank would provide an upper bound on the performance of the Collins parser and give some indication of the effectiveness of the transformation. argument slot.</S>
+    <S sid="704" ssid="42">For many of the CCG dependencies, the mapping into GRs is straightforward.</S>
+    <S sid="705" ssid="43">For example, the first two rows of Table 14 show the mapping for the transitive verb category (S[dcl]\NP1)/NP2: Argument slot 1 is a non-clausal subject and argument slot 2 is a direct object.</S>
+    <S sid="706" ssid="44">In the example Kim likes juicy oranges, likes is associated with the transitive verb category, Kim is the subject, and oranges is the head of the constituent filling the object slot, leading to the following GRs: (ncsubj likes Kim ) and (dobj likes oranges).</S>
+    <S sid="707" ssid="45">The third row shows an example of a modifier: (S\NP)/(S\NP) modifies a verb phrase to the right.</S>
+    <S sid="708" ssid="46">Note that, in this example, the order of the lexical category (%l) and filler (%f) is switched compared to the previous example to match the DepBank annotation.</S>
+    <S sid="709" ssid="47">There are a number of reasons why creating the dependency transformation is more difficult than these examples suggest.</S>
+    <S sid="710" ssid="48">The first problem is that the mapping from CCG dependencies to GRs is many-to-many.</S>
+    <S sid="711" ssid="49">For example, the transitive verb category (S[dcl]\NP)/NP applies to the copular in sentences like Imperial Corp. is the parent of Imperial Savings &amp; Loan.</S>
+    <S sid="712" ssid="50">With the default annotation the relation between is and parent would be dobj, whereas in DepBank the argument of the copular is analyzed as an xcomp.</S>
+    <S sid="713" ssid="51">Table 15 gives some examples of how we attempt to deal with this problem.</S>
+    <S sid="714" ssid="52">The constraint in the first example means that, whenever the word associated with the transitive verb category is a form of be, the second argument is xcomp, otherwise the default case applies (in this case dobj).</S>
+    <S sid="715" ssid="53">There are a number of categories with similar constraints, checking whether the word associated with the category is a form of be.</S>
+    <S sid="716" ssid="54">The second type of constraint, shown in the third line of the table, checks the lexical category of the word filling the argument slot.</S>
+    <S sid="717" ssid="55">In this example, if the lexical category of the preposition is PP/NP, then the second argument of (S[dcl]\NP)/PP maps to iobj; thus in The loss stems from several factors the relation between the verb and preposition is (iobj stems from).</S>
+    <S sid="718" ssid="56">If the lexical category of the preposition is PP/(S[ng]\NP), then the GR is xcomp; thus in The future depends on building cooperation the relation between the verb and preposition is (xcomp depends on).</S>
+    <S sid="719" ssid="57">There are a number of CCG dependencies with similar constraints, many of them covering the iobj/xcomp distinction.</S>
+    <S sid="720" ssid="58">The second difficulty in creating the transformation is that not all the GRs are binary relations, whereas the CCG dependencies are all binary.</S>
+    <S sid="721" ssid="59">The primary example of this is to-infinitival constructions.</S>
+    <S sid="722" ssid="60">For example, in the sentence The company wants to wean itself away from expensive gimmicks, the CCG parser produces two dependencies relating wants, to and wean, whereas there is only one GR: (xcomp to wants wean).</S>
+    <S sid="723" ssid="61">The final row of Table 15 gives an example.</S>
+    <S sid="724" ssid="62">We implement this constraint by introducing a %k variable into the GR template which denotes the argument of the category in the constraint column (which, as before, is the lexical category of the word filling the argument slot).</S>
+    <S sid="725" ssid="63">In the example, the current category is (S[dcl]\NP1)/(S[to]\NP)2, which is associated with wants; this combines with (S[to]\NP)/(S[b]\NP), associated with to; and the argument of (S[to]\NP)/(S[b]\NP) is wean.</S>
+    <S sid="726" ssid="64">The %k variable allows us to look beyond the arguments of the current category when creating the GRs.</S>
+    <S sid="727" ssid="65">A further difficulty in creating the transformation is that the head passing conventions differ between DepBank and CCGbank.</S>
+    <S sid="728" ssid="66">By &#8220;head passing&#8221; we mean the mechanism which determines the heads of constituents and the mechanism by which words become arguments of long-range dependencies.</S>
+    <S sid="729" ssid="67">For example, in the sentence The group said it would consider withholding royalty payments, the DepBank and CCGbank annotations create a dependency between said and the following clause.</S>
+    <S sid="730" ssid="68">However, in DepBank the relation is between said and consider, whereas in CCGbank the relation is between said and would.</S>
+    <S sid="731" ssid="69">We fixed this problem by changing the head of would consider to be consider rather than would.</S>
+    <S sid="732" ssid="70">In practice this means changing the annotation of all the relevant lexical categories in the markedup file.8 The majority of the categories to which this applies are those creating aux relations.</S>
+    <S sid="733" ssid="71">A related difference between the two resources is that there are more subject relations in CCGbank than DepBank.</S>
+    <S sid="734" ssid="72">In the previous example, CCGbank has a subject relation between it and consider, and also it and would, whereas DepBank only has the relation between it and consider.</S>
+    <S sid="735" ssid="73">In practice this means ignoring a number of the subject dependencies output by the CCG parser, which is implemented by annotating the relevant lexical categories plus argument slot in the markedup file with an &#8220;ignore&#8221; marker.</S>
+    <S sid="736" ssid="74">Another example where the dependencies differ in the two resources is the treatment of relative pronouns.</S>
+    <S sid="737" ssid="75">For example, in Sen. Mitchell, who had proposed the streamlining, the subject of proposed is Mitchell in CCGbank but who in DepBank.</S>
+    <S sid="738" ssid="76">Again, we implemented this change by fixing the head annotation in the lexical categories which apply to relative pronouns.</S>
+    <S sid="739" ssid="77">In summary, considerable changes were required to the markedup file in order to bring the dependency annotations of CCGbank and DepBank closer together.</S>
+    <S sid="740" ssid="78">The major types of changes have been described here, but not all the details.</S>
+    <S sid="741" ssid="79">Despite the considerable changes made to the parser output described in the previous section, there were still significant differences between the GRs created from the CCG dependencies and the DepBank GRs.</S>
+    <S sid="742" ssid="80">To obtain some idea of whether the schemes were converging, we performed the following oracle experiment.</S>
+    <S sid="743" ssid="81">We took the CCG derivations from CCGbank corresponding to the sentences in DepBank, and ran the parser over the gold-standard derivations, outputting the newly created GRs.9 Treating the DepBank GRs as a gold standard, and comparing these with the CCGbank GRs, gave precision and recall scores of only 76.23% and 79.56%, respectively.</S>
+    <S sid="744" ssid="82">Thus given the current mapping, the perfect CCGbank parser would achieve an F-score of only 77.86% when evaluated against DepBank.</S>
+    <S sid="745" ssid="83">On inspecting the output, it was clear that a number of general rules could be applied to bring the schemes closer together, which we implemented as a Python postprocessing script.</S>
+    <S sid="746" ssid="84">We now provide a description of some of the major changes, to give an indication of the kinds of rules we implemented.</S>
+    <S sid="747" ssid="85">We tried to keep the changes as general as possible and not specific to the test set, although some rules, such as the handling of monetary amounts, are genre-specific.</S>
+    <S sid="748" ssid="86">We decided to include these rules because they are trivial to implement and significantly affect the score, and we felt that, without these changes, the CCG parser would be unfairly penalized.</S>
+    <S sid="749" ssid="87">The first set of changes deals with coordination.</S>
+    <S sid="750" ssid="88">One significant difference between DepBank and CCGbank is the treatment of coordinations as arguments.</S>
+    <S sid="751" ssid="89">Consider the example The president and chief executive officer said the loss stems from several factors.</S>
+    <S sid="752" ssid="90">In both CCGbank and DepBank there are two conj GRs arising from the coordination: (conj and president) and (conj and officer).10 The difference arises in the subject of said: in DepBank the subject is and: (ncsubj said and ), whereas in CCGbank there are two subjects: (ncsubj said president ) and (ncsubj said officer ).</S>
+    <S sid="753" ssid="91">We deal with this problem by replacing any pairs of GRs which differ only in their arguments, and where the arguments are coordinated items, with a single GR containing the coordination term as the argument.</S>
+    <S sid="754" ssid="92">Two arguments are coordinated if they appear in conj relations with the same coordinating term, where &#8220;same term&#8221; is determined by both the word and sentence position.</S>
+    <S sid="755" ssid="93">Another source of conj errors is coordination terms acting as sentential modifiers, with category S/S, often at the beginning of a sentence.</S>
+    <S sid="756" ssid="94">These are labeled conj in DepBank, but the GR for S/S is ncmod.</S>
+    <S sid="757" ssid="95">So any ncmod whose modifier&#8217;s lexical category is S/S, and whose POS tag is CC, is changed to conj.</S>
+    <S sid="758" ssid="96">Ampersands are also a significant problem, and occur frequently in WSJ text.</S>
+    <S sid="759" ssid="97">For example, the CCGbank analysis of Standard &amp; Poor&#8217;s index assigns the lexical category N/N to both Standard and &amp;, treating them as modifiers of Poor, whereas DepBank treats &amp; as a coordinating term.</S>
+    <S sid="760" ssid="98">We fixed this by creating conj GRs between any &amp; and the two words on either side; removing the modifier GR between the two words; and replacing any GRs in which the words on either side of the &amp; are arguments with a single GR in which &amp; is the argument.</S>
+    <S sid="761" ssid="99">The ta relation, which identifies text adjuncts delimited by punctuation (Briscoe 2006), is difficult to assign correctly to the parser output.</S>
+    <S sid="762" ssid="100">The simple punctuation rules used by the parser, and derived from CCGbank, do not contain enough information to distinguish between the various cases of ta.</S>
+    <S sid="763" ssid="101">Thus the only rule we have implemented, which is somewhat specific to the newspaper genre, is to replace GRs of the form (cmod say arg) with (ta quote arg say), where say can be any of say, said, or says.</S>
+    <S sid="764" ssid="102">This rule applies to only a small subset of the ta cases but has high enough precision to be worthy of inclusion.</S>
+    <S sid="765" ssid="103">A common source of error is the distinction between iobj and ncmod, which is not surprising given the difficulty that human annotators have in distinguishing arguments and adjuncts.</S>
+    <S sid="766" ssid="104">There are many cases where an argument in DepBank is an adjunct in CCGbank, and vice versa.</S>
+    <S sid="767" ssid="105">The only change we have made is to turn all ncmod GRs with 10 CCGbank does not contain GRs in this form, although we will continue to talk as though it does; these are the GRs after the CCGbank dependencies have been put through the dependency to GRs mapping.</S>
+    <S sid="768" ssid="106">Clark and Curran Wide-Coverage Efficient Statistical Parsing of as the modifier into iobj GRs (unless the ncmod is a partitive predeterminer).</S>
+    <S sid="769" ssid="107">This was found to have high precision and applies to a significant number of cases.</S>
+    <S sid="770" ssid="108">There are some dependencies in CCGbank which do not appear in DepBank.</S>
+    <S sid="771" ssid="109">Examples include any dependencies in which a punctuation mark is one of the arguments, and so we removed these from the output of the parser.</S>
+    <S sid="772" ssid="110">We have made some attempt to fill the subtype slot for some GRs.</S>
+    <S sid="773" ssid="111">The subtype slot specifies additional information about the GR; examples include the value obj in a passive ncsubj, indicating that the subject is an underlying object; the value num in ncmod, indicating a numerical quantity; and prt in ncmod to indicate a verb particle.</S>
+    <S sid="774" ssid="112">The passive case is identified as follows: Any lexical category which starts S[pss]\NP indicates a passive verb, and we also mark any verbs POS tagged VBN and assigned the lexical category N/N as passive.</S>
+    <S sid="775" ssid="113">Both these rules have high precision, but still leave many of the cases in DepBank unidentified.</S>
+    <S sid="776" ssid="114">Many of those remaining are POS tagged JJ and assigned the lexical category N/N, but this is also true of many non-passive modifiers, so we did not attempt to extend these rules further.</S>
+    <S sid="777" ssid="115">The numerical case is identified using two rules: the num subtype is added if any argument in a GR is assigned the lexical category N/N[num], and if any of the arguments in an ncmod is POS tagged CD. prt is added to an ncmod if the modifiee has a POS tag beginning V and if the modifier has POS tag RP.</S>
+    <S sid="778" ssid="116">We are not advocating that any of these post-processing rules should form part of a parser.</S>
+    <S sid="779" ssid="117">It would be preferable to have the required information in the treebank from which the grammar is extracted, so that it could be integrated into the parser in a principled way.</S>
+    <S sid="780" ssid="118">However, in order that the parser evaluation be as fair and informative as possible, it is important that the parser output conform as closely to the gold standard as possible.</S>
+    <S sid="781" ssid="119">Thus it is appropriate to use any general transformation rules, as long as they are simple and not specific to the test set, to achieve this.</S>
+    <S sid="782" ssid="120">The final columns of Table 16 show the accuracy of the transformed gold-standard CCGbank dependencies when compared with DepBank; the simple post-processing rules have increased the F-score from 77.86% to 84.76%.</S>
+    <S sid="783" ssid="121">However, note that this F-score provides an upper bound on the performance of the CCG parser, and that this score is still below the F-scores reported earlier when evaluating the parser output against CCGbank.</S>
+    <S sid="784" ssid="122">Section 11.4 contains more discussion of this issue.</S>
+  </SECTION>
+  <SECTION title="11.3 Results" number="14">
+    <S sid="785" ssid="1">The results in Table 16 were obtained by parsing the sentences from CCGbank corresponding to those in the 560-sentence test set used by Briscoe, Carroll, and Watson (2006).</S>
+    <S sid="786" ssid="2">We used the CCGbank sentences because these differ in some ways from the original Penn Treebank sentences (there are no quotation marks in CCGbank, for example) and the parser has been trained on CCGbank.</S>
+    <S sid="787" ssid="3">Even here we experienced some unexpected difficulties, because some of the tokenization is different between DepBank and CCGbank (even though both resources are based on the Penn Treebank), and there are some sentences in DepBank which have been significantly shortened (for no apparent reason) compared to the original Penn Treebank sentences.</S>
+    <S sid="788" ssid="4">We modified the CCGbank sentences&#8212;and the CCGbank analyses because these were used for the oracle experiments&#8212;to be as close to the DepBank sentences as possible.</S>
+    <S sid="789" ssid="5">All the results were obtained using the RASP evaluation scripts, with the results for the RASP parser taken from Briscoe, Carroll, and Watson (2006).</S>
+    <S sid="790" ssid="6">The results for CCGbank were obtained using the oracle method described previously. aux 93.33 91.00 92.15 95.03 90.75 92.84 96.47 90.33 93.30 400 conj 72.39 72.27 72.33 79.02 75.97 77.46 83.07 80.27 81.65 595 ta 42.61 51.37 46.58 51.52 11.64 18.99 62.07 12.59 20.93 292 det 87.73 90.48 89.09 95.23 94.97 95.10 97.27 94.09 95.66 1,114 arg mod 79.18 75.47 77.28 81.46 81.76 81.61 86.75 84.19 85.45 8,295 mod 74.43 67.78 70.95 71.30 77.23 74.14 77.83 79.65 78.73 3,908 ncmod 75.72 69.94 72.72 73.36 78.96 76.05 78.88 80.64 79.75 3,550 xmod 53.21 46.63 49.70 42.67 53.93 47.64 56.54 60.67 58.54 178 cmod 45.95 30.36 36.56 51.34 57.14 54.08 64.77 69.09 66.86 168 pmod 30.77 33.33 32.00 0.00 0.00 0.00 0.00 0.00 0.00 12 arg 77.42 76.45 76.94 85.76 80.01 82.78 89.79 82.91 86.21 4,387 subj or dobj 82.36 74.51 78.24 86.08 83.08 84.56 91.01 85.29 88.06 3,127 subj 78.55 66.91 72.27 84.08 75.57 79.60 89.07 78.43 83.41 1,363 ncsubj 79.16 67.06 72.61 83.89 75.78 79.63 88.86 78.51 83.37 1,354 xsubj 33.33 28.57 30.77 0.00 0.00 0.00 50.00 28.57 36.36 7 csubj 12.50 50.00 20.00 0.00 0.00 0.00 0.00 0.00 0.00 2 comp 75.89 79.53 77.67 86.16 81.71 83.88 89.92 84.74 87.25 3,024 obj 79.49 79.42 79.46 86.30 83.08 84.66 90.42 85.52 87.90 2,328 dobj 83.63 79.08 81.29 87.01 88.44 87.71 92.11 90.32 91.21 1,764 obj2 23.08 30.00 26.09 68.42 65.00 66.67 66.67 60.00 63.16 20 iobj 70.77 76.10 73.34 83.22 65.63 73.38 83.59 69.81 76.08 544 clausal 60.98 74.40 67.02 77.67 72.47 74.98 80.35 77.54 78.92 672 xcomp 76.88 77.69 77.28 77.69 74.02 75.81 80.00 78.49 79.24 381 ccomp 46.44 69.42 55.55 77.27 70.10 73.51 80.81 76.31 78.49 291 pcomp 72.73 66.67 69.57 0.00 0.00 0.00 0.00 0.00 0.00 24 macroaverage 62.12 63.77 62.94 65.71 62.29 63.95 71.73 65.85 68.67 microaverage 77.66 74.98 76.29 81.95 80.35 81.14 86.86 82.75 84.76 The CCG parser results are based on automatically assigned POS tags, using the Curran and Clark (2003) tagger.</S>
+    <S sid="791" ssid="7">For the parser we used the hybrid dependency model and the maximum recall decoder, because this obtained the highest accuracy on CCGbank, with the same parser and supertagger parameter settings as described in Section 10.2.11 The coverage of the parser on DepBank is 100%.</S>
+    <S sid="792" ssid="8">The coverage of the RASP parser is also 100%: 84% of the analyses are complete parses rooted in S and the rest are obtained using a robustness technique based on fragmentary analyses (Briscoe and Carroll 2006).</S>
+    <S sid="793" ssid="9">The coverage for the oracle experiments is less than 100% (around 95%) since there are some gold-standard derivations in CCGbank which the parser is unable to follow exactly, because the grammar rules used by the parser are a subset of those in CCGbank.</S>
+    <S sid="794" ssid="10">The oracle figures are based only on those sentences for which there is a gold-standard analysis, because we wanted to measure how close the two resources are and provide an approximate upper bound for the parser.</S>
+    <S sid="795" ssid="11">(But, to repeat, the accuracy figures for the parser are based on the complete test set.)</S>
+    <S sid="796" ssid="12">11 The results reported in Clark and Curran (2007) differ from those here because Clark and Curran used the normal-form model and Viterbi decoder.</S>
+    <S sid="797" ssid="13">Clark and Curran Wide-Coverage Efficient Statistical Parsing F-score is the balanced harmonic mean of precision (P) and recall (R): 2PR/(P + R).</S>
+    <S sid="798" ssid="14"># GRs is the number of GRs in DepBank.</S>
+    <S sid="799" ssid="15">For a GR in the parser output to be correct, it has to match the gold-standard GR exactly, including any subtype slots; however, it is possible for a GR to be incorrect at one level but correct at a subsuming level.</S>
+    <S sid="800" ssid="16">For example, if an ncmod GR is incorrectly labeled with xmod, but is otherwise correct, it will be correct for all levels which subsume both ncmod and xmod, for example mod.</S>
+    <S sid="801" ssid="17">Thus the scores at the most general level in the GR hierarchy (dependent) correspond to unlabeled accuracy scores.</S>
+    <S sid="802" ssid="18">The micro-averaged scores are calculated by aggregating the counts for all the relations in the hierarchy, whereas the macro-averaged scores are the mean of the individual scores for each relation (Briscoe, Carroll, and Watson 2006).</S>
+    <S sid="803" ssid="19">The results show that the performance of the CCG parser is higher than RASP overall, and also higher on the majority of GR types.</S>
+    <S sid="804" ssid="20">Relations on which the CCG parser performs particularly well, relative to RASP, are conj, det, ncmod, cmod, ncsubj, dobj, obj2, and ccomp.</S>
+    <S sid="805" ssid="21">The relations for which the CCG parser performs poorly are some of the less frequent relations: ta, pmod, xsubj, csubj, and pcomp; in fact pmod and pcomp are not in the current CCG dependencies to GRs mapping.</S>
+    <S sid="806" ssid="22">The overall F-score for the CCG parser, 81.14%, is only 3.6 points below that for CCGbank, which provides an upper bound for the CCG parser.</S>
+    <S sid="807" ssid="23">Briscoe and Carroll (2006) give a rough comparison of RASP with the Parc LFG parser (Kaplan et al. 2004) on DepBank, obtaining similar results overall, but acknowledging that the results are not strictly comparable because of the different annotation schemes used.</S>
+  </SECTION>
+  <SECTION title="11.4 Discussion" number="15">
+    <S sid="808" ssid="1">We might expect the CCG parser to perform better than RASP on this data because RASP is not tuned to newspaper text and uses an unlexicalized parsing model.</S>
+    <S sid="809" ssid="2">On the other hand the relatively low upper bound for the CCG parser on DepBank demonstrates the considerable disadvantage of evaluating on a resource which uses a different annotation scheme to the parser.</S>
+    <S sid="810" ssid="3">Our feeling is that the overall F-score on DepBank understates the accuracy of the CCG parser, because of the information lost in the translation.</S>
+    <S sid="811" ssid="4">One aspect of the CCGbank evaluation which is more demanding than the DepBank evaluation is the set of labeled dependencies used.</S>
+    <S sid="812" ssid="5">In CCGbank there are many more labeled dependencies than GRs in DepBank, because a dependency is defined as a lexical category-argument slot pair.</S>
+    <S sid="813" ssid="6">In CCGbank there is a distinction between the direct object of a transitive verb and ditransitive verb, for example, whereas in DepBank these would both be dobj.</S>
+    <S sid="814" ssid="7">In other words, to get a dependency correct in the CCGbank evaluation, the lexical category&#8212;typically a subcategorization frame&#8212;has to be correct.</S>
+    <S sid="815" ssid="8">In a final experiment we used the GRs generated by transforming CCGbank as a gold standard, against which we compared the GRs from the transformed parser output.</S>
+    <S sid="816" ssid="9">The resulting F-score of 89.60% shows the increase obtained from using gold-standard GRs generated from CCGbank rather than the CCGbank dependencies themselves (for which the F-score was 85.20%).</S>
+    <S sid="817" ssid="10">Another difference between DepBank and CCGbank is that DepBank has been manually corrected, whereas CCGbank, including the test sections, has been produced semiautomatically from the Penn Treebank.</S>
+    <S sid="818" ssid="11">There are some constructions in CCGbank&#8212; noun compounds being a prominent example&#8212;which are often incorrectly analyzed, simply because the required information is not in the Penn Treebank.</S>
+    <S sid="819" ssid="12">Thus the evaluation on CCGbank overstates the accuracy of the parser, because it is tuned to produce the output in CCGbank, including constructions where the analysis is incorrect.</S>
+    <S sid="820" ssid="13">A similar comment would apply to other parsers evaluated on, and using grammars extracted from, the Penn Treebank.</S>
+    <S sid="821" ssid="14">A contribution of this section has been to highlight the difficulties associated with cross-formalism parser comparisons.</S>
+    <S sid="822" ssid="15">Note that the difficulties are not unique to CCG, and many would apply to any cross-formalism comparison, especially with parsers using automatically extracted grammars.</S>
+    <S sid="823" ssid="16">Parser evaluation has improved on the original PARSEVAL measures (Carroll, Briscoe, and Sanfilippo 1998), but the challenge still remains to develop a representation and evaluation suite which can be easily applied to a wide variety of parsers and formalisms.</S>
+  </SECTION>
+  <SECTION title="12." number="16">
+    <S sid="824" ssid="1">One of the key questions currently facing researchers in statistical parsing is how to adapt existing parsers to new domains.</S>
+    <S sid="825" ssid="2">There is some experimental evidence showing that, perhaps not surprisingly, the performance of parsers trained on the WSJ Penn Treebank drops significantly when the parser is applied to domains outside of newspaper text (Gildea 2001; Lease and Charniak 2005).</S>
+    <S sid="826" ssid="3">The difficulty is that developing new treebanks for each of these domains is infeasible.</S>
+    <S sid="827" ssid="4">Developing the techniques to extract a CCG grammar from the Penn Treebank, together with the preprocessing of the Penn Treebank which was required, took a number of years; and developing the Penn Treebank itself also took a number of years.</S>
+    <S sid="828" ssid="5">Clark, Steedman, and Curran (2004) applied the parser described in this article to questions from the TREC Question Answering (QA) track.</S>
+    <S sid="829" ssid="6">Because of the small number of questions in the Penn Treebank, the performance of the parser was extremely poor&#8212; well below that required for a working QA system.</S>
+    <S sid="830" ssid="7">The novel idea in Clark, Steedman, and Curran was to create new training data from questions, but to annotate at the lexical category level only, rather than annotate with full derivations.</S>
+    <S sid="831" ssid="8">The idea is that, because lexical categories contain so much syntactic information, adapting just the supertagger to the new domain, by training on the new question data, may be enough to obtain good parsing performance.</S>
+    <S sid="832" ssid="9">This technique assumes that annotation at the lexical category level can be done relatively quickly, allowing rapid porting of the supertagger.</S>
+    <S sid="833" ssid="10">We were able to annotate approximately 1, 000 questions in around a week, which led to an accurate supertagger and, combined with the Penn Treebank parsing model, an accurate parser of questions.</S>
+    <S sid="834" ssid="11">There are ways in which this porting technique can be extended.</S>
+    <S sid="835" ssid="12">For example, we have developed a method for training the dependency model which requires lexical category data only (Clark and Curran 2006).</S>
+    <S sid="836" ssid="13">Partial dependency structures are extracted from the lexical category sequences, and the training algorithm for the dependency model is extended to deal with partial data.</S>
+    <S sid="837" ssid="14">Remarkably, the accuracy of the dependency model trained on data derived from lexical category sequences alone is only 1.3% labeled F-score less than the full data model.</S>
+    <S sid="838" ssid="15">This result demonstrates the significant amount of syntactic information encoded in the lexical categories.</S>
+    <S sid="839" ssid="16">Future work will look at applying this method to biomedical text.</S>
+    <S sid="840" ssid="17">We have shown how using automatically assigned POS tags reduces the accuracy of the supertagger and parser.</S>
+    <S sid="841" ssid="18">In Curran, Clark, and Vadas (2006) we investigate using the multi-tagging techniques developed for the supertagger at the POS tag level.</S>
+    <S sid="842" ssid="19">The idea is to maintain some POS tag ambiguity for later parts of the parsing process, using the tag probabilities to decide which tags to maintain.</S>
+    <S sid="843" ssid="20">We were able to reduce the drop Clark and Curran Wide-Coverage Efficient Statistical Parsing in supertagger accuracy by roughly one half.</S>
+    <S sid="844" ssid="21">Future work will also look at maintaing the POS tag ambiguity through to the parsing stage.</S>
+    <S sid="845" ssid="22">Currently we do not use the probabilities assigned to the lexical categories by the supertagger as part of the parse selection process.</S>
+    <S sid="846" ssid="23">These scores could be incorporated as real-valued features, or as auxiliary functions, as in Johnson and Riezler (2000).</S>
+    <S sid="847" ssid="24">We would also like to investigate using the generative model of Hockenmaier and Steedman (2002b) in a similar way.</S>
+    <S sid="848" ssid="25">Using a generative model&#8217;s score as a feature in a discriminative framework has been beneficial for reranking approaches (Collins and Koo 2005).</S>
+    <S sid="849" ssid="26">Because the generative model uses local features similar to those in our log-linear models, it could be incorporated into the estimation and decoding processes without the need for reranking.</S>
+    <S sid="850" ssid="27">One way of improving the accuracy of a supertagger is to use the parser to provide large amounts of additional training data, by taking the lexical categories chosen by the parser as gold-standard training data.</S>
+    <S sid="851" ssid="28">If enough unlabeled data is parsed, then the large volume can overcome the noise in the data (Steedman et al. 2002; Prins and van Noord 2003).</S>
+    <S sid="852" ssid="29">We plan to investigate this idea in the context of our own parsing system.</S>
+  </SECTION>
+  <SECTION title="13." number="17">
+    <S sid="853" ssid="1">This article has shown how to estimate a log-linear parsing model for an automatically extracted CCG grammar, on a very large scale.</S>
+    <S sid="854" ssid="2">The techniques that we have developed, including the use of a supertagger to limit the size of the charts and the use of parallel estimation, could be applied to log-linear parsing models using other grammar formalisms.</S>
+    <S sid="855" ssid="3">Despite memory requirements of up to 25 GB we have shown how a parallelized version of the estimation process can limit the estimation time to under three hours, resulting in a practical framework for parser development.</S>
+    <S sid="856" ssid="4">One of the problems with modeling approaches which require very long estimation times is that it is difficult to test different configurations of the system, for example different feature sets.</S>
+    <S sid="857" ssid="5">It may also not be possible to train or run the system on anything other than short sentences (Taskar et al. 2004).</S>
+    <S sid="858" ssid="6">The supertagger is a key component in our parsing system.</S>
+    <S sid="859" ssid="7">It reduces the size of the charts considerably compared with naive methods for assigning lexical categories, which is crucial for practical discriminative training.</S>
+    <S sid="860" ssid="8">The tight integration of the supertagger and parser enables highly efficient as well as accurate parsing.</S>
+    <S sid="861" ssid="9">The parser is significantly faster than comparable parsers in the NLP literature.</S>
+    <S sid="862" ssid="10">The supertagger we have developed can be applied to other lexicalized grammar formalisms.</S>
+    <S sid="863" ssid="11">Another contribution of the article is the development of log-linear parsing models for CCG.</S>
+    <S sid="864" ssid="12">In particular, we have shown how to define a CCG parsing model which exploits all derivations, including nonstandard derivations.</S>
+    <S sid="865" ssid="13">These nonstandard derivations are an integral part of the formalism, and we have answered the question of whether efficent estimation and parsing algorithms can be defined for models which use these derivations.</S>
+    <S sid="866" ssid="14">We have also defined a new parsing algorithm for CCG which maximizes expected recall of predicate&#8211;argument dependencies.</S>
+    <S sid="867" ssid="15">This algorithm, when combined with normal-form constraints, gives the highest parsing accuracy to date on CCGbank.</S>
+    <S sid="868" ssid="16">We have also given competitive results on DepBank, outperforming a nonCCG parser (RASP), despite the considerable difficulties involved in evaluating on a gold standard which uses a different annotation scheme to the parser.</S>
+    <S sid="869" ssid="17">There has perhaps been a perception in the NLP community that parsing with CCG is necessarily ineffficient because of CCG&#8217;s &#8220;spurious&#8221; ambiguity.</S>
+    <S sid="870" ssid="18">We have demonstrated, using state-of-the-art statistical models, that both accurate and highly efficient parsing is practical with CCG.</S>
+    <S sid="871" ssid="19">Linguistically motivated grammars can now be used for large-scale NLP applications.12</S>
+  </SECTION>
+</PAPER>

@@ -1,0 +1,187 @@
+<PAPER>
+	<S sid="0">Memory-Based Dependency Parsing</S><ABSTRACT>
+		<S sid="1" ssid="1">This paper reports the results of experimentsusing memory-based learning to guide a de terministic dependency parser for unrestricted natural language text.</S>
+		<S sid="2" ssid="2">Using data from a small treebank of Swedish, memory-based classifiers for predicting the next action of the parser are constructed.</S>
+		<S sid="3" ssid="3">The accuracy of a classifier as such is evaluated on held-out data derived from the treebank, and its performance as a parserguide is evaluated by parsing the held-out por tion of the treebank.</S>
+		<S sid="4" ssid="4">The evaluation shows thatmemory-based learning gives a signficant im provement over a previous probabilistic modelbased on maximum conditional likelihood esti mation and that the inclusion of lexical features improves the accuracy even further.</S>
+	</ABSTRACT>
+	<SECTION title="Introduction" number="1">
+			<S sid="5" ssid="5">Deterministic dependency parsing has recently been proposed as a robust and efficient method for syntactic pars ing of unrestricted natural language text (Yamada and Matsumoto, 2003; Nivre, 2003).</S>
+			<S sid="6" ssid="6">Dependency parsing means that the goal of the parsing process is to constructa dependency graph, of the kind depicted in Figure 1.</S>
+			<S sid="7" ssid="7">De terministic parsing means that we always derive a singleanalysis for each input string.</S>
+			<S sid="8" ssid="8">Moreover, this single anal ysis is derived in a monotonic fashion with no redundancy or backtracking, which makes it possible to parse natural language sentences in linear time (Nivre, 2003).In this paper, we report experiments using memorybased learning (Daelemans, 1999) to guide the parser described in Nivre (2003), using data from a small treebank of Swedish (Einarsson, 1976).</S>
+			<S sid="9" ssid="9">Unlike most pre vious work on data-driven dependency parsing (Eisner, 1996; Collins et al, 1999; Yamada and Matsumoto, 2003;Nivre, 2003), we assume that dependency graphs are la beled with dependency types, although the evaluationwill give results for both labeled and unlabeled represen tations.</S>
+			<S sid="10" ssid="10">The paper is structured as follows.</S>
+			<S sid="11" ssid="11">Section 2 gives the necessary background definitions and introduces the idea of guided parsing as well as memory-based learning.</S>
+			<S sid="12" ssid="12">Section 3 describes the data used in the experiments, the evaluation metrics, and the models and algorithms used in the learning process.</S>
+			<S sid="13" ssid="13">Results from the experiments are given in section 4, while conclusions and suggestions for further research are presented in section 5.</S>
+	</SECTION>
+	<SECTION title="Background. " number="2">
+			<S sid="14" ssid="1">2.1 Dependency Graphs.</S>
+			<S sid="15" ssid="2">The linguistic tradition of dependency grammar comprises a large and fairly diverse family of theories and formalisms that share certain basic assumptions about syn tactic structure, in particular the assumption that syntacticstructure consists of lexical nodes linked by binary re lations called dependencies (see, e.g., Tesnie`re (1959), Sgall (1986), Mel?c?uk (1988), Hudson (1990)).</S>
+			<S sid="16" ssid="3">Thus, the common formal property of dependency structures, as compared to the representations based on constituency (or phrase structure), is the lack of nonterminal nodes.In a dependency structure, every word token is depen dent on at most one other word token, usually called its head or regent, which means that the structure can be represented as a directed graph, with nodes representing word tokens and arcs representing dependency relations.</S>
+			<S sid="17" ssid="4">In addition, arcs may be labeled with specific dependency types.</S>
+			<S sid="18" ssid="5">Figure 1 shows a labeled dependency graph for asimple Swedish sentence, where each word of the sentence is labeled with its part of speech and each arc la beled with a grammatical function.Formally, we define dependency graphs in the follow ing way: PP Pa?</S>
+			<S sid="19" ssid="6">(In   ? ADV NN 60-talet the-60?s   ? PR VB ma?lade painted PN han he   ? SUB JJ dja?rva bold   ? ATT NN tavlor pictures   ? OBJ HP som which   ? ATT VB retade annoyed ?   SUB PM Nikita Nikita   ? OBJ PM Chrusjtjov.</S>
+			<S sid="20" ssid="7">Chrustjev.)</S>
+			<S sid="21" ssid="8">  ? ID Figure 1: Dependency graph for Swedish sentence 1.</S>
+			<S sid="22" ssid="9">Let R = {r1, . . .</S>
+			<S sid="23" ssid="10">, rm} be the set of permissible de-.</S>
+			<S sid="24" ssid="11">pendency types (arc labels).</S>
+			<S sid="25" ssid="12">2.</S>
+			<S sid="26" ssid="13">A dependency graph for a string of words W = w1?</S>
+			<S sid="27" ssid="14">?wn is a labeled directed graph D = (W,A), where (a) W is the set of nodes, i.e. word tokens in the input string, (b) A is a set of labeled arcs (wi, r, wj) (where wi, wj ? W and r ? R).</S>
+			<S sid="28" ssid="15">We write wi  wj to express that wi precedes wj in the string W (i.e., i  j); we write wi r?</S>
+			<S sid="29" ssid="16">wj to say that there is an arc from wi to wj labeled r, and wi ? wj to say that there is an arc from wi to wj (regardless of the label); we use ??</S>
+			<S sid="30" ssid="17">to denote the reflexive and transitive closure of the unlabeled arcrelation; and we use ? and ??</S>
+			<S sid="31" ssid="18">for the correspond ing undirected relations, i.e. wi ? wj iff wi ? wj or wj ? wi.</S>
+			<S sid="32" ssid="19">the five conditions given in Figure 2 are satisfied.</S>
+			<S sid="33" ssid="20">For a more detailed discussion of dependency graphs and well-formedness conditions, the reader is referred to Nivre (2003).</S>
+			<S sid="34" ssid="21">2.2 Parsing Algorithm.</S>
+			<S sid="35" ssid="22">The parsing algorithm presented in Nivre (2003) is in many ways similar to the basic shift-reduce algorithm for context-free grammars (Aho et al, 1986), although theparse actions are different given that no nonterminal sym bols are used.</S>
+			<S sid="36" ssid="23">Moreover, unlike the algorithm of Yamadaand Matsumoto (2003), the algorithm considered here actually uses a blend of bottom-up and top-down processing, constructing left-dependencies bottom-up and rightdependencies top-down, in order to achieve incrementality.</S>
+			<S sid="37" ssid="24">For a similar but nondeterministic approach to depen dency parsing, see Obrebski (2003).</S>
+			<S sid="38" ssid="25">Parser configurations are represented by triples ?S, I, A?, where S is the stack (represented as a list), I is the list of (remaining) input tokens, and A is the (current) arc relation for the dependency graph.</S>
+			<S sid="39" ssid="26">Given an inputstring W , the parser is initialized to ?nil,W, ??</S>
+			<S sid="40" ssid="27">and termi nates when it reaches a configuration ?S,nil, A?</S>
+			<S sid="41" ssid="28">(for any list S and set of arcs A).</S>
+			<S sid="42" ssid="29">The input string W is accepted if the dependency graph D = (W,A) given at termination is well-formed; otherwise W is rejected.</S>
+			<S sid="43" ssid="30">The behavior of the parser is defined by the transitions defined in Figure 3 (where wi, wj and wk are arbitrary word tokens, and r and r?</S>
+			<S sid="44" ssid="31">are arbitrary dependency relations): 1.</S>
+			<S sid="45" ssid="32">The transition Left-Arc (LA) adds an arc wj r?wi.</S>
+			<S sid="46" ssid="33">from the next input token wj to the token wi on top of the stack and reduces (pops) wi from the stack.</S>
+			<S sid="47" ssid="34">2.</S>
+			<S sid="48" ssid="35">The transition Right-Arc (RA) adds an arc wi r?wj.</S>
+			<S sid="49" ssid="36">from the token wi on top of the stack to the next in put token wj , and shifts (pushes) wj onto the stack.</S>
+			<S sid="50" ssid="37">ken wi on top of the stack.</S>
+			<S sid="51" ssid="38">4.</S>
+			<S sid="52" ssid="39">The transition Shift (SH) shifts (pushes) the next in-.</S>
+			<S sid="53" ssid="40">put token wi onto the stack.</S>
+			<S sid="54" ssid="41">The transitions Left-Arc and Right-Arc are subject to conditions that ensure that the graph conditions Uniquelabel and Single head are satisfied.</S>
+			<S sid="55" ssid="42">By contrast, the Re duce transition can only be applied if the token on top of the stack already has a head.</S>
+			<S sid="56" ssid="43">For Shift, the only condition is that the input list is non-empty.As it stands, this transition system is nondeterminis tic, since several transitions can often be applied to the same configuration.</S>
+			<S sid="57" ssid="44">Thus, in order to get a deterministic parser, we need to introduce a mechanism for resolving transition conflicts.</S>
+			<S sid="58" ssid="45">Regardless of which mechanism is used, the parser is guaranteed to terminate after at most 2n transitions, given an input string of length n (Nivre,2003).</S>
+			<S sid="59" ssid="46">This means that as long as transitions can be per formed in constant time, the running time of the parser will be linear in the length of the input.</S>
+			<S sid="60" ssid="47">Moreover, the parser is guaranteed to produce a dependency graph that is acyclic and projective (and satisfies the unique-labeland single-head constraints).</S>
+			<S sid="61" ssid="48">This means that the depen dency graph given at termination is well-formed if and only if it is connected (Nivre, 2003).</S>
+			<S sid="62" ssid="49">Unique label (wi r?wj ? wi r ? ?wj) ? r = r?</S>
+			<S sid="63" ssid="50">Single head (wi?wj ? wk?wj) ? wi = wk Acyclic ?(wi?wj ? wj??wi) Connected wi??wj Projective (wi?wk ? wiwjwk) ?</S>
+			<S sid="64" ssid="51">(wi??wj ? wk??wj) Figure 2: Well-formedness conditions on dependency graphs Initialization ?nil,W, ??</S>
+			<S sid="65" ssid="52">Termination ?S,nil, A?</S>
+			<S sid="66" ssid="53">Left-Arc ?wi|S,wj |I, A?</S>
+			<S sid="67" ssid="54">?S,wj |I, A ? {(wj , r, wi)}?</S>
+			<S sid="68" ssid="55">??wk?r?(wk, r?, wi) ? A Right-Arc ?wi|S,wj |I, A?</S>
+			<S sid="69" ssid="56">?wj |wi|S, I, A ? {(wi, r, wj)}?</S>
+			<S sid="70" ssid="57">??wk?r?(wk, r?, wj) ? A Reduce ?wi|S, I, A?</S>
+			<S sid="71" ssid="58">?S, I, A?</S>
+			<S sid="72" ssid="59">?wj?r(wj , r, wi) ? A Shift ?S,wi|I, A?</S>
+			<S sid="73" ssid="60">?wi|S, I, A?</S>
+			<S sid="74" ssid="61">Figure 3: Parser transitions 2.3 Guided Parsing.</S>
+			<S sid="75" ssid="62">One way of turning a nondeterministic parser into a deter ministic one is to use a guide (or oracle) that can inform the parser at each nondeterministic choice point; cf.</S>
+			<S sid="76" ssid="63">Kay (2000), Boullier (2003).</S>
+			<S sid="77" ssid="64">Guided parsing is normally used to improve the efficiency of a nondeterministic parser,e.g. by letting a simpler (but more efficient) parser con struct a first analysis that can be used to guide the choice of the more complex (but less efficient) parser.</S>
+			<S sid="78" ssid="65">This is the approach taken, for example, in Boullier (2003).In our case, we rather want to use the guide to im prove the accuracy of a deterministic parser, starting from a baseline of randomized choice.</S>
+			<S sid="79" ssid="66">One way of doing this is to use a treebank, i.e. a corpus of analyzed sentences, to train a classifier that can predict the next transition (and dependency type) given the current configuration of the parser.</S>
+			<S sid="80" ssid="67">However, in order to maintain the efficiency of the parser, the classifier must also be implemented in such a way that each transition can still be performed in constant time.Previous work in this area includes the use of memory based learning to guide a standard shift-reduce parser(Veenstra and Daelemans, 2000) and the use of support vector machines to guide a deterministic depen dency parser (Yamada and Matsumoto, 2003).</S>
+			<S sid="81" ssid="68">In theexperiments reported in this paper, we apply memory based learning within a deterministic dependency parsing framework.</S>
+			<S sid="82" ssid="69">2.4 Memory-Based Learning.</S>
+			<S sid="83" ssid="70">Memory-based learning and problem solving is based ontwo fundamental principles: learning is the simple stor age of experiences in memory, and solving a new problem is achieved by reusing solutions from similar previously solved problems (Daelemans, 1999).</S>
+			<S sid="84" ssid="71">It is inspired by thenearest neighbor approach in statistical pattern recogni tion and artificial intelligence (Fix and Hodges, 1952), as well as the analogical modeling approach in linguistics (Skousen, 1989; Skousen, 1992).</S>
+			<S sid="85" ssid="72">In machine learning terms, it can be characterized as a lazy learning method,since it defers processing of input until needed and pro cesses input by combining stored data (Aha, 1997).</S>
+			<S sid="86" ssid="73">Memory-based learning has been successfully appliedto a number of problems in natural language processing, such as grapheme-to-phoneme conversion, part of-speech tagging, prepositional-phrase attachment, and base noun phrase chunking (Daelemans et al, 2002).Most relevant in the present context is the use of memory based learning to predict the actions of a shift-reduce parser, with promising results reported in Veenstra and Daelemans (2000).</S>
+			<S sid="87" ssid="74">The main reason for using memory-based learning inthe present context is the flexibility offered by similarity based extrapolation when classifying previously unseenconfigurations, since previous experiments with a proba bilistic model has shown that a fixed back-off sequence does not work well in this case (Nivre, 2004).</S>
+			<S sid="88" ssid="75">Moreover, the memory-based approach can easily handle multi-class classification, unlike the support vector machines used by Yamada and Matsumoto (2003).</S>
+			<S sid="89" ssid="76">For the experiments reported in this paper, we have used the software package TiMBL (Tilburg MemoryBased Learner), which provides a variety of metrics, al gorithms, and extra functions on top of the classical knearest neighbor classification kernel, such as value distance metrics and distance weighted class voting (Daele mans et al, 2003).</S>
+	</SECTION>
+	<SECTION title="Method. " number="3">
+			<S sid="90" ssid="1">3.1 Target Function and Approximation.</S>
+			<S sid="91" ssid="2">The function we want to approximate is a mapping f from parser configurations to parser actions, where each action consists of a transition and (unless the transition is Shift or Reduce) a dependency type: f : Config ? {LA,RA,RE, SH} ?</S>
+			<S sid="92" ssid="3">(R ? {nil})Here Config is the set of all possible parser configura tions and R is the set of dependency types as before.</S>
+			<S sid="93" ssid="4">However, in order to make the problem tractable, we try to learn a function f?</S>
+			<S sid="94" ssid="5">whose domain is a finite space of parser states, which are abstractions over configurations.</S>
+			<S sid="95" ssid="6">For this purpose we define a number of features that can be used to define different models of parser state.</S>
+			<S sid="96" ssid="7">The features used in this study are listed in Table 1.</S>
+			<S sid="97" ssid="8">The first five features (TOP?TOP.RIGHT) deal with properties of the token on top of the stack.</S>
+			<S sid="98" ssid="9">In addition to the word form itself (TOP), we consider its part-of-speech (as assigned by an automatic part-of-speech tagger in a preprocessing phase), the dependency type by which it is related to its head (which may or may not be available in a given configuration depending on whether the head is to the left or to the right of the token in question), and the dependency types by which it is related to its leftmost and rightmost dependent, respectively (where the currentrightmost dependent may or may not be the rightmost de pendent in the complete dependency tree).</S>
+			<S sid="99" ssid="10">The following three features (NEXT?NEXT.LEFT) refer to properties of the next input token.</S>
+			<S sid="100" ssid="11">In this case, there are no features corresponding to TOP.DEP and TOP.RIGHT, since the relevant dependencies can never be present atdecision time.</S>
+			<S sid="101" ssid="12">The final feature (LOOK) is a simple looka head, using the part-of-speech of the next plus one input token.</S>
+			<S sid="102" ssid="13">In the experiments reported below, we have used two different parser state models, one called the lexical model, which includes all nine features, and one called the non-lexical model, where the two lexical features TOP and NEXT are omitted.</S>
+			<S sid="103" ssid="14">For both these models, wehave used memory-based learning with different parame ter settings, as implemented TiMBL.</S>
+			<S sid="104" ssid="15">For comparison, we have included an earlier classifier that uses the same features as the non-lexical model, butwhere prediction is based on maximum conditional likeli hood estimation.</S>
+			<S sid="105" ssid="16">This classifier always predicts the most probable transition given the state and the most probable dependency type given the transition and the state, withconditional probabilities being estimated by the empirical distribution in the training data.</S>
+			<S sid="106" ssid="17">Smoothing is per formed only for zero frequency events, in which case the classifier backs off to more general models by omittingfirst the features TOP.LEFT and LOOK and then the fea tures TOP.RIGHT and NEXT.LEFT; if even this does not help, the classifier predicts Reduce if permissible and Shift otherwise.</S>
+			<S sid="107" ssid="18">This model, which we will refer to as the MCLE model, is described in more detail in Nivre (2004).</S>
+			<S sid="108" ssid="19">3.2 Data.</S>
+			<S sid="109" ssid="20">It is standard practice in data-driven approaches to nat ural language parsing to use treebanks both for training and evaluation.</S>
+			<S sid="110" ssid="21">Thus, the Penn Treebank of American English (Marcus et al, 1993) has been used to train and evaluate the best available parsers of unrestricted English text (Collins, 1999; Charniak, 2000).</S>
+			<S sid="111" ssid="22">One problem whendeveloping a parser for Swedish is that there is no com parable large-scale treebank available for Swedish.</S>
+			<S sid="112" ssid="23">For the experiments reported in this paper we have used a manually annotated corpus of written Swedish, created at Lund University in the 1970?s and consistingmainly of informative texts from official sources (Einars son, 1976).</S>
+			<S sid="113" ssid="24">Although the original annotation scheme isan eclectic combination of constituent structure, depen dency structure, and topological fields (Teleman, 1974), it has proven possible to convert the annotated sentences to dependency graphs with fairly high accuracy.In the conversion process, we have reduced the orig inal fine-grained classification of grammatical functions to a more restricted set of 16 dependency types, whichare listed in Table 2.</S>
+			<S sid="114" ssid="25">We have also replaced the origi nal (manual) part-of-speech annotation by using the same automatic tagger that is used for preprocessing in the parser.</S>
+			<S sid="115" ssid="26">This is a standard probabilistic tagger trained on the Stockholm-Umea?</S>
+			<S sid="116" ssid="27">Corpus of written Swedish (SUC, 1997) and found to have an accuracy of 95?96% when tested on held-out data.</S>
+			<S sid="117" ssid="28">Since the function we want to learn is a mapping from parser states to transitions (and dependency types), the treebank data cannot be used directly as training and test Feature Description TOP The token on top of the stack TOP.POS The part-of-speech of TOP TOP.DEP The dependency type of TOP (if any) TOP.LEFT The dependency type of TOP?s leftmost dependent (if any) TOP.RIGHT The dependency type of TOP?s rightmost dependent (if any) NEXT The next input token NEXT.POS The part-of-speech of NEXT NEXT.LEFT The dependency type of NEXT?s leftmost dependent (if any) LOOK.POS The part-of-speech of the next plus one input token Table 1: Parser state featuresdata.</S>
+			<S sid="118" ssid="29">Instead, we have to simulate the parser on the tree bank in order to derive, for each sentence, the transition sequence corresponding to the correct dependency tree.</S>
+			<S sid="119" ssid="30">Given the result of this simulation, we can construct a data set consisting of pairs ?s, t?, where s is a parser state and t is the correct transition from that state (includinga dependency type if applicable).</S>
+			<S sid="120" ssid="31">Unlike standard shift reduce parsing, the simulation of the current algorithm is almost deterministic and is guaranteed to be correct if the input dependency tree is well-formed.The complete converted treebank contains 6316 sentences and 97623 word tokens, which gives a mean sentence length of 15.5 words.</S>
+			<S sid="121" ssid="32">The treebank has been divided into three non-overlapping data sets: 80% for train ing 10% for development/validation, and 10% for final testing (random samples).</S>
+			<S sid="122" ssid="33">The results presented below are all from the validation set.</S>
+			<S sid="123" ssid="34">(The final test set has not been used at all in the experiments reported in this paper.)</S>
+			<S sid="124" ssid="35">When talking about test and validation data, we make a distinction between the sentence data, which refers to the original annotated sentences in the treebank, and the transition data, which refers to the transitions derived bysimulating the parser on these sentences.</S>
+			<S sid="125" ssid="36">While the sen tence data for validation consists of 631 sentences, the corresponding transition data contains 15913 instances.For training, only transition data is relevant and the train ing data set contains 371977 instances.</S>
+			<S sid="126" ssid="37">3.3 Evaluation.</S>
+			<S sid="127" ssid="38">The output of the memory-based learner is a classifier that predicts the next transition (including dependency type), given the current state of the parser.</S>
+			<S sid="128" ssid="39">The quality of thisclassifier has been evaluated with respect to both predic tion accuracy and parsing accuracy.Prediction accuracy refers to the quality of the clas sifier as such, i.e. how well it predicts the next transitiongiven the correct parser state, and is measured by the clas sification accuracy on unseen transition data (using a 0-1loss function).</S>
+			<S sid="129" ssid="40">We use McNemar?s test for statistical sig nificance.</S>
+			<S sid="130" ssid="41">Parsing accuracy refers to the quality of the classifier as a guide for the deterministic parser and is measured by the accuracy obtained when parsing unseen sentence data.</S>
+			<S sid="131" ssid="42">More precisely, parsing accuracy is measured by the attachment score, which is a standard measure used in studies of dependency parsing (Eisner, 1996; Collins et al, 1999).</S>
+			<S sid="132" ssid="43">The attachment score is computed as theproportion of tokens (excluding punctuation) that are as signed the correct head (or no head if the token is a root).</S>
+			<S sid="133" ssid="44">Since parsing is a sentence-level task, we believe that the overall attachment score should be computed as themean attachment score per sentence, which gives an es timate of the expected attachment score for an arbitrary sentence.</S>
+			<S sid="134" ssid="45">However, since most previous studies instead use the mean attachment score per word (Eisner, 1996; Collins et al, 1999), we will give this measure as well.In order to measure label accuracy, we also define a la beled attachment score, where both the head and the label must be correct, but which is otherwise computed in the same way as the ordinary (unlabeled) attachment score.</S>
+			<S sid="135" ssid="46">For parsing accuracy, we use a paired t-test for statistical significance.</S>
+	</SECTION>
+	<SECTION title="Results. " number="4">
+			<S sid="136" ssid="1">Table 3 shows the prediction accuracy achieved with memory-based learning for the lexical and non-lexical model, with two different parameter settings for the learner.</S>
+			<S sid="137" ssid="2">The results in the first column were obtained with the default settings of the TiMBL package, in particular: ? The IB1 classification algorithm (Aha et al, 1991).</S>
+			<S sid="138" ssid="3">The overlap distance metric.</S>
+			<S sid="139" ssid="4">Features weighted by Gain Ratio (Quinlan, 1993).</S>
+			<S sid="140" ssid="5">k = 1, i.e. classification based on a single nearest neighbor.11In TiMBL, the value of k in fact refers to k nearest dis tances rather than k nearest neighbors, which means that, evenwith k = 1, the nearest neighbor set can contain several in Label Dependency Type ADV Adverbial modifier APP Apposition ATT Attribute CC Coordination (conjunction or second conjunct) DET Determiner ID Non-first element of multi-word expression IM Infinitive dependent on infinitive marker IP Punctuation mark dependent on lexical head INF Infinitival complement OBJ Object PR Complement of preposition PRD Predicative complement SUB Subject UK Main verb of subordinate clause dependent on complementizer VC Verb chain (nonfinite verb dependent on other verb) XX Unclassifiable dependent Table 2: Dependency types in Swedish treebank Model Default Maximum Non-lexical 86.8 87.4 Lexical 88.4 89.7 Table 3: Prediction accuracy for MBL modelsThe second column shows the accuracy for the best pa rameter settings found in the experiments (averaged overboth models), which differ from the default in the follow ing respects:?</S>
+			<S sid="141" ssid="6">Overlap metric replaced by the modified value dis tance metric (MVDM) (Stanfill and Waltz, 1986; Cost and Salzberg, 1993).</S>
+			<S sid="142" ssid="7">No weighting of features.?</S>
+			<S sid="143" ssid="8">k = 5, i.e. classification based on 5 nearest neigh bors.</S>
+			<S sid="144" ssid="9">Distance weighted class voting with inverse distance weighting (Dudani, 1976).</S>
+			<S sid="145" ssid="10">For more information about the different parameters and settings, the reader is referred to Daelemans et al (2003).The results show that the lexical model performs con sistently better than the non-lexical model, and that the difference increases with the optimization of the learning algorithm (all differences being significant at the .0001level according to McNemar?s test).</S>
+			<S sid="146" ssid="11">This confirms previous results from statistical parsing indicating that lex ical information is crucial for disambiguation (Collins,stances that are equally distant to the test instance.</S>
+			<S sid="147" ssid="12">This is dif ferent from the original IB1 algorithm, as described in Aha et al.</S>
+			<S sid="148" ssid="13">(1991).</S>
+			<S sid="149" ssid="14">1999; Charniak, 2000).</S>
+			<S sid="150" ssid="15">As regards optimization, we may note that although there is a significant improvement for both models, the magnitude of the difference is relatively small.</S>
+			<S sid="151" ssid="16">Table 4 shows the parsing accuracy obtained with theoptimized versions of the MBL models (lexical and nonlexical), compared to the MCLE model described in sec tion 3.</S>
+			<S sid="152" ssid="17">We see that MBL outperforms the MCLE model even when limited to the same features (all differences again being significant at the .0001 level according to a paired t-test).</S>
+			<S sid="153" ssid="18">This can probably be explained by the fact that the similarity-based smoothing built into the memory-based approach gives a better extrapolation than the fixed back-off sequence in the MCLE model.</S>
+			<S sid="154" ssid="19">We also see that the lexical MBL model outperforms both the other models.</S>
+			<S sid="155" ssid="20">If we compare the labeled attachmentscore to the prediction accuracy (which also takes depen dency types into account), we observe a substantial drop (from 89.7 to 81.7 for the lexical model, from 87.4 to 76.5 for the non-lexical model), which is of course onlyto be expected.</S>
+			<S sid="156" ssid="21">The unlabeled attachment score is naturally higher, and it is worth noting that the relative differ ence between the MBL lexical model and the other twomodels is much smaller.</S>
+			<S sid="157" ssid="22">This indicates that the advan tage of the lexical model mainly concerns the accuracy in predicting dependency type in addition to transition.</S>
+			<S sid="158" ssid="23">Model Labeled Unlabeled MCLE 74.7 (72.3) 81.5 (79.7) MBL non-lexical 76.5 (74.7) 82.9 (81.7) MBL lexical 81.7 (80.6) 85.7 (84.7) Table 4: Parsing accuracy for MCLE and MBL models, attachment score per sentence (per word in parentheses) If we compare the results concerning parsing accuracy to those obtained for other languages (given that there are no comparable results available for Swedish), we note that the best unlabeled attachment score is lower than forEnglish, where the best results are above 90% (attach ment score per word) (Collins et al, 1999; Yamada and Matsumoto, 2003), but higher than for Czech (Collins et al., 1999).</S>
+			<S sid="159" ssid="24">This is encouraging, given that the size of the training set in our experiments is fairly small, onlyabout 10% of the standard training set for the Penn Tree bank.</S>
+			<S sid="160" ssid="25">One reason why our results nevertheless compare reasonably well with those obtained with the much larger training set is probably that the conversion to dependency trees is more accurate for the Swedish treebank, given theexplicit annotatation of grammatical functions.</S>
+			<S sid="161" ssid="26">More over, the fact that our parser uses labeled dependenciesis probably also significant, since the possibility of using information from previously assigned (labeled) de pendencies during parsing seems to have a positive effect on accuracy (Nivre, 2004).</S>
+			<S sid="162" ssid="27">Finally, it may be interesting to consider the accuracy for individual dependency types.</S>
+			<S sid="163" ssid="28">Table 5 gives labeled precision, labeled recall and unlabeled attachment scorefor four of the most important types with the MBL lex ical model.</S>
+			<S sid="164" ssid="29">The results indicate that subjects have the highest accuracy, especially when labels are taken intoaccount.</S>
+			<S sid="165" ssid="30">Objects and predicative complements have comparable attachment accuracy, but are more often misclas sified with respect to dependency type.</S>
+			<S sid="166" ssid="31">For adverbial modifiers, finally, attachment accuracy is lower than for the other dependency types, which is largely due to the notorious PP-attachment problem.</S>
+	</SECTION>
+	<SECTION title="Conclusion. " number="5">
+			<S sid="167" ssid="1">In this paper we have shown that a combination of memory-based learning and deterministic dependency parsing can be used to construct a robust and efficient parser for unrestricted natural language text, achieving a parsing accuracy which is close to the state of the art evenwith relatively limited amounts of training data.</S>
+			<S sid="168" ssid="2">Clas sifiers based on memory-based learning achieve higher parsing accuracy than previous probabilistic models, and the improvement increases if lexical information is added to the model.</S>
+			<S sid="169" ssid="3">Suggestions for further research includes the further exploration of alternative models and parameter settings, but also the combination of inductive and analytical learning to impose high-level linguistic constraints, and the development of new parsing methods (e.g. involving multiple passes over the data).</S>
+			<S sid="170" ssid="4">In addition, it is important to evaluate the approach with respect to other languages and corpora in order to increase the comparability with other approaches.</S>
+			<S sid="171" ssid="5">Acknowledgements The work presented in this paper was supported by agrant from the Swedish Research Council (621-20024207).</S>
+			<S sid="172" ssid="6">The memory-based classifiers used in the experi ments were constructed using the Tilburg Memory-BasedLearner (TiMBL) (Daelemans et al, 2003).</S>
+			<S sid="173" ssid="7">We are grateful to three anonymous reviewers for constructive com ments on the preliminary version of the paper.</S>
+	</SECTION>
+</PAPER>

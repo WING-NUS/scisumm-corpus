@@ -1,0 +1,1188 @@
+﻿Broad-Coverage Sense Disambiguation and Information Extraction with 
+a Supersense Sequence Tagger∗
+
+
+Massimiliano Ciaramita
+Inst. of Cognitive Science and Technology 
+Italian  National  Research Council 
+m.ciaramita@istc.cnr.it
+
+
+Yasemin Altun
+Toyota Technological Institute at 
+Chicago
+altun@tti-c.org
+
+Abstract
+
+In this paper we approach  word sense 
+disambiguation  and information extrac- 
+tion as  a  unified tagging problem. The 
+task consists of annotating text with the 
+tagset defined  by the 41 Wordnet super- 
+sense classes for nouns and verbs. Since 
+the tagset is directly related to Wordnet 
+synsets,  the tagger  returns  partial word 
+sense disambiguation. Furthermore, since 
+the noun tags include the standard named 
+entity  detection classes – person, location, 
+organization, time, etc.  – the tagger,  as 
+a by-product,  returns extended named en- 
+tity information. We cast the problem of 
+supersense tagging  as a sequential  label- 
+ing task and investigate it empirically with 
+a discriminatively-trained Hidden Markov 
+Model.  Experimental  evaluation on the 
+main sense-annotated  datasets available, 
+i.e., Semcor and Senseval, shows consid- 
+erable improvements over the best known 
+“first-sense” baseline.
+
+1   Introduction
+
+Named entity recognition (NER) is the most stud- 
+ied information extraction (IE) task. NER typi- 
+cally focuses on detecting instances of “person”, 
+“location”, “organization”  names and optionally 
+instances of “miscellaneous” or “time” categories. 
+The scalability of  statistical NER allowed re- 
+searchers  to apply it successfully on large col- 
+lections of newswire text, in several languages, 
+and biomedical literature. Newswire NER per- 
+formance,  in terms of F-score,  is in the upper
+80s (Carreras et al., 2002; Florian et al., 2003), 
+while Bio-NER  accuracy ranges between the low
+70s and 80s, depending on the data-set used for 
+training/evaluation  (Dingare et al., 2005).  One 
+shortcoming of NER is its over-simplified onto- 
+logical model, leaving  instances of other poten- 
+tially informative  categories unidentified.  Hence, 
+the utility of named entity information  is limited. 
+In addition, instances to be detected are mainly  re- 
+stricted to (sequences of) proper nouns.
+  Word sense disambiguation  (WSD) is the task 
+of deciding the intended   sense for ambiguous 
+words in context. With respect to NER, WSD 
+lies at the other end of the semantic tagging spec- 
+trum, since the dictionary  defines tens of thou- 
+sand of very specific  word  senses, including NER 
+categories. Wordnet (Fellbaum, 1998)1, possibly 
+the most used resource  for WSD, defines word 
+senses for verbs, common and proper nouns. Word 
+sense disambiguation, at this level of granularity, 
+is a complex  task which resisted all attempts of 
+robust broad-coverage solutions. Many distinc- 
+tions are too subtle to be captured automatically, 
+and the magnitude of the class  space – several 
+orders larger than NER’s – makes it hard to ap- 
+proach the problem with sophisticated, but scal- 
+able, machine learning methods.  Lastly, even if 
+the methods would scale up, there are not enough 
+manually  tagged data, at the word  sense level,  for 
+training a  model.  The performance of state of 
+the art WSD systems on realistic evaluations is 
+only comparable to the “first sense” baseline (cf. 
+Section 5.3). Notwithstanding much research, the 
+benefits of disambiguated lexical information for 
+language processing are still mostly speculative.
+This paper presents a novel approach to broad-
+
+
+∗The first author is now at Yahoo!  Research.  The tag-	 	
+
+
+ger described in this paper is free software and can be down- 
+loaded from http://www.loa-cnr.it/ciaramita.html.
+  
+
+1 When referring to Wordnet, throughout the paper, we 
+mean Wordnet version 2.0.
+
+
+
+
+594
+
+Proceedings of the 2006 Conference on Empirical Methods in Natural Language Processing (EMNLP 2006), pages 594–602, 
+Sydney, July 2006. Qc 2006 Association for Computational Linguistics
+
+
+
+NOUNS
+SUPERSENSE
+NOUNS DENOTING
+SUPERSENSE
+NOUNS DENOTING
+act
+animal 
+artifact 
+attribute 
+body 
+cognition
+communication 
+event
+feeling 
+food 
+group 
+location 
+motive
+acts or actions
+animals
+man-made objects
+attributes of people and objects 
+body parts
+cognitive processes and contents 
+communicative processes and contents 
+natural events
+feelings and emotions 
+foods and drinks
+groupings of people or objects 
+spatial position
+goals
+object
+quantity 
+phenomenon 
+plant 
+possession 
+process 
+person 
+relation
+shape 
+state 
+substance 
+time
+Tops
+natural objects (not man-made)
+quantities and units of measure 
+natural phenomena
+plants
+possession and transfer of possession 
+natural processes
+people
+relations between people or things or ideas 
+two and three dimensional  shapes
+stable states of affairs 
+substances
+time and temporal relations
+abstract terms for unique beginners
+VERBS
+SUPERSENSE
+VERBS OF
+SUPERSENSE
+VERBS OF
+body
+change 
+cognition 
+communication 
+competition 
+consumption 
+contact
+creation
+grooming, dressing and bodily care
+size, temperature change, intensifying 
+thinking, judging, analyzing, doubting 
+telling, asking, ordering, singing 
+fighting, athletic activities
+eating and drinking
+touching, hitting, tying, digging 
+sewing, baking, painting, performing
+emotion
+motion 
+perception 
+possession 
+social 
+stative 
+weather
+feeling
+walking, flying, swimming 
+seeing, hearing, feeling 
+buying, selling, owning
+political and social activities and events 
+being, having, spatial relations
+raining, snowing, thawing, thundering
+
+Table 1. Nouns and verbs supersense labels, and short description (from the Wordnet documentation).
+
+
+
+
+coverage information  extraction  and word sense 
+disambiguation. Our goal is to simplify the disam- 
+biguation task, for both nouns and verbs, to a level 
+at which it can be approached as any other tagging 
+problem,  and can be solved with state of the art 
+methods. As a by-product,  this task includes and 
+extends NER. We define a tagset based on Word- 
+net’s lexicographers classes, or supersenses (Cia- 
+ramita and Johnson, 2003), cf. Table 1. The size 
+of the supersense tagset allows  us to adopt a struc- 
+tured learning approach, which takes local depen- 
+dencies between labels into account.  To this ex- 
+tent, we cast the supersense tagging problem  as a 
+sequence labeling  task and train a discriminative 
+Hidden Markov Model (HMM), based on that of 
+Collins (2002), on the manually annotated Semcor 
+corpus (Miller et al., 1993). In two experiments 
+we evaluate the accuracy of the tagger on the Sem- 
+cor corpus itself, and on the English “all words” 
+Senseval 3 shared task data (Snyder  and Palmer,
+2004).  The model outperforms remarkably the 
+best known baseline, the first sense heuristic  – to 
+the best of our knowledge, for the first time on the 
+most realistic “all words” evaluation setting.
+
+  The paper is organized  as follows.  Section 2 
+introduces the tagset, Section 3 discusses related 
+work and Section 4 the learning model. Section 5 
+reports on experimental  settings and results. In 
+Section 6 we summarize our contribution  and con- 
+sider directions for further research.
+
+
+2   Supersense tagset
+
+
+Wordnet (Fellbaum,  1998) is a  broad-coverage 
+machine-readable    dictionary  which   includes
+11,306 verbs mapped  to 13,508 word senses, 
+called synsets, and 114,648 common and proper 
+nouns mapped to 79,689 synsets.  Each noun or 
+verb synset is associated with one of 41 broad 
+semantic  categories,  in  order to organize the 
+lexicographer’s work of updating and managing 
+the lexicon (see Table 1).  Since  each lexicog- 
+rapher category  groups together  many synsets 
+they have been also called supersenses (Ciaramita 
+and Johnson,  2003).  There  are 26 supersenses 
+for nouns, 15 for verbs.   This coarse-grained 
+ontology  has a number  of attractive features, for 
+the purpose of natural language processing. First, 
+the small size of the set makes it possible to build 
+a single  tagger which has positive  consequences 
+on robustness.   Second, classes, although  fairly 
+general, are  easily recognizable  and not too 
+abstract or vague. More importantly, similar word 
+senses tend to be merged together.
+  As an example, Table 2 summarizes all senses 
+of the noun “box”.  The 10 synsets are mapped 
+to 6 supersenses:  “artifact”, “quantity”, “shape”, 
+“state”, “plant”, and “act”.  Three similar senses 
+(2), (7) and (9), and the probably related (8), are 
+merged in the “artifact” supersense. This process 
+can help disambiguation  because it removes sub-
+
+
+1. {box}  (container) ”he rummaged through a  box of 
+spare parts” - n.artifact
+2. {box,  loge}  (private  area in a theater  or grandstand 
+where a small group can watch the performance)  ”the 
+royal box was empty” - n.artifact
+3. {box,  boxful} (the quantity contained in a box) ”he 
+gave her a box of chocolates” - n.quantity
+4. {corner, box} (a predicament from which a skillful or 
+graceful  escape is impossible) ”his lying got him into a 
+tight corner” - n.state
+5. {box} (a rectangular drawing) ”the flowchart contained 
+many boxes” - n.shape
+6. {box,  boxwood}  (evergreen  shrubs or small trees) - 
+n.plant
+7. {box} (any one of several designated  areas on a ball 
+field where the batter or catcher or coaches are posi- 
+tioned) ”the umpire warned the batter to stay in the bat- 
+ter’s box” - n.artifact
+8. {box, box seat} (the driver’s seat on a coach) ”an armed 
+guard sat in the box with the driver” - n.artifact
+9. {box} (separate partitioned  area in a public  place for a 
+few people) ”the sentry stayed in his box to avoid the 
+cold” - n.artifact
+10. {box} (a blow with the hand (usually on the ear)) ”I
+gave him a good box on the ear” - n.act
+
+Table 2. The noun “box” in Wordnet: each line lists one 
+synset, the set of synonyms, a definition, an optional 
+example sentence, and the supersense label.
+
+
+tle distinctions,  which are hard to discriminate  and 
+increase the size of the class space.  One possi- 
+ble drawback is that senses which  one might  want 
+to keep  separate, e.g., the most common  sense 
+box/container (1), can be collapsed with others. 
+One might argue that all “artifact” senses share 
+semantic properties which differentiate them from 
+the other senses and can support useful semantic 
+inferences. Unfortunately, there are no general so- 
+lutions to the problem of sense granularity. How- 
+ever, major  senses identified  by Wordnet are main- 
+tained at the supersense level. Hence, supersense- 
+disambiguated  words  are also, at least partially, 
+synset-disambiguated.
+  Since Wordnet includes both proper and com- 
+mon nouns, the new tagset suggests an extended 
+notion of named  entity.   As well as  the usual 
+NER categories,  “person”, “group”, “location”, 
+and “time”2, supersenses include categories such 
+as artifacts, which can be fairly frequent, but usu- 
+ally neglected.  To a greater extent than in stan- 
+dard NER, research in Bio-NER has focused  on 
+the adoption of richer ontologies for information 
+extraction.   Genia (Ohta et al., 2002), for exam- 
+ple, is an ontology of 46 classes – with annotated
+
+  2 The supersense category “group” is rather a superordi- 
+nate of “organization” and has wider scope.
+
+
+
+corpus – designed for supporting information ex- 
+traction in the molecular biology domain. In addi- 
+tion, there is growing interest for extracting rela- 
+tions between entities, as a more useful type of IE 
+(cf. (Rosario and Hearst, 2004)).
+  Supersense tagging is inspired by similar con- 
+siderations, but in a domain-independent setting; 
+e.g., verb supersenses can label semantic interac- 
+tions between nominal  concepts.  The following 
+sentence (Example  1), extracted from the data – 
+further described in Section 5.1 – shows the infor- 
+mation captured by the supersense tagset:
+
+(1)	Clara   Harrisn.person,     one   of    the 
+guestsn.person  in the boxn.artif act, stood 
+upv.motion   and demandedv.communication 
+watern.substance.
+
+As Example 1 shows there is more information 
+that can be extracted from a sentence  than just 
+the names; e.g. the fact that “Clara Harris” and 
+the following “guests” are both tagged as “person” 
+might suggest some sort of co-referentiality, while 
+the coordination of verbs of motion and commu- 
+nication, as in “stood up and demanded”, might be 
+useful for language modeling purposes. In such a 
+setting, structured learning methods, e.g., sequen- 
+tial, can help tagging by taking  the senses of the 
+neighboring words into account.
+
+3   Related Work
+
+Sequential models are common in NER, POS tag- 
+ging, shallow parsing, etc.. Most of the work in 
+WSD, instead, has focused on labeling each word 
+individually, possibly revising the assignments of 
+senses at the document level; e.g., following the 
+“one  sense per discourse”  hypothesis  (Gale et al.,
+1992). Although it seems reasonable  to assume 
+that occurrences of word  senses in a sentence can 
+be correlated, hence that structured learning meth- 
+ods could be successful, there has not been much 
+work on sequential WSD. Segond et al. (1997) are 
+possibly the first to have applied  an HMM tag- 
+ger to semantic disambiguation.  Interestingly,  to 
+make the method more tractable, they also used 
+the supersense tagset and estimated the model on 
+Semcor.  By cross-validation  they show a marked 
+improvement over the first sense baseline.   How- 
+ever, in (Segond et al., 1997) the tagset is used dif- 
+ferently, by defining  equivalence classes of words 
+with the same set of senses. From  a similar per- 
+spective, de Loupy et al. (de Loupy et al., 1998)
+
+
+also investigated the potential advantages of using 
+HMMs for disambiguation.  More recently, vari- 
+ants of the generative HMM have been applied to 
+WSD (Molina et al., 2002; Molina et al., 2004) 
+and evaluated also on Senseval data, showing per- 
+formance comparable to the first sense baseline.
+  Previous work on prediction at the supersense 
+level (Ciaramita and Johnson, 2003; Curran, 2005) 
+has focused  on lexical acquisition (nouns exclu- 
+sively), thus aiming at word type classification 
+rather than tagging. As far as applications are con- 
+cerned, it has been shown  that supersense infor- 
+mation can support supervised WSD, by provid- 
+ing a partial disambiguation step (Ciaramita et al.,
+2003). In syntactic  parse re-ranking  supersenses 
+have been used to build useful latent semantic fea- 
+tures (Koo and Collins, 2005). We believe that 
+supersense tagging  has the potential  to be useful, 
+in combination with other sources of information 
+such as part of speech, domain-specific NER mod- 
+els, chunking or shallow parsing, in tasks such 
+as question answering and information  extraction 
+and retrieval,  where large amounts of text need 
+to be processed.  It is also possible that this kind 
+of shallow semantic information  can help build-
+
+
+vation/label sequence (x, y), is defined as:
+P (y, x) = n P (yi|yi−1)P (xi|yi)),	(2)
+i
+
+where yi  is the ith  label in the sequence and xi  is 
+the ith  word. In the NLP literature, a common ap- 
+proach is to model the conditional distribution of 
+label sequences given the label sequences. These 
+models  have several  advantages over generative 
+models,  such as not requiring questionable inde- 
+pendence assumptions, optimizing the conditional 
+likelihood directly and employing  richer feature 
+representations.  This task can be represented  as
+learning a discriminant function F : X × Y → IR,
+on a training  data of observation/label  sequences,
+where F is linear in a feature representation Φ de- 
+fined over the joint input/output  space
+F (x, y; w) = (w, Φ(x, y)). 	(3)
+
+Φ is a global feature representation, mapping each
+(x, y) pair to a vector of feature counts Φ(x, y) ∈
+IRd, where d is the total number of features. This
+vector is given by
+
+d	|y|
+
+
+ing more sophisticated linguistic  analysis as in full
+syntactic parsing and semantic role labeling.
+
+
+Φ(x, y) =         φi(yj i=1  j=1
+
+
+−1, yj , x). 	(4)
+
+
+
+4   Sequence Tagging
+
+We  take a sequence labeling  approach to learn- 
+ing a model  for supersense tagging. Our goal is 
+to learn a function  from input vectors, the obser- 
+vations from labeled data, to response variables, 
+the supersense labels. POS tagging, shallow pars- 
+ing, NP-chunking  and NER are all examples of 
+sequence labeling  tasks in which performance can 
+be significantly  improved by optimizing  the choice 
+of labeling  over whole sequences of words, rather 
+than individual words. The limitations of the gen- 
+erative approach to sequence tagging, i. e.  Hidden 
+Markov  Models, have been overcome by discrim- 
+inative approaches proposed in recent years  (Mc- 
+Callum et al., 2000; Lafferty et al., 2001; Collins,
+2002; Altun et al., 2003). In this paper we apply 
+perceptron trained HMMs originally proposed in 
+(Collins, 2002).
+
+
+4.1   Perceptron-trained HMM
+
+HMMs define a probabilistic  model for observa- 
+tion/label  sequences. The joint model of an obser-
+
+
+
+Each individual feature φi  typically represents  a 
+morphological,  contextual, or syntactic property, 
+or also the inter-dependence  of consecutive la- 
+bels. These features are described in detail in Sec- 
+tion 4.2.  Given an observation  sequence x, we 
+make a prediction  by maximizing F over the re- 
+sponse variables:
+
+fw (x) = arg max F (x, y; w). 	(5)
+y∈Y
+
+This involves computing the Viterbi decoding with 
+respect to the parameter vector w  ∈  IRd.   The
+complexity of the Viterbi algorithm  scales linearly 
+with the length of the sequence.
+  There are different  ways of estimating w for the 
+described model. We use the perceptron algorithm 
+for sequence tagging  (Collins, 2002). The per- 
+ceptron algorithm focuses on minimizing the error 
+rate, without involving any normalization factors. 
+This property makes it very efficient which is a de- 
+sirable feature in a task dealing with a large tagset 
+such  as ours. Additionally, the performance of 
+perceptron-trained HMMs is very competitive on 
+a number of tasks; e.g., in shallow parsing, where
+
+
+Algorithm 1 Hidden Markov average perceptron 
+algorithm.
+1: Initialize w0 = --0
+2: for t = 1...., T do
+3:	Choose xi
+4:	Compute yˆ = arg maxy∈Y F (x , y; w)
+
+
+Word features (1) are morphologically simplified 
+using the morphological functions of the Word- 
+net library. The first sense feature (2) is the label 
+predicted for xi  by the baseline model, cf.  Sec- 
+tion 5.3.  POS labels (4) were generated using 
+Brants’ TnT tagger (Brants, 2002). POS features 
+[0] extract the first character from
+
+
+5:	if yi  /= yˆ 
+then
+
+
+of the form
+
+
+posi
+
+
+6:	wt+1 ← wt + Φ(xi, yi) − Φ(xi, yˆ)
+7:	end if
+8:	w = 1 2:t wt
+9: end for
+10: return w
+
+
+the perceptron performance is comparable to that 
+of Conditional  Random Field models (Sha and 
+Pereira, 2003), The tendency to overfit of the per- 
+ceptron can be mitigated  in a number of ways in- 
+cluding regularization and voting. Here we apply 
+averaging and straightforwardly  extended Collins 
+algorithm, summarized in Algorithm 1.
+
+4.2   Features
+
+We   used  the  following  combination of 
+spelling/morphological and  contextual fea- 
+tures. For each observed  word xi  in the data φ 
+extracts the following features:
+
+1. Words: xi, xi−1, xi−2, xi+1, xi+2;
+
+2. First sense: supersense baseline  prediction 
+for xi, fs(xi), cf. Section 5.3;
+
+3. Combined (1) and (2): xi + fs(xi);
+
+4. Pos:  posi  (the POS of xi),  posi−1, posi−2, 
+posi+1, posi+2, posi[0], posi−1[0], posi−2[0], 
+posi+1[0], posi+2[0], pos commi if xi’s POS 
+tags is “NN” or “NNS” (common nouns), and 
+pos propi if xi’s POS is “NNP” or “NNPS” 
+(proper nouns);
+
+5. Word shape: sh(xi),  sh(xi−1),  sh(xi−2), 
+sh(xi+1),   sh(xi+2),   where sh(xi)   is  as 
+described  below.    In  addition shi = low 
+if  the first character  of  xi   is lowercase, 
+shi = cap brk if the first character of xi is up- 
+percase and xi−1  is a full stop, question or 
+exclamation mark, or xi  is the first word of 
+the sentence, shi = cap nobrk otherwise;
+
+6. Previous label: supersense label yi−1.
+
+
+the POS label, thus providing  a simplified  repre-
+sentation of the POS tag. Finally, word shape fea- 
+tures (5) are regular expression-like transforma- 
+tion in which each character c of a string s is sub- 
+stituted with X  if c is uppercase, if lowercase, c 
+is substituted with x, if c is a digit it is substituted 
+with d and left as it is otherwise. In addition each 
+sequence of two or more identical characters c is
+substituted with c∗. For example, for s = “Merrill
+Lynch& Co.”, sh(s) = Xx ∗ Xx ∗ &Xx..
+Exploratory experiments  with  richer feature
+sets, including  syntactic information,  affixes, and 
+topic labels associated with words, did not result 
+in improvements in terms of performance. While 
+more experiments  are needed to investigate the 
+usefulness of other sources of information,  the fea- 
+ture set described above, while basic, offers good 
+generalization properties.
+
+5   Experiments
+
+5.1   Data
+We experimented with the following data-sets3. 
+The Semcor corpus (Miller et al., 1993),  a frac- 
+tion of the Brown corpus (Kuc˘era  and Francis,
+1967) which has been manually  annotated with 
+Wordnet synset labels. Named entities of the cat- 
+egories “person”, “location” and “group” are also 
+annotated. The original  annotation with Wordnet
+1.6 synset IDs has been converted  to the most re- 
+cent version 2.0 of Wordnet. Semcor is divided 
+in three parts: “brown1” and “brown2”, here re- 
+ferred to as “SEM”, in which nouns, verbs, adjec- 
+tives and adverbs are annotated.  In addition, the 
+section “brownv”, “SEMv” here, contains annota- 
+tions only for verbs. We also experimented with 
+the Senseval-3 English all-words  tasks data (Sny- 
+der and Palmer, 2004),  here called “SE3”.  The 
+Senseval all-words  task evaluates the performance 
+of WSD systems on all open class words in com- 
+plete documents.  The Senseval-3 data consists of 
+two Wall Street Journal Articles,  “wsj 1778” and
+
+  3 These    datasets      are    available      in     a      con- 
+sistent format  and  can  be  downloaded from 
+http://www.cs.unt.edu/ rada/downloads.html
+
+
+
+
+Dataset
+Counts
+SE3	SEM	SEMv
+Sentences
+Tokens 
+Supersenses 
+Verbs
+Nouns
+Avg-poly-N-WS 
+Avg-poly-N-SS 
+Avg-poly-V-WS 
+Avg-poly-V-SS
+300	20,138	17,038
+5,630	434,774	385,546
+1,617	135,135	40,911
+725	47,710	40,911
+892	87,425	0
+4.66	4.41	4.33
+2.86	2.75	2.66
+11.17	10.87	11.05
+4.20	4.11	4.16
+
+Table 3.  Statistics of the datasets.  The row “Super- 
+senses” lists the number of instances of supersense 
+labels, partitioned, in the following two rows, between 
+verb and noun supersense labels. The lowest four rows 
+summarize average polysemy figures at the synset and 
+supersense level for both nouns and verbs.
+
+
+“wsj 1695”, and a fiction excerpt, “cl 23”, from 
+the unannotated portion of the Brown corpus. Ta- 
+ble 3 summarizes a few statistics about the compo- 
+sition of the datasets. The four lower rows report 
+the average polysemy  of nouns (“N”)  and verbs 
+(“V”),  in each dataset,  both at the synset level 
+(“WS”) and supersense (“SS”) level. The average 
+number of senses decreases significantly when the 
+more general sense inventory is considered.
+  We substituted the corresponding  supersense to 
+each noun and verb synset in all three data-sets: 
+SEM, SEMv and SE3.  All  other tokens  were 
+labeled “0”.   The supersense label “noun.Tops” 
+refers to 45 synsets  which lie at the very top 
+of the Wordnet noun hierarchy. Some of these 
+synsets are expressed by very general nouns such 
+as  “biont”, “benthos”, “whole”, and “nothing”. 
+However, others undoubtedly refer to other super- 
+senses, for which they provide  the label, such as 
+“food”, “person”, “plant” or “animal”. Since these 
+nouns tend to be fairly frequent, it is confusing 
+and inconsistent to label them “noun.Tops”;  e.g., 
+nouns such as “chowder”  and “Swedish meatball” 
+would be tagged  as “noun.food”, but the noun 
+“food” would be tagged as “noun.Tops”.   For this 
+reason,  in all obvious  cases, we substituted the 
+“noun.Tops” label with the more specific super- 
+sense label for the noun4.
+  The SEMv  dataset only includes  supersense la- 
+bels for verbs. In order to avoid unwanted false 
+negatives, that is, thousands of nouns labeled “0”,
+
+
+
+we applied the following procedure.  Rather than 
+using the full sentences from the SEMv dataset, 
+from each sentence we generated the fragments in- 
+cluding  a verb but no common or proper nouns; 
+e.g., from a sentence such as “Karns’ ruling per- 
+tainedverb.stative to eight of the 10 cases.” only the 
+fragment “pertainedverb.stative  to eight of the 10” 
+is extracted and used for training.
+  Sometimes more than one label is assigned to 
+a word, in all data-sets. In these cases we adopted 
+the heuristic of only using the first label in the data 
+as the correct synset/supersense. We leave the ex- 
+tension of the tagger to the multilabel case for fu- 
+ture research. As for now, we can expect that this 
+solution will  simply lower, somewhat,  both the 
+baseline and the tagger performance.  Finally, we 
+adopted a beginning  (B) and continuation of entity 
+(I) plus no label (0), encoding; i.e., the actual class 
+space defines 83 labels.
+
+5.2   Setup
+
+The supersense tagger was trained on the Semcor 
+datasets SEM and SEMv. The only free parame- 
+ter to set in evaluation is the number of iterations 
+to perform T (cf. Algorithm 1). We evaluated the 
+model’s accuracy on Semcor by splitting the SEM 
+data randomly in training, development and evalu- 
+ation. In a 5-fold cross-validation  setup the tagger 
+was trained on 4/5 of the SEM data, the remain- 
+ing data was split in two halves, one used to fix T 
+the other for evaluating performance on test. The 
+full SEMv data was always added to the training 
+portion of SEM. We also evaluated the model on 
+the Senseval-3 data, using the same value for T set 
+by cross-validation on the SEM data5. The order- 
+ing of the training instances is randomized across 
+different runs, therefore the algorithm outputs dif- 
+ferent results after each run, even if the evaluation 
+set is fixed,  as is the case for the Senseval evalu- 
+ation. The variance in the results on the SE3 data 
+was measured in this way.
+
+5.3   Baseline tagger
+
+The first sense baseline  is the supersense of the 
+most frequent  synset for a  word, according  to 
+Wordnet’s  sense ranking. This baseline is very 
+competitive in WSD tasks, and it is extremely hard 
+to improve upon even slightly. In fact, the baseline 
+has been proposed as a good alternative  to WSD
+
+
+4 The nouns which are left with the “noun.Top” label are:	 	
+
+
+entity, thing, anything,  something, nothing, object, living 
+thing, organism, benthos, heterotroph, life, and biont.
+  
+
+5 On average T is equal to 12 times the size of the training 
+data.
+
+
+
+
+Semcor
+Senseval-3
+Method
+Recall	Precision	F-score [σ]
+Recall	Precision	F-score [σ]
+Rand
+Baseline
+Supersense-Tagger
+42.99	38.17	40.44
+69.25	63.90	66.47
+77.71	76.65	77.18 0.45
+42.09	35.84	38.70
+68.65	60.10	64.09
+73.74	67.60	70.54 0.21
+
+Table 4. Summary of results for random and first sense baselines and supersense tagger, σ is the standard error 
+computed on the five trials results.
+
+
+
+
+altogether (cf.  (McCarthy et al., 2004)). For this 
+reason we include the first sense prediction  as one 
+of the features of our tagging model.
+  We apply the heuristic as follows. First, in each 
+sentence, we identify the longest sequence which 
+has an entry in Wordnet  as either noun or verb. 
+We carry out this step using the Wordnet’s library 
+functions, which perform also morphological sim- 
+plification. Hence, in Example 1 the entry “stand 
+up” is detected, although also “stand” has an en- 
+try in Wordnet.  Then, each word identified in 
+this way is assigned its most frequent  sense – the 
+only one available if the word is unambiguous. To 
+reduce the number of candidate  supersenses we 
+distinguish  between common and proper nouns; 
+e.g. “Savannah” (city/river) is distinguished from 
+“savannah” (grassland). This method improves 
+slightly the accuracy of the baseline which does 
+not distinguish between different types of nouns.
+
+5.4   Results
+Table 4 summarizes overall performance6.   The 
+first line shows the accuracy of a baseline  which 
+assigns possible supersenses of identified words at 
+random.  The second line shows the performance 
+of the first sense baseline  (cf.  Section 5.3), the 
+marked difference  between the two is a measure of 
+the robustness of the first sense heuristic.   On the 
+Semcor data the tagger improves  over the base- 
+line by 10.71%,  31.19% error reduction,  while 
+on Senseval-3 the tagger improves over the base- 
+line by 6.45%, 17.96% error reduction. We can 
+put these results  in context, although indirectly, 
+by comparison with the results of the Senseval-
+3 all words task systems. There,  with a base- 
+line of 62.40%,  only 4 out of 26 systems per- 
+formed above the baseline, with the two best sys- 
+tems (Mihalcea  and Faruque, 2004; Decadt et al.,
+2004) achieving an F-score of 65.2% (2.8% im- 
+provement, 7.45% error reduction). The system 
+based on the HMM tagger (Molina et al., 2004),
+
+6 Scoring was performed with a re-implementation  of the
+“conlleval” script .
+
+
+achieved an F-score of 60.9%. The supersense 
+tagger improves mostly on precision, while also 
+improving on recall. Overall the tagger achieves 
+F-scores between 70.5 and 77.2%. If we compare 
+these figures  with the accuracy of NER taggers 
+the results are very encouraging.  Given the con- 
+siderably larger – one order of magnitude – class 
+space some loss has to be expected. Experiments 
+with augmented tagsets in the biomedical domain 
+also show performance loss with respect to smaller 
+tagsets;  e.g., Kazama et al. (2002) report an F- 
+score of 56.2% on a tagset  of 25 Genia classes, 
+compared to the 75.9% achieved on the simplest 
+binary  case. The sequence fragments from SEMv 
+contribute about 1% F-score improvement.
+  Table 5 focuses on subsets of the evaluation. 
+The upper part summarizes the results on Sem- 
+cor for the classes comparable to standard NER’s: 
+“person”, “group”, “location” and “time”.  How- 
+ever, these categories here are composed of com- 
+mon  nouns as well as proper  names/named  enti- 
+ties. On this four tags the tagger achieves an aver- 
+age 82.46% F-score, not too far from NER results. 
+The lower portion of Table 5 summarizes the re- 
+sults on the five most frequent noun and verb su- 
+persense labels on the Senseval-3 data, providing 
+more specific evidence for the supersense tagger’s 
+disambiguation accuracy. The tagger outperforms 
+the first sense baseline on all categories, with the 
+exception of “verb.cognition”  and “noun.person”. 
+The latter case has a straightforward explanation, 
+named entities (e.g., “Phil Haney”, “Chevron” or 
+“Marina District”) are not annotated in the Sense- 
+val data, while they are in Semcor. Hence the tag- 
+ger learns a different model for nouns than the one 
+used to annotate the Senseval data. Because of this 
+discrepancy the tagger tends to return false posi- 
+tives for some categories.  In fact, the other noun 
+categories on which the tagger performs poorly in 
+SE3 are “group” and “location” (baseline 52.10 
+tagger 44.72 and baseline 47.62% tagger 47.54% 
+F-score). Naturally, the lower performance on 
+Senseval is also explained by the fact that the eval-
+
+
+
+NER supersenses in Semcor
+
+
+Supersense-Tagger
+Baseline
+Supersense
+# Supersenses
+R	P
+F
+R	P
+F
+n.person
+n.group 
+n.location 
+n.time
+1526
+665
+459
+412
+92.04	87.94
+75.38	79.56
+77.21	75.37
+88.36	84.30
+89.94
+77.40
+76.25
+86.27
+56.29	77.35
+62.42	66.81
+67.88	63.33
+78.26	83.88
+65.16
+64.54
+65.53
+80.98
+5 most frequent  verb supersenses in Senseval-3
+Supersense
+# Supersenses
+R	P
+F
+R	P
+F
+v.stative
+v.communication 
+v.motion 
+v.cognition 
+v.change
+184
+88
+81
+61
+60
+80.33	81.30
+77.53	83.36
+69.63	64.54
+73.44	67.91
+68.33	67.47
+80.81
+80.33
+66.98
+70.56
+67.89
+72,83	63.81
+71.91	74.42
+58.02	60.26
+75.41	71.87
+56.67	57.63
+68.02
+73.14
+59.12
+73.60
+57.14
+5 most frequent  noun supersenses in Senseval-3
+Supersense
+# Supersenses
+R	P
+F
+R	P
+F
+n.person
+n.artifact 
+n.act 
+n.cognition 
+n.event
+148
+131
+96
+67
+60
+92.24	60.49
+80.91	77.73
+61.46	72.37
+45.80	52.87
+70.33	89.83
+73.06
+79.29
+66.45
+49.06
+78.87
+89.12	79.39
+74.24	75.97
+58.33	65.12
+49.28	46.58
+71.67	75.44
+83.97
+75.10
+61.54
+47.89
+73.50
+
+Table 5. Summary of results of baseline and tagger on selected subsets of labels: NER categories evaluated on
+Semcor (upper section), and 5 most frequent verb (middle) and noun (bottom) categories evaluated on Senseval.
+
+
+
+
+uation comes from different  sources than training.
+
+6   Conclusions
+
+In this paper we presented  a novel approach to 
+broad-coverage  word sense disambiguation   and 
+information extraction. We defined a tagset based 
+on Wordnet  supersenses, a much simpler  and gen- 
+eral semantic model than Wordnet which, how- 
+ever, preserves significant polysemy information 
+and includes  standard named entity recognition 
+categories. We showed that in this framework it is 
+possible to perform accurate broad-coverage tag- 
+ging with state of the art sequence learning meth- 
+ods.  The tagger considerably outperformed the 
+most competitive  baseline on both Semcor and 
+Senseval data. To the best of our knowledge the re- 
+sults on Senseval data provide the first convincing 
+evidence of the possibility of improving by con- 
+siderable  amounts over the first sense baseline.
+  We believe both the tagset and the structured 
+learning approach contribute to these results.  The 
+simplified representation obviously  helps by re- 
+ducing the number of possible  senses for each 
+word (cf. Table 3). Interestingly, the relative im- 
+provement in performance is not as large  as the 
+relative reduction in polysemy. This indicates that
+
+
+sense granularity  is only one of the problems in 
+WSD. More needs to be understood concerning 
+sources of information, and processes, that affect 
+word  sense selection  in context. As far as the tag- 
+ger is concerned, we applied the simplest feature 
+representation, more sophisticated features can be 
+used,  e.g., based on kernels,  which might con- 
+tribute significantly by allowing complex feature 
+combinations.  These results also suggest new di- 
+rections of research within this model. In partic- 
+ular, the labels occurring in each sequence tend 
+to coincide with predicates (verbs) and arguments 
+(nouns and named entities). A sequential depen- 
+dency model might not be the most accurate at 
+capturing the grammatical  dependencies between 
+these elements. Other conditional  models, e.g., 
+designed on head to head, or similar, dependen- 
+cies could prove more appropriate.
+
+  Another  interesting issue is the granularity of 
+the tagset.  Supersenses seem more practical  then 
+synsets  for  investigating  the impact of  broad- 
+coverage semantic tagging, but they define a very 
+simplistic ontological model. A natural evolution 
+of this kind of approach might be one which starts 
+by defining  a semantic model at an intermediate 
+level of abstraction (cf. (Ciaramita et al., 2005)).
+
+
+References
+
+Y.  Altun,  T.  Hofmann, and M.  Johnson.	2003.
+Discriminative  Learning for Label Sequences  via
+Boosting. In Proceedings of NIPS 2003.
+
+T. Brants. 2002. TnT - A Statistical Part-of-Speech
+Tagger. In Proceedings of ANLP 2000.
+
+X. Carreras, L. Marquez, and L. Padro.  2002. Named 
+Entity Extraction Using AdaBoost. In Proceedings 
+of CONLL 2002.
+
+M. Ciaramita and M. Johnson. 2003.  Supersense Tag- 
+ging of Unknown Nouns in WordNet. In Proceed- 
+ings of EMNLP 2003.
+
+M. Ciaramita, T. Hofmann, and M. Johnson. 2003. Hi- 
+erarchical Semantic Classification:  Word Sense Dis- 
+ambiguation with World Knowledge. In Proceed- 
+ings of IJCAI 2003.
+
+M. Ciaramita, S. Sloman, M. Johnson, and E. Upfal.
+2005. Hierarchical Preferences in a Broad-Coverage
+Lexical Taxonomy. In Proceedings of CogSci 2005.
+
+M. Collins.  2002. Discriminative Training Methods 
+for Hidden Markov Models: Theory and Experi- 
+ments with Perceptron Algorithms. In Proceedings 
+of EMNLP  2002, pages 1–8.
+
+J. Curran.  2005.  Supersense Tagging  of Unknown 
+Nouns Using Semantic Similarity.  In Proceedings 
+of ACL 2005, pages 26–33.
+
+C. de Loupy, M. El-Beze, and P.F. Marteau. 1998.
+Word Sense Disambiguation  Using HMM Tagger. 
+In Proceedings of LREC 1998, pages 1255–1258.
+
+B. Decadt, V. Hoste, W. Daelemans, and A. van der 
+Bosch. 2004. GAMBL, Genetic Algorithm Opti- 
+mization of Memory-Based WSD. In Proceedings 
+of SENSEVAL-3/ACL 2004.
+
+S. Dingare,  M. Nissim, J. Finkel, C. Manning, and 
+C. Grover. 2005. A System for Identifying Named 
+Entities in Biomedical Text:  How Results  from 
+Two Evaluations Reflect on Both the System and 
+the Evaluations.  Comparative and Functional  Ge- 
+nomics, 6:77–85.
+
+C. Fellbaum, editor. 1998. WordNet: An Electronic
+Lexical Database. MIT Press, Cambridge.
+
+R. Florian, A. Ittycheriah, H. Jing, and T. Zhang. 2003.
+Named Entity Extraction through Classifier Combi- 
+nation. In Proceedings of CONLL 2003.
+
+W. Gale, K. Church,  and D. Yarowsky. 1992. One 
+Sense per Discourse.  In Proceedings of the DARPA 
+Workshop  on Speech and Natural Language.
+
+J. Kazama,  T. Makino, Y. Ohta,  and J. Tsujii.  2002.
+Tuning Support  Vector Machines  for Biomedical 
+Named Entity Recognition. In Proceedings of the 
+Workshop on Natural Language Processing in the 
+Biomedical Domain (ACL 2002).
+
+
+
+T. Koo and M. Collins.  2005. Hidden-Variable Mod- 
+els for Discriminative Reranking. In Proceedings of 
+EMNLP 2005.
+
+H. Kuc˘era and W. Francis. 1967. Computational Anal- 
+ysis of Present-Day American English. Brown Uni- 
+versity  Press, Providence, RI.
+
+J. Lafferty, A. McCallum,  and F. Pereira. 2001. Condi- 
+tional Random Fields: Probabilistic Models for Seg- 
+menting and Labeling  Sequence Data. In Proceed- 
+ings of ICML 2001, pages 282–289.
+
+A. McCallum, D. Freitag, and F. Pereira. 2000. Max- 
+imum Entropy Markov Models for Information Ex- 
+traction and Segmentation. In Proceedings of ICML
+2000, pages 591–598.
+
+D. McCarthy, R. Koeling,  and J. Carroll. 2004. Find- 
+ing Predominant  Senses in Untagged Text. In Pro- 
+ceedings of ACL 2004.
+
+R. Mihalcea and E. Faruque. 2004.  SenseLearner: 
+Minimally Supervised Word  Sense Disambiguation 
+for All  Words in Open Text.  In Proceedings of 
+SENSEVAL-3/ACL 2004.
+
+G.A. Miller, C. Leacock, T. Randee, and R. Bunker.
+1993. A Semantic Concordance. In Proceedings of 
+the 3 DARPA Workshop on Human Language Tech- 
+nology, pages 303–308.
+
+A. Molina, F. Pla, and E. Segarra.    2002.  A Hid- 
+den Markov Model Approach to Word Sense Dsi- 
+ambiguation. In Proceedings of IBERAMIA 2002.
+
+A. Molina,  F. Pla, and E. Segarra. 2004. WSD System 
+Based on Specialized Hidden Markov Model (upv- 
+shmm-eaw).  In Proceedings of SENSEVAL-3/ACL
+2004.
+
+Y. Ohta, Y. Tateisi, J. Kim, H. Mima, and J. Tsujii.
+2002. The GENIA Corpus: An Annotated Research 
+Abstract Corpus in the Molecular Biology Domain. 
+In Proceedings of HLT 2002.
+
+B. Rosario and M. Hearst.  2004. Classifying  Seman- 
+tic Relations in Bioscience Text. In Proceedings of 
+ACL 2004).
+
+F. Segond,   A.  Schiller, G. Grefenstette,   and J.P.
+Chanod. 1997. An Experiment in Semantic Tagging 
+Using Hidden Markov Model. In Proceedings of the 
+Workshop on Automatic Information Extraction and 
+Building of Lexical Semantic Resources (ACL/EACL
+1997), pages 78–81.
+
+F. Sha and F. Pereira. 2003.  Shallow  Parsing with 
+Conditional Random Fields. In Proceedings of HLT- 
+NAACL  2003, pages 213–220.
+
+B. Snyder and M. Palmer.   2004.  The english All- 
+Words Tasks. In Proceedings of SENSEVAL-3/ACL
+2004.
+

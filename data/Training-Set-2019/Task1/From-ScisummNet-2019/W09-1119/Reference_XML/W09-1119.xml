@@ -1,0 +1,225 @@
+<PAPER>
+  <S sid="0">Design Challenges and Misconceptions in Named Entity Recognition</S>
+  <ABSTRACT>
+    <S sid="1" ssid="1">We analyze some of the fundamental design challenges and misconceptions that underlie the development of an efficient and robust NER system.</S>
+    <S sid="2" ssid="2">In particular, we address issues such as the representation of text chunks, the inference approach needed to combine local NER decisions, the sources of prior knowledge and how to use them within an NER system.</S>
+    <S sid="3" ssid="3">In the process of comparing several solutions to these challenges we reach some surprising conclusions, as well as develop an system that achieves 90.8 on the CoNLL-2003 NER shared task, the best reported result for this dataset.</S>
+  </ABSTRACT>
+  <SECTION title="1 Introduction" number="1">
+    <S sid="4" ssid="1">Natural Language Processing applications are characterized by making complex interdependent decisions that require large amounts of prior knowledge.</S>
+    <S sid="5" ssid="2">In this paper we investigate one such application&#8211; Named Entity Recognition (NER).</S>
+    <S sid="6" ssid="3">Figure 1 illustrates the necessity of using prior knowledge and non-local decisions in NER.</S>
+    <S sid="7" ssid="4">In the absence of mixed case information it is difficult to understand that &#8220;BLINKER&#8221; is a person.</S>
+    <S sid="8" ssid="5">Likewise, it is not obvious that the last mention of &#8220;Wednesday&#8221; is an organization (in fact, the first mention of &#8220;Wednesday&#8221; can also be understood as a &#8220;comeback&#8221; which happens on Wednesday).</S>
+    <S sid="9" ssid="6">An NER system could take advantage of the fact that &#8220;blinker&#8221; is also mentioned later in the text as the easily identifiable &#8220;Reggie Blinker&#8221;.</S>
+    <S sid="10" ssid="7">It is also useful to know that Udinese is a soccer club (an entry about this club appears in Wikipedia), and the expression &#8220;both Wednesday and Udinese&#8221; implies that &#8220;Wednesday&#8221; and &#8220;Udinese&#8221; should be assigned the same label.</S>
+    <S sid="11" ssid="8">The above discussion focuses on the need for external knowledge resources (for example, that Udinese can be a soccer club) and the need for nonlocal features to leverage the multiple occurrences of named entities in the text.</S>
+    <S sid="12" ssid="9">While these two needs have motivated some of the research in NER in the last decade, several other fundamental decisions must be made.</S>
+    <S sid="13" ssid="10">These include: what model to use for sequential inference, how to represent text chunks and what inference (decoding) algorithm to use.</S>
+    <S sid="14" ssid="11">Despite the recent progress in NER, the effort has been dispersed in several directions and there are no published attempts to compare or combine the recent advances, leading to some design misconceptions and less than optimal performance.</S>
+    <S sid="15" ssid="12">In this paper we analyze some of the fundamental design challenges and misconceptions that underlie the development of an efficient and robust NER system.</S>
+    <S sid="16" ssid="13">We find that BILOU representation of text chunks significantly outperforms the widely adopted BIO.</S>
+    <S sid="17" ssid="14">Surprisingly, naive greedy inference performs comparably to beamsearch or Viterbi, while being considerably more computationally efficient.</S>
+    <S sid="18" ssid="15">We analyze several approaches for modeling non-local dependencies proposed in the literature and find that none of them clearly outperforms the others across several datasets.</S>
+    <S sid="19" ssid="16">However, as we show, these contributions are, to a large extent, independent and, as we show, the approaches can be used together to yield better results.</S>
+    <S sid="20" ssid="17">Our experiments corroborate recently published results indicating that word class models learned on unlabeled text can significantly improve the performance of the system and can be an alternative to the traditional semi-supervised learning paradigm.</S>
+    <S sid="21" ssid="18">Combining recent advances, we develop a publicly available NER system that achieves 90.8 F1 score on the CoNLL-2003 NER shared task, the best reported result for this dataset.</S>
+    <S sid="22" ssid="19">Our system is robust &#8211; it consistently outperforms all publicly available NER systems (e.g., the Stanford NER system) on all three datasets.</S>
+  </SECTION>
+  <SECTION title="2 Datasets and Evaluation Methodology" number="2">
+    <S sid="23" ssid="1">NER system should be robust across multiple domains, as it is expected to be applied on a diverse set of documents: historical texts, news articles, patent applications, webpages etc.</S>
+    <S sid="24" ssid="2">Therefore, we have considered three datasets: CoNLL03 shared task data, MUC7 data and a set of Webpages we have annotated manually.</S>
+    <S sid="25" ssid="3">In the experiments throughout the paper, we test the ability of the tagger to adapt to new test domains.</S>
+    <S sid="26" ssid="4">Throughout this work, we train on the CoNLL03 data and test on the other datasets without retraining.</S>
+    <S sid="27" ssid="5">The differences in annotation schemes across datasets created evaluation challenges.</S>
+    <S sid="28" ssid="6">We discuss the datasets and the evaluation methods below.</S>
+    <S sid="29" ssid="7">The CoNLL03 shared task data is a subset of Reuters 1996 news corpus annotated with 4 entity types: PER,ORG, LOC, MISC.</S>
+    <S sid="30" ssid="8">It is important to notice that both the training and the development datasets are news feeds from August 1996, while the test set contains news feeds from December 1996.</S>
+    <S sid="31" ssid="9">The named entities mentioned in the test dataset are considerably different from those that appear in the training or the development set.</S>
+    <S sid="32" ssid="10">As a result, the test dataset is considerably harder than the development set.</S>
+    <S sid="33" ssid="11">Evaluation: Following the convention, we report phrase-level F1 score.</S>
+    <S sid="34" ssid="12">The MUC7 dataset is a subset of the North American News Text Corpora annotated with a wide variety of entities including people, locations, organizations, temporal events, monetary units, and so on.</S>
+    <S sid="35" ssid="13">Since there was no direct mapping from temporal events, monetary units, and other entities from MUC7 and the MISC label in the CoNLL03 dataset, we measure performance only on PER,ORG and LOC.</S>
+    <S sid="36" ssid="14">Evaluation: There are several sources of inconsistency in annotation between MUC7 and CoNLL03.</S>
+    <S sid="37" ssid="15">For example, since the MUC7 dataset does not contain the MISC label, in the sentence &#8220;balloon, called the Virgin Global Challenger&#8221; , the expression Virgin Global Challenger should be labeled as MISC according to CoNLL03 guidelines.</S>
+    <S sid="38" ssid="16">However, the gold annotation in MUC7 is &#8220;balloon, called the [ORG Virgin] Global Challenger&#8221;.</S>
+    <S sid="39" ssid="17">These and other annotation inconsistencies have prompted us to relax the requirements of finding the exact phrase boundaries and measure performance using token-level F1.</S>
+    <S sid="40" ssid="18">Webpages - we have assembled and manually annotated a collection of 20 webpages, including personal, academic and computer-science conference homepages.</S>
+    <S sid="41" ssid="19">The dataset contains 783 entities (96loc, 223-org, 276-per, 188-misc).</S>
+    <S sid="42" ssid="20">Evaluation: The named entities in the webpages were highly ambiguous and very different from the named entities seen in the training data.</S>
+    <S sid="43" ssid="21">For example, the data included sentences such as : &#8220;Hear, O Israel, the Lord our God, the Lord is one.&#8221; We could not agree on whether &#8220;O Israel&#8221; should be labeled as ORG, LOC, or PER.</S>
+    <S sid="44" ssid="22">Similarly, we could not agree on whether &#8220;God&#8221; and &#8220;Lord&#8221; is an ORG or PER.</S>
+    <S sid="45" ssid="23">These issues led us to report token-level entity-identification F1 score for this dataset.</S>
+    <S sid="46" ssid="24">That is, if a named entity token was identified as such, we counted it as a correct prediction ignoring the named entity type.</S>
+  </SECTION>
+  <SECTION title="3 Design Challenges in NER" number="3">
+    <S sid="47" ssid="1">In this section we introduce the baseline NER system, and raise the fundamental questions underlying robust and efficient design.</S>
+    <S sid="48" ssid="2">These questions define the outline of this paper.</S>
+    <S sid="49" ssid="3">NER is typically viewed as a sequential prediction problem, the typical models include HMM (Rabiner, 1989), CRF (Lafferty et al., 2001), and sequential application of Perceptron or Winnow (Collins, 2002).</S>
+    <S sid="50" ssid="4">That is, let x = (x1,... , xN) be an input sequence and y = (y1, ... , yN) be the output sequence.</S>
+    <S sid="51" ssid="5">The sequential prediction problem is to estimate the probabilities P(yi|xi&#8722;k .</S>
+    <S sid="52" ssid="6">.</S>
+    <S sid="53" ssid="7">. xi+l, yi&#8722;m .</S>
+    <S sid="54" ssid="8">.</S>
+    <S sid="55" ssid="9">. yi&#8722;1), where k, l and m are small numbers to allow tractable inference and avoid overfitting.</S>
+    <S sid="56" ssid="10">This conditional probability distribution is estimated in NER using the following baseline set of features (Zhang and Johnson, 2003): (1) previous two predictions yi&#8722;1 and yi&#8722;2 (2) current word xi (3) xi word type (all-capitalized, is-capitalized, all-digits, alphanumeric, etc.)</S>
+    <S sid="57" ssid="11">(4) prefixes and suffixes of xi (5) tokens in the window c = (xi&#8722;2, xi&#8722;1, xi, xi+1, xi+2) (6) capitalization pattern in the window c (7) conjunction of c and yi&#8722;1.</S>
+    <S sid="58" ssid="12">Most NER systems use additional features, such as POS tags, shallow parsing information and gazetteers.</S>
+    <S sid="59" ssid="13">We discuss additional features in the following sections.</S>
+    <S sid="60" ssid="14">We note that we normalize dates and numbers, that is 12/3/2008 becomes *Date*, 1980 becomes *DDDD* and 212-325-4751 becomes *DDD*-*DDD*-*DDDD*.</S>
+    <S sid="61" ssid="15">This allows a degree of abstraction to years, phone numbers, etc.</S>
+    <S sid="62" ssid="16">Our baseline NER system uses a regularized averaged perceptron (Freund and Schapire, 1999).</S>
+    <S sid="63" ssid="17">Systems based on perceptron have been shown to be competitive in NER and text chunking (Kazama and Torisawa, 2007b; Punyakanok and Roth, 2001; Carreras et al., 2003) We specify the model and the features with the LBJ (Rizzolo and Roth, 2007) modeling language.</S>
+    <S sid="64" ssid="18">We now state the four fundamental design decisions in NER system which define the structure of this paper.</S>
+    <S sid="65" ssid="19">Key design decisions in an NER system.</S>
+  </SECTION>
+  <SECTION title="4 Inference &amp; Chunk Representation" number="4">
+    <S sid="66" ssid="1">In this section we compare the performance of several inference (decoding) algorithms: greedy leftto-right decoding, Viterbi and beamsearch.</S>
+    <S sid="67" ssid="2">It may appear that beamsearch or Viterbi will perform much better than naive greedy left-to-right decoding, which can be seen as beamsearch of size one.</S>
+    <S sid="68" ssid="3">The Viterbi algorithm has the limitation that it does not allow incorporating some of the non-local features which will be discussed later, therefore, we cannot use it in our end system.</S>
+    <S sid="69" ssid="4">However, it has the appealing quality of finding the most likely assignment to a second-order model, and since the baseline features only have second order dependencies, we have tested it on the baseline configuration.</S>
+    <S sid="70" ssid="5">Table 1 compares between the greedy decoding, beamsearch with varying beam size, and Viterbi, both for the system with baseline features and for the end system (to be presented later).</S>
+    <S sid="71" ssid="6">Surprisingly, the greedy policy performs well, this phenmenon was also observed in the POS tagging task (Toutanova et al., 2003; Roth and Zelenko, 1998).</S>
+    <S sid="72" ssid="7">The implications are subtle.</S>
+    <S sid="73" ssid="8">First, due to the second-order of the model, the greedy decoding is over 100 times faster than Viterbi.</S>
+    <S sid="74" ssid="9">The reason is that with the BILOU encoding of four NE types, each token can take 21 states (O, B-PER, I-PER , U-PER, etc.).</S>
+    <S sid="75" ssid="10">To tag a token, the greedy policy requires 21 comparisons, while the Viterbi requires 213, and this analysis carries over to the number of classifier invocations.</S>
+    <S sid="76" ssid="11">Furthermore, both beamsearch and Viterbi require transforming the predictions of the classifiers to probabilities as discussed in (NiculescuMizil and Caruana, 2005), incurring additional time overhead.</S>
+    <S sid="77" ssid="12">Second, this result reinforces the intuition that global inference over the second-order HMM features does not capture the non-local properties of the task.</S>
+    <S sid="78" ssid="13">The reason is that the NEs tend to be short chunks separated by multiple &#8220;outside&#8221; tokens.</S>
+    <S sid="79" ssid="14">This separation &#8220;breaks&#8221; the Viterbi decision process to independent maximization of assignment over short chunks, where the greedy policy performs well.</S>
+    <S sid="80" ssid="15">On the other hand, dependencies between isolated named entity chunks have longer-range dependencies and are not captured by second-order transition features, therefore requiring separate mechanisms, which we discuss in Section 5.</S>
+    <S sid="81" ssid="16">Another important question that has been studied extensively in the context of shallow parsing and was somewhat overlooked in the NER literature is the representation of text segments (Veenstra, 1999).</S>
+    <S sid="82" ssid="17">Related works include voting between several representation schemes (Shen and Sarkar, 2005), lexicalizing the schemes (Molina and Pla, 2002) and automatically searching for best encoding (Edward, 2007).</S>
+    <S sid="83" ssid="18">However, we are not aware of similar work in the NER settings.</S>
+    <S sid="84" ssid="19">Due to space limitations, we do not discuss all the representation schemes and combining predictions by voting.</S>
+    <S sid="85" ssid="20">We focus instead on two most popular schemes&#8211; BIO and BILOU.</S>
+    <S sid="86" ssid="21">The BIO scheme suggests to learn classifiers that identify the Beginning, the Inside and the Outside of the text segments.</S>
+    <S sid="87" ssid="22">The BILOU scheme suggests to learn classifiers that identify the Beginning, the Inside and the Last tokens of multi-token chunks as well as Unit-length chunks.</S>
+    <S sid="88" ssid="23">The BILOU scheme allows to learn a more expressive model with only a small increase in the number of parameters to be learned.</S>
+    <S sid="89" ssid="24">Table 2 compares the end system&#8217;s performance with BIO and BILOU.</S>
+    <S sid="90" ssid="25">Examining the results, we reach two conclusions: (1) choice of encoding scheme has a big impact on the system performance and (2) the less used BILOU formalism significantly outperforms the widely adopted BIO tagging scheme.</S>
+    <S sid="91" ssid="26">We use the BILOU scheme throughout the paper.</S>
+  </SECTION>
+  <SECTION title="5 Non-Local Features" number="5">
+    <S sid="92" ssid="1">The key intuition behind non-local features in NER has been that identical tokens should have identical label assignments.</S>
+    <S sid="93" ssid="2">The sample text discussed in the introduction shows one such example, where all occurrences of &#8220;blinker&#8221; are assigned the PER label.</S>
+    <S sid="94" ssid="3">However, in general, this is not always the case; for example we might see in the same document the word sequences &#8220;Australia&#8221; and &#8220;The bank of Australia&#8221;.</S>
+    <S sid="95" ssid="4">The first instance should be labeled as LOC, and the second as ORG.</S>
+    <S sid="96" ssid="5">We consider three approaches proposed in the literature in the following sections.</S>
+    <S sid="97" ssid="6">Before continuing the discussion, we note that we found that adjacent documents in the CoNLL03 and the MUC7 datasets often discuss the same entities.</S>
+    <S sid="98" ssid="7">Therefore, we ignore document boundaries and analyze global dependencies in 200 and 1000 token windows.</S>
+    <S sid="99" ssid="8">These constants were selected by hand after trying a small number of values.</S>
+    <S sid="100" ssid="9">We believe that this approach will also make our system more robust in cases when the document boundaries are not given.</S>
+    <S sid="101" ssid="10">(Chieu and Ng, 2003) used features that aggregate, for each document, the context tokens appear in.</S>
+    <S sid="102" ssid="11">Sample features are: the longest capitilized sequence of words in the document which contains the current token and the token appears before a company marker such as ltd. elsewhere in text.</S>
+    <S sid="103" ssid="12">In this work, we call this type of features context aggregation features.</S>
+    <S sid="104" ssid="13">Manually designed context aggregation features clearly have low coverage, therefore we used the following approach.</S>
+    <S sid="105" ssid="14">Recall that for each token instance xi, we use as features the tokens in the window of size two around it: ci = (xi&#8722;2, xi&#8722;1, xi, xi+1, xi+2).</S>
+    <S sid="106" ssid="15">When the same token type t appears in several locations in the text, say xi1, xi2, ... , xiN, for each instance xis, in addition to the context features cis, we also aggregate the context across all instances within 200 tokens: Context aggregation as done above can lead to excessive number of features.</S>
+    <S sid="107" ssid="16">(Krishnan and Manning, 2006) used the intuition that some instances of a token appear in easily-identifiable contexts.</S>
+    <S sid="108" ssid="17">Therefore they apply a baseline NER system, and use the resulting predictions as features in a second level of inference.</S>
+    <S sid="109" ssid="18">We call the technique two-stage prediction aggregation.</S>
+    <S sid="110" ssid="19">We implemented the token-majority and the entity-majority features discussed in (Krishnan and Manning, 2006); however, instead of document and corpus majority tags, we used relative frequency of the tags in a 1000 token window.</S>
+    <S sid="111" ssid="20">Both context aggregation and two-stage prediction aggregation treat all tokens in the text similarly.</S>
+    <S sid="112" ssid="21">However, we observed that the named entities in the beginning of the documents tended to be more easily identifiable and matched gazetteers more often.</S>
+    <S sid="113" ssid="22">This is due to the fact that when a named entity is introduced for the first time in text, a canonical name is used, while in the following discussion abbreviated mentions, pronouns, and other references are used.</S>
+    <S sid="114" ssid="23">To break the symmetry, when using beamsearch or greedy left-to-right decoding, we use the fact that when we are making a prediction for token instance xi, we have already made predictions y1, ... , yi&#8722;1 for token instances x1, ... , xi&#8722;1.</S>
+    <S sid="115" ssid="24">When making the prediction for token instance xi, we record the label assignment distribution for all token instances for the same token type in the previous 1000 words.</S>
+    <S sid="116" ssid="25">That is, if the token instance is &#8220;Australia&#8221;, and in the previous 1000 tokens, the token type &#8220;Australia&#8221; was twice assigned the label L-ORG and three times the label U-LOC, then the prediction history feature will be: (L &#8722; ORG : 25; U &#8722; LOC: 35).</S>
+    <S sid="117" ssid="26">Table 3 summarizes the results.</S>
+    <S sid="118" ssid="27">Surprisingly, no single technique outperformed the others on all datasets.</S>
+    <S sid="119" ssid="28">The extended prediction history method was the best on CoNLL03 data and MUC7 test set.</S>
+    <S sid="120" ssid="29">Context aggregation was the best method for MUC7 development set and two-stage prediction was the best for Webpages.</S>
+    <S sid="121" ssid="30">Non-local features proved less effective for MUC7 test set and the Webpages.</S>
+    <S sid="122" ssid="31">Since the named entities in Webpages have less context, this result is expected for the Webpages.</S>
+    <S sid="123" ssid="32">However, we are unsure why MUC7 test set benefits from nonlocal features much less than MUC7 development set.</S>
+    <S sid="124" ssid="33">Our key conclusion is that no single approach is better than the rest and that the approaches are complimentary- their combination is the most stable and best performing.</S>
+  </SECTION>
+  <SECTION title="6 External Knowledge" number="6">
+    <S sid="125" ssid="1">As we have illustrated in the introduction, NER is a knowledge-intensive task.</S>
+    <S sid="126" ssid="2">In this section, we discuss two important knowledge resources&#8211; gazetteers and unlabeled text.</S>
+    <S sid="127" ssid="3">Recent successful semi-supervised systems (Ando and Zhang, 2005; Suzuki and Isozaki, 2008) have illustrated that unlabeled text can be used to improve the performance of NER systems.</S>
+    <S sid="128" ssid="4">In this work, we analyze a simple technique of using word clusters generated from unlabeled text, which has been shown to improve performance of dependency parsing (Koo et al., 2008), Chinese word segmentation (Liang, 2005) and NER (Miller et al., 2004).</S>
+    <S sid="129" ssid="5">The technique is based on word class models, pioneered by (Brown et al., 1992), which hierarchically The approach is related, but not identical, to distributional similarity (for details, see (Brown et al., 1992) and (Liang, 2005)).</S>
+    <S sid="130" ssid="6">For example, since the words Friday and Tuesday appear in similar contexts, the Brown algorithm will assign them to the same cluster.</S>
+    <S sid="131" ssid="7">Successful abstraction of both as a day of the week, addresses the data sparsity problem common in NLP tasks.</S>
+    <S sid="132" ssid="8">In this work, we use the implementation and the clusters obtained in (Liang, 2005) from running the algorithm on the Reuters 1996 dataset, a superset of the CoNLL03 NER dataset.</S>
+    <S sid="133" ssid="9">Within the binary tree produced by the algorithm, each word can be uniquely identified by its path from the root, and this path can be compactly represented with a bit string.</S>
+    <S sid="134" ssid="10">Paths of different depths along the path from the root to the word provide different levels of word abstraction.</S>
+    <S sid="135" ssid="11">For example, paths at depth 4 closely correspond to POS tags.</S>
+    <S sid="136" ssid="12">Since word class models use large amounts of unlabeled data, they are essentially a semi-supervised technique, which we use to considerably improve the performance of our system.</S>
+    <S sid="137" ssid="13">In this work, we used path prefixes of length 4,6,10, and 20.</S>
+    <S sid="138" ssid="14">When Brown clusters are used as features in the following sections, it implies that all features in the system which contain a word form will be duplicated and a new set of features containing the paths of varying length will be introduced.</S>
+    <S sid="139" ssid="15">For example, if the system contains the feature concatenation of the current token and the system prediction on the previous word, four new features will be introduced which are concatenations of the previous prediction and the 4,6,10,20 length path-representations of the current word.</S>
+    <S sid="140" ssid="16">An important question at the inception of the NER task was whether machine learning techniques are necessary at all, and whether simple dictionary lookup would be sufficient for good performance.</S>
+    <S sid="141" ssid="17">Indeed, the baseline for the CoNLL03 shared task was essentially a dictionary lookup of the entities which appeared in the training data, and it achieves 71.91 F1 score on the test set (Tjong and De Meulder, 2003).</S>
+    <S sid="142" ssid="18">It turns out that while problems of coverage and ambiguity prevent straightforward lookup, injection of gazetteer matches as features in machine-learning based approaches is critical for good performance (Cohen, 2004; Kazama and Torisawa, 2007a; Toral and Munoz, 2006; Florian et al., 2003).</S>
+    <S sid="143" ssid="19">Given these findings, several approaches have been proposed to automatically extract comprehensive gazetteers from the web and from large collections of unlabeled text (Etzioni et al., 2005; Riloff and Jones, 1999) with limited impact on NER.</S>
+    <S sid="144" ssid="20">Recently, (Toral and Munoz, 2006; Kazama and Torisawa, 2007a) have successfully constructed high quality and high coverage gazetteers from Wikipedia.</S>
+    <S sid="145" ssid="21">In this work, we use a collection of 14 highprecision, low-recall lists extracted from the web that cover common names, countries, monetary units, temporal expressions, etc.</S>
+    <S sid="146" ssid="22">While these gazetteers have excellent accuracy, they do not provide sufficient coverage.</S>
+    <S sid="147" ssid="23">To further improve the coverage, we have extracted 16 gazetteers from Wikipedia, which collectively contain over 1.5M entities.</S>
+    <S sid="148" ssid="24">Overall, we have 30 gazetteers (available for download with the system), and matches against each one are weighted as a separate feature in the system (this allows us to trust each gazetteer to a different degree).</S>
+    <S sid="149" ssid="25">We also note that we have developed a technique for injecting non-exact string matching to gazetteers, which has marginally improved the performance, but is not covered in the paper due to space limitations.</S>
+    <S sid="150" ssid="26">In the rest of this section, we discuss the construction of gazetteers from Wikipedia.</S>
+    <S sid="151" ssid="27">Wikipedia is an open, collaborative encyclopedia with several attractive properties.</S>
+    <S sid="152" ssid="28">(1) It is kept updated manually by it collaborators, hence new entities are constantly added to it.</S>
+    <S sid="153" ssid="29">(2) Wikipedia contains redirection pages, mapping several variations of spelling of the same name to one canonical entry.</S>
+    <S sid="154" ssid="30">For example, Suker is redirected to an entry about Davor &#711;Suker, the Croatian footballer (3) The entries in Wikipedia are manually tagged with categories.</S>
+    <S sid="155" ssid="31">For example, the entry about the Microsoft in Wikipedia has the following categories: Companies listed on NASDAQ; Cloud computing vendors; etc.</S>
+    <S sid="156" ssid="32">Both (Toral and Munoz, 2006) and (Kazama and Torisawa, 2007a) used the free-text description of the Wikipedia entity to reason about the entity type.</S>
+    <S sid="157" ssid="33">We use a simpler method to extract high coverage and high quality gazetteers from Wikipedia.</S>
+    <S sid="158" ssid="34">By inspection of the CoNLL03 shared task annotation guidelines and of the training set, we manually aggregated several categories into a higher-level concept (not necessarily NER type).</S>
+    <S sid="159" ssid="35">When a Wikipedia entry was tagged by one of the categories in the table, it was added to the corresponding gazetteer.</S>
+    <S sid="160" ssid="36">Table 4 summarizes the results of the techniques for injecting external knowledge.</S>
+    <S sid="161" ssid="37">It is important to note that, although the world class model was learned on the superset of CoNLL03 data, and although the Wikipedia gazetteers were constructed based on CoNLL03 annotation guidelines, these features proved extremely good on all datasets.</S>
+    <S sid="162" ssid="38">Word class models discussed in Section 6.1 are computed offline, are available online1, and provide an alternative to traditional semi-supervised learning.</S>
+    <S sid="163" ssid="39">It is important to note that the word class models and the gazetteers and independednt and accumulative.</S>
+    <S sid="164" ssid="40">Furthermore, despite the number and the gigantic size of the extracted gazetteers, the gazeteers alone are not sufficient for adequate performance.</S>
+    <S sid="165" ssid="41">When we modified the CoNLL03 baseline to include gazetteer matches, the performance went up from 71.91 to 82.3 on the CoNLL03 test set, below our baseline system&#8217;s result of 83.65.</S>
+    <S sid="166" ssid="42">When we have injected the gazetteers into our system, the performance went up to 87.22.</S>
+    <S sid="167" ssid="43">Word class model and nonlocal features further improve the performance to 90.57 (see Table 5), by more than 3 F1 points.</S>
+  </SECTION>
+  <SECTION title="7 Final System Performance Analysis" number="7">
+    <S sid="168" ssid="1">As a final experiment, we have trained our system both on the training and on the development set, which gave us our best F1 score of 90.8 on the CoNLL03 data, yet it failed to improve the performance on other datasets.</S>
+    <S sid="169" ssid="2">Table 5 summarizes the performance of the system.</S>
+    <S sid="170" ssid="3">Next, we have compared the performance of our system to that of the Stanford NER tagger, across the datasets discussed above.</S>
+    <S sid="171" ssid="4">We have chosen to compare against the Stanford tagger because to the best of our knowledge, it is the best publicly available system which is trained on the same data.</S>
+    <S sid="172" ssid="5">We have downloaded the Stanford NER tagger and used the strongest provided model trained on the CoNLL03 data with distributional similarity features.</S>
+    <S sid="173" ssid="6">The results we obtained on the CoNLL03 test set were consistent with what was reported in (Finkel et al., 2005).</S>
+    <S sid="174" ssid="7">Our goal was to compare the performance of the taggers across several datasets.</S>
+    <S sid="175" ssid="8">For the most realistic comparison, we have presented each system with a raw text, and relied on the system&#8217;s sentence splitter and tokenizer.</S>
+    <S sid="176" ssid="9">When evaluating the systems, we matched against the gold tokenization ignoring punctuation marks.</S>
+    <S sid="177" ssid="10">Table 6 summarizes the results.</S>
+    <S sid="178" ssid="11">Note that due to differences in sentence splitting, tokenization and evaluation, these results are not identical to those reported in Table 5.</S>
+    <S sid="179" ssid="12">Also note that in this experiment we have used token-level accuracy on the CoNLL dataset as well.</S>
+    <S sid="180" ssid="13">Finally, to complete the comparison to other systems, in Table 7 we summarize the best results reported for the CoNLL03 dataset in literature.</S>
+  </SECTION>
+  <SECTION title="8 Conclusions" number="8">
+    <S sid="181" ssid="1">We have presented a simple model for NER that uses expressive features to achieve new state of the art performance on the Named Entity recognition task.</S>
+    <S sid="182" ssid="2">We explored four fundamental design decisions: text chunks representation, inference algorithm, using non-local features and external knowledge.</S>
+    <S sid="183" ssid="3">We showed that BILOU encoding scheme significantly outperforms BIO and that, surprisingly, a conditional model that does not take into account interactions at the output level performs comparably to beamsearch or Viterbi, while being considerably more efficient computationally.</S>
+    <S sid="184" ssid="4">We analyzed several approaches for modeling non-local dependencies and found that none of them clearly outperforms the others across several datasets.</S>
+    <S sid="185" ssid="5">Our experiments corroborate recently published results indicating that word class models learned on unlabeled text can be an alternative to the traditional semi-supervised learning paradigm.</S>
+    <S sid="186" ssid="6">NER proves to be a knowledgeintensive task, and it was reassuring to observe that knowledge-driven techniques adapt well across several domains.</S>
+    <S sid="187" ssid="7">We observed consistent performance gains across several domains, most interestingly in Webpages, where the named entities had less context and were different in nature from the named entities in the training set.</S>
+    <S sid="188" ssid="8">Our system significantly outperforms the current state of the art and is available to download under a research license.</S>
+    <S sid="189" ssid="9">Apendix&#8211; wikipedia gazetters &amp; categories 1)People: people, births, deaths.</S>
+    <S sid="190" ssid="10">Extracts 494,699 Wikipedia titles and 382,336 redirect links.</S>
+    <S sid="191" ssid="11">2)Organizations: cooperatives, federations, teams, clubs, departments, organizations, organisations, banks, legislatures, record labels, constructors, manufacturers, ministries, ministers, military units, military formations, universities, radio stations, newspapers, broadcasters, political parties, television networks, companies, businesses, agencies.</S>
+    <S sid="192" ssid="12">Extracts 124,403 titles and 130,588 redirects.</S>
+    <S sid="193" ssid="13">3)Locations: airports, districts, regions, countries, areas, lakes, seas, oceans, towns, villages, parks, bays, bases, cities, landmarks, rivers, valleys, deserts, locations, places, neighborhoods.</S>
+    <S sid="194" ssid="14">Extracts 211,872 titles and 194,049 redirects.</S>
+    <S sid="195" ssid="15">4)Named Objects: aircraft, spacecraft, tanks, rifles, weapons, ships, firearms, automobiles, computers, boats.</S>
+    <S sid="196" ssid="16">Extracts 28,739 titles and 31,389 redirects.</S>
+    <S sid="197" ssid="17">5)Art Work: novels, books, paintings, operas, plays.</S>
+    <S sid="198" ssid="18">Extracts 39,800 titles and 34037 redirects.</S>
+    <S sid="199" ssid="19">6)Films: films, telenovelas, shows, musicals.</S>
+    <S sid="200" ssid="20">Extracts 50,454 titles and 49,252 redirects.</S>
+    <S sid="201" ssid="21">7)Songs: songs, singles, albums.</S>
+    <S sid="202" ssid="22">Extracts 109,645 titles and 67,473 redirects.</S>
+    <S sid="203" ssid="23">8)Events: playoffs, championships, races, competitions, battles.</S>
+    <S sid="204" ssid="24">Extracts 20,176 titles and 15,182 redirects.</S>
+  </SECTION>
+</PAPER>
