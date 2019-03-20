@@ -173,8 +173,9 @@ Citation Marker, Reference Text, and Discourse Facet for each citation of the RP
 
 For further information about this data release, contact the following members of the BRNDL 2017 workshop organising committee:
 
-* <a href="http://www.comp.nus.edu.sg/~a0092669/">Muthu Kumar Chandrasekaran</a> (Advanced Computer Scientist, SRI International) cmkumar087@gmail.com, muthu.chandrasekaran@sri.com
+* <a href="https://www.linkedin.com/in/muthukumarc">Muthu Kumar Chandrasekaran</a> (Advanced Computer Scientist, Artificial Intelligence Center, SRI International) cmkumar087@gmail.com, muthu.chandrasekaran@sri.com
 * <a href="https://www.linkedin.com/in/michihiro-yasunaga-616762136">Michihiro Yasunaga</a> (Computer Science, Yale University)  michihiro.yasunaga@yale.edu
+* <a href="https://www.sri.com/about/people/dayne-freitag">Dayne Freitag</a> (Technical Director, Artificial Intelligence Center, SRI International)
 * <a href="https://cpsc.yale.edu/people/dragomir-radev">Dragomir Radev</a> (Computer Science, Yale University), dragomir.radev@yale.edu
 
 Past Co-Organisers who are supporting CL-SciSumm-19:
