@@ -173,12 +173,14 @@ Citation Marker, Reference Text, and Discourse Facet for each citation of the RP
 
 For further information about this data release, contact the following members of the BRNDL 2017 workshop organising committee:
 
-* <a href="https://kokiljaidka.wordpress.com/">Kokil Jaidka</a> (University of Pennsylvania) kokil.j@gmail.com
-* <a href="http://www.comp.nus.edu.sg/~a0092669/">Muthu Kumar Chandrasekaran</a> (Dept. of Computer Science, School of Computing, National University of Singapore) cmkumar087@gmail.com
+* <a href="http://www.comp.nus.edu.sg/~a0092669/">Muthu Kumar Chandrasekaran</a> (Advanced Computer Scientist, SRI International) cmkumar087@gmail.com, muthu.chandrasekaran@sri.com
 * <a href="https://www.linkedin.com/in/michihiro-yasunaga-616762136">Michihiro Yasunaga</a> (Computer Science, Yale University)  michihiro.yasunaga@yale.edu
-* <a href="https://cpsc.yale.edu/people/dragomir-radev">Dragomir Radev</a> (Computer Science, Yale University), dragomir.radev@yale.edu 
-* <a href="http://www.comp.nus.edu.sg/~kanmy/index.html">Min-Yen Kan</a> (Dept. of Computer Science, School of Computing, National University of Singapore) kanmy@comp.nus.edu.sg
+* <a href="https://cpsc.yale.edu/people/dragomir-radev">Dragomir Radev</a> (Computer Science, Yale University), dragomir.radev@yale.edu
+
+Past Co-Organisers who are supporting CL-SciSumm-19:
+* Kokil Jaidka (Post-Doc, Nanyang Technological University, Singapore)
+* Min-Yen Kan (Dept. of Computer Science, School of Computing, National University of Singapore)
 
 --------------------------------------------------------------------------
 
-This README was updated from README2017 by Muthu Kumar Chandrasekaran in March, 2018. For revision information, check source code control logs.
+This README was updated from README2018 by Muthu Kumar Chandrasekaran in March, 2019. For revision information, check source code control logs.
