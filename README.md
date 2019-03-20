@@ -22,6 +22,7 @@ is already available for download and can be used by participants.
 This data can be found in /data/Training-Set-2019/Task1/From-Training-Set-2018
 and /data/Training-Set-2019/Task2/From-Training-Set-2018
 
+*NEW Changes from CL-SciSumm 2019*
 Further, this year we have introduced 1000 documents 
 sets that were automatically annotated to be used as training data. This 
 training data was generated following Nomoto,2018. 
