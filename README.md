@@ -126,17 +126,19 @@ please refer to the details hosted at http://www.nist.gov/tac/2014/BiomedSumm/
 References for each of the papers for each of the topics, one file
 per topic.
 
-    ./data/???-????_TRAIN
+    ./data/Training-Set-2019/Task?/From-Training-Set-2018/???-????
+    ./data/Training-Set-2019/Task?/From-ScisummNet-2019/???-????
   
 Directories containing the Documents, Summaries, and Annotations for
 each topic, one directory per Topic ID.
 
-    ./data/???-????_TRAIN/Documents_PDF/
+    ./data/Training-Set-2019/Task1/From-Training-Set-2018/???-????/Documents_PDF/
 
 This directory contains the 10 source documents for the topic (1 RP
 and upto 10 CPs), one file per paper, in the original pdf format.
 
-    ./data/???-????_TRAIN/Reference_XML/
+    ./data/Training-Set-2019/Task1/From-Training-Set-2018/???-????/Reference_XML/
+    ./data/Training-Set-2019/Task1/From-ScisummNet-2019/???-????/Reference_XML/
 
 This directory contains the source document for the RP of the topic in xml format in 
 UTF-8 character encoding. The file corresponds to the similarly named pdf file in 
@@ -146,17 +148,20 @@ Note that there were OCR errors in reading several of the files, and the annotat
 had to manually edit the converted txt files. Research groups using are free to use alternative 
 parsing tools on the pdfs provided, if they are found to perform better.
 
-    ./data/???-????_TRAIN/CITANCE_XML/
+    ./data/Training-Set-2019/Task1/From-Training-Set-2018/???-????/CITANCE_XML/
 	
 This directory contains the source document for the CPs of the topic in xml format in 
 UTF-8 character encoding. Each file corresponds to the similarly named pdf file above.  
 
-    ./data/???-????_TRAIN/Annotation/
-
+    ./data/Training-Set-2019/Task1/From-Training-Set-2018/???-????/Annotation/
+    ./data/Training-Set-2019/Task1/From-ScisummNet-2019/???-????/Annotation/
+    
 This directory contains the annotation files for the topic, from 3 different annotators.  
 Please DO NOT use older annotations; only use <TopicID>.annv3.txt for the 2016 Shared Task.
 
-    ./data/???-????_TRAIN/summary/
+    ./data/Training-Set-2019/Task2/From-Training-Set-2018/???-????/summary/
+    ./data/Training-Set-2019/Task2/From-ScisummNet-2019/???-????/summary/
+    
 The summary task (Task 2) is an optional, "bonus" task which participants may want to attempt.
 This directory contains the two kinds of summaries - i. the abstract, and ii.the reference spans 
 (not citances but the information they referenced in the source paper). Both are extractive summaries. 
