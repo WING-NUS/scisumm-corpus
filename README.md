@@ -18,14 +18,21 @@ referenced text in the reference paper and tagged with the information facet
 it represents.
 
 The manually annotated training set of 40 articles and citing papers 
-is already available for download and can be used by participants to 
-pilot their systems. Further, this year we have introduced 1000 documents 
+is already available for download and can be used by participants.
+This data can be found in /data/Training-Set-2019/Task1/From-Training-Set-2018
+and /data/Training-Set-2019/Task2/From-Training-Set-2018
+
+Further, this year we have introduced 1000 documents 
 sets that were automatically annotated to be used as training data. This 
-training data was generated following Nomoto,2018. Further, for Task 2 one 
+training data was generated following Nomoto,2018. 
+This data can be found in /data/Training-Set-2019/Task1/From-ScisummNet-2019
+
+Further, for Task 2 one 
 thousand summaries that were released as part of the SciSummNet (Yasunga et al., 2019) 
 have been included as human summaries to train on. 
+This data can be found in /data/Training-Set-2019/Task1/From-ScisummNet-2019
 
-The test set of 10 articles will be released in May 5 2019. The system outputs 
+The *test set* of 10 articles will be released in *May 5 2019*. The system outputs 
 from the test set should be submitted to the task organizers, for the collation 
 of the final results to be presented at the workshop.
 
