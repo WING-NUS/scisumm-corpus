@@ -33,9 +33,9 @@ thousand summaries that were released as part of the SciSummNet (Yasunga et al.,
 have been included as human summaries to train on. 
 This data can be found in **/data/Training-Set-2019/Task2/From-ScisummNet-2019**
 
-The **test set** of 10 articles will be released on **May 5 2019**. The system outputs 
-from the test set should be submitted to the task organizers, for the collation 
-of the final results to be presented at the workshop.
+The **test set** of 20 articles is available in **/data/Test-Set-2018**. 
+The system outputs from the test set should be submitted to the task organizers, 
+for the collation of the final results to be presented at the workshop.
 
 For more details, see the Contents Section at the bottom of this Readme. 
 To know how this corpus was constructed, please see ./docs/corpusconstruction.txt
