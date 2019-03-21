@@ -33,7 +33,7 @@ thousand summaries that were released as part of the SciSummNet (Yasunga et al.,
 have been included as human summaries to train on. 
 This data can be found in **/data/Training-Set-2019/Task2/From-ScisummNet-2019**
 
-The **test set** of 10 articles will be released in **May 5 2019**. The system outputs 
+The **test set** of 10 articles will be released on **May 5 2019**. The system outputs 
 from the test set should be submitted to the task organizers, for the collation 
 of the final results to be presented at the workshop.
 
@@ -41,7 +41,7 @@ For more details, see the Contents Section at the bottom of this Readme.
 To know how this corpus was constructed, please see ./docs/corpusconstruction.txt
 
 Results of the CL-SciSumm-18 will be released in the BIRNDL workshop collocated 
-with <a href="http://sigir.org/sigir2019/">ACM SIGIR</a> 2018, Paris, France. 
+with <a href="http://sigir.org/sigir2019/">ACM SIGIR</a> 2019, Paris, France. 
 <a href="http://wing.comp.nus.edu.sg/~cl-scisumm2019">Go to task website</a>.<br> 
 
 Last editions proceedings - CL-SciSumm '18 @ SIGIR '18 can be found in BIRNDL 
@@ -101,8 +101,8 @@ annotation format from the previous edition.
     ./README2017.md
     ./README2018.md
  
-README files for the previous editionS of the shared task hosted at TAC2014, 
-BIRNDL@SIGIR 2017 and BIRNDL@JCDL 2016.
+README files for the previous editionS of the shared task hosted at 
+BIRNDL@SIGIR 2018, BIRNDL@SIGIR 2017, BIRNDL@JCDL 2016 and TAC2014.
 
     ./docs/corpusconstruction.txt
  
