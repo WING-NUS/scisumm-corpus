@@ -163,10 +163,8 @@ Please DO NOT use older annotations; only use <TopicID>.annv3.txt for the 2016 S
     ./data/Training-Set-2019/Task2/From-ScisummNet-2019/???-????/summary/
     
 The summary task (Task 2) is an optional, "bonus" task which participants may want to attempt.
-This directory contains the two kinds of summaries - i. the abstract, and ii.the reference spans 
-(not citances but the information they referenced in the source paper). Both are extractive summaries. 
-For the developemnt sets we will release in April, we will include a third type of summary - hand-written a
-nnotator summaries. These would be abstractive.
+This directory contains the two kinds of summaries - i. the abstract, and ii.human written summaries
+of the reference paper.
 
 ## Annotation
 
