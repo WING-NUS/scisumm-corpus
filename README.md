@@ -26,9 +26,9 @@ and /data/Training-Set-2019/Task2/From-Training-Set-2018
 Further, this year we have introduced 1000 documents 
 sets that were automatically annotated to be used as training data. This 
 training data was generated following Nomoto,2018. 
-This data can be found in **/data/Training-Set-2019/Task1/From-ScisummNet-2019**
+This data can be found in **/data/Training-Set-2019/Task1/From-ScisummNet-2019**. 
 Note that the auto-annotated data is available only for *Task 1a*. No discourse facet is provided 
-for the classification task: task1b. We recommend you to use the auto-anootated data
+for the classification task: Task1b. We recommend you to use the auto-anootated data
 only for training 'refrence span selection' models for Task 1a and use the 
 mabnually annotated traqining data from 40 documents for Task1b.
 
