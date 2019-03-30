@@ -27,20 +27,25 @@ Further, this year we have introduced 1000 documents
 sets that were automatically annotated to be used as training data. This 
 training data was generated following Nomoto,2018. 
 This data can be found in **/data/Training-Set-2019/Task1/From-ScisummNet-2019**
+Note that the auto-annotated data is available only for *Task 1a*. No discourse facet is provided 
+for the classification task: task1b. We recommend you to use the auto-anootated data
+only for training 'refrence span selection' models for Task 1a and use the 
+mabnually annotated traqining data from 40 documents for Task1b.
 
 Further, for Task 2 one 
 thousand summaries that were released as part of the SciSummNet (Yasunga et al., 2019) 
 have been included as human summaries to train on. 
 This data can be found in **/data/Training-Set-2019/Task2/From-ScisummNet-2019**
 
-The **test set** of 20 articles is available in **/data/Test-Set-2018**. 
+The **test set** of 20 articles is available in **/data/Test-Set-2018**.
+This is a blind test set, that is, the ground truth is withheld.
 The system outputs from the test set should be submitted to the task organizers, 
 for the collation of the final results to be presented at the workshop.
 
 For more details, see the Contents Section at the bottom of this Readme. 
 To know how this corpus was constructed, please see ./docs/corpusconstruction.txt
 
-Results of the CL-SciSumm-18 will be released in the BIRNDL workshop collocated 
+Results of the CL-SciSumm-19 will be released in the BIRNDL workshop collocated 
 with <a href="http://sigir.org/sigir2019/">ACM SIGIR</a> 2019, Paris, France. 
 <a href="http://wing.comp.nus.edu.sg/~cl-scisumm2019">Go to task website</a>.<br> 
 
@@ -140,7 +145,7 @@ and upto 10 CPs), one file per paper, in the original pdf format.
     ./data/Training-Set-2019/Task1/From-Training-Set-2018/???-????/Reference_XML/
     ./data/Training-Set-2019/Task1/From-ScisummNet-2019/???-????/Reference_XML/
 
-This directory contains the source document for the RP of the topic in xml format in 
+This directory contains the source document for the RP of the topic in XML format in 
 UTF-8 character encoding. The file corresponds to the similarly named pdf file in 
 Documents_PDF/. All annotations and offsets for the topic are with respect to the xml 
 files in this directory. All the files were created from the pdf file using Adobe Acrobat.  
