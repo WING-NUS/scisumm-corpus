@@ -23,19 +23,16 @@ This data can be found in /data/Training-Set-2019/Task1/From-Training-Set-2018
 and /data/Training-Set-2019/Task2/From-Training-Set-2018
 
 **NEW Changes for CL-SciSumm 2019**
-Further, this year we have introduced 1000 documents 
+Further, this year we have introduced 1000 document 
 sets that were automatically annotated to be used as training data. This 
 training data was generated following Nomoto,2018. 
 This data can be found in **/data/Training-Set-2019/Task1/From-ScisummNet-2019**. 
 Note that the auto-annotated data is available only for *Task 1a*. No discourse facet is provided 
 for the classification task: Task1b. We recommend you to use the auto-anootated data
-only for training 'refrence span selection' models for Task 1a and use the 
-mabnually annotated traqining data from 40 documents for Task1b.
+only for training 'reference span selection' models for Task 1a and use the 
+manually annotated training data from 40 document sets for Task1b.
 
-Further, for Task 2 one 
-thousand summaries that were released as part of the SciSummNet (Yasunga et al., 2019) 
-have been included as human summaries to train on. 
-This data can be found in **/data/Training-Set-2019/Task2/From-ScisummNet-2019**
+Further, for Task 2 one thousand summaries that were released as part of the SciSummNet (Yasunga et al., 2019) have been included as human summaries to train on. This data can be found in **/data/Training-Set-2019/Task2/From-ScisummNet-2019**
 
 The **test set** of 20 articles is available in **/data/Test-Set-2018**.
 This is a blind test set, that is, the ground truth is withheld.
