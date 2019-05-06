@@ -323,15 +323,15 @@ def main(input_dir, output_dir):
         f_ref_macro = 0
 
     try:
-        precision_facet_micro = TP_ref_sum / float(TP_ref_sum + FP_ref_sum)
+        precision_facet_micro = TP_facet_sum / float(TP_facet_sum + FP_facet_sum)
     except ZeroDivisionError as e: 
         precision_facet_micro = 0
     try:
-        recall_facet_micro = TP_ref_sum / float(TP_ref_sum + FN_ref_sum)
+        recall_facet_micro = TP_facet_sum / float(TP_facet_sum + FN_facet_sum)
     except ZeroDivisionError as e:
         recall_facet_micro = 0
     try:
-        f_facet_micro = 2.0 * precision_ref_micro * recall_ref_micro / float(precision_ref_micro + recall_ref_micro)
+        f_facet_micro = 2.0 * precision_facet_micro * recall_facet_micro / float(precision_facet_micro + recall_facet_micro)
     except ZeroDivisionError as e:
         f_facet_micro = 0
     try:
