@@ -183,7 +183,6 @@ For further information about this data release, contact the following members o
 * <a href="https://www.linkedin.com/in/michihiro-yasunaga-616762136">Michihiro Yasunaga</a> (Computer Science, Yale University)  michihiro.yasunaga@yale.edu
 * <a href="https://www.sri.com/about/people/dayne-freitag">Dayne Freitag</a> (Technical Director, Artificial Intelligence Center, SRI International)
 * <a href="https://cpsc.yale.edu/people/dragomir-radev">Dragomir Radev</a> (Computer Science, Yale University), dragomir.radev@yale.edu
-* Kokil Jaidka (Nanyang Technological University, Singapore),
 * Min-Yen Kan (Dept. of Computer Science, School of Computing, National University of Singapore)
 
 --------------------------------------------------------------------------
