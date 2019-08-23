@@ -1,8 +1,8 @@
 import os
 import sys
-import json
+import json, csv
 
-from BeautifulSoup import BeautifulSoup
+from bs4 import BeautifulSoup
 import xml.etree.ElementTree as ET
 from copy import copy
 
@@ -89,7 +89,7 @@ def parse(file):
         # print("Line is:")
         # print(line)
         line = line.replace("&", "&amp;")
-        line = str(BeautifulSoup(line))
+        line = str(BeautifulSoup(line, "xml"))
         # line = line.replace("<\s>", "</s>")
         # print("Line is:")
         # print(line)
@@ -98,7 +98,7 @@ def parse(file):
         # print(ref_text_dict)
         ref_text_dict_clean = {}
         cnt = 0
-        for item in ref_text_dict["root"]["s"]:
+        for item in ref_text_dict["root"]["S"]:
             cnt += 1
             ref_text_dict_clean[item.get("sid", cnt)] = item["_text"]
         parse_data[line_data["Reference Article"]][line_data["Citing Article"]][line_data["Citation Marker Offset"]]["Reference Text"] = ref_text_dict_clean
@@ -128,37 +128,168 @@ def parse(file):
     # print("###################################################################################################################")
     return parse_data
 
+def parse_csv(file):
+    print("parsing: " + str(file))
+    parse_data = {}
+
+    csv_obj = csv.reader(open(file,"r"))
+    items_list = None
+    for i, row in enumerate(csv_obj):
+        if i==0: # first line
+            items_list = row # Citance Number,Reference Article, ...
+            continue
+        line_data = {}
+        if len(row) != len(items_list):
+            print "Error: # of items mismatch"
+            print items_list
+            print row
+            continue
+        for key, value in zip(items_list, row):
+            # print kvpair
+            line_data[key] = value
+        if line_data["Reference Text"] == "NA":
+            continue
+        # print items_list
+        print line_data["Reference Text"]
+
+        line_data["Reference Article"] = line_data["Reference Article"].replace(".xml", "")
+        line_data["Citing Article"] = line_data["Citing Article"].replace(".xml", "")
+        print("original cit marker offset is " + line_data["Citation Marker Offset"])
+        # if line_data["Citation Marker Offset"].startswith("["):
+        #     line_data["Citation Marker Offset"] = line_data["Citation Marker Offset"][1:]
+        # if line_data["Citation Marker Offset"].endswith("]"):
+        #     line_data["Citation Marker Offset"] = line_data["Citation Marker Offset"][:-1]
+        # if line_data["Citation Marker Offset"].startswith("\'"):
+        #     line_data["Citation Marker Offset"] = line_data["Citation Marker Offset"][1:]
+        # if line_data["Citation Marker Offset"].endswith("\'"):
+        #     line_data["Citation Marker Offset"] = line_data["Citation Marker Offset"][:-1]
+        # if line_data["Citation Offset"].startswith("["):
+        #     line_data["Citation Offset"] = line_data["Citation Offset"][1:]
+        # if line_data["Citation Offset"].endswith("]"):
+        #     line_data["Citation Offset"] = line_data["Citation Offset"][:-1]
+        line_data["Citation Marker Offset"] = '0'
+        line_data["Citation Offset"] = '0'
+
+        print("new cit marker offset is " + line_data["Citation Marker Offset"])
+        if line_data["Reference Article"] not in parse_data:
+            parse_data[line_data["Reference Article"]] = {}
+        if line_data["Citing Article"] not in parse_data[line_data["Reference Article"]]:
+            parse_data[line_data["Reference Article"]][line_data["Citing Article"]] = {}
+        if line_data["Citation Marker Offset"] not in parse_data[line_data["Reference Article"]][line_data["Citing Article"]]:
+            parse_data[line_data["Reference Article"]][line_data["Citing Article"]][line_data["Citation Marker Offset"]] = {"original": line_data, "comparable": False}
+        ref_offset = line_data["Reference Offset"]
+        if ref_offset.startswith("["):
+            ref_offset = ref_offset[1:]
+        if ref_offset.endswith("]"):
+            ref_offset = ref_offset[:-1]
+        parsed_ref_offset_tmp = [x.strip() for x in ref_offset.split(",")]
+        print("\n\n")
+        print(parsed_ref_offset_tmp)
+        parsed_ref_offset = []
+        for ref in parsed_ref_offset_tmp:
+            print(ref)
+            if ref.startswith("\'") or ref.startswith("\""):
+                ref = ref[1:]
+            if ref.endswith("\'") or ref.endswith("\""):
+                ref = ref[:-1]
+            parsed_ref_offset.append(ref)
+        print(parsed_ref_offset)
+        # print("<root>" + line_data["Reference Text"] + "</root>")
+        line = "<root>" + line_data["Reference Text"] + "</root>"
+        # print("Line is:")
+        # print(line)
+        line = line.replace("&amp;", "&")
+        line = line.replace("&", "&amp;")
+        line = str(BeautifulSoup(line, "xml"))
+        # line = line.replace("<\s>", "</s>")
+        # print("Line is:")
+        # print(line)
+        root = ET.fromstring(line)
+        ref_text_dict = dictify(root)
+        # print(ref_text_dict)
+        ref_text_dict_clean = {}
+        cnt = 0
+        # if "S" not in ref_text_dict["root"]:
+        #     # print "Key Error at", file
+        #     continue
+        try:
+            for item in ref_text_dict["root"]["S"]:
+                cnt += 1
+                ref_text_dict_clean[item.get("sid", cnt)] = item["_text"]
+            parse_data[line_data["Reference Article"]][line_data["Citing Article"]][line_data["Citation Marker Offset"]]["Reference Text"] = ref_text_dict_clean
+            # print "ref_text_dict_clean", ref_text_dict_clean
+            parse_data[line_data["Reference Article"]][line_data["Citing Article"]][line_data["Citation Marker Offset"]]["Reference Offset"] = parsed_ref_offset
+        except:
+            print "Error in Reference Offset"
+            continue
+        try:
+            ref_discourse_facet = line_data["Discourse Facet"]
+            parsed_discourse_facet = []
+            if len(ref_discourse_facet) > 0:
+                if ref_discourse_facet[0] == "[":
+                    parsed_discourse_facet_tmp = [x.strip().lower().replace(" ", "_") for x in ref_discourse_facet[1:-1].split(",")]
+                    parsed_discourse_facet = []
+                    for ref in parsed_discourse_facet_tmp:
+                        if ref.startswith("\'") or ref.startswith("\""):
+                            ref = ref[1:]
+                        if ref.endswith("\'") or ref.endswith("\""):
+                            ref = ref[:-1]
+                        parsed_discourse_facet.append(ref)
+                else:
+                    parsed_discourse_facet_tmp = [x.strip().lower().replace(" ", "_") for x in ref_discourse_facet.split(",")]
+                    parsed_discourse_facet = []
+                    for ref in parsed_discourse_facet_tmp:
+                        if ref.startswith("\'") or ref.startswith("\""):
+                            ref = ref[1:]
+                        if ref.endswith("\'") or ref.endswith("\""):
+                            ref = ref[:-1]
+                        parsed_discourse_facet.append(ref)
+            print "parsed_discourse_facet", parsed_discourse_facet
+            parse_data[line_data["Reference Article"]][line_data["Citing Article"]][line_data["Citation Marker Offset"]]["Discourse Facet"] = parsed_discourse_facet
+        except:
+            print "Error in Discourse Facet"
+            continue
+
+    # print(json.dumps(parse_data, sort_keys=True, indent=4))
+    # print("###################################################################################################################")
+    return parse_data
+
+
 def calculate(gold_data, submit_data):
-    print(json.dumps(gold_data, indent=4, sort_keys=True))
-    print(json.dumps(submit_data, indent=4, sort_keys=True))
+    # print(json.dumps(gold_data, indent=4, sort_keys=True))
+    # print(json.dumps(submit_data, indent=4, sort_keys=True))
     [TP_ref, FN_ref, FP_ref, TP_facet, FN_facet, FP_facet] = [0, 0, 0, 0, 0, 0]
     for ref_article in gold_data:
         for cit_article in gold_data[ref_article]:
             for cit_marker_offset in gold_data[ref_article][cit_article]:
                 old_TP_ref = TP_ref
-                for ref_offset in gold_data[ref_article][cit_article][cit_marker_offset]["Reference Offset"]:
-                    try:
-                        ref_offset_list = submit_data[ref_article][cit_article][cit_marker_offset]["Reference Offset"]
-                        if ref_offset in ref_offset_list:
-                            TP_ref += 1
-                            gold_data[ref_article][cit_article][cit_marker_offset]["comparable"] = True
-                        else:
+                try:
+                    for ref_offset in gold_data[ref_article][cit_article][cit_marker_offset]["Reference Offset"]:
+                        try:
+                            ref_offset_list = submit_data[ref_article][cit_article][cit_marker_offset]["Reference Offset"]
+                            if ref_offset in ref_offset_list:
+                                TP_ref += 1
+                                gold_data[ref_article][cit_article][cit_marker_offset]["comparable"] = True
+                            else:
+                                FN_ref += 1
+                        except KeyError as e:
+                            print("IGNORE THIS: key error 1")
                             FN_ref += 1
-                    except KeyError as e:
-                        print("IGNORE THIS: key error 1")
-                        FN_ref += 1
+                except: continue
 
     for ref_article in submit_data:
         for cit_article in submit_data[ref_article]:
             for cit_marker_offset in submit_data[ref_article][cit_article]:
-                for ref_offset in submit_data[ref_article][cit_article][cit_marker_offset]["Reference Offset"]:
-                    try:
-                        ref_offset_list = gold_data[ref_article][cit_article][cit_marker_offset]["Reference Offset"]
-                        if ref_offset not in ref_offset_list:
+                try:
+                    for ref_offset in submit_data[ref_article][cit_article][cit_marker_offset]["Reference Offset"]:
+                        try:
+                            ref_offset_list = gold_data[ref_article][cit_article][cit_marker_offset]["Reference Offset"]
+                            if ref_offset not in ref_offset_list:
+                                FP_ref += 1
+                        except KeyError as e:
+                            print("IGNORE THIS: key error 2")
                             FP_ref += 1
-                    except KeyError as e:
-                        print("IGNORE THIS: key error 2")
-                        FP_ref += 1
+                except: continue
     [precision_ref, recall_ref, f_ref] = [0.0, 0.0, 0.0]
     try:
         precision_ref = TP_ref / float(TP_ref + FP_ref)
@@ -176,36 +307,40 @@ def calculate(gold_data, submit_data):
     for ref_article in gold_data:
         for cit_article in gold_data[ref_article]:
             for cit_marker_offset in gold_data[ref_article][cit_article]:
-                for facet in gold_data[ref_article][cit_article][cit_marker_offset]["Discourse Facet"]:
-                    if gold_data[ref_article][cit_article][cit_marker_offset]["comparable"]:
-                        print("\n\n")
-                        print(ref_article)
-                        print(cit_article)
-                        print(cit_marker_offset)
-                        print(facet)
-                        print(submit_data[ref_article][cit_article][cit_marker_offset]["Discourse Facet"])
-                        try:
-                            if facet in submit_data[ref_article][cit_article][cit_marker_offset]["Discourse Facet"]:
-                                TP_facet += 1
-                            else:
+                try:
+                    for facet in gold_data[ref_article][cit_article][cit_marker_offset]["Discourse Facet"]:
+                        if gold_data[ref_article][cit_article][cit_marker_offset]["comparable"]:
+                            print("\n\n")
+                            print(ref_article)
+                            print(cit_article)
+                            print(cit_marker_offset)
+                            print(facet)
+                            print(submit_data[ref_article][cit_article][cit_marker_offset]["Discourse Facet"])
+                            try:
+                                if facet in submit_data[ref_article][cit_article][cit_marker_offset]["Discourse Facet"]:
+                                    TP_facet += 1
+                                else:
+                                    FN_facet += 1
+                            except KeyError as e:
+                                print("IGNORE THIS: Key error 4")
                                 FN_facet += 1
-                        except KeyError as e:
-                            print("IGNORE THIS: Key error 4")
+                        else:
                             FN_facet += 1
-                    else:
-                        FN_facet += 1
+                except: continue
 
     for ref_article in submit_data:
         for cit_article in submit_data[ref_article]:
             for cit_marker_offset in submit_data[ref_article][cit_article]:
-                for facet in submit_data[ref_article][cit_article][cit_marker_offset]["Discourse Facet"]:
-                    try:
-                        if gold_data[ref_article][cit_article][cit_marker_offset]["comparable"]:
-                            if facet not in gold_data[ref_article][cit_article][cit_marker_offset]["Discourse Facet"]:
-                                FP_facet += 1
-                    except KeyError as e:
-                        print("IGNORE THIS: Key error 5")
-                        FP_facet += 1
+                try:
+                    for facet in submit_data[ref_article][cit_article][cit_marker_offset]["Discourse Facet"]:
+                        try:
+                            if gold_data[ref_article][cit_article][cit_marker_offset]["comparable"]:
+                                if facet not in gold_data[ref_article][cit_article][cit_marker_offset]["Discourse Facet"]:
+                                    FP_facet += 1
+                        except KeyError as e:
+                            print("IGNORE THIS: Key error 5")
+                            FP_facet += 1
+                except: continue
 
     [precision_facet, recall_facet, f_facet] = [0.0, 0.0, 0.0]
     try:
@@ -226,8 +361,8 @@ def calculate(gold_data, submit_data):
 def evaluate(gold_file, submit_file, score_file):
     # print(gold_file)
     # print(submit_file)
-    gold_data = parse(gold_file)
-    submit_data = parse(submit_file)
+    gold_data = parse_csv(gold_file)
+    submit_data = parse_csv(submit_file)
     (p_ref, r_ref, f_ref, p_facet, r_facet, f_facet, TP_ref, FP_ref, FN_ref, TP_facet, FP_facet, FN_facet) = calculate(gold_data, submit_data)
     with open(score_file, "a") as f:
         f.write(os.path.basename(gold_file) + "_task1a_precision: " + str(p_ref) + "\n")
@@ -272,7 +407,8 @@ def main(input_dir, output_dir):
     for gold_file in os.listdir(truth_dir):
         if gold_file.startswith('.'):
             continue
-        submit_file = os.path.join(submit_dir, gold_file)
+        paper_id = gold_file.split('_')[0]
+        submit_file = os.path.join(submit_dir, paper_id +".csv")
         if not os.path.exists(submit_file):
             continue
         (p_ref, r_ref, f_ref, p_facet, r_facet, f_facet, TP_ref, FP_ref, FN_ref, TP_facet, FP_facet, FN_facet) = evaluate(os.path.join(truth_dir, gold_file), submit_file, score_file)
@@ -299,7 +435,7 @@ def main(input_dir, output_dir):
 
     try:
         precision_ref_micro = TP_ref_sum / float(TP_ref_sum + FP_ref_sum)
-    except ZeroDivisionError as e: 
+    except ZeroDivisionError as e:
         precision_ref_micro = 0
     try:
         recall_ref_micro = TP_ref_sum / float(TP_ref_sum + FN_ref_sum)
@@ -311,40 +447,43 @@ def main(input_dir, output_dir):
         f_ref_micro = 0
     try:
         precision_ref_macro = sum(P_ref_list) / len(P_ref_list)
-    except ZeroDivisionError as e: 
+    except ZeroDivisionError as e:
         precision_ref_macro = 0
     try:
         recall_ref_macro = sum(R_ref_list) / len(R_ref_list)
-    except ZeroDivisionError as e: 
+    except ZeroDivisionError as e:
         recall_ref_macro = 0
     try:
         f_ref_macro = 2.0 * precision_ref_macro * recall_ref_macro / float(precision_ref_macro + recall_ref_macro)
-    except ZeroDivisionError as e: 
+    except ZeroDivisionError as e:
         f_ref_macro = 0
 
     try:
-        precision_facet_micro = TP_ref_sum / float(TP_ref_sum + FP_ref_sum)
-    except ZeroDivisionError as e: 
+        # precision_facet_micro = TP_ref_sum / float(TP_ref_sum + FP_ref_sum)
+        precision_facet_micro = TP_facet_sum / float(TP_facet_sum + FP_facet_sum)
+    except ZeroDivisionError as e:
         precision_facet_micro = 0
     try:
-        recall_facet_micro = TP_ref_sum / float(TP_ref_sum + FN_ref_sum)
+        # recall_facet_micro = TP_ref_sum / float(TP_ref_sum + FN_ref_sum)
+        recall_facet_micro = TP_facet_sum / float(TP_facet_sum + FN_facet_sum)
     except ZeroDivisionError as e:
         recall_facet_micro = 0
     try:
-        f_facet_micro = 2.0 * precision_ref_micro * recall_ref_micro / float(precision_ref_micro + recall_ref_micro)
+        # f_facet_micro = 2.0 * precision_ref_micro * recall_ref_micro / float(precision_ref_micro + recall_ref_micro)
+        f_facet_micro = 2.0 * precision_facet_micro * recall_facet_micro / float(precision_facet_micro + recall_facet_micro)
     except ZeroDivisionError as e:
         f_facet_micro = 0
     try:
         precision_facet_macro = sum(P_facet_list) / len(P_facet_list)
-    except ZeroDivisionError as e: 
+    except ZeroDivisionError as e:
         precision_facet_macro = 0
     try:
         recall_facet_macro = sum(R_facet_list) / len(R_facet_list)
-    except ZeroDivisionError as e: 
+    except ZeroDivisionError as e:
         recall_facet_macro = 0
     try:
         f_facet_macro = 2.0 * precision_facet_macro * recall_facet_macro / float(precision_facet_macro + recall_facet_macro)
-    except ZeroDivisionError as e: 
+    except ZeroDivisionError as e:
         f_facet_macro = 0
 
     with open(score_file, "a") as f:
