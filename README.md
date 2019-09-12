@@ -5,20 +5,20 @@
 This package contains a release of training and test topics to aid in 
 the development of computational linguistics summarization systems.
 
-The CL-SciSumm Shared Task is run off the CL-SciSumm corpus, and comprises 
+The CL-SciSumm Shared Task is run off the CL-SciSumm corpus and is composed of  
 three sub-tasks in automatic research paper summarization on a new corpus 
 of research papers. A training corpus of forty topics has been released. A 
-test corpus of ten topics will be released. The topics comprise of ACL 
-Computational Linguistics research papers, and their citing papers and t
-hree output summaries each. The three output summaries comprise: the traditional 
-self-summary of the paper (the abstract), the community summary 
+test corpus of ten topics is held-out as a blind test-set. The topics comprise of ACL 
+Computational Linguistics and Natural Language Processing research papers, and their 
+citing papers and three output summaries each. The three output summaries comprise: 
+the traditional authors' summary of the paper (the abstract), the community summary 
 (the collection of citation sentences ‘citances’) and a human summary written 
 by a trained annotator. Within the corpus, each citance is also mapped to its 
 referenced text in the reference paper and tagged with the information facet 
 it represents.
 
 The manually annotated training set of 40 articles and citing papers 
-is already available for download and can be used by participants.
+is readily available for download and can be used by participants.
 This data can be found in /data/Training-Set-2019/Task1/From-Training-Set-2018
 and /data/Training-Set-2019/Task2/From-Training-Set-2018
 
@@ -32,7 +32,9 @@ for the classification task: Task1b. We recommend you to use the auto-anootated 
 only for training 'reference span selection' models for Task 1a and use the 
 manually annotated training data from 40 document sets for Task1b.
 
-Further, for Task 2 one thousand summaries that were released as part of the SciSummNet (Yasunga et al., 2019) have been included as human summaries to train on. This data can be found in **/data/Training-Set-2019/Task2/From-ScisummNet-2019**
+Further, for Task 2 one thousand summaries that were released as part of 
+the SciSummNet (Yasunga et al., 2019) have been included as human summaries to 
+train on. This data can be found in **/data/Training-Set-2019/Task2/From-ScisummNet-2019**
 
 The **test set** of 20 articles is available in **/data/Test-Set-2018**.
 This is a blind test set, that is, the ground truth is withheld.
@@ -179,7 +181,7 @@ Citation Marker, Reference Text, and Discourse Facet for each citation of the RP
 
 For further information about this data release, contact the following members of the BRNDL 2017 workshop organising committee:
 
-* <a href="https://www.linkedin.com/in/muthukumarc">Muthu Kumar Chandrasekaran</a> (Advanced Computer Scientist, Artificial Intelligence Center, SRI International) cmkumar087@gmail.com, muthu.chandrasekaran@sri.com
+* <a href="https://www.linkedin.com/in/muthukumarc">Muthu Kumar Chandrasekaran</a> (Advanced Computer Scientist, Artificial Intelligence Center, SRI International) cmkumar087@gmail.com
 * <a href="https://www.linkedin.com/in/michihiro-yasunaga-616762136">Michihiro Yasunaga</a> (Computer Science, Yale University)  michihiro.yasunaga@yale.edu
 * <a href="https://www.sri.com/about/people/dayne-freitag">Dayne Freitag</a> (Technical Director, Artificial Intelligence Center, SRI International)
 * <a href="https://cpsc.yale.edu/people/dragomir-radev">Dragomir Radev</a> (Computer Science, Yale University), dragomir.radev@yale.edu
