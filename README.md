@@ -33,7 +33,7 @@ only for training 'reference span selection' models for Task 1a and use the
 manually annotated training data from 40 document sets for Task1b.
 
 Further, for Task 2 one thousand summaries that were released as part of 
-the SciSummNet (Yasunga et al., 2019) have been included as human summaries to 
+the SciSummNet (Yasunaga et al., 2019) have been included as human summaries to 
 train on. This data can be found in **/data/Training-Set-2019/Task2/From-ScisummNet-2019**
 
 The **test set** of 20 articles is available in **/data/Test-Set-2018**.
