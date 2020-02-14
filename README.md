@@ -64,21 +64,21 @@ booktitle={In Proceedings of Joint Workshop on Bibliometric-enhanced Information
 year={2016}<br>
 }<br>
 
-## README for The 5th Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2019)
+## README for The 6th Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2020)
 
-March 19, 2019
+February 15, 2020
 
 Please read further for details on the Computational Linguistics Shared Task run as part of 
-BIRNDL 2019 workshop collocated with SIGIR 2018 - official website hosted at: http://wing.comp.nus.edu.sg/~cl-scisumm2019
+Scholarly Document Processing 2020 workshop collocated with EMNLP 2020 @ Punta Cana, Dominican Republic, Nov 11/12 - official website hosted at: https://ornlcda.github.io/SDProc/
 
 ### Overview
 
-You are invited to participate in the CL-SciSumm Shared Task at BIRNDL 2019. The shared task will be on automatic 
+You are invited to participate in the CL-SciSumm Shared Task at SDP@EMNLP 2020. The shared task will be on automatic 
 paper summarization in the Computational Linguistics (CL) domain. The output summaries will be of two types: 
 faceted summaries of the traditional self-summary (the abstract) and the community summary (the collection of 
 citation sentences ‘citances’). We also propose to group the citances by the facets of the text that they refer to.
 
-This task follows up on the successful previous editions at SIGIR 2018, SIGIR 2017, JCDL 2016 and the Pilot Task conducted as 
+This task follows up on the successful previous editions at SIGIR 2019, 2018, 2017, JCDL 2016 and the Pilot Task conducted as 
 a part of the BiomedSumm Track at the Text Analysis Conference 2014 (TAC 2014).
 
 The task is defined as follows:
@@ -189,14 +189,16 @@ For further information about this data release, contact the following members o
 
 * <a href="https://www.linkedin.com/in/muthukumarc">Muthu Kumar Chandrasekaran</a> (Advanced Computer Scientist, Artificial Intelligence Center, SRI International) cmkumar087@gmail.com
 * <a href="https://www.sri.com/about/people/dayne-freitag">Dayne Freitag</a> (Technical Director, Artificial Intelligence Center, SRI International)
+
 LongSumm
 *
 *
 *
+
 LaySumm
 *
 * 
 
 --------------------------------------------------------------------------
 
-This README was updated from README2018 by Muthu Kumar Chandrasekaran in March, 2019. For revision information, check source code control logs.
+This README was updated from README2018 by Muthu Kumar Chandrasekaran in Feb, 2020. For revision information, check source code control logs.
