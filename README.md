@@ -189,7 +189,7 @@ Citation Marker, Reference Text, and Discourse Facet for each citation of the RP
 
 For further information about this data release, contact the following members of the BRNDL 2017 workshop organising committee:
 
-* <a href="https://www.linkedin.com/in/muthukumarc">Muthu Kumar Chandrasekaran</a> (Advanced Computer Scientist, Artificial Intelligence Center, SRI International) cmkumar087@gmail.com
+* <a href="https://www.linkedin.com/in/muthukumarc">Muthu Kumar Chandrasekaran</a> (Amazon, Seattle) cmkumar087@gmail.com
 * <a href="https://www.sri.com/about/people/dayne-freitag">Dayne Freitag</a> (Technical Director, Artificial Intelligence Center, SRI International)
 
 LongSumm
