@@ -49,19 +49,19 @@ for the collation of the final results to be presented at the workshop.
 For more details, see the Contents Section at the bottom of this Readme. 
 To know how this corpus was constructed, please see ./docs/corpusconstruction.txt
 
-Results of the CL-SciSumm-19 will be released in the BIRNDL workshop collocated 
-with <a href="http://sigir.org/sigir2019/">ACM SIGIR</a> 2019, Paris, France. 
-<a href="http://wing.comp.nus.edu.sg/~cl-scisumm2019">Go to task website</a>.<br> 
+Results of the CL-SciSumm-20 will be released in the SDP workshop collocated 
+with <a href="https://2020.emnlp.org/">EMNLP</a> 2020, Punta Cana, Dominican Republic. 
+<a href="https://ornlcda.github.io/SDProc/">Go to task website</a>.<br> 
 
-Last editions proceedings - CL-SciSumm '18 @ SIGIR '18 can be found in BIRNDL 
-Proceedings: http://ceur-ws.org/Vol-2132/ under the header 'Sytem Papers'
+Last editions proceedings - CL-SciSumm '19 @ SIGIR '19 can be found in BIRNDL 
+Proceedings: http://ceur-ws.org/Vol-2414/ under the header 'System Papers'
 
-If you use the data and publish please let us know and cite our CL-SciSumm 2016 task overview paper:<br>
-@inproceedings{jaidka2016overview,<br>
-title={Overview of the CL-SciSumm 2016 Shared Task},<br>
-author={Jaidka, Kokil and Chandrasekaran, Muthu Kumar and Rustagi, Sajal and Kan, Min-Yen},<br>
-booktitle={In Proceedings of Joint Workshop on Bibliometric-enhanced Information Retrieval and NLP for Digital Libraries (BIRNDL 2016)},<br>
-year={2016}<br>
+If you use the data and publish please let us know and cite our CL-SciSumm 2019 task overview paper:<br>
+@inproceedings{,<br>
+title={Overview and Results: CL-SciSumm Shared Task 2019},<br>
+author={Chandrasekaran, Muthu Kumar and Yasunaga, Michihiro and Radev, Dragomir and Freitag, Dayne and Kan, Min-Yen},<br>
+booktitle={In Proceedings of Joint Workshop on Bibliometric-enhanced Information Retrieval and NLP for Digital Libraries (BIRNDL 2019)},<br>
+year={2019}<br>
 }<br>
 
 ## README for The 6th Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2020)
