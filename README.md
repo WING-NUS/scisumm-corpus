@@ -5,6 +5,8 @@
 This package contains a release of training and test topics to aid in 
 the development of computational linguistics summarization systems.
 
+# CL-SciSumm @ EMNLP 2020
+
 The CL-SciSumm Shared Task is run off the CL-SciSumm corpus and is composed of  
 three sub-tasks in automatic research paper summarization on a new corpus 
 of research papers. A training corpus of forty topics has been released. A 
