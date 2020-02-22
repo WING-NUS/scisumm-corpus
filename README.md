@@ -24,13 +24,13 @@ is readily available for download and can be used by participants.
 This data can be found in /data/Training-Set-2019/Task1/From-Training-Set-2018
 and /data/Training-Set-2019/Task2/From-Training-Set-2018
 
-**NEW Changes for CL-SciSumm 2020**
-
-<To be Announced -- Stay Tuned>
-
 ## README for 1st Long Summarization Task (LongSumm 2020)
 
 Task Description and dataset can be found at: <a href="https://github.com/guyfe/LongSumm">LongSumm Github Repo</a>
+
+**NEW Changes for CL-SciSumm 2020**
+
+<To be Announced -- Stay Tuned>
 
 **Updates for Cl-SciSumm 2019**
 
