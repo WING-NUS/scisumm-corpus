@@ -28,6 +28,10 @@ and /data/Training-Set-2019/Task2/From-Training-Set-2018
 
 <To be Announced -- Stay Tuned>
 
+# LongSumm
+
+Task Description and dataset can be found at: <a href="https://github.com/guyfe/LongSumm">LongSumm Github Repo</a>
+
 **Updates for Cl-SciSumm 2019**
 
 Further, this year we have introduced 1000 document 
@@ -192,14 +196,13 @@ For further information about this data release, contact the following members o
 * <a href="https://www.linkedin.com/in/muthukumarc">Muthu Kumar Chandrasekaran</a> (Amazon, Seattle) cmkumar087@gmail.com
 * <a href="https://www.sri.com/about/people/dayne-freitag">Dayne Freitag</a> (Technical Director, Artificial Intelligence Center, SRI International)
 
-LongSumm
-*
-*
-*
+CL-LaySumm
+* <a href=""https://libraryconnect.elsevier.com/contributors/anita-de-waard>Anita de Waard (Elsevier, VT)</a>, a.dewaard@elsevier.com
+* <a href=""https://www.cs.cmu.edu/~hovy/>Eduard Hovy (LTI, CMU)</a>, hovy@cmu.edu
 
-LaySumm
-*
-* 
+LongSumm
+* <a href="https://researcher.watson.ibm.com/researcher/view.php?person=il-SHMUELI">Michal Shmueli-Scheuer</a>, Haifa Israel, shmueli@il.ibm.com 
+* <a href="https://researcher.watson.ibm.com/researcher/view.php?person=il-GUYF">Guy Feigenblat</a>, IBM Research AI, Haifa Israel, GUYF@il.ibm.com 
 
 --------------------------------------------------------------------------
 
