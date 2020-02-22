@@ -28,7 +28,7 @@ and /data/Training-Set-2019/Task2/From-Training-Set-2018
 
 <To be Announced -- Stay Tuned>
 
-## LongSumm
+## README for 1st Long Summarization Task (LongSumm 2020)
 
 Task Description and dataset can be found at: <a href="https://github.com/guyfe/LongSumm">LongSumm Github Repo</a>
 
