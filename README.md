@@ -34,7 +34,7 @@ Task Description and dataset can be found at: <a href="https://github.com/guyfe/
 
 **Updates for CL-SciSumm 2019**
 
-Further, this year we have introduced 1000 document 
+In 2019 we had introduced 1000 document 
 sets that were automatically annotated to be used as training data. This 
 training data was generated following Nomoto,2018. 
 This data can be found in **/data/Training-Set-2019/Task1/From-ScisummNet-2019**. 
