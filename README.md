@@ -197,8 +197,8 @@ For further information about this data release, contact the following members o
 * <a href="https://www.sri.com/about/people/dayne-freitag">Dayne Freitag</a> (Technical Director, Artificial Intelligence Center, SRI International)
 
 CL-LaySumm
-* <a href=""https://libraryconnect.elsevier.com/contributors/anita-de-waard>Anita de Waard (Elsevier, VT)</a>, a.dewaard@elsevier.com
-* <a href=""https://www.cs.cmu.edu/~hovy/>Eduard Hovy (LTI, CMU)</a>, hovy@cmu.edu
+* <a href="https://libraryconnect.elsevier.com/contributors/anita-de-waard">Anita de Waard</a>(Elsevier, VT), a.dewaard@elsevier.com
+* <a href="https://www.cs.cmu.edu/~hovy/">Eduard Hovy</a>, (LTI, CMU), hovy@cmu.edu
 
 LongSumm
 * <a href="https://researcher.watson.ibm.com/researcher/view.php?person=il-SHMUELI">Michal Shmueli-Scheuer</a>, Haifa Israel, shmueli@il.ibm.com 
