@@ -32,7 +32,7 @@ Task Description and dataset can be found at: <a href="https://github.com/guyfe/
 
 <To be Announced -- Stay Tuned>
 
-**Updates for Cl-SciSumm 2019**
+**Updates for CL-SciSumm 2019**
 
 Further, this year we have introduced 1000 document 
 sets that were automatically annotated to be used as training data. This 
