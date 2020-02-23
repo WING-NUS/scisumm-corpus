@@ -30,7 +30,7 @@ Task Description and dataset can be found at: <a href="https://github.com/guyfe/
 
 ## README for 1st Lay Summarization Task (LaySumm 2020)
 
-Task Description and a *sample* dataset can be found at: <a href="https://github.com/WING-NUS/scisumm-corpus/blob/master/README_Laysumm.md">LaySumm Github Repo</a>
+Task Description and a *sample* dataset can be found at: <a href="https://github.com/WING-NUS/scisumm-corpus/blob/master/README_Laysumm.md">here</a> in this Github repo.
 
 ## README for The 6th Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2020)
 
