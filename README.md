@@ -28,6 +28,14 @@ and /data/Training-Set-2019/Task2/From-Training-Set-2018
 
 Task Description and dataset can be found at: <a href="https://github.com/guyfe/LongSumm">LongSumm Github Repo</a>
 
+## README for 1st Lay Summarization Task (LaySumm 2020)
+
+Task Description and a *sample* dataset can be found at: <a href="https://github.com/WING-NUS/scisumm-corpus/blob/master/README_Laysumm.md">LaySumm Github Repo</a>
+
+## README for The 6th Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2020)
+
+February 15, 2020
+
 **NEW Changes for CL-SciSumm 2020**
 
 <To be Announced -- Stay Tuned>
@@ -69,10 +77,6 @@ author={Chandrasekaran, Muthu Kumar and Yasunaga, Michihiro and Radev, Dragomir 
 booktitle={In Proceedings of Joint Workshop on Bibliometric-enhanced Information Retrieval and NLP for Digital Libraries (BIRNDL 2019)},<br>
 year={2019}<br>
 }<br>
-
-## README for The 6th Computational Linguistics Scientific Document Summarization Shared Task Corpus (CL-SciSumm 2020)
-
-February 15, 2020
 
 Please read further for details on the Computational Linguistics Shared Task run as part of 
 Scholarly Document Processing 2020 workshop collocated with EMNLP 2020 @ Punta Cana, Dominican Republic, Nov 11/12 - official website hosted at: <a href="https://ornlcda.github.io/SDProc/">SDP website</a>
