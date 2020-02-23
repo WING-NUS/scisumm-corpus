@@ -24,17 +24,17 @@ is readily available for download and can be used by participants.
 This data can be found in /data/Training-Set-2019/Task1/From-Training-Set-2018
 and /data/Training-Set-2019/Task2/From-Training-Set-2018
 
+## README for 1st Long Summarization Task (LongSumm 2020)
+
+Task Description and dataset can be found at: <a href="https://github.com/guyfe/LongSumm">LongSumm Github Repo</a>
+
 **NEW Changes for CL-SciSumm 2020**
 
 <To be Announced -- Stay Tuned>
 
-# LongSumm
+**Updates for CL-SciSumm 2019**
 
-Task Description and dataset can be found at: <a href="https://github.com/guyfe/LongSumm">LongSumm Github Repo</a>
-
-**Updates for Cl-SciSumm 2019**
-
-Further, this year we have introduced 1000 document 
+In 2019 we had introduced 1000 document 
 sets that were automatically annotated to be used as training data. This 
 training data was generated following Nomoto,2018. 
 This data can be found in **/data/Training-Set-2019/Task1/From-ScisummNet-2019**. 
@@ -75,7 +75,7 @@ year={2019}<br>
 February 15, 2020
 
 Please read further for details on the Computational Linguistics Shared Task run as part of 
-Scholarly Document Processing 2020 workshop collocated with EMNLP 2020 @ Punta Cana, Dominican Republic, Nov 11/12 - official website hosted at: https://ornlcda.github.io/SDProc/
+Scholarly Document Processing 2020 workshop collocated with EMNLP 2020 @ Punta Cana, Dominican Republic, Nov 11/12 - official website hosted at: <a href="https://ornlcda.github.io/SDProc/">SDP website</a>
 
 ### Overview
 
@@ -197,8 +197,8 @@ For further information about this data release, contact the following members o
 * <a href="https://www.sri.com/about/people/dayne-freitag">Dayne Freitag</a> (Technical Director, Artificial Intelligence Center, SRI International)
 
 CL-LaySumm
-* <a href=""https://libraryconnect.elsevier.com/contributors/anita-de-waard>Anita de Waard (Elsevier, VT)</a>, a.dewaard@elsevier.com
-* <a href=""https://www.cs.cmu.edu/~hovy/>Eduard Hovy (LTI, CMU)</a>, hovy@cmu.edu
+* <a href="https://libraryconnect.elsevier.com/contributors/anita-de-waard">Anita de Waard</a>(Elsevier, VT), a.dewaard@elsevier.com
+* <a href="https://www.cs.cmu.edu/~hovy/">Eduard Hovy</a>, (LTI, CMU), hovy@cmu.edu
 
 LongSumm
 * <a href="https://researcher.watson.ibm.com/researcher/view.php?person=il-SHMUELI">Michal Shmueli-Scheuer</a>, Haifa Israel, shmueli@il.ibm.com 
