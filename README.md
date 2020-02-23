@@ -21,7 +21,7 @@ it represents.
 
 The manually annotated training set of 40 articles and citing papers, 
 human written summaries for them and a further 1000 document corpus (ScisummNet), 
-an auto-annotated noisy dataset with several thousands of arcile-citing paper papers (to aid in '
+an auto-annotated noisy dataset with several thousands of article-citing paper papers (to aid in '
 training deep learning models) are readily available for download and can be used by participants.
 This data can be found in /data/Training-Set-2019/Task1/From-Training-Set-2018
 and /data/Training-Set-2019/Task2/From-Training-Set-2018
