@@ -212,4 +212,4 @@ LongSumm
 
 --------------------------------------------------------------------------
 
-This README was updated from README2018 by Muthu Kumar Chandrasekaran in Feb, 2020. For revision information, check source code control logs.
+This README was updated from README2019 by Muthu Kumar Chandrasekaran in Feb, 2020. For revision information, check source code control logs.
