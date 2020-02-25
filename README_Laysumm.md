@@ -49,4 +49,4 @@ LaySumm
 
 --------------------------------------------------------------------------
 
-This README was created by LaySumm Organier, Anita De Waard in February, 2020 
+This README was created by LaySumm Organiser, Anita De Waard in February, 2020 
