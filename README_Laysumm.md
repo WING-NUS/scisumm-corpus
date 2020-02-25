@@ -1,7 +1,7 @@
 # README for the 1st Computational Linguistics Lay Summary Challenge Shared Task Corpus (CL-LaySumm 2020)
 
 This package contains a release of training and test topics to aid in 
-the development of computational linguistics summarization systems.
+the development of computational linguistics lay summarization systems.
 
 # CL-LaySumm @ EMNLP 2020
 
