@@ -29,17 +29,15 @@ The task is defined as follows:
 
 As a follow-up to the intrinsic evaluation, we will crowdsource a number of automatically generated lay summaries to a panel of judges and a lay audience. Details of the crowdsourcing evaluation will be announced with the sharing of the final test corpus on July 1st.
 
-## Sample Dataset (two documens and their summaries)
-
-Please download them from <a href="https://github.com/WING-NUS/scisumm-corpus/tree/master/data/LAYSUMM_SAMPLE">here</a>.
-
 ## Corpus Access
 
-To obtain access to full the LaySumm (training and test) corpus, please send an email to a.dewaard@elsevier.com. You will be emailed and asked to sign acontract that grants you research access to the full corpus of approximately 600 full-text articles, abstracts and lay summaries. A training corpus consisting of approximately 2/3 of the corpus will be made available directly; the full corpus will be available on the Test Set Release date, July 1, 2020.
-
-A sample file of 2 records consisting of full-text, abstract, and lay summary records can be downloaded here. Each folder consists of 1 file containing the full text, abstract and lay summary.
+For a small sample dataset, see below. To obtain access to full the LaySumm (training and test) corpus, please send an email to a.dewaard@elsevier.com. You will be emailed and asked to sign a contract that grants you research access to the full corpus of approximately 600 full-text articles, abstracts and lay summaries. A training corpus consisting of approximately 2/3 of the corpus will be made available directly; the full corpus will be available on the Test Set Release date, July 1, 2020.
 
 For any questions on the contracts or the corpus, please contact a.dewaard@elsevier.com.
+
+## Sample Dataset
+
+A sample file of 2 records consisting of full-text, abstract, and lay summary records can be downloaded <a href="https://github.com/WING-NUS/scisumm-corpus/tree/master/data/LAYSUMM_SAMPLE">here</a>. Each folder consists of 1 file containing the full text, abstract and lay summary.
 
 ## Organisers' Contacts
 
