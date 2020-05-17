@@ -66,8 +66,10 @@ For more details, see the Contents Section at the bottom of this Readme.
 To know how this corpus was constructed, please see ./docs/corpusconstruction.txt
 
 Results of the CL-SciSumm-20 will be released in the SDP workshop collocated 
-with <a href="https://2020.emnlp.org/">EMNLP</a> 2020, Punta Cana, Dominican Republic. 
-<a href="https://ornlcda.github.io/SDProc/">Go to task website</a>.<br> 
+with <a href="https://2020.emnlp.org/">EMNLP</a> 2020, 
+<a href="https://ornlcda.github.io/SDProc/">Go to task website</a>. The workshop 
+will be virtual / online. This is a great opporutnity for teams to participate since 
+you don't need a travel budget to come and present your work!<br> 
 
 Last editions proceedings - CL-SciSumm '19 @ SIGIR '19 can be found in BIRNDL 
 Proceedings: http://ceur-ws.org/Vol-2414/ under the header 'System Papers'
