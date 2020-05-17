@@ -85,7 +85,7 @@ year={2019}<br>
 ```
 
 Please read further for details on the Computational Linguistics Shared Task run as part of 
-Scholarly Document Processing 2020 workshop collocated with EMNLP 2020 @ Punta Cana, Dominican Republic, Nov 11/12 - official website hosted at: <a href="https://ornlcda.github.io/SDProc/">SDP website</a>
+Scholarly Document Processing 2020 workshop collocated with EMNLP 2020 @Virtual/Online, Nov 19 - official website hosted at: <a href="https://ornlcda.github.io/SDProc/">SDP website</a>
 
 ### Overview
 
