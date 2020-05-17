@@ -75,12 +75,14 @@ Last editions proceedings - CL-SciSumm '19 @ SIGIR '19 can be found in BIRNDL
 Proceedings: http://ceur-ws.org/Vol-2414/ under the header 'System Papers'
 
 If you use the data and publish please let us know and cite our CL-SciSumm 2019 task overview paper:<br>
+```
 @inproceedings{,<br>
 title={Overview and Results: CL-SciSumm Shared Task 2019},<br>
 author={Chandrasekaran, Muthu Kumar and Yasunaga, Michihiro and Radev, Dragomir and Freitag, Dayne and Kan, Min-Yen},<br>
 booktitle={In Proceedings of Joint Workshop on Bibliometric-enhanced Information Retrieval and NLP for Digital Libraries (BIRNDL 2019)},<br>
 year={2019}<br>
 }<br>
+```
 
 Please read further for details on the Computational Linguistics Shared Task run as part of 
 Scholarly Document Processing 2020 workshop collocated with EMNLP 2020 @ Punta Cana, Dominican Republic, Nov 11/12 - official website hosted at: <a href="https://ornlcda.github.io/SDProc/">SDP website</a>
