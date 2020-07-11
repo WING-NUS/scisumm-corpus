@@ -40,7 +40,7 @@ February 15, 2020
 
 **NEW Changes for CL-SciSumm 2020**
 
-We have no additional training data annotated or auto-annotated for 2020. We will have only the blind test set. However, you may train on out of domain data, that is non-computational linguistcs papers, which are available as other public datasets: <a href="https://evasharma.github.io/bigpatent/">BIGPATENT</a> (Sharma and Wang, 2019), <a href="https://drive.google.com/file/d/1b3rmCSIoh6VhD4HKWjI4HOW-cSwcwbeC/view"> arXiv dataset </a> (Cohan et al, 2018), <a href="https://drive.google.com/file/d/1lvsqvsFi3W-pE1SqNZI0s8NR9rC1tsja/view">pubmed dataset </a> (Cohan et al, 2018) 
+We have no additional training data annotated or auto-annotated for 2020. We will have only the blind test set. However, you may use addional training data from out-of-domain, that is non-computational linguistcs papers, which are available as other public datasets: <a href="https://evasharma.github.io/bigpatent/">BIGPATENT</a> (Sharma and Wang, 2019), <a href="https://drive.google.com/file/d/1b3rmCSIoh6VhD4HKWjI4HOW-cSwcwbeC/view"> arXiv dataset </a> (Cohan et al, 2018), <a href="https://drive.google.com/file/d/1lvsqvsFi3W-pE1SqNZI0s8NR9rC1tsja/view">pubmed dataset </a> (Cohan et al, 2018) 
 
 **Updates for CL-SciSumm 2019**
 
