@@ -218,6 +218,10 @@ LongSumm
 
 This README was updated from README2019 by Muthu Kumar Chandrasekaran in Feb, 2020. For revision information, check source code control logs.
 
+Important: The following licence does not apply to file:
+* https://github.com/WING-NUS/scisumm-corpus/blob/master/README_Laysumm.md
+* and files under the directory: https://github.com/WING-NUS/scisumm-corpus/tree/master/data/LAYSUMM_SAMPLE
+
 Shield: [![CC BY 4.0][cc-by-shield]][cc-by]
 
 This work is licensed under a
