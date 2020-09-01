@@ -3,8 +3,7 @@
 Shield: [![CC BY 4.0][cc-by-shield]][cc-by]
 
 This work is licensed under a
-[Creative Commons Attribution 4.0 International License][cc-by].
-except for the following files which are only hosted by courtesy on this repository.
+[Creative Commons Attribution 4.0 International License][cc-by] except for the following files which are only hosted by courtesy on this repository.
 * https://github.com/WING-NUS/scisumm-corpus/blob/master/README_Laysumm.md
 * and files under the directory: https://github.com/WING-NUS/scisumm-corpus/tree/master/data/LAYSUMM_SAMPLE
 
