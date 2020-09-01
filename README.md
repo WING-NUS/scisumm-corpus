@@ -1,5 +1,18 @@
 # README 
 
+Shield: [![CC BY 4.0][cc-by-shield]][cc-by]
+
+This work is licensed under a
+[Creative Commons Attribution 4.0 International License][cc-by].
+except for the following files which are only hosted by courtesy on this repository.
+* https://github.com/WING-NUS/scisumm-corpus/blob/master/README_Laysumm.md
+* and files under the directory: https://github.com/WING-NUS/scisumm-corpus/tree/master/data/LAYSUMM_SAMPLE
+
+[![CC BY 4.0][cc-by-image]][cc-by]
+
+[cc-by]: http://creativecommons.org/licenses/by/4.0/
+[cc-by-image]: https://i.creativecommons.org/l/by/4.0/88x31.png
+[cc-by-shield]: https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg
 # (scisumm-corpus @ https://github.com/WING-NUS/scisumm-corpus)
 
 This package contains a release of training and test topics to aid in 
@@ -217,18 +230,3 @@ LongSumm
 --------------------------------------------------------------------------
 
 This README was updated from README2019 by Muthu Kumar Chandrasekaran in Feb, 2020. For revision information, check source code control logs.
-
-Important: The following licence does not apply to file:
-* https://github.com/WING-NUS/scisumm-corpus/blob/master/README_Laysumm.md
-* and files under the directory: https://github.com/WING-NUS/scisumm-corpus/tree/master/data/LAYSUMM_SAMPLE
-
-Shield: [![CC BY 4.0][cc-by-shield]][cc-by]
-
-This work is licensed under a
-[Creative Commons Attribution 4.0 International License][cc-by].
-
-[![CC BY 4.0][cc-by-image]][cc-by]
-
-[cc-by]: http://creativecommons.org/licenses/by/4.0/
-[cc-by-image]: https://i.creativecommons.org/l/by/4.0/88x31.png
-[cc-by-shield]: https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg
