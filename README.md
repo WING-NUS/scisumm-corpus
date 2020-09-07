@@ -21,18 +21,20 @@ the development of computational linguistics summarization systems.
 
 The CL-SciSumm Shared Task is run off the CL-SciSumm corpus and is composed of  
 three sub-tasks in automatic research paper summarization on a new corpus 
-of research papers. A training corpus of forty topics has been released. A 
-test corpus of ten topics is held-out as a blind test-set. The topics comprise of ACL 
-Computational Linguistics and Natural Language Processing research papers, and their 
-citing papers and three output summaries each. The three output summaries comprise: 
+of research papers. A training corpus with summaries for one thousand forty topics 
+and forty topics for citance to reference span id (or provenance identification) tasks 
+has been released. A test corpus of twenty topics is held-out as a blind test-set. 
+The topics comprise of ACL Computational Linguistics and Natural Language Processing 
+research papers, and their citing papers and three output summaries each. The three 
+output summaries comprise: 
 the traditional authors' summary of the paper (the abstract), the community summary 
 (the collection of citation sentences ‘citances’) and a human summary written 
 by a trained annotator. Within the corpus, each citance is also mapped to its 
 referenced text in the reference paper and tagged with the information facet 
 it represents.
 
-The manually annotated training set of 40 articles and citing papers, 
-human written summaries for them and a further 1000 document corpus (ScisummNet), 
+The manually annotated training set of 40 articles (Tasks 1a and b) and citing papers, 
+human written summaries (1040 documents) for them and a further 1000 document corpus (ScisummNet), 
 an auto-annotated noisy dataset with several thousands of article-citing paper papers (to aid in '
 training deep learning models) are readily available for download and can be used by participants.
 This data can be found in /data/Training-Set-2019/Task1/From-Training-Set-2018
