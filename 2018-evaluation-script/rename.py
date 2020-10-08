@@ -19,7 +19,7 @@ for run in working_dir_list:
             print(task1_file)
             if os.path.isfile(os.path.join(task1_run_dir, task1_file)) and not task1_file.startswith("."):
                 doc_name = task1_file.split(".", 1)[0]
-                new_doc_name = doc_name + ".annv3.csv"
+                new_doc_name = doc_name + ".csv"
                 print(os.path.join(task1_run_dir, new_doc_name))
                 os.rename(os.path.join(task1_run_dir, task1_file), os.path.join(task1_run_dir, new_doc_name))
     else:

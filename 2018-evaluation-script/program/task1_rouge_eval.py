@@ -106,11 +106,11 @@ def evaluate(gold_file, submit_file, temp_dir):
                 with open(os.path.join(temp_dir, "gold"), "w") as f:
                     print(gold_ref_text.values())
                     s = "\n".join(gold_ref_text.values())
-                    f.write(s.encode("utf-8"))
+                    f.write(s)
                 with open(os.path.join(temp_dir, "submit"), "w") as f:
                     print(submit_ref_text.values())
                     s = "\n".join(submit_ref_text.values())
-                    f.write(s.encode("utf-8"))
+                    f.write(s)
 
                 (p, r, f) = do_rouge(temp_dir, "gold", "submit")
                 precision_list.append(p)
