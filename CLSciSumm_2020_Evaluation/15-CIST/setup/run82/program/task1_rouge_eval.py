@@ -106,11 +106,11 @@ def evaluate(gold_file, submit_file, temp_dir):
                 with open(os.path.join(temp_dir, "gold"), "w") as f:
                     print(gold_ref_text.values())
                     s = "\n".join(gold_ref_text.values())
-                    f.write(s.encode("utf-8"))
+                    f.write(s)
                 with open(os.path.join(temp_dir, "submit"), "w") as f:
                     print(submit_ref_text.values())
                     s = "\n".join(submit_ref_text.values())
-                    f.write(s.encode("utf-8"))
+                    f.write(s)
 
                 (p, r, f) = do_rouge(temp_dir, "gold", "submit")
                 precision_list.append(p)
@@ -130,7 +130,7 @@ def main(input_dir, temp_dir, output_dir):
     f_list = []
     for gold_file in os.listdir(os.path.join(input_dir, "ref", "Task1")):
         paper_id = gold_file.split('_')[0]
-        submit_file = os.path.join(input_dir, "res", "Task1", paper_id +".csv")
+        submit_file = os.path.join(input_dir, "res", "Task1", paper_id +".annv3.csv")
         if gold_file.startswith("."):
             continue
         if not os.path.exists(submit_file):
