@@ -1,0 +1,3 @@
+The Justice Department and 20 states filed a suit against Microsoft for violation of the Sherman Act, charging it illegally tried to use its dominance as the provider of Windows, the industry standard operating system, to stifle competition in other areas.
+At the heart of the case are Microsoft's contracts with computer manufacturers that prohibit them from substituting Netscape's Navigator browser for Microsoft's Internet Explorer, but Justice also alleges Microsoft exhibited a broad pattern of anti-competitive conduct with numerous other software companies.
+Microsoft says that Windows and its browser is one tool that offers immediate consumer benefit.
