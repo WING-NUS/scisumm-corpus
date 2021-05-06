@@ -211,7 +211,7 @@ Contacts for maintainers of the corpus:
 
 We provide links for Laysumm here and are not associated with it:
 
-README for Lay Summarization Task (LaySumm 2020)
+**README for Lay Summarization Task (LaySumm 2020)**
 
 Task Description and a *sample* dataset can be found at: <a href="https://github.com/WING-NUS/scisumm-corpus/blob/master/README_Laysumm.md">here</a> in this Github repo.
 
