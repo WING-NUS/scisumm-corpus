@@ -67,13 +67,10 @@ for the collation of the final results to be presented at the workshop.
 For more details, see the Contents Section at the bottom of this Readme. 
 To know how this corpus was constructed, please see ./docs/corpusconstruction.txt
 
-Results of the CL-SciSumm-20 will be released in the SDP workshop collocated 
-with <a href="https://2020.emnlp.org/">EMNLP</a> 2020, 
-<a href="https://ornlcda.github.io/SDProc/">Go to task website</a>. The workshop 
-will be virtual / online. This is a great opporutnity for teams to participate since 
-you don't need a travel budget to come and present your work!<br> 
 
-Last editions proceedings - CL-SciSumm '19 @ SIGIR '19 can be found in BIRNDL 
+Last editions proceedings: 
+- CL-SciSumm '20 @ EMNLP '20 can be found in EMNLP 2020 Proceedings on ACL Anthology. System papers are indexed in the overview paper: https://www.aclweb.org/anthology/2020.sdp-1.1/
+- CL-SciSumm '19 @ SIGIR '19 can be found in BIRNDL 
 Proceedings: http://ceur-ws.org/Vol-2414/ under the header 'System Papers'
 
 If you use the data and publish please let us know and cite our CL-SciSumm 2019 task overview paper:<br>
