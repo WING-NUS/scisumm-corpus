@@ -203,10 +203,12 @@ Citation Marker, Reference Text, and Discourse Facet for each citation of the RP
 
 ## Organisers' Contacts
 
-For further information about this data release, contact the following members of the SDP 2020 workshop organising committee:
+Please open github issues for further information or to report a bug or a fix for the corpus.
+
+Contacts for maintainers of the corpus:
 
 * <a href="https://www.linkedin.com/in/muthukumarc">Muthu Kumar Chandrasekaran</a> (Amazon, Seattle) cmkumar087@gmail.com
-* <a href="https://www.comp.nus.edu.sg/~kanmy/">Min-Yen Kan</a> National University of Singapore
+* <a href="https://www.comp.nus.edu.sg/~kanmy/">Min-Yen Kan</a> National University of Singapore, kanmy@comp.nus.edu.sg
 
 
 We provide links for Laysumm here and are not associated with it:
