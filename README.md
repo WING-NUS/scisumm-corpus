@@ -86,18 +86,15 @@ year={2019}<br>
 }<br>
 ```
 
-Please read further for details on the Computational Linguistics Shared Task run as part of 
-Scholarly Document Processing 2020 workshop collocated with EMNLP 2020 @Virtual/Online, Nov 19 - official website hosted at: <a href="https://ornlcda.github.io/SDProc/">SDP website</a>
 
 ### Overview
 
-You are invited to participate in the CL-SciSumm Shared Task at SDP@EMNLP 2020. The shared task will be on automatic 
-paper summarization in the Computational Linguistics (CL) domain. The output summaries will be of two types: 
-faceted summaries of the traditional self-summary (the abstract) and the community summary (the collection of 
-citation sentences ‘citances’). We also propose to group the citances by the facets of the text that they refer to.
-
-This task follows up on the successful previous editions at SIGIR 2019, 2018, 2017, JCDL 2016 and the Pilot Task conducted as 
+CL-SciSumm ran as a shared task at EMNLP 2020, SIGIR 2019, 2018, 2017, JCDL 2016 and the Pilot Task conducted as 
 a part of the BiomedSumm Track at the Text Analysis Conference 2014 (TAC 2014).
+
+The task is on automatic paper summarization in the Computational Linguistics (CL) domain. The output summaries are of 
+two types: faceted summaries of the traditional self-summary (the abstract) and the community summary (the collection of 
+citation sentences ‘citances’). We also group the citances by the facets of the text that they refer to.
 
 The task is defined as follows:
 
@@ -107,12 +104,12 @@ Given: A topic consisting of a Reference Paper (RP) and <del>upto 10</del> Citin
 * Task 1b: For each cited text span, identify what facet of the paper it belongs to, from a predefined set of facets.
 * Task 2 (optional bonus task): Finally, generate a structured summary of the RP from the cited text spans of the RP. The length of the summary should not exceed 250 words.
 
-Evaluation: Task 1 will be scored by overlap of text spans measured by number of sentences in the system output vs gold standard. Task 2 will be scored using the ROUGE family of metrics between i) the system output and the gold standard summary fromt the reference spans ii) the system output and the asbtract of the reference paper. Again, Task 2 is optional.
+Evaluation: Task 1 is scored by overlap of text spans measured by number of sentences in the system output vs gold standard. Task 2 is scored using the ROUGE family of metrics between i) the system output and the gold standard summary fromt the reference spans ii) the system output and the asbtract of the reference paper.
 
 ## Contents
 
-This is the open repository for the Scientific Document Summarization Corpus and Annotations contributed to the public by the Web IR / NLP Group at @ the National University of Singapore (WING-NUS) 
-with generous support from Microsoft Research Asia.
+This is the open repository for the Scientific Document Summarization Corpus and Annotations contributed to the public
+by the Web IR / NLP Group at @ the National University of Singapore (WING-NUS) with generous support from Microsoft Research Asia.
 
     ./README.md
  
@@ -128,6 +125,7 @@ annotation format from the previous edition.
     ./README2017.md
     ./README2018.md
     ./README2019.md
+    ./README2020.md
  
 README files for the previous editionS of the shared task hosted at 
 BIRNDL@SIGIR 2018, BIRNDL@SIGIR 2017, BIRNDL@JCDL 2016 and TAC2014.
