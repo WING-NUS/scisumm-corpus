@@ -7,7 +7,7 @@ This work is licensed under a
 * https://github.com/WING-NUS/scisumm-corpus/blob/master/README_Laysumm.md
 * and files under the directory: https://github.com/WING-NUS/scisumm-corpus/tree/master/data/LAYSUMM_SAMPLE
 
-**Please do not email us about Elsevier's LaySumm. We are unable to respond**
+** LaySumm is NOT covered by CC BY $.0 licence. Please do not email us about Elsevier's LaySumm. We are unable to respond**
 
 [![CC BY 4.0][cc-by-image]][cc-by]
 
