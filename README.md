@@ -204,7 +204,6 @@ Please open github issues for further information or to report a bug or a fix fo
 
 Contacts for maintainers of the corpus:
 
-* <a href="https://www.linkedin.com/in/muthukumarc">Muthu Kumar Chandrasekaran</a> (Amazon, Seattle) cmkumar087@gmail.com
 * <a href="https://www.comp.nus.edu.sg/~kanmy/">Min-Yen Kan</a> National University of Singapore, kanmy@comp.nus.edu.sg
 
 
